@@ -1,0 +1,277 @@
+📊 Enterprise Web Dashboard Specification
+Format: Rules & Pseudo-Logic Only
+Phase: MVP Implementation (Sprint 3-4)
+Scope: Role-Based Widgets | Geospatial Views | KPI Rendering | Export Contracts | Caching | Validation
+🎯 Core Dashboard Philosophy & Principles
+pseudo
+RULE ROLE_FIRST_RENDERING:
+  IF user_role == "farmer" THEN dashboard = personal_crop_view + advisory_feed + sync_status
+  IF user_role == "dealer" THEN dashboard = assisted_farmer_list + update_compliance + territory_metrics
+  IF user_role == "enterprise_manager" THEN dashboard = regional_aggregates + dealer_performance + KPI_benchmarks
+  NEVER render widgets outside tenant_scope OR territory_scope
+
+RULE WORKFLOW_AWARE_METRICS:
+  ALL KPIs MUST respect configurable lifecycle_templates
+  NEVER assume linear crop stages OR fixed season timelines
+  IF tenant_custom_stages_exist THEN analytics_must_aggregate_by_template_id NOT hardcoded_stage_name
+
+RULE CANONICAL_KPI_GOVERNANCE:
+  dashboard_must_pull_kpi_definitions_from KPI_Registry_v1
+  NEVER hardcode formulas OR aggregation_logic in frontend
+  ALL displayed metrics must include: value, unit, confidence_score, freshness_timestamp
+
+RULE OFFLINE_SYNC_VISIBILITY:
+  dashboard_must_expose sync_health_per_territory
+  show: synced_count, pending_count, conflicted_count, last_sync_timestamp
+  NEVER block UI for background sync operations
+👥 Role-Based Widget Architecture Rules
+Widget Resolution Pseudo-Logic
+yaml
+widget_resolution_flow:
+  INPUT: user_role, tenant_id, territory_id, device_type
+  PROCESS:
+    1. LOAD widget_catalog FROM dashboard_config
+    2. FILTER BY role_visibility_rules
+    3. FILTER BY territory_scope
+    4. APPLY tenant_overrides (if configured)
+    5. SORT BY priority_weight
+  OUTPUT: ordered_widget_array FOR rendering
+Role-Specific Widget Matrix
+Widget Type
+Farmer
+Dealer
+Field Agent
+Agronomist
+Enterprise Manager
+Admin
+Personal Sync Status
+✅
+✅
+✅
+❌
+❌
+❌
+Active Crop Cycles
+✅ (own)
+✅ (assigned)
+✅ (territory)
+✅ (territory)
+✅ (regional)
+✅ (global)
+KPI Performance Cards
+✅ (profitability)
+✅ (update rate)
+✅ (visit coverage)
+✅ (advisory resolution)
+✅ (yield/cost benchmarks)
+✅ (system health)
+Geospatial Map
+❌
+✅ (assigned parcels)
+✅ (territory)
+✅ (territory)
+✅ (district/region)
+✅ (all tenants)
+Pending Tasks Queue
+❌
+✅
+✅
+✅
+❌
+❌
+Disease/Advisory Feed
+✅ (own)
+✅ (assigned)
+✅ (territory)
+✅ (regional)
+✅ (hotspots)
+✅ (system)
+Export/Report Builder
+❌
+❌
+❌
+✅
+✅
+✅
+Widget Lifecycle Rules
+pseudo
+RULE WIDGET_FETCH_STRATEGY:
+  ON dashboard_load:
+    FETCH role_scoped_widgets IN parallel
+    APPLY client_side_caching (TTL = 5_minutes)
+    RENDER skeleton_loaders UNTIL data_resolved
+    
+  ON sync_completed_event:
+    INVALIDATE affected_widgets (KPI, sync_status, pending_tasks)
+    REFETCH ONLY changed_widgets
+    
+  ON territory_switch:
+    CLEAR ALL widget caches
+    RELOAD FROM scratch WITH new_scope
+🌍 Geospatial View Rules
+Map Rendering & Layer Hierarchy
+yaml
+map_layer_stack:
+  base_layer: OpenStreetMap_OR_satellite_imagery
+  layer_1: territory_boundaries (district/village polygons)
+  layer_2: parcel_polygons (color-coded by crop_status)
+  layer_3: heatmap_overlays (disease, profitability, advisory_adoption)
+  layer_4: agent_routes OR field_visit_markers (optional)
+  
+  rendering_rules:
+    zoom_level < 8: show district/village aggregates
+    zoom_level 8-12: show parcel_centroids + crop_status_badges
+    zoom_level > 12: show full parcel_polygons + stage_instance_markers
+    click_interaction: drilldown_to_parcel_detail_screen
+Geospatial Security & Performance Rules
+pseudo
+RULE TERRITORY_SCOPING_AT_DB:
+  ALL map_queries MUST include:
+    WHERE tenant_id = :tenant_id
+    AND parcel_geometry ST_Within(territory_boundary)
+  NEVER return cross_territory OR cross_tenant parcels
+
+RULE VECTOR_TILE_OPTIMIZATION:
+  USE PostGIS ST_AsMVT FOR parcel_geometry
+  CACHE tiles IN Redis WITH 1h_TTL
+  CLIENT_SIDE: load tiles progressively, debounce zoom_events
+
+RULE HEATMAP_AGGREGATION:
+  AGGREGATE metrics AT village_level FOR zoom < 10
+  USE kernel_density_estimation FOR disease/profitability hotspots
+  NEVER render raw_parcels IN heatmap_mode (performance + privacy)
+📈 KPI Rendering & Aggregation Rules
+KPI Display Pseudo-Logic
+yaml
+kpi_card_schema:
+  kpi_id: canonical_identifier_from_registry_v1
+  display_value: formatted_number_with_unit
+  trend_indicator: { direction: up|down|flat, percentage: float, period: 7d|30d }
+  confidence_score: 0-100% (based on workflow_completeness + sync_freshness)
+  freshness_badge: "Live" | "15m ago" | "Stale (>24h)"
+  drilldown_path: /analytics/kpi/{kpi_id}?geo=...&crop=...&template=...
+  
+  visibility_rules:
+    IF confidence_score < 50% THEN show_warning_icon + "Partial Data"
+    IF freshness_badge == "Stale" THEN show_gray_background + disable_drilldown
+Aggregation & Benchmarking Rules
+pseudo
+RULE WEIGHTED_AGGREGATION:
+  NEVER use simple_average FOR yield OR cost metrics
+  ALWAYS use weighted_average BY cultivated_area_hectares OR active_cycle_count
+  
+  EXAMPLE:
+    regional_yield = SUM(harvest_kg) / SUM(area_hectares)
+    regional_profit = SUM(net_profit_inr) / SUM(active_cycles)
+
+RULE BENCHMARK_OVERLAY:
+  ALLOW comparison_against:
+    - district_average
+    - same_crop_same_soil_cohort
+    - tenant_historical_baseline
+  SHOW percentile_ranking (e.g., "Top 20% in District")
+  NEVER compare across different lifecycle_templates WITHOUT normalization
+
+RULE DRILLDOWN_CASCADE:
+  KPI_card_click → geography_filter → crop_filter → template_filter → parcel_list → audit_trail
+  EACH step MUST preserve tenant_isolation AND role_visibility
+📤 Export & Reporting Contracts
+Export Generation Rules
+yaml
+export_workflow:
+  trigger: user_requests PDF/Excel/CSV
+  validation:
+    CHECK row_count <= 50000 (IF exceed THEN queue_async)
+    CHECK tenant_isolation (NO cross_tenant_leak)
+    CHECK canonical_field_names (NO internal_aliases_exposed)
+  processing:
+    GENERATE async_job_id
+    PUSH TO background_worker_queue
+    NOTIFY user_when_complete
+  delivery:
+    PROVIDE signed_download_url (TTL = 24h)
+    LOG export_audit_event (actor, timestamp, filters, format, row_count)
+Format-Specific Contracts
+Format
+Purpose
+Content Rules
+Schema Validation
+PDF
+Executive summaries, program reports
+Aggregated KPIs, geospatial snapshots, trend charts, narrative insights
+Must use canonical KPI names, include tenant watermark, footer with export_timestamp
+Excel
+Analyst deep-dives, raw data pivots
+Tabular data with hidden formula sheets, pivot-ready structure, multiple tabs (KPI, parcels, cycles)
+Column headers must match Data Dictionary v1, no PII in raw exports unless authorized
+CSV
+Machine-readable integrations, ETL pipelines
+Flat file, UTF-8, comma-delimited, explicit header row, ISO-8601 timestamps
+Schema must pass OpenAPI export contract, enforce tenant_id in every row
+pseudo
+RULE PII_MASKING_IN_EXPORTS:
+  IF export_contains_farmers THEN:
+    mobile_number = masked (last_4_digits_only)
+    government_id = NEVER_EXPORT
+    gps_coordinates = rounded_to_district_level UNLESS agronomist_role
+  LOG export_scope AND actor_permissions BEFORE generation
+⚡ Performance & Caching Rules
+pseudo
+RULE WIDGET_LEVEL_CACHING:
+  CACHE KPI_cards FOR 5m OR UNTIL sync_completed_event
+  CACHE map_tiles FOR 1h OR UNTIL territory_boundary_change
+  CACHE export_results FOR 24h OR UNTIL data_freshness < threshold
+
+RULE LAZY_RENDERING:
+  RENDER above_fold_widgets FIRST
+  DEFER below_fold UNTIL scroll_intersection_observer_triggers
+  SHOW skeleton_placeholders DURING fetch
+
+RULE STALE_TOLERANCE:
+  IF backend_slow OR sync_delayed THEN:
+    SHOW cached_data WITH "Last updated: X min ago" badge
+    ALLOW user_interactions BUT mark_mutations_as pending_until_sync
+    NEVER block_dashboard_load FOR real_time_accuracy
+🛡️ Validation Gates & CI/CD Invariants
+yaml
+dashboard_ci_gates:
+  pre_merge:
+    - lint: canonical_field_names_only (no "field"/"plot"/"khet" in UI code)
+    - test: role_visibility_matrix_passes (RBAC validation)
+    - test: KPI_registry_reference_valid (no hardcoded formulas)
+    - test: export_schema_matches_contract
+    
+  pre_deploy_staging:
+    - load_test: 50_concurrent_managers < 3s_initial_load
+    - security: cross_tenant_query_rejection_validated
+    - ux: mobile_responsive_breakpoints_pass
+    
+  pre_deploy_production:
+    - audit: export_logging_enabled_for_all_formats
+    - cache: TTL_invalidation_triggers_functional
+    - map: PostGIS_vector_tile_performance_validated
+📋 Remaining Artifacts Count & Roadmap
+You now have 5 of 9 core MVP documentation artifacts delivered.
+Exactly 4 remain to close the pre-launch governance loop:
+#
+Artifact
+Purpose
+Priority
+6
+API Capability Tree & Versioning Strategy
+Endpoint catalog, backward compatibility, deprecation policy, webhook contracts
+🔴 High (Pre-Launch)
+7
+Go-Live & Operational Playbook
+Tenant provisioning, incident response, SLA definition, on-call rotation, escalation matrix
+🔴 High (Pre-Launch)
+8
+Mobile Offline Chaos Testing Protocol
+Detailed test scripts for network partition, sync queue poisoning, conflict recovery, rural UX validation
+🟡 Medium (Sprint 4)
+9
+Future AI/Satellite Integration Blueprint
+NDVI ingestion pipeline, edge-AI disease prep, insurer fraud scoring architecture (deferred but needs prep)
+🟢 Low (Post-MVP)
+💡 Final Guidance: "Dashboards are not decoration—they are operational command centers." Every widget must trace to a canonical KPI, respect territory isolation
+

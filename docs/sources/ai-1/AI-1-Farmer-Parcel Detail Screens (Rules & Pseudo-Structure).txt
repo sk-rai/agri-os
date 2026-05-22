@@ -1,0 +1,110 @@
+📱 Part 1: Farmer/Parcel Detail Screens (Rules & Pseudo-Structure)
+🔹 Core Design Rules
+Canonical-Only Display: Internal storage uses parcel, farmer, crop_cycle. UI may show localized terms, but all buttons, APIs, and sync payloads use canonical names.
+≤3 Taps to Critical Action: From detail screen, user must reach Edit, Sync, Assign, or Escalate in ≤3 interactions.
+Sync State First-Class: Every screen header shows real-time sync status (🟢 Local, 🔄 Waiting, ⚠️ Conflict, ✅ Synced).
+Role-Based Field Masking: Farmers see only their data. Dealers see assistance_mode, enrollment_source, territory. Enterprises see aggregated KPIs, not PII.
+Audit Trail Always Accessible: History tab shows actor_id, role, timestamp, GPS, operation_type. Immutable append-only log.
+Offline-First Validation: Form saves locally → shows 🟢 Saved on phone → queues for sync. No network call blocks UI.
+🔸 Pseudo-Structure: Farmer Detail Screen
+[Header]
+  ├─ Farmer Name/ID
+  ├─ Sync Status Badge + Tap for Sync Details
+  └─ Quick Actions (Edit, Assign Dealer, Sync Now, Escalate)
+
+[Quick Stats Row]
+  ├─ Parcels: X
+  ├─ Active Cycles: Y
+  ├─ Assistance Mode: [SELF_MANAGED / DEALER_ASSISTED / FIELD_AGENT_ASSISTED]
+  └─ Last Sync: [Timestamp or "Never"]
+
+[Tab Navigation]
+  ├─ Profile
+  │    ├─ Mobile, Village, Language, Irrigation Type
+  │    └─ Enrollment Metadata (Dealer, Date, GPS, Device ID)
+  ├─ Parcels
+  │    ├─ List: Name, Area, Ownership, Sync Status
+  │    └─ Tap → Opens Parcel Detail
+  ├─ Crop Cycles
+  │    ├─ List: Crop, Stage, Sowing Date, Profitability Preview
+  │    └─ Status badges (Active, Completed, Partially Tracked)
+  ├─ Notifications
+  │    ├─ System Reminders, Advisories, Delivery Status
+  │    └─ Acknowledge/Dismiss (if applicable)
+  └─ History / Audit
+       ├─ Chronological log of all mutations
+       ├─ Filter by actor, date, entity type
+       └─ Export/Share (PDF/CSV for enterprise)
+🔸 Pseudo-Structure: Parcel Detail Screen
+[Header]
+  ├─ Parcel Reference Name/ID
+  ├─ Sync Status + Conflict Alert (if any)
+  └─ Map Preview Thumbnail (tappable)
+
+[Quick Stats Row]
+  ├─ Area: X.XX ha (calculated server-side, cached locally)
+  ├─ Ownership: [OWNED / LEASED / SHARED]
+  ├─ Irrigation: [RAINFED / TUBEWELL / DRIP / etc.]
+  └─ Soil Type: [Alluvial / Black / Red / etc.]
+
+[Tab Navigation]
+  ├─ Details
+  │    ├─ Boundary Metadata (points, GPS accuracy, capture method)
+  │    └─ Linked Farmer(s), Village, District
+  ├─ Map View
+  │    ├─ Offline-cached polygon overlay
+  │    ├─ Tap to edit boundary (dealer/agent only)
+  │    └─ Show overlap warnings if >5% threshold exceeded
+  ├─ Crop Cycles
+  │    ├─ Timeline of all seasons on this parcel
+  │    └─ Tap → Crop Detail
+  ├─ Soil & Environment
+  │    ├─ Soil Health Cards (OCR-extracted params, dates)
+  │    └─ Environmental Events (rainfall, hail, drought logs)
+  └─ History / Audit
+       ├─ Boundary changes, ownership updates, sync conflicts
+       └─ Conflict resolution notes (if manual review used)
+📸 Part 2: Image Compression Pipeline (Rules & Pseudo-Flow)
+🔹 Core Pipeline Rules
+Bandwidth-Aware Compression: Target size scales with connectivity. WiFi ≥ 75% quality, 4G ≥ 60%, 3G/Offline ≥ 40%. Hard cap: ≤500KB per image.
+Metadata Preservation: Strip camera model/serial. Retain GPS coordinates, timestamp, device ID, actor ID, entity reference (parcel_id/crop_cycle_id). Attach as sidecar JSON.
+Local Thumbnail Generation: Always create 320×240 JPEG thumbnail instantly for offline UI preview. Never block UX waiting for upload.
+Integrity & Dedup: Generate SHA-256 hash of compressed file + metadata JSON. Use hash to prevent duplicate queue entries.
+Priority Queue Routing: Disease/Parcel boundary evidence → CRITICAL. Field visit photos → HIGH. Optional gallery → LOW.
+Audit-Compliant Storage: Signed URLs, tenant-isolated prefixes, 90-day hot → 2-year cold → 5-year archive (unless insurer/audit-critical, then immutable).
+Offline Resilience: Queue persists across reboots. Checkpoint resume on partial upload. Exponential backoff with jitter. Max 10 retries → DLQ.
+🔸 Pseudo-Flow: Image Capture → Upload
+1. CAPTURE
+   → User triggers camera
+   → Validate GPS accuracy ≤ 15m (else warn & allow manual retry)
+   → Save raw image locally with temp ID
+
+2. COMPRESS & METADATA
+   → Detect network state (WiFi/4G/3G/Offline)
+   → Apply quality scaling per network rule
+   → Generate thumbnail (320×240)
+   → Attach sidecar JSON: {actor_id, role, timestamp, gps_lat, gps_lng, entity_type, entity_id, device_id}
+   → Compute SHA-256 hash
+
+3. QUEUE & DEDUP
+   → Check if hash exists in local sync_queue
+   → If exists → skip (duplicate suppression)
+   → Else → insert into queue with priority level
+   → Set state: QUEUED_FOR_SYNC
+
+4. SYNC TRIGGER
+   → Connectivity restored OR app foregrounded
+   → Pull top N items by priority + retry_timestamp
+   → Check dependencies (e.g., parcel must sync before image)
+
+5. UPLOAD & VERIFY
+   → POST to /media/upload with multipart/form-data
+   → Wait for 201 response with server_id + checksum
+   → Verify server checksum matches local hash
+   → If match → update queue state to SYNCED
+   → If mismatch → retry (max 10) → then DLQ
+
+6. FALLBACK & AUDIT
+   → On failure → log error, increment retry_count, schedule backoff
+   → On DLQ → flag for manual review, notify dealer/agent
+   → Append all steps to audit_log with correlation_id

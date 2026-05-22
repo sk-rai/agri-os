@@ -1,0 +1,251 @@
+Master Data Management & Caching Strategy
+Format: Rules & Pseudo-Logic Only
+Phase: MVP Implementation (Sprint 1-2)
+Scope: Offline-First Cache | Delta Sync | Tenant Overrides | Eviction | Fallback | Validation
+🎯 Core Philosophy & Principles
+pseudo
+RULE OFFLINE_AVAILABILITY:
+  IF mobile_app_state == offline THEN
+    ALL_operational_dropdowns MUST resolve from local cache
+    NEVER block farmer_enrollment OR parcel_mapping_due_to missing_master_data
+
+RULE CANONICAL_PLUS_OVERRIDE_MODEL:
+  master_data = platform_canonical_base ∪ tenant_specific_overrides
+  tenant_overrides MUST NOT mutate canonical definitions
+  tenant_overrides MUST be versioned, audited, and reversible
+
+RULE DELTA_SYNC_PREFERRED:
+  IF last_sync_version == server_version THEN skip_download
+  ELSE fetch only deltas + tombstones_since(last_sync_version)
+  NEVER full_download unless first_run OR cache_corruption_detected
+
+RULE VERSIONED_IMMUTABILITY:
+  canonical_master_data_records ARE append_only
+  updates CREATE new_version + deprecate old_version
+  historical_analytics MUST remain replayable against old_versions
+
+RULE TIERED_CACHE_HIERARCHY:
+  L1: Runtime_Memory (dropdown state, active filters)
+  L2: Local_SQLite/Drift (persistent master cache, survives reboot)
+  L3: Server_API + CDN (authoritative source, delta sync endpoint)
+📊 Master Data Classification Matrix
+Category
+Change Frequency
+Example Entities
+Cache TTL
+Sync Strategy
+Mobile Priority
+Static
+Rarely (<1/yr)
+soil_types, irrigation_methods, ownership_types, canonical_units
+180 days
+Full on first sync, delta on schema change
+Highest (required for validation)
+Semi-Dynamic
+Monthly/Quarterly
+crop_master, crop_varieties, disease_categories, input_types
+30 days
+Delta sync with tombstone tracking
+High (used in crop workflows)
+Dynamic
+Daily/Weekly
+village_hierarchy, dealer_assignments, active_campaigns, regional_pricing
+24 hours
+Frequent delta sync, event-driven refresh
+Medium (territory-scoped)
+Tenant-Custom
+Ad-hoc
+workflow_stages, notification_templates, KPI_formulas, branding
+Until version change
+Tenant-scoped delta, requires explicit sync
+Context-dependent
+🏗️ Caching Architecture & Lifecycle Rules
+pseudo
+RULE LOCAL_SCHEMA_STRUCTURE:
+  TABLE master_data_cache {
+    entity_type: ENUM
+    canonical_id: UUID
+    version: STRING (semver)
+    data_json: TEXT
+    tenant_id: UUID_OR_NULL ('platform_default' for canonical)
+    last_synced_at: DATETIME_UTC
+    ttl_seconds: INTEGER
+    is_active: BOOLEAN
+    checksum: SHA256(data_json)
+  }
+
+  TABLE cache_metadata {
+    entity_type: ENUM
+    server_version: STRING
+    last_sync_timestamp: DATETIME_UTC
+    sync_mode: ENUM[full, delta, event_driven]
+    sync_status: ENUM[ok, stale, corrupted, pending]
+  }
+
+RULE CACHE_LIFECYCLE:
+  ON app_first_launch:
+    sync_engine.request_master_data(entity_type: ALL, mode: full)
+    cache_metadata.sync_status = "ok"
+    
+  ON app_startup (subsequent):
+    IF cache_metadata.last_sync_timestamp + ttl < current_time THEN
+      cache_metadata.sync_status = "stale"
+      trigger_background_delta_sync()
+    ELSE
+      cache_metadata.sync_status = "ok"
+      
+  ON delta_sync_response:
+    FOR EACH item IN response.deltas:
+      UPSERT INTO master_data_cache (version, data_json, last_synced_at)
+    FOR EACH item IN response.tombstones:
+      SET is_active = FALSE WHERE canonical_id = item.id
+      
+    UPDATE cache_metadata SET server_version = response.version
+    cache_metadata.sync_status = "ok"
+🔄 Delta Sync & Versioning Protocol
+RULE API_CONTRACT:
+  GET /api/v1/master-data/sync
+    QUERY_PARAMS:
+      entity_type: enum
+      last_version: string
+      tenant_id: string
+      
+  RESPONSE_STRUCTURE:
+    {
+      version: "v1.2.0",
+      full_sync_required: false,
+      deltas: [
+        { id: UUID, version: "v1.2.0", payload: JSON, action: "create" | "update" },
+        { id: UUID, version: "v1.2.0", action: "deprecate" }
+      ],
+      tombstones: [ { id: UUID, deprecated_at: ISO8601 } ],
+      sync_metadata: { timestamp: UTC, tenant_overrides_count: int }
+    }
+
+RULE DELTA_APPLICATION_LOGIC:
+  FUNCTION apply_master_delta(deltas[], tombstones[]):
+    BEGIN TRANSACTION
+    FOR delta IN deltas:
+      IF delta.action == "create" OR delta.action == "update" THEN
+        INSERT_OR_REPLACE master_data_cache 
+          (canonical_id, version, data_json, last_synced_at)
+        WHERE canonical_id = delta.id
+      ELSE IF delta.action == "deprecate" THEN
+        UPDATE master_data_cache SET is_active = FALSE 
+        WHERE canonical_id = delta.id
+    FOR tombstone IN tombstones:
+      UPDATE master_data_cache SET is_active = FALSE, is_deleted = TRUE
+      WHERE canonical_id = tombstone.id
+    COMMIT
+    UPDATE cache_metadata SET server_version = response.version
+⏱️ Cache Invalidation & Refresh Rules
+pseudo
+RULE INVALIDATION_TRIGGERS:
+  1. TTL_EXPIRY: automatic background refresh when ttl elapsed
+  2. VERSION_MISMATCH: client_version < server_version detected during sync handshake
+  3. EVENT_DRIVEN: server publishes `master_data_updated.v1` → mobile wakes sync worker
+  4. MANUAL_OVERRIDE: dealer/admin taps "Refresh Master Data" → forces full sync for entity_type
+  5. TENANT_CONFIG_CHANGE: workflow/KPI/template update → invalidates related cache partitions
+
+RULE FRESHNESS_VALIDATION:
+  FUNCTION is_cache_fresh(entity_type):
+    metadata = SELECT * FROM cache_metadata WHERE entity_type = entity_type
+    IF metadata IS NULL RETURN false
+    IF metadata.sync_status == "corrupted" RETURN false
+    IF current_time > metadata.last_sync_timestamp + ttl_seconds RETURN false
+    RETURN true
+
+RULE CONCURRENT_UPDATE_HANDLING:
+  IF mobile_sync_version < server_version THEN
+    mobile downloads delta, applies locally, updates version
+    NEVER reject server updates due to local edits (master data is read-only on mobile)
+📉 Fallback & Degradation Behavior
+pseudo
+RULE FALLBACK_HIERARCHY:
+  1. Try L2 SQLite cache (is_active = TRUE, version matches or latest available)
+  2. If cache empty/stale AND network available → fetch from server, cache, return
+  3. If cache empty/stale AND network unavailable → 
+     a. Show "⚠️ Using older reference data" banner
+     b. Allow workflow to continue with stale cache
+     c. Log telemetry: master_data_fallback_triggered
+  4. NEVER throw blocking error for missing master data in field workflows
+
+RULE VALIDATION_FALLBACK:
+  IF dropdown_data_missing THEN
+    USE regex/schema_validation_from_local_rules_registry
+    SHOW "Manual entry allowed - will validate on sync"
+    QUEUE for async validation once connectivity restored
+📱 Mobile Storage & Eviction Rules
+pseudo
+RULE STORAGE_BUDGET:
+  MAX master_data_cache_size = 50MB per device
+  IF total_size > budget THEN execute LRU_eviction_policy
+
+RULE LRU_EVICTION_POLICY:
+  ORDER BY last_accessed_timestamp ASC
+  EVICT entity_type IN [campaigns, regional_pricing, optional_forms] FIRST
+  NEVER EVICT [geography_villages, crop_master, soil_types, canonical_enums]
+  PRESERVE tenant_overrides_until explicit_sync_or_logout
+
+RULE COMPRESSION_OPTIMIZATION:
+  STORE JSON payload minified
+  IF payload > 10KB THEN compress_with_gzip_before_SQLite_insert
+  DECOMPRESS_on_read_into memory cache
+  TRACK compression_ratio_in telemetry
+🔐 Tenant Isolation & Query Logic
+pseudo
+RULE QUERY_COALESCE_PATTERN:
+  FUNCTION get_master_data(entity_type, filter_criteria, tenant_id):
+    QUERY:
+      SELECT * FROM master_data_cache
+      WHERE entity_type = entity_type
+        AND is_active = TRUE
+        AND tenant_id IN (tenant_id, 'platform_default')
+        AND matches(filter_criteria)
+      ORDER BY 
+        CASE WHEN tenant_id = tenant_id THEN 1 ELSE 0 END DESC,
+        version DESC
+      LIMIT 1 PER canonical_id
+
+  RESULT: tenant_specific_override_wins_if_exists, else platform_default
+
+RULE ISOLATION_GUARANTEES:
+  tenant_overrides MUST include tenant_id in primary key composite
+  CROSS_TENANT_QUERY MUST be rejected at API layer
+  AUDIT_LOG records all tenant_override_create/update/delete_with_actor_id
+🔌 Integration Points & API Contract
+pseudo
+RULE MOBILE_INTEGRATION:
+  ON app_init:
+    sync_engine.register_master_data_handler(
+      entity_types: [geography, crops, inputs, diseases, tenant_config],
+      on_success: update_cache_metadata,
+      on_failure: mark_stale_continue_offline,
+      retry_policy: exponential_backoff_max_3
+    )
+
+RULE UI_INTEGRATION:
+  DropdownComponent renders from local cache FIRST
+  IF cache_loading THEN show_spinner_or_cached_placeholder
+  IF cache_stale THEN show "🟢 Updated recently" or "🟡 Older data" badge
+  NEVER block form_submission waiting for master data refresh
+
+RULE VALIDATION_INTEGRATION:
+  FormValidator reads enums from cache
+  IF cache_missing THEN fallback_to_hardcoded_schema_registry
+  ON sync_complete THEN re-validate_open_forms_if_data_changed
+🛡️ Invariants & Validation Gates (Enforce in CI/CD)
+yaml
+master_data_invariants:
+  - "canonical_master_data_never_mutated_by_tenant"
+  - "all_master_data_queries_must_include_tenant_isolation_logic"
+  - "offline_workflows_must_not_fail_due_to_missing_master_data"
+  - "cache_sync_must_be_delta_based_with_tombstone_support"
+  - "mobile_cache_size_must_not_exceed_50MB_with_LRU_eviction"
+  - "tenant_overrides_must_be_versioned_and_audited"
+  - "cache_fallback_must_warn_user_never_block_operation"
+  - "all_master_data_API_responses_must_include_semantic_version"
+  - "drift_schema_must_match_server_master_data_contract"
+  - "sync_engine_must_preserve_cache_across_app_restarts"
+
+

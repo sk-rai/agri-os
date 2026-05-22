@@ -1,0 +1,695 @@
+🚀 Go-Live & Operational Playbook
+Format: Rules & Pseudo-Logic Only
+Phase: Pre-Launch → Production Operations
+Scope: Tenant Provisioning | Incident Response | SLA Definition | On-Call Rotation | Escalation Matrix | Support Flows | User Onboarding | Production Readiness
+🎯 Operational Philosophy & Core Principles
+pseudo
+RULE FARMER_FIRST_OPERATIONS:
+  IF incident_impacts_farmer_workflows THEN priority = P0
+  IF incident_impacts_enterprise_dashboards_only THEN priority = P2
+  NEVER block field_operations_for_analytics_maintenance
+
+RULE OFFLINE_RESILIENT_DEPLOYMENTS:
+  IF deployment_causes_sync_disruption THEN rollback_immediately
+  IF deployment_breaks_offline_queue THEN halt_and_remediate
+  NEVER deploy_during_peak_field_hours (06:00-10:00, 16:00-19:00 local)
+
+RULE TENANT_ISOLATION_IN_OPERATIONS:
+  IF incident_affects_tenant_A THEN isolate_to_tenant_A_scope
+  NEVER allow_cross_tenant_debugging_without_explicit_approval
+  ALWAYS audit_admin_actions_with_actor_id + timestamp
+
+RULE RURAL_AWARE_MONITORING:
+  IF sync_failure_rate_increases_in_specific_geography THEN check_regional_network_first
+  IF SMS_delivery_fails_regionally THEN check_provider_status_before_code_rollback
+  NEVER alert_on_expected_offline_behavior (<4h connectivity loss)
+🏢 Part 1: Tenant Provisioning & Onboarding Workflow
+Tenant Creation Pseudo-Flow
+pseudo
+FUNCTION provision_new_tenant(tenant_config):
+  # 1. Validate configuration
+  IF tenant_config.missing_required_fields THEN reject_with_validation_errors
+  IF tenant_config.violates_platform_invariants THEN reject_with_security_alert
+  
+  # 2. Create tenant isolation boundaries
+  CREATE database_schema IF mode = schema_per_tenant
+  CREATE storage_prefix s3://bucket/{tenant_id}/
+  CREATE redis_namespace {tenant_id}:*
+  CREATE jwt_signing_context tenant_id = {tenant_id}
+  
+  # 3. Seed canonical master data
+  COPY crop_master, geography_hierarchy, canonical_enums TO tenant_scope
+  APPLY tenant_overrides IF configured
+  
+  # 4. Initialize default configurations
+  LOAD default_workflow_templates
+  LOAD default_notification_rules
+  LOAD default_dashboard_widgets
+  APPLY tenant_customizations IF provided
+  
+  # 5. Create admin user & credentials
+  CREATE user role = tenant_admin, tenant_id = {tenant_id}
+  GENERATE temporary_password WITH expiry = 24h
+  SEND welcome_email WITH setup_instructions
+  
+  # 6. Audit & notify
+  LOG audit_event: tenant_provisioned, actor = platform_admin
+  NOTIFY platform_ops_team: new_tenant_active
+  RETURN tenant_id, admin_credentials, setup_checklist
+Tenant Onboarding Checklist
+yaml
+tenant_onboarding_checklist:
+  pre_provisioning:
+    - [ ] enterprise_contract_signed
+    - [ ] data_processing_agreement_executed
+    - [ ] tenant_configuration_spec_received
+    - [ ] primary_contact_verified
+    
+  provisioning:
+    - [ ] database_schema_created
+    - [ ] storage_namespace_initialized
+    - [ ] redis_isolation_configured
+    - [ ] jwt_context_established
+    - [ ] master_data_seeded
+    - [ ] default_workflows_loaded
+    - [ ] admin_user_created
+    
+  post_provisioning:
+    - [ ] admin_login_tested
+    - [ ] sample_farmer_enrollment_tested
+    - [ ] sync_flow_validated
+    - [ ] notification_channel_tested
+    - [ ] dashboard_widgets_rendered
+    - [ ] audit_logging_verified
+    
+  handoff:
+    - [ ] enterprise_training_scheduled
+    - [ ] support_channel_established
+    - [ ] escalation_contacts_exchanged
+    - [ ] SLA_document_signed
+Tenant Configuration Inheritance Rules
+pseudo
+RULE CONFIGURATION_INHERITANCE:
+  tenant_config = platform_defaults ∪ tenant_overrides ∪ geography_adjustments
+  
+  precedence_order:
+    1. geography_adjustments (most specific)
+    2. tenant_overrides
+    3. platform_defaults (least specific)
+    
+  forbidden_overrides:
+    - tenant_isolation_mechanism
+    - audit_logging_requirements
+    - canonical_semantic_registry
+    - security_encryption_standards
+    
+  auditable_overrides:
+    - workflow_templates
+    - notification_rules
+    - KPI_formulas
+    - dashboard_layouts
+RULE CONFIGURATION_INHERITANCE:
+  tenant_config = platform_defaults ∪ tenant_overrides ∪ geography_adjustments
+  
+  precedence_order:
+    1. geography_adjustments (most specific)
+    2. tenant_overrides
+    3. platform_defaults (least specific)
+    
+  forbidden_overrides:
+    - tenant_isolation_mechanism
+    - audit_logging_requirements
+    - canonical_semantic_registry
+    - security_encryption_standards
+    
+  auditable_overrides:
+    - workflow_templates
+    - notification_rules
+    - KPI_formulas
+    - dashboard_layouts
+🚨 Part 2: Incident Response Framework
+Incident Classification Matrix
+Severity
+Definition
+Response SLA
+Communication
+Example Scenarios
+P0 Critical
+Farmer workflows blocked; data loss; security breach
+15min response, 1h resolution
+Page on-call + notify enterprise clients + public status page
+Sync engine down; JWT validation failure; PII exposure
+P1 High
+Degraded farmer experience; enterprise dashboard unavailable
+30min response, 4h resolution
+Slack alert + email enterprise contacts
+SMS provider outage; high API latency; partial sync failures
+P2 Medium
+Non-critical feature broken; analytics delayed
+4h response, 24h resolution
+Ticket created + weekly digest
+Dashboard widget error; report export timeout
+P3 Low
+Cosmetic issue; documentation gap
+Next sprint
+Backlog item
+UI typo; missing tooltip
+Incident Response Pseudo-Flow
+pseudo
+FUNCTION handle_incident(severity, description, affected_scope):
+  # 1. Triage & classification
+  IF severity == P0 THEN
+    ACTIVATE incident_commander_role
+    CREATE war_room_channel #incident-{timestamp}
+    PAGE on_call_engineering_lead + security_lead
+    NOTIFY enterprise_clients_if_farmer_impacted
+    
+  # 2. Containment
+  IF data_corruption_suspected THEN
+    FREEZE_mutations_for_affected_entities
+    ENABLE_read_only_mode_if_necessary
+    
+  IF security_breach_suspected THEN
+    REVOKE_suspicious_sessions
+    ROTATE_affected_credentials
+    ENABLE_enhanced_audit_logging
+    
+  # 3. Diagnosis
+  COLLECT diagnostics:
+    - error_logs_last_1h
+    - sync_queue_depth_by_geography
+    - API_latency_percentiles
+    - database_connection_pool_status
+    - recent_deployment_changes
+    
+  # 4. Resolution
+  IF root_cause_identified THEN
+    APPLY_fix_with_rollback_plan
+    TEST_in_staging_if_time_permits
+    DEPLOY_with_canary_10_percent_first
+    
+  # 5. Recovery
+    VERIFY_farmer_workflows_functional
+    CONFIRM_sync_queue_processing_normal
+    VALIDATE_audit_trail_intact
+    
+  # 6. Post-mortem
+    DOCUMENT root_cause + timeline + lessons_learned
+    UPDATE_runbooks_if_gap_identified
+    SCHEDULE_preventive_measures
+Escalation Matrix
+yaml
+escalation_matrix:
+  P0_critical:
+    level_1_0_15min:
+      - on_call_engineering_lead
+      - platform_architect
+    level_2_15_30min:
+      - CTO
+      - security_lead
+      - enterprise_success_manager
+    level_3_30_60min:
+      - CEO
+      - legal_compliance
+      - external_security_consultant_if_breach
+      
+  P1_high:
+    level_1_0_30min:
+      - on_call_engineering_lead
+    level_2_30_2h:
+      - engineering_manager
+      - product_lead
+    level_3_2_4h:
+      - CTO
+      - enterprise_success_manager
+      
+  P2_medium:
+    level_1_0_4h:
+      - engineering_team_slack_channel
+    level_2_4_24h:
+      - engineering_manager
+      - product_owner
+      
+  P3_low:
+    level_1:
+      - sprint_backlog
+      - next_planning_cycle
+Communication Protocol Rules
+pseudo
+RULE EXTERNAL_COMMUNICATION:
+  IF incident_severity IN [P0, P1] AND affects_enterprise_clients THEN
+    SEND initial_notification within 30min:
+      - incident_summary (non-technical)
+      - expected_resolution_window
+      - workaround_if_available
+      - next_update_timeline
+      
+    SEND resolution_notification when:
+      - farmer_workflows_restored
+      - data_integrity_verified
+      - monitoring_confirms_stability
+      
+  RULE INTERNAL_COMMUNICATION:
+    ALL_incident_updates_posted_to:
+      - #incident-{id} Slack channel
+      - incident_management_tool (Jira/PagerDuty)
+      - audit_log_with_actor_timestamp
+      
+  RULE POST_MORTEM:
+    FOR P0_incidents: complete_within_48h
+    FOR P1_incidents: complete_within_5_business_days
+    INCLUDE: timeline, root_cause, impact_assessment, preventive_actions
+📊 Part 3: SLA Definition & Monitoring
+SLA Tiers by User Role
+yaml
+sla_definitions:
+  farmer_users:
+    mobile_app_availability: 99.0% monthly
+    sync_success_rate: >= 95% of attempts
+    notification_delivery: >= 90% within 15min of trigger
+    offline_grace_period: 24h token validity
+    support_response: < 24h for P2, < 4h for P1
+    
+  dealer_field_agent_users:
+    dashboard_availability: 99.5% monthly
+    assisted_workflow_latency: < 3s p95
+    bulk_sync_throughput: >= 50 records/min on 3G
+    support_response: < 4h for P2, < 1h for P1
+    
+  enterprise_manager_users:
+    web_dashboard_availability: 99.9% monthly
+    analytics_freshness: < 1h delay for operational metrics
+    report_generation: < 5min for standard exports
+    support_response: < 2h for P2, < 30min for P1
+    dedicated_success_manager: assigned
+    
+  platform_admin_users:
+    tenant_provisioning_time: < 4h from config approval
+    configuration_deployment: < 30min with zero downtime
+    audit_log_retention: 7 years immutable
+    security_incident_response: < 15min for P0
+Monitoring Thresholds & Alerting Rules
+pseudo
+RULE AVAILABILITY_MONITORING:
+  IF mobile_api_error_rate > 5% for 5min THEN alert_P1
+  IF web_dashboard_error_rate > 1% for 10min THEN alert_P2
+  IF sync_success_rate < 90% for 15min THEN alert_P1_with_geography_breakdown
+  
+RULE LATENCY_MONITORING:
+  IF p95_API_latency > 3s for core_workflows THEN alert_P2
+  IF p99_sync_queue_processing > 10min THEN alert_P1
+  IF dashboard_render_time > 5s THEN alert_P3
+  
+RULE DATA_INTEGRITY_MONITORING:
+  IF audit_log_gap_detected > 5min THEN alert_P0
+  IF sync_conflict_rate > 10% in_single_geography THEN alert_P2
+  IF duplicate_farmer_detection_rate_spikes THEN alert_P1
+  
+RULE RURAL_CONNECTIVITY_AWARE_ALERTING:
+  # Avoid false positives from expected offline behavior
+  IF device_offline_duration < 4h THEN suppress_availability_alerts
+  IF sync_failures_concentrated_in_known_low_coverage_area THEN alert_P3_not_P1
+  IF SMS_delivery_failure_regional THEN check_provider_status_before_alerting
+Health Dashboard Metrics
+yaml
+operational_health_dashboard:
+  farmer_experience:
+    - active_farmers_24h
+    - sync_success_rate_by_geography
+    - notification_acknowledgment_rate
+    - offline_duration_distribution
+    
+  system_reliability:
+    - API_availability_percentile
+    - sync_queue_depth_trend
+    - error_rate_by_endpoint
+    - database_connection_pool_utilization
+    
+  data_quality:
+    - audit_log_completeness
+    - duplicate_detection_rate
+    - conflict_resolution_time_p95
+    - master_data_sync_freshness
+    
+  business_metrics:
+    - farmer_enrollment_velocity
+    - crop_cycle_completion_rate
+    - advisory_effectiveness_score
+    - dealer_engagement_frequency
+👥 Part 4: On-Call Rotation & Support Structure
+On-Call Rotation Rules
+pseudo
+RULE ROTATION_STRUCTURE:
+  primary_on_call:
+    - rotates_weekly_among_senior_engineers
+    - responsible_for_P0_P1_initial_response
+    - must_be_reachable_within_15min
+    - must_have_runbook_access + deployment_permissions
+    
+  secondary_on_call:
+    - rotates_weekly_among_mid_level_engineers
+    - escalates_if_primary_unreachable
+    - handles_P2_initial_triage
+    
+  escalation_backup:
+    - engineering_manager_on_weekend_rotation
+    - CTO_for_P0_security_incidents
+    
+RULE HANDOFF_PROTOCOL:
+  weekly_handoff_meeting:
+    - review_open_incidents
+    - share_recent_lessons_learned
+    - update_runbooks_if_needed
+    - confirm_contact_information_current
+    
+RULE FATIGUE_PREVENTION:
+  max_consecutive_on_call_weeks: 2
+  mandatory_recovery_week_after_P0_incident
+  no_deployment_responsibility_while_on_call_unless_P0
+Support Tier Structure
+yaml
+support_tiers:
+  tier_1_frontline:
+    responsible_for:
+      - farmer_dealer_basic_questions
+      - password_reset_assistance
+      - sync_troubleshooting_guidance
+      - feature_how_to_guidance
+    tools:
+      - knowledge_base_search
+      - remote_session_view_only
+      - ticket_creation_escalation
+    escalation_trigger:
+      - suspected_bug
+      - data_corruption_report
+      - security_concern
+      
+  tier_2_technical:
+    responsible_for:
+      - bug_investigation
+      - sync_conflict_resolution
+      - configuration_troubleshooting
+      - API_issue_diagnosis
+    tools:
+      - read_only_database_access
+      - log_aggregation_query
+      - staging_environment_access
+    escalation_trigger:
+      - production_code_fix_needed
+      - security_incident
+      - data_loss_suspected
+      
+  tier_3_engineering:
+    responsible_for:
+      - production_code_changes
+      - infrastructure_modifications
+      - security_incident_response
+      - P0_P1_incident_resolution
+    tools:
+      - production_deployment_permissions
+      - full_database_access_with_audit
+      - infrastructure_console_access
+User Onboarding Support Flows
+pseudo
+RULE FARMER_ONBOARDING_SUPPORT:
+  IF assisted_digital_mode THEN
+    dealer_or_field_agent_responsible_for_initial_training
+    provide_SMS_based_help_keyword: "HELP" → callback_queue
+    offer_voice_IVR_support_for_low_literacy_users
+    
+  IF smartphone_self_managed THEN
+    in_app_interactive_tutorial_mandatory_first_launch
+    contextual_help_tooltips_for_all_form_fields
+    "Ask Dealer" button_for_escalation_to_assisted_support
+    
+RULE DEALER_ONBOARDING_SUPPORT:
+  mandatory_training_module_before_first_farmer_enrollment
+  quick_reference_card_downloadable_offline
+  dedicated_support_channel_for_dealer_networks
+  monthly_virtual_office_hours_for_Q&A
+  
+RULE ENTERPRISE_ONBOARDING_SUPPORT:
+  dedicated_success_manager_assigned_at_contract_sign
+  customized_training_sessions_for_admin_users
+  sandbox_environment_for_testing_configurations
+  quarterly_business_review_for_optimization
+🔧 Part 5: Production Readiness Checklist
+Pre-Launch Gates
+yaml
+production_readiness_gates:
+  technical_validation:
+    - [ ] all_P0_P1_test_scenarios_pass
+    - [ ] offline_sync_chaos_tests_pass
+    - [ ] rural_ux_validation_15+_participants_complete
+    - [ ] pen_test_critical_issues = 0
+    - [ ] audit_chain_integrity_verified_end_to_end
+    - [ ] tenant_isolation_penetration_tested
+    - [ ] rollback_procedure_tested_and_documented
+    
+  operational_validation:
+    - [ ] on_call_rotation_scheduled_and_trained
+    - [ ] incident_runbooks_created_for_top_10_scenarios
+    - [ ] monitoring_alerts_tested_end_to_end
+    - [ ] support_tier_escalation_paths_documented
+    - [ ] enterprise_communication_templates_prepared
+    - [ ] SLA_monitoring_dashboards_configured
+    
+  business_validation:
+    - [ ] first_enterprise_tenant_provisioned_and_tested
+    - [ ] farmer_enrollment_flow_validated_with_real_users
+    - [ ] SMS_delivery_tested_with_target_providers
+    - [ ] dealer_training_materials_approved
+    - [ ] legal_compliance_signoff_obtained
+Launch Day Runbook
+pseudo
+FUNCTION execute_production_launch(launch_window):
+  # T-24h: Final validation
+  RUN full_regression_test_suite
+  CONFIRM staging_environment_stable_72h
+  VERIFY backup_restore_procedure_tested
+  
+  # T-4h: Pre-launch checks
+  CHECK all_monitoring_dashboards_green
+  CONFIRM on_call_team_briefed_and_available
+  NOTIFY enterprise_clients_of_maintenance_window
+  
+  # T-1h: Deployment preparation
+  CREATE deployment_checklist_snapshot
+  PREPARE rollback_scripts_and_validation_tests
+  ENABLE_enhanced_logging_for_launch_window
+  
+  # T-0: Go-live execution
+  DEPLOY_with_canary_10_percent_first
+  MONITOR_for_15min: error_rate, latency, sync_queue
+  IF metrics_stable THEN rollout_to_100%
+  IF metrics_degraded THEN auto_rollback_and_investigate
+  
+  # T+1h: Post-launch validation
+  RUN synthetic_transactions_for_core_workflows
+  CONFIRM farmer_enrollment_flow_functional
+  VERIFY sync_queue_processing_normal
+  SEND launch_confirmation_to_stakeholders
+  
+  # T+24h: Stability review
+  REVIEW first_24h_metrics_vs_baselines
+  DOCUMENT any_emergent_issues
+  SCHEDULE_week_1_post_launch_review
+Rollback Procedure Rules
+pseudo
+RULE ROLLBACK_TRIGGERS:
+  AUTOMATIC_ROLLBACK_IF:
+    - error_rate > 10% for 5min post-deploy
+    - sync_success_rate drops > 20% vs baseline
+    - P0_incident_detected_within_1h_of_deploy
+    - data_corruption_alert_triggered
+    
+  MANUAL_ROLLBACK_CONSIDER_IF:
+    - enterprise_clients_report_critical_workflow_block
+    - rural_ux_issue_prevents_farmer_adoption
+    - performance_degradation_impacts_field_operations
+    
+RULE ROLLBACK_EXECUTION:
+  STEP_1: halt_new_deployments_and_feature_flag_changes
+  STEP_2: revert_to_previous_container_image_version
+  STEP_3: restore_database_if_schema_migration_involved
+  STEP_4: invalidate_caches_to_prevent_stale_data
+  STEP_5: run_post_rollback_validation_tests
+  STEP_6: notify_stakeholders_of_rollback_and_new_timeline
+  
+RULE POST_ROLLBACK_ANALYSIS:
+  DOCUMENT root_cause_within_24h
+  UPDATE_deployment_gates_to_prevent_recurrence
+  SCHEDULE_fix_deployment_with_enhanced_testing
+📣 Part 6: Communication & Stakeholder Management
+Stakeholder Communication Matrix
+Stakeholder
+P0 Incident
+P1 Incident
+Planned Maintenance
+Feature Launch
+Farmers
+SMS alert + dealer notification
+In-app banner + SMS if critical
+None (offline-first design)
+In-app tutorial + SMS for assisted users
+Dealers
+SMS + WhatsApp + call tree
+Email + in-app alert
+Email 24h prior
+Training session + quick reference update
+Enterprise Clients
+Call + email within 15min
+Email within 30min
+Email 48h prior + status page
+Success manager briefing + release notes
+Internal Team
+PagerDuty + war room Slack
+Slack alert + ticket
+Slack announcement + calendar invite
+Slack announcement + demo session
+Executives
+Direct call for P0 security/data loss
+Email summary for P1
+Weekly ops report
+Monthly product review
+Communication Template Rules
+RULE INCIDENT_COMMUNICATION_TEMPLATES:
+  initial_P0_notification:
+    subject: "Critical Service Alert: [Brief Description]"
+    body_template: |
+      We are investigating an issue affecting [affected_workflows] for [affected_geography/tenants].
+      
+      Impact: [farmer_workflows_blocked/data_integrity_concern/security_concern]
+      Current Status: Investigation in progress
+      Next Update: Within [30min/1h]
+      Workaround: [if_available]
+      
+      We apologize for the disruption and are prioritizing resolution.
+      
+      - Platform Operations Team
+      
+  resolution_notification:
+    subject: "Resolved: [Incident Summary]"
+    body_template: |
+      The issue affecting [workflows] has been resolved as of [timestamp].
+      
+      Resolution: [brief_technical_summary]
+      Verification: [farmer_workflows_tested/data_integrity_confirmed]
+      Prevention: [preventive_measures_implemented]
+      
+      A detailed post-mortem will be shared within [48h/5_days].
+      
+      Thank you for your patience.
+      
+      - Platform Operations Team
+      
+RULE PLANNED_COMMUNICATION:
+  maintenance_notification:
+    send_48h_prior_to_window
+    include: start_time, end_time, expected_impact, workaround
+    repeat_24h_prior_and_1h_prior_via_different_channels
+    
+  feature_launch_notification:
+    send_to_enterprise_clients_24h_prior
+    include: new_capabilities, training_resources, support_contacts
+    include_in_app_tutorial_for_farmer_facing_changes
+🔄 Part 7: Continuous Improvement & Post-Launch Operations
+Weekly Operational Review Rules
+pseudo
+1234567891011121314151617
+Monthly Business Review Rules
+pseudo
+RULE MONTHLY_BUSINESS_REVIEW:
+  business_metrics:
+    - farmer_enrollment_velocity_vs_target
+    - crop_cycle_completion_rate_trends
+    - advisory_effectiveness_correlation_with_outcomes
+    - dealer_performance_distribution
+    
+  operational_health:
+    - SLA_compliance_summary
+    - incident_frequency_and_MTTR_trends
+    - support_tier_escalation_patterns
+    - rural_connectivity_impact_analysis
+    
+  strategic_planning:
+    - feature_adoption_vs_expectations
+    - enterprise_expansion_readiness
+    - technical_scalability_assessment
+    - next_quarter_prioritization_recommendations
+Feedback Loop Integration Rules
+pseudo
+RULE FARMER_FEEDBACK_INTEGRATION:
+  in_app_feedback_button:
+    triggers: structured_survey_with_icon_assisted_questions
+    routes: to_tier_1_support_with_urgency_classification
+    aggregates: weekly_for_product_team_review
+    
+  dealer_feedback_channel:
+    dedicated_WhatsApp_group_for_dealer_networks
+    monthly_virtual_roundtable_for_deep_dive_feedback
+    escalation_path: dealer_→_success_manager_→_product_team
+    
+RULE ENTERPRISE_FEEDBACK_INTEGRATION:
+  quarterly_business_review_template:
+    - adoption_metrics_vs_contractual_expectations
+    - feature_request_prioritization_workshop
+    - operational_efficiency_improvement_opportunities
+    - strategic_roadmap_alignment_session
+🛡️ Unified Operational Invariants (Enforce in CI/CD & Runbooks)
+yaml
+operational_invariants:
+  # Incident Response
+  - "P0_incidents_require_incident_commander_activation_within_15min"
+  - "all_incident_communication_must_include_next_update_timeline"
+  - "post_mortem_required_for_P0_within_48h_P1_within_5_days"
+  
+  # Monitoring & Alerting
+  - "rural_connectivity_aware_alerting_to_avoid_false_positives"
+  - "sync_failure_alerts_must_include_geography_breakdown"
+  - "audit_log_gaps_trigger_P0_alerts_immediately"
+  
+  # Tenant Operations
+  - "tenant_isolation_enforced_in_all_operational_procedures"
+  - "configuration_changes_require_audit_trail_and_rollback_plan"
+  - "master_data_updates_maintain_backward_compatibility"
+  
+  # Support & Escalation
+  - "tier_1_support_must_have_knowledge_base_search_and_escalation_path"
+  - "on_call_rotation_must_include_fatigue_prevention_measures"
+  - "farmer_facing_issues_prioritized_over_analytics_features"
+  
+  # Launch & Rollback
+  - "canary_deployment_required_for_all_production_changes"
+  - "automatic_rollback_triggers_defined_for_critical_metrics"
+  - "rollback_procedure_tested_quarterly_with_documented_results"
+  
+  # Continuous Improvement
+  - "weekly_operational_review_mandatory_with_action_item_tracking"
+  - "farmer_feedback_must_route_to_product_team_within_7_days"
+  - "SLA_breaches_trigger_root_cause_analysis_and_prevention_plan"
+📋 Pre-Launch Go/No-Go Decision Criteria
+yaml
+go_no_go_decision_framework:
+  GREEN_LIGHT_Proceed_to_Launch:
+    - all_production_readiness_gates_passed
+    - zero_P0_unresolved_incidents_in_staging_72h
+    - rural_ux_validation_completion_rate >= 80%
+    - on_call_team_trained_and_runbooks_validated
+    - first_enterprise_tenant_successfully_provisioned
+    - rollback_procedure_tested_and_documented
+    - legal_compliance_signoff_obtained
+    
+  YELLOW_LIGHT_Proceed_with_Caution:
+    - 1-2_P2_gaps_with_mitigation_plan_and_timeline
+    - rural_ux_completion_70-79%_with_targeted_fixes_planned
+    - monitoring_coverage_90%_with_plan_for_remaining_10%
+    - enterprise_client_approval_with_risk_acknowledgment
+    
+  RED_LIGHT_Do_Not_Launch:
+    - any_P0_unresolved_technical_or_security_issue
+    - rural_ux_completion < 70%_or_P0_usability_blocker
+    - tenant_isolation_not_penetration_tested
+    - rollback_procedure_not_tested_or_documented
+    - legal_compliance_signoff_pending
+💡 Final Guidance: "Operations is not an afterthought—it is the foundation of farmer trust." This playbook converts architectural vision into reliable, rural-ready operations. Enforce the invariants. Test rollback before you need it. Monitor for farmer impact, not just server metrics. Launch with confidence, operate with humility.

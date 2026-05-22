@@ -1,0 +1,590 @@
+Testing Strategy & Rural UX Protocol
+Format: Rules & Pseudo-Logic Only
+Phase: Pre-Launch Validation
+Scope: Unit/Integration/Contract/E2E | Offline Chaos | Rural UX | Multi-Role | Geospatial | Audit
+🎯 Testing Philosophy & Core Principles
+Foundational Testing Rules
+pseudo
+RULE TEST_PYRAMID_ENFORCEMENT:
+  IF test_type == "unit" THEN coverage_target >= 80%
+  IF test_type == "integration" THEN focus = "module_boundaries + sync_flow"
+  IF test_type == "contract" THEN validate = "OpenAPI + SemanticRegistry + EventSchema"
+  IF test_type == "e2e" THEN scenario = "MinimalFarmerCropLifecycle"
+  IF test_type == "rural_ux" THEN participants = "low_literacy_farmers + feature_phone_users"
+
+RULE OFFLINE_FIRST_TESTING:
+  ALL mobile_workflow_tests MUST execute in:
+    - online_mode
+    - offline_mode
+    - intermittent_connectivity_mode
+    - post_reconnect_sync_mode
+
+RULE RURAL_UX_VALIDATION:
+  NO feature ships without:
+    - icon+color+≤3word_label validation
+    - voice/IVR fallback test (if applicable)
+    - assisted-digital actor attribution test
+    - conflict_resolution_plain_language test
+
+RULE AUDIT_INVARIANT_TESTING:
+  EVERY mutation_test MUST assert:
+    - actor_id present
+    - timestamp UTC
+    - GPS coordinates (if field operation)
+    - tenant_id isolation
+    - chain_hash integrity (for audit_log)
+📊 Test Pyramid for Agricultural Platform
+                    ┌─────────────────────────┐
+                    │   E2E / Rural UX Tests  │  ← 5% of tests
+                    │   (Real farmer scenarios)│
+                    └────────┬────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │   Integration / Contract    │  ← 25% of tests
+              │   (Sync flow + API + Events)│
+              └──────────────┬──────────────┘
+                             │
+    ┌────────────────────────┴────────────────────────┐
+    │            Unit Tests (Domain Logic)            │  ← 70% of tests
+    │   (Validators + State Machines + Rules Engine)  │
+    └─────────────────────────────────────────────────┘
+ Unit Testing Rules (Pseudo-Logic)
+Domain Logic Validation
+pseudo
+TEST FARMER_ENROLLMENT_VALIDATOR:
+  GIVEN mobile = "+919876543210", village_id = UUID, mode = DEALER_ASSISTED
+  WHEN validateFarmerEnrollment() called
+  THEN return null (valid)
+
+  GIVEN mobile = "invalid_format"
+  WHEN validateFarmerEnrollment() called
+  THEN return "📞 Enter valid phone number"
+
+  GIVEN mobile = "+919876543210", duplicate_exists = true
+  WHEN validateFarmerEnrollment() called
+  THEN return "👤 Farmer already enrolled"
+
+TEST PARCEL_GEOMETRY_VALIDATOR:
+  GIVEN polygon_coords = [[77.1,28.5], [77.2,28.5], [77.2,28.6], [77.1,28.6], [77.1,28.5]]
+  WHEN validateParcelGeometry() called
+  THEN return null (valid closed polygon)
+
+  GIVEN polygon_coords = [[77.1,28.5], [77.2,28.5]]  // <4 points
+  WHEN validateParcelGeometry() called
+  THEN return "🗺️ Draw complete boundary"
+
+  GIVEN gps_accuracy = 25 meters (>15m threshold)
+  WHEN validateParcelGeometry() called
+  THEN return "📍 Improve GPS signal & try again"
+
+TEST WORKFLOW_STATE_MACHINE:
+  GIVEN lifecycle_template = "onion_direct_sowing_v1"
+  GIVEN current_stage = "sowing", target_stage = "vegetative"
+  WHEN validateTransition() called
+  THEN return true (valid per template)
+
+  GIVEN current_stage = "sowing", target_stage = "harvest"  // skip intermediate
+  WHEN validateTransition() called AND template.allows_skip = false
+  THEN return false + error_code "INVALID_TRANSITION"
+
+TEST RULES_ENGINE_EVALUATION:
+  GIVEN rule = "REMINDER-FERT-001"
+  GIVEN context = {stage: "vegetative", last_fertilizer_days_ago: 12}
+  WHEN evaluateRule(rule, context) called
+  THEN return action_payload {send_sms: true, template: "FERT-REMINDER-V1"}
+
+  GIVEN context = {stage: "vegetative", last_fertilizer_days_ago: 5}
+  WHEN evaluateRule(rule, context) called
+  THEN return null (conditions not met)
+🔹 Integration Testing Rules (Pseudo-Logic)
+Module Boundary + Sync Flow
+pseudo
+TEST FARMER_TO_PARCEL_DEPENDENCY:
+  GIVEN farmer created offline, parcel created offline (depends on farmer)
+  WHEN sync_manager.processQueue() called with farmer sync failing first
+  THEN parcel sync retries after farmer succeeds
+  THEN no orphan parcel records in server DB
+  THEN audit_log contains both mutations with correlation_id
+
+TEST WORKFLOW_TO_NOTIFICATION_TRIGGER:
+  GIVEN crop_stage_completed event published
+  WHEN rules_engine evaluates REMINDER-FERT-001
+  THEN notification_queue receives send_sms action
+  THEN SMS delivery tracked with notification_sent.v1 event
+  THEN dealer dashboard shows "advisory sent" status
+
+TEST CONFLICT_RESOLUTION_FLOW:
+  GIVEN parcel edited offline on Device A and Device B with different geometries
+  WHEN both devices sync simultaneously
+  THEN server detects geospatial_overlap conflict
+  THEN sync response includes conflict_type = "geospatial_overlap"
+  THEN local DB marks sync_status = CONFLICTED
+  THEN UI routes to ConflictResolutionScreen
+  THEN user resolution action logged to audit_trail
+
+TEST OFFLINE_QUEUE_PERSISTENCE:
+  GIVEN 10 mutations queued offline
+  WHEN app killed + restarted + connectivity restored
+  WHEN sync_manager.processQueue() called
+  THEN all 10 items attempted for sync
+  THEN retry_count incremented for failed items
+  THEN DLQ captures poison events after max_retries
+🔹 Contract Testing Rules (Pseudo-Logic)
+OpenAPI + Semantic Registry + Event Schema
+pseudo
+TEST OPENAPI_CONTRACT_VALIDATION:
+  FOR EACH endpoint in openapi_mvp_v1.yaml:
+    WHEN request sent with valid payload + X-Tenant-ID header
+    THEN response status matches spec (200/201/400/403/409)
+    THEN response body schema matches OpenAPI definition
+    THEN audit fields present in mutation responses
+
+TEST SEMANTIC_REGISTRY_ENFORCEMENT:
+  SCAN all API request/response schemas:
+    IF field_name contains "field" OR "plot" OR "khet" (internal)
+    THEN FAIL test + message "Forbidden alias in schema"
+  
+  SCAN all event payloads:
+    IF entity_type not in CanonicalEntityRegistry
+    THEN FAIL test + message "Non-canonical entity in event"
+
+TEST EVENT_SCHEMA_COMPATIBILITY:
+  GIVEN event = crop_stage_completed.v1
+  WHEN consumer processes event with v1 schema
+  THEN processing succeeds
+  
+  WHEN producer publishes crop_stage_completed.v2 (additive change)
+  THEN v1 consumer still processes successfully (backward compatible)
+  
+  WHEN producer publishes crop_stage_completed.v3 (breaking change)
+  THEN schema_registry rejects publish + requires new consumer deployment
+🌪️ Offline Sync Chaos Testing Protocol
+Network Simulation Scenarios
+pseudo
+SCENARIO NETWORK_PARTITION_48H:
+  SETUP: Create farmer + parcel + crop_cycle offline
+  ACTION: Simulate 48 hours no connectivity (toxiproxy)
+  ACTION: Restore network
+  ASSERT: All records sync successfully
+  ASSERT: Zero data loss
+  ASSERT: Audit trail contains offline timestamps + sync completion
+
+SCENARIO CONCURRENT_OFFLINE_EDITS:
+  SETUP: Same parcel edited on Device A and Device B offline
+  ACTION: Both devices sync simultaneously
+  ASSERT: Server detects conflict (version_mismatch or geospatial_overlap)
+  ASSERT: Conflict routed to manual_review queue
+  ASSERT: Both versions preserved in audit_log
+  ASSERT: UI shows conflict resolution options in plain language
+
+SCENARIO DEPENDENCY_ORDERING_VIOLATION:
+  SETUP: Crop_activity created offline (depends on crop_cycle)
+  ACTION: Sync crop_activity before crop_cycle (force out-of-order)
+  ASSERT: Server rejects with error_code "DEPENDENCY_NOT_SYNCED"
+  ASSERT: Client receives specific error + re-queues with dependency wait
+  ASSERT: No orphan crop_activity records
+
+SCENARIO RETRY_BACKOFF_VALIDATION:
+  SETUP: Queue 5 sync events, simulate flaky network (50% failure)
+  ACTION: Run sync_manager.processQueue()
+  ASSERT: Exponential backoff observed (30s → 60s → 120s → ...)
+  ASSERT: No duplicate server mutations (idempotency)
+  ASSERT: DLQ captures events after max_retries=10
+  ASSERT: User sees "Sync failed" after 3 retries (not silent failure)
+
+SCENARIO LOW_BANDWIDTH_MODE:
+  SETUP: Simulate 2G connectivity (50kbps)
+  ACTION: Upload parcel with 3 images (compressed)
+  ASSERT: Images compressed to ≤500KB each
+  ASSERT: Metadata syncs before media (progressive upload)
+  ASSERT: UI shows "Sending..." with progress indicator
+  ASSERT: Partial upload resumes after interruption
+👨‍🌾 Rural UX Validation Protocol (Critical)
+Participant Recruitment Criteria
+yaml
+rural_ux_participants:
+  total_target: 15_minimum
+  segments:
+    smartphone_farmers:
+      count: 5
+      criteria:
+        - owns Android smartphone
+        - uses WhatsApp/Facebook
+        - literacy: can read simple Hindi/English
+    feature_phone_farmers:
+      count: 5
+      criteria:
+        - owns basic phone (SMS/calls only)
+        - literacy: low or none
+        - relies on dealer/field agent for digital tasks
+    assisted_digital_dealers:
+      count: 5
+      criteria:
+        - enrolls/manages 10+ farmers
+        - uses smartphone for business
+        - literacy: moderate
+  geography:
+    - 2 villages per district (to capture regional variation)
+    - Mix of irrigated + rainfed farming areas
+Core Test Scenarios (Pseudo-Flow)
+pseudo
+SCENARIO FARMER_ENROLLMENT_LOW_LITERACY:
+  PARTICIPANT: Feature-phone farmer + dealer
+  TASK: Dealer enrolls farmer via assisted workflow
+  STEPS:
+    1. Dealer opens app, selects "Enroll Farmer"
+    2. Captures farmer mobile + demographics (icon-guided form)
+    3. Farmer receives SMS confirmation in local language
+    4. Dealer shows farmer: "🟢 Saved on phone" indicator
+  SUCCESS_METRICS:
+    - Farmer can confirm enrollment without reading text (icon+voice)
+    - Dealer completes enrollment in <3 minutes
+    - No "field"/"plot" terminology exposed to farmer
+    - Audit log captures dealer as actor, farmer as subject
+
+SCENARIO PARCEL_MAPPING_GPS_POOR_SIGNAL:
+  PARTICIPANT: Field agent + farmer
+  TASK: Map parcel boundary with GPS accuracy <15m
+  STEPS:
+    1. Agent opens parcel mapping, sees GPS accuracy badge
+    2. If accuracy >15m: UI shows "📍 Move to open area" guidance
+    3. Agent walks boundary or pin-drops polygon
+    4. App shows area calculation + "🟢 Saved locally"
+  SUCCESS_METRICS:
+    - Agent understands GPS guidance without technical jargon
+    - Polygon validation runs locally (no server roundtrip)
+    - Offline save confirmed with icon+color+≤3word label
+    - Conflict resolution UI uses plain language if overlap detected
+
+SCENARIO CONFLICT_RESOLUTION_PLAIN_LANGUAGE:
+  PARTICIPANT: Dealer + farmer
+  TASK: Resolve parcel boundary conflict after offline edits
+  STEPS:
+    1. UI shows: "Two versions exist for this parcel"
+    2. Side-by-side comparison: "📱 Your version" vs "☁️ Server version"
+    3. Options: "Keep my version" / "Use server version" / "Ask dealer"
+    4. Dealer helps farmer choose; resolution logged
+  SUCCESS_METRICS:
+    - Zero technical terms ("version_mismatch", "SHA256", etc.)
+    - Farmer can make choice confidently with dealer assistance
+    - Resolution action audited with actor_id + timestamp
+    - Post-resolution sync status updates to "✅ Synced"
+
+SCENARIO SMS_ADVISORY_FEATURE_PHONE:
+  PARTICIPANT: Feature-phone farmer
+  TASK: Receive and act on fertilizer reminder via SMS
+  STEPS:
+    1. Farmer receives SMS: "[AgriPlatform] Onion stage: vegetative. Apply urea 50kg/ha. Reply YES to confirm."
+    2. Farmer replies "YES" via basic phone
+    3. System logs acknowledgment, updates dashboard
+    4. Dealer sees "Acknowledged" status in assisted view
+  SUCCESS_METRICS:
+    - SMS uses ≤160 chars, local language, plain terms
+    - Reply keyword ("YES") works on all basic phones
+    - Acknowledgment tracked without smartphone app
+    - Dealer visibility enables follow-up if no reply
+
+SCENARIO OFFLINE_SYNC_STATUS_VISIBILITY:
+  PARTICIPANT: Low-literacy farmer + dealer
+  TASK: Understand sync status without technical knowledge
+  STEPS:
+    1. Farmer logs fertilizer application offline
+    2. UI shows: "🟢 Saved on phone" (no internet)
+    3. Connectivity restored → UI shows: "🔄 Sending..."
+    4. Sync completes → UI shows: "✅ Synced"
+  SUCCESS_METRICS:
+    - All status indicators use icon+color+≤3word label
+    - No "sync_queue", "retry_pending", "DLQ" exposed
+    - Farmer can distinguish "saved locally" vs "sent to server"
+    - Dealer sees aggregate sync status for managed farmers
+Rural UX Success Thresholds
+yaml
+rural_ux_pass_criteria:
+  task_completion_rate: >= 80%  # of participants complete core tasks
+  error_recovery_rate: >= 70%   # can recover from mistakes without help
+  terminology_comprehension: 100% # zero exposure to forbidden internal terms
+  assisted_workflow_efficacy: >= 90% # dealer+farmer pairs succeed together
+  icon_recognition_rate: >= 85%  # icons understood without text labels
+  voice_fallback_usage: >= 60%   # of low-literacy users use voice/IVR when offered
+  satisfaction_score: >= 4.0/5.0 # post-test survey (translated, icon-assisted)
+🔐 Multi-Role Permission Testing Rules
+RBAC + Territory Isolation Validation
+pseudo
+TEST TENANT_ISOLATION:
+  GIVEN user_A belongs to tenant_X, user_B belongs to tenant_Y
+  WHEN user_A queries /farmers with tenant_X header
+  THEN results include only tenant_X farmers
+  
+  WHEN user_A attempts to access tenant_Y farmer_id
+  THEN return 403 + "TENANT_MISMATCH"
+  THEN audit_log records unauthorized access attempt
+
+TEST TERRITORY_SCOPING:
+  GIVEN dealer assigned to village_A, village_B
+  WHEN dealer queries /farmers?territory=village_A
+  THEN results include only farmers in village_A
+  
+  WHEN dealer attempts to edit farmer in village_C (unassigned)
+  THEN return 403 + "TERRITORY_DENIED"
+  THEN audit_log records actor_id + attempted_entity + denial_reason
+
+TEST ASSISTED_DIGITAL_ATTRIBUTION:
+  GIVEN dealer enrolls farmer (assistance_mode = DEALER_ASSISTED)
+  WHEN dealer logs fertilizer application on behalf of farmer
+  THEN audit_log contains:
+    - actor_id = dealer_uuid
+    - subject_id = farmer_uuid
+    - actor_role = DEALER
+    - operation = fertilizer_application
+  
+  WHEN analytics aggregates by farmer
+  THEN metrics use subject_id (farmer) for profitability
+  WHEN analytics aggregates by dealer performance
+  THEN metrics use actor_id (dealer) for engagement
+
+TEST ROLE_BASED_DASHBOARD_VISIBILITY:
+  GIVEN farmer_role user logs in
+  WHEN dashboard renders
+  THEN visible widgets: personal_crop_cycles, advisories, sync_status
+  THEN hidden widgets: regional_analytics, dealer_performance, enterprise_KPIs
+  
+  GIVEN enterprise_manager_role user logs in
+  WHEN dashboard renders
+  THEN visible widgets: regional_heatmaps, dealer_metrics, program_analytics
+  THEN hidden widgets: individual_farmer_PII (unless explicitly granted)
+🗺️ Geospatial Validation Testing Rules
+Parcel Geometry + PostGIS Integrity
+pseudo
+TEST POLYGON_VALIDATION_LOCAL:
+  GIVEN coords = [[77.1,28.5], [77.2,28.5], [77.2,28.6], [77.1,28.6], [77.1,28.5]]
+  WHEN validatePolygon(coords) called locally
+  THEN return valid (closed loop, ≥4 points, no self-intersection)
+  
+  GIVEN coords = [[77.1,28.5], [77.2,28.5], [77.1,28.6]]  // 3 points
+  WHEN validatePolygon(coords) called locally
+  THEN return error "🗺️ Draw complete boundary"
+
+TEST AREA_CALCULATION_CONSISTENCY:
+  GIVEN parcel polygon with known area = 2.5 hectares
+  WHEN local app calculates area (offline)
+  WHEN server calculates area via PostGIS (online)
+  THEN |local_area - server_area| < 0.01 hectares (tolerance)
+
+TEST GEOSPATIAL_CONFLICT_DETECTION:
+  GIVEN parcel_A geometry on server, parcel_B geometry submitted offline
+  WHEN parcel_B overlaps parcel_A by >5%
+  THEN server returns conflict_type = "geospatial_overlap"
+  THEN resolution_strategy = manual_review (per Sync Conflict Matrix)
+  
+  WHEN overlap <5% AND actor_trust_score >0.8
+  THEN auto_resolve = semantic_merge (configurable per tenant)
+
+TEST SPATIAL_QUERY_ISOLATION:
+  GIVEN query: "parcels within 5km of village_X"
+  WHEN executed by tenant_A user
+  THEN results include only tenant_A parcels
+  
+  WHEN same query executed by tenant_B user
+  THEN results include only tenant_B parcels (no cross-tenant leak)
+📜 Audit & Security Testing Rules
+Immutable Audit Trail + PII Protection
+pseudo
+TEST AUDIT_APPEND_ONLY:
+  GIVEN audit_log table with 100 entries
+  WHEN attempt UPDATE audit_log SET ... WHERE id = X
+  THEN database rejects with "permission denied" or trigger error
+  
+  WHEN attempt DELETE FROM audit_log WHERE ...
+  THEN database rejects with "permission denied"
+
+TEST AUDIT_CHAIN_INTEGRITY:
+  GIVEN audit_entry_N with chain_hash = SHA256(prev_chain + entry_N)
+  WHEN entry_N+1 created
+  THEN chain_hash_N+1 = SHA256(chain_hash_N + entry_N+1)
+  
+  WHEN manual tampering of entry_N in DB
+  THEN chain validation fails for entry_N+1 onward
+  THEN system raises AUDIT_TAMPER_ALERT
+
+TEST PII_MASKING_IN_LOGS:
+  GIVEN farmer mobile = "+919876543210"
+  WHEN audit_log records farmer creation
+  THEN log contains mobile_masked = "+91987******"
+  THEN raw mobile stored only in encrypted farmer_profile table
+  
+  GIVEN GPS coordinates = (28.6139, 77.2090)
+  WHEN analytics query runs
+  THEN coordinates rounded to 2 decimals for aggregation
+  THEN exact coordinates available only via authorized audit reconstruction
+
+TEST CONSENT_WITHDRAWAL_FLOW:
+  GIVEN farmer withdraws consent via SMS "STOP"
+  WHEN PII_erasure_API called
+  THEN DIRECT_PII fields (mobile, government_id) scheduled for erasure T+30d
+  THEN SENSITIVE_PII fields (GPS, device_id) anonymized immediately
+  THEN audit_log entries retained for compliance (de-identified)
+  THEN farmer_profile marked consent_status = WITHDRAWN
+📶 Performance Testing for Rural Connectivity
+Bandwidth-Aware Validation
+pseudo
+TEST LOW_BANDWIDTH_PAYLOAD_OPTIMIZATION:
+  GIVEN network = 2G (50kbps)
+  WHEN sync_manager uploads 10 records + 3 images
+  THEN total payload size < 2MB (compressed)
+  THEN images compressed to ≤500KB each
+  THEN metadata syncs before media (progressive upload)
+  THEN UI shows progress without blocking
+
+TEST OFFLINE_QUEUE_THROUGHPUT:
+  GIVEN 100 mutations queued offline
+  WHEN connectivity restored (3G, 500kbps)
+  WHEN sync_manager.processQueue(batch_size=20)
+  THEN all 100 items sync within 5 minutes
+  THEN retry logic handles transient failures gracefully
+  THEN DLQ captures only truly poison events (<1%)
+
+TEST CONCURRENT_USER_LOAD_RURAL:
+  GIVEN 50 dealers in same village enrolling farmers simultaneously
+  WHEN all submit offline enrollments + sync on connectivity restore
+  THEN server handles burst without timeout (rate limiting + queueing)
+  THEN no data loss or corruption
+  THEN audit_log contains all 50 enrollments with unique correlation_ids
+🗂️ Test Data Management Rules
+Synthetic + Anonymized Production Data
+yaml
+test_data_strategy:
+  unit_tests:
+    source: synthetic_canonical_data
+    rules:
+      - use Canonical Semantic Registry v1 terms only
+      - no real farmer PII
+      - GPS coordinates generated within valid India bounds
+      
+  integration_tests:
+    source: anonymized_production_subset
+    rules:
+      - PII masked (mobile, government_id)
+      - GPS coordinates rounded to district-level
+      - tenant_id replaced with test tenant
+      
+  rural_ux_tests:
+    source: real_participant_data (with consent)
+    rules:
+      - explicit informed consent obtained
+      - data deleted post-test unless anonymized for research
+      - no cross-test participant data reuse without re-consent
+      
+  chaos_tests:
+    source: synthetic_stress_data
+    rules:
+      - generate 10x normal volume for load testing
+      - simulate edge cases: duplicate mobiles, invalid polygons, stale tokens
+🚦 CI/CD Test Gates (Pre-Merge + Pre-Deploy)
+Automated Validation Pipeline
+yaml
+ci_cd_gates:
+  pre_merge_pr:
+    - lint: semantic_registry_compliance (no forbidden aliases)
+    - unit_tests: coverage >= 80% on domain logic
+    - contract_tests: OpenAPI + Event Schema validation
+    - workflow_tests: state machine transition coverage
+    
+  pre_deploy_staging:
+    - integration_tests: sync flow + conflict resolution
+    - chaos_tests: network partition + concurrent edits
+    - rural_ux_smoke: icon+label validation (automated screenshot diff)
+    - audit_tests: chain integrity + PII masking verification
+    
+  pre_deploy_production:
+    - e2e_tests: MinimalFarmerCropLifecycle full flow
+    - rural_ux_validation: 15+ participant test report attached
+    - performance_tests: low-bandwidth sync throughput validated
+    - security_pen_test: pre-launch checklist passed (see below)
+    
+  post_deploy_monitoring:
+    - error_rate < 1% for first 24h
+    - sync_success_rate > 95% for first 1000 syncs
+    - rural_ux_issue_reported = 0 critical (P0) issues
+🔍 Pre-Launch Pen-Test Checklist (Rules Format)
+pseudo
+CHECKLIST AUTH_SECURITY:
+  [ ] JWT forgery test: modify tenant_id → VERIFY 403
+  [ ] Token expiry test: extend exp by 30d → VERIFY server-clock rejection
+  [ ] Scope escalation test: remove scope from payload → VERIFY default-deny
+  [ ] Offline grace abuse test: expired token + offline mode → VERIFY grace window respected
+
+CHECKLIST TENANT_ISOLATION:
+  [ ] Cross-tenant query test: tenant_A user queries tenant_B data → VERIFY empty/results filtered
+  [ ] Territory bypass test: dealer queries unassigned village → VERIFY 403 + audit log
+  [ ] Assisted-digital PII test: dealer edits farmer → VERIFY actor/subject separation in logs
+
+CHECKLIST OFFLINE_SYNC_ATTACKS:
+  [ ] GPS spoofing test: inject fake coordinates Δ>100m → VERIFY accuracy warning + audit
+  [ ] Replay attack test: re-submit same event_id with different payload → VERIFY idempotency rejection
+  [ ] Queue poisoning test: inject malformed payload → VERIFY schema validation rejects without DB corruption
+
+CHECKLIST MEDIA_PII_EXPOSURE:
+  [ ] Unsigned URL test: direct S3 path access → VERIFY 403
+  [ ] EXIF leak test: download original image → VERIFY no sensitive metadata in public viewer
+  [ ] PII in logs test: trigger audit query → VERIFY no plaintext mobile/GPS/ID present
+
+CHECKLIST AUDIT_TAMPER:
+  [ ] Chain break test: manually delete audit row → VERIFY hash validation failure triggers alert
+  [ ] Consent withdrawal test: call PII erasure API → VERIFY data anonymized, audit retained
+
+PEN_TEST_PASS_CRITERIA:
+  - Zero critical (P0) vulnerabilities found
+  - All high (P1) issues remediated or risk-accepted with mitigation plan
+  - Rural UX testers report zero P0 usability blockers
+  - Audit chain integrity verified end-to-end
+📈 Success Metrics & Go/No-Go Criteria
+MVP Launch Readiness Dashboard
+yaml
+mvp_readiness_metrics:
+  testing_coverage:
+    unit_coverage: target >= 80%, actual = [FILL]
+    integration_coverage: target >= 70%, actual = [FILL]
+    e2e_scenarios_passed: target = 100% of MinimalFarmerCropLifecycle, actual = [FILL]
+    
+  rural_ux_validation:
+    participant_completion_rate: target >= 80%, actual = [FILL]
+    terminology_compliance: target = 100% canonical-only, actual = [FILL]
+    assisted_workflow_success: target >= 90%, actual = [FILL]
+    
+  offline_reliability:
+    sync_success_rate_2G: target >= 90%, actual = [FILL]
+    conflict_resolution_clarity: target >= 85% user comprehension, actual = [FILL]
+    data_loss_incidents: target = 0, actual = [FILL]
+    
+  security_audit:
+    pen_test_critical_issues: target = 0, actual = [FILL]
+    audit_chain_integrity: target = 100% verified, actual = [FILL]
+    PII_exposure_incidents: target = 0, actual = [FILL]
+
+go_no_go_decision:
+  GREEN_LIGHT (Proceed to Launch):
+    - All testing coverage targets met
+    - Rural UX validation passed with >= 80% task completion
+    - Zero critical security or audit integrity issues
+    - Offline sync reliability >= 90% in low-bandwidth tests
+    
+  YELLOW_LIGHT (Proceed with Caution):
+    - 1-2 moderate (P2) testing gaps with mitigation plan
+    - Rural UX completion 70-79% with targeted fixes planned
+    - Security pen-test has resolved P1 issues, P2 accepted with monitoring
+    
+  RED_LIGHT (Do Not Launch):
+    - Any critical (P0) testing failure unresolved
+    - Rural UX completion < 70% or P0 usability blocker reported
+    - Security pen-test has unresolved P0/P1 vulnerabilities
+    - Audit chain integrity or PII protection failed validation
+🔄 Next Artifact Preview
+Once this Testing Strategy is approved, the next prioritized artifact is:
+Deployment & Infrastructure Runbook covering:
+Docker/K8s manifests for modular monolith
+CI/CD promotion rules (dev → staging → prod)
+Staging/prod environment sync strategy
+Backup/DR procedures for PostgreSQL+PostGIS+object storage
+Monitoring thresholds (error rate, sync success, rural UX alerts)
+💡 Final Guidance: "Testing is not a phase—it is the guardrails that enable safe velocity in rural contexts." This protocol ensures architectural invariants hold while respecting low-literacy usability constraints. Enforce the gates in CI/CD from Day 1. Validate with real farmers before scaling.
+

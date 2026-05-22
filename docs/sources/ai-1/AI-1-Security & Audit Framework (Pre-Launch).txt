@@ -1,0 +1,182 @@
+🔐 Security & Audit Framework (Pre-Launch)
+Format: Rules & Pseudo-Logic Only
+Phase: Pre-Launch Validation
+Scope: JWT Scopes | PII Handling | Audit Log Schema | Media Access | Pen-Test Checklist
+🔑 JWT Scope & Permission Rules
+Core Token Structure (Pseudo-Schema)
+yaml
+jwt_payload:
+  sub: user_id (UUID)
+  tenant_id: UUID
+  role: enum[FARMER, DEALER, FIELD_AGENT, AGRONOMIST, ENTERPRISE_MANAGER, ADMIN]
+  territory_scope: [village_ids | district_ids | tenant_wide]
+  offline_grace_seconds: integer (default: 86400)
+  scopes: array[CANONICAL_SCOPE_ENUMS]
+  iat, exp, jti: standard_claims
+Scope Validation Rules
+RULE JWT_SCOPE_EVALUATION:
+  IF request.tenant_header != jwt.tenant_id THEN REJECT(403, "TENANT_MISMATCH")
+  IF jwt.exp < current_utc_time AND request.mode != offline_cached THEN REJECT(401, "TOKEN_EXPIRED")
+  IF request.scope NOT IN jwt.scopes THEN REJECT(403, "SCOPE_DENIED")
+  IF jwt.role == FARMER AND request.territory_scope != jwt.user_id THEN REJECT(403, "TERRITORY_BOUND")
+  IF request.offline_mode == true AND jwt.exp < (current_utc_time - offline_grace_seconds) THEN REJECT(401, "OFFLINE_GRACE_EXPIRED")
+Scope Enumeration (Canonical)
+scopes:
+  - FARMER_READ_SELF
+  - DEALER_MANAGE_ASSIGNED_FARMERS
+  - FIELD_AGENT_LOG_ACTIVITIES
+  - AGRONOMIST_ISSUE_ADVISORIES
+  - ENTERPRISE_VIEW_ANALYTICS
+  - ADMIN_MANAGE_TENANTS
+  - SYNC_PUSH_EVENTS
+  - MEDIA_UPLOAD_EVIDENCE
+  - AUDIT_EXPORT_LOGS
+🛡️ PII Handling & Data Governance Rules
+PII Classification Matrix
+yaml
+pii_levels:
+  DIRECT:
+    fields: [mobile_number, government_id, bank_account]
+    rule: encrypt_at_rest, hash_for_indexing, mask_in_logs, consent_required
+  SENSITIVE:
+    fields: [gps_coordinates, device_id, ip_address, soil_health_data]
+    rule: restrict_cross_tenant, aggregate_for_analytics, retain_only_with_purpose
+  INDIRECT:
+    fields: [village_name, crop_type, irrigation_type]
+    rule: low_risk, but subject to tenant_isolation
+PII Processing Rules
+pseudo
+RULE PII_MASKING:
+  IF logging_or_analytics THEN
+    mobile_number = REPLACE(mobile, REGEX("\d{7}"), "*******")
+    gps_coordinates = ROUND(gps, 2) OR CONVERT_TO_DISTRICT_LEVEL
+    government_id = NEVER_STORE_PLAINTEXT, USE_HASH_OR_ENCRYPTED_VAULT
+
+RULE PII_RETENTION:
+  IF user_consent_withdrawn == true THEN
+    DIRECT_PII = SCHEDULE_ERASE(T+30_days, audit_trail_preserved)
+    SENSITIVE_PII = ANONYMIZE_OR_AGGREGATE
+    INDIRECT_PII = RETAIN_FOR_BENCHMARKING_IF_DEIDENTIFIED
+
+RULE ASSISTED_DIGITAL_PII:
+  IF assistance_mode IN [DEALER_ASSISTED, FIELD_AGENT_ASSISTED] THEN
+    PII_ACTOR = dealer_or_agent_id
+    PII_SUBJECT = farmer_id
+    STORE_SEPARATELY, NEVER_MERGE_INTO_SINGLE_IDENTITY
+📜 Audit Log Schema & Immutability Rules
+Canonical Audit Schema (Pseudo)
+audit_entry:
+  audit_id: UUID
+  tenant_id: UUID
+  actor_id: UUID
+  actor_role: ENUM
+  action_type: ENUM[CREATE, UPDATE, DELETE, SYNC, CONFLICT_RESOLVE, LOGIN, EXPORT]
+  entity_type: CANONICAL_ENTITY
+  entity_id: UUID
+  before_state_hash: SHA256_OR_NULL
+  after_state_hash: SHA256_OR_NULL
+  timestamp_utc: ISO8601
+  gps_coordinates: {lat, lng, accuracy} OR NULL
+  device_id: STRING
+  sync_mode: ENUM[ONLINE, OFFLINE, PARTIAL]
+  correlation_id: UUID
+  ip_address: STRING_OR_NULL
+  chain_hash: SHA256(PREV_CHAIN + CURRENT_ENTRY)
+Immutability & Storage Rules
+pseudo
+RULE AUDIT_APPEND_ONLY:
+  ALLOW: INSERT INTO audit_log
+  DENY: UPDATE, DELETE, TRUNCATE ON audit_log
+  EXCEPTION: DATA_RETENTION_POLICY (archival to cold storage after T years)
+
+RULE CHAIN_INTEGRITY:
+  IF chain_hash != SHA256(prev_chain + entry) THEN
+    RAISE AUDIT_TAMPER_ALERT
+    LOCK_ENTRY_FOR_FORENSIC_REVIEW
+
+RULE AUDIT_QUERY_ISOLATION:
+  audit_db = READ_REPLICA_OR_SEPARATE_SCHEMA
+  operational_db = NEVER_QUERY_AUDIT_IN_TRANSACTIONAL_PATH
+  analytics_db = ONLY_CONSUME_DEIDENTIFIED_AUDIT_AGGREGATES
+🖼️ Media Access & Storage Rules
+Media Lifecycle & Access Control (Pseudo)
+yaml
+media_object:
+  storage_path: s3://bucket/{tenant_id}/{entity_type}/{media_id}.{ext}
+  exif_preserved: true
+  thumbnail_generated: true (320x240, lossy)
+  access_policy: role_scoped_signed_url
+  retention_hot: 90_days
+  retention_cold: 2_years
+  retention_insurer_critical: 5_years_immutable
+Access Validation Rules
+pseudo
+RULE MEDIA_URL_GENERATION:
+  IF request.role == FARMER AND media.owner_id != request.user_id THEN DENY
+  IF request.role == DEALER AND media.farmer_id NOT IN dealer.assigned_farmers THEN DENY
+  IF request.role == AGRONOMIST AND media.parcel.village NOT IN agronomist.territory THEN DENY
+  
+  url = SIGNED_URL(
+    bucket = tenant_isolated_bucket,
+    path = media.storage_path,
+    ttl = 10_minutes,
+    actions = [GetObject],
+    condition = request.ip IN trusted_ranges (optional)
+  )
+  LOG_ACCESS_AUDIT(media_id, request.user_id, timestamp, url_expiry)
+
+RULE OFFLINE_MEDIA_CACHING:
+  IF device_mode == offline THEN
+    ALLOW_CACHED: thumbnail_only, low_res
+    DENY_CACHED: original_resolution, uncompressed
+    REQUIRE: re-auth_on_reconnect_to_refresh_signed_url
+🕵️ Pre-Launch Pen-Test Checklist (Rules/Steps)
+🔹 Auth & Token Security
+pseudo
+TEST JWT_FORGERY:
+  MODIFY tenant_id IN PAYLOAD → VERIFY REJECT(403)
+  EXTEND exp BY 30_DAYS → VERIFY SERVER_CLOCK_VALIDATION_REJECTS
+  REMOVE scope → VERIFY DEFAULT_DENY_POLICY
+
+TEST OFFLINE_GRACE_ABUSE:
+  SIMULATE TOKEN_EXPIRED_BUT_OFFLINE_MODE_ACTIVE → VERIFY GRACE_WINDOW_RESPECTED
+  MODIFY DEVICE_ID_AFTER_LOGIN → VERIFY SESSION_BINDING_CHECK_FAILS
+🔹 Tenant & Territory Isolation
+pseudo
+TEST CROSS_TENANT_LEAK:
+  INJECT tenant_id=A INTO REQUEST_FOR_TENANT_B → VERIFY DATA_SCOPE_FILTER_BLOCKS
+  QUERY FARMER_LIST_WITHOUT_TERRITORY_FILTER → VERIFY TERRITORY_CLAUSE_ENFORCED_AT_DB_LEVEL
+Offline Sync & Conflict Attack Vectors
+pseudo
+TEST GPS_SPOOFING:
+  INJECT FAKE_GPS_COORDINATES(Δ > 100m) → VERIFY DEVICE_ACCURACY_CHECK_FLAGS_WARNING
+  TEST REPLAY_ATTACK:
+  RE-SUBMIT SAME sync_event_id WITH DIFFERENT PAYLOAD → VERIFY IDEMPOTENCY_CHECK_REJECTS
+  TEST SYNC_QUEUE_POISONING:
+  INJECT MALFORMED_PAYLOAD_INTO_LOCAL_DB → VERIFY SERVER_SCHEMA_VALIDATION_REJECTS_WITHOUT_DB_CORRUPTION
+Media & PII Exposure
+pseudo
+TEST UNSIGNED_ACCESS:
+  DIRECT_ACCESS S3_PATH_WITHOUT_SIGNATURE → VERIFY 403
+  TEST EXIF_LEAK:
+  DOWNLOAD_ORIGINAL → VERIFY NO_SENSITIVE_METADATA_EXPOSED_IN_PUBLIC_VIEWER
+  TEST PII_IN_LOGS:
+  TRIGGER AUDIT_LOG_QUERY → VERIFY NO_PLAINTEXT_MOBILE/GPS/ID_PRESENT
+🔹 Audit Tamper & Compliance
+pseudo
+TEST CHAIN_BREAK:
+  MANUALLY_DELETE_AUDIT_ROW → VERIFY HASH_VALIDATION_FAILURE_TRIGGERS_ALERT
+  TEST CONSENT_WITHDRAWAL:
+  CALL PII_ERASURE_API → VERIFY DATA_ANONYMIZED, AUDIT_RETAINED_FOR_COMPLIANCE
+⚖️ Cross-Cutting Security Invariants
+yaml
+security_invariants:
+  - tenant_isolation_enforced_at_db_and_api_level
+  - jwt_scopes_explicit_no_wildcards
+  - pii_never_logged_in_plaintext
+  - audit_log_append_only_with_hash_chaining
+  - media_access_via_tenant_scoped_signed_urls
+  - offline_mode_restricted_to_cached_reads_and_queued_writes
+  - assisted_digital_pii_kept_separate_actor_subject
+  - sync_events_must_include_correlation_id_and_device_fingerprint
+  - pen_test_must_pass_before_production_promotion

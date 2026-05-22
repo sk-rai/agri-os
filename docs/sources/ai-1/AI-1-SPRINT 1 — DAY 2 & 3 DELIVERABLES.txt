@@ -1,0 +1,534 @@
+SPRINT 1 — DAY 2 & 3 DELIVERABLES
+Detailed API Contracts + Drift Offline Schema Templates
+You now have the exact contracts to bridge your mobile offline layer with the backend API. Both are strictly aligned with Canonical Semantic Registry v1, Audit Invariants, and Offline Sync Architecture.
+📘 Part 1: OpenAPI 3.0 Contract (MVP Slice)
+Save as: backend/api/openapi_mvp_v1.yaml
+yaml
+openapi: 3.0.3
+info:
+  title: Agri Platform MVP API
+  version: 1.0.0
+  description: Minimal Farmer Crop Lifecycle - Offline-First API Contract
+servers:
+  - url: https://api.agriplatform.dev/v1
+    description: Staging
+paths:
+  /auth/otp/request:
+    post:
+      summary: Request OTP for login
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mobile_number]
+              properties:
+                mobile_number:
+                  type: string
+                  pattern: "^\+?\d{10,15}$"
+      responses:
+        '200':
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: { type: string, format: uuid }
+                  expires_in_seconds: { type: integer }
+
+  /auth/otp/verify:
+    post:
+      summary: Verify OTP & issue JWT
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mobile_number, otp, request_id]
+              properties:
+                mobile_number: { type: string }
+                otp: { type: string, minLength: 6, maxLength: 6 }
+                request_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /farmers:
+    post:
+      summary: Create farmer profile (dealer/agent assisted)
+      tags: [farmers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: X-Tenant-ID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FarmerCreateRequest'
+      responses:
+        '201':
+          description: Farmer created (queued for sync if offline)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FarmerResponse'
+
+  /parcels:
+    post:
+      summary: Create parcel with GeoJSON boundary
+      tags: [parcels]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: X-Tenant-ID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParcelCreateRequest'
+      responses:
+        '201':
+          description: Parcel created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParcelResponse'
+
+  /crop-cycles:
+    post:
+      summary: Start new crop cycle on parcel
+      tags: [crop_cycles]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: X-Tenant-ID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CropCycleCreateRequest'
+      responses:
+        '201':
+          description: Crop cycle created with initial stage instances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CropCycleResponse'
+
+  /crop-cycles/{cycle_id}/stages/{stage_id}:
+    patch:
+      summary: Update crop stage status
+      tags: [crop_stages]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: X-Tenant-ID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: cycle_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: stage_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_status]
+              properties:
+                new_status:
+                  type: string
+                  enum: [PENDING, ACTIVE, COMPLETED, SKIPPED]
+      responses:
+        '200':
+          description: Stage transition validated & published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageInstanceResponse'
+
+  /sync/events:
+    post:
+      summary: Batch offline mutation upload
+      tags: [sync]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: X-Tenant-ID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: header
+          name: X-Device-ID
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SyncEvent'
+      responses:
+        '200':
+          description: Sync processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: array, items: { type: string, format: uuid } }
+                  conflicts: { type: array, items: { type: object } }
+                  failed: { type: array, items: { type: object } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuditMetadata:
+      type: object
+      properties:
+        actor_id: { type: string, format: uuid }
+        actor_role: { type: string, enum: [FARMER, DEALER, FIELD_AGENT] }
+        timestamp: { type: string, format: date-time }
+        gps_lat: { type: number }
+        gps_lng: { type: number }
+
+    FarmerCreateRequest:
+      type: object
+      required: [mobile_number, assistance_mode, village_id]
+      properties:
+        mobile_number: { type: string }
+        assistance_mode: { type: string, enum: [SELF_MANAGED, DEALER_ASSISTED, FIELD_AGENT_ASSISTED, HYBRID] }
+        village_id: { type: string, format: uuid }
+        local_id: { type: string, format: uuid, description: Client-generated ID for offline queue }
+
+    FarmerResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        mobile_number: { type: string }
+        assistance_mode: { type: string }
+        village_id: { type: string, format: uuid }
+        audit: { $ref: '#/components/schemas/AuditMetadata' }
+
+    ParcelCreateRequest:
+      type: object
+      required: [farmer_id, geometry, ownership_type]
+      properties:
+        farmer_id: { type: string, format: uuid }
+        village_id: { type: string, format: uuid }
+        geometry:
+          type: object
+          required: [type, coordinates]
+          properties:
+            type: { type: string, enum: [Polygon] }
+            coordinates:
+              type: array
+              items:
+                type: array
+                items:
+                  type: array
+                  items: { type: number }
+        ownership_type: { type: string, enum: [OWNED, LEASED, SHARED, UNKNOWN] }
+        irrigation_type: { type: string, enum: [RAINFED, TUBEWELL, CANAL, DRIP, SPRINKLER, FLOOD] }
+        local_id: { type: string, format: uuid }
+
+    ParcelResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        farmer_id: { type: string, format: uuid }
+        area_hectares: { type: number, format: decimal }
+        geometry: { $ref: '#/components/schemas/ParcelCreateRequest/properties/geometry' }
+        audit: { $ref: '#/components/schemas/AuditMetadata' }
+
+    CropCycleCreateRequest:
+      type: object
+      required: [farmer_id, parcel_id, crop_id, lifecycle_template_id, sowing_date]
+      properties:
+        farmer_id: { type: string, format: uuid }
+        parcel_id: { type: string, format: uuid }
+        crop_id: { type: string, format: uuid }
+        lifecycle_template_id: { type: string, format: uuid }
+        sowing_date: { type: string, format: date }
+        expected_harvest_date: { type: string, format: date, nullable: true }
+        local_id: { type: string, format: uuid }
+
+    CropCycleResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [PLANNED, ACTIVE, COMPLETED, ABANDONED] }
+        stage_instances:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageInstanceResponse'
+        audit: { $ref: '#/components/schemas/AuditMetadata' }
+
+    StageInstanceResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workflow_stage_id: { type: string, format: uuid }
+        status: { type: string, enum: [PENDING, ACTIVE, COMPLETED, SKIPPED] }
+        completed_at: { type: string, format: date-time, nullable: true }
+        audit: { $ref: '#/components/schemas/AuditMetadata' }
+
+    SyncEvent:
+      type: object
+      required: [event_id, entity_type, local_id, operation, payload, local_timestamp]
+      properties:
+        event_id: { type: string, format: uuid }
+        entity_type: { type: string, enum: [FARMER, PARCEL, CROP_CYCLE, STAGE_INSTANCE, CROP_ACTIVITY] }
+        local_id: { type: string, format: uuid }
+        operation: { type: string, enum: [CREATE, UPDATE] }
+        payload: { type: object, description: Matches respective Create/Update schema }
+        local_timestamp: { type: string, format: date-time }
+        version: { type: integer, default: 1 }
+        dependency_ids: { type: array, items: { type: string, format: uuid } }
+
+Part 2: Drift Schema Template (Flutter/SQLite)
+Save as: mobile/lib/schema/platform_database.dart
+dart
+import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
+
+// Canonical Sync Status Enum
+enum SyncStatus {
+  LOCAL_ONLY,
+  QUEUED_FOR_SYNC,
+  SYNCING,
+  CONFLICTED,
+  SYNCED,
+  FAILED
+}
+
+part 'platform_database.g.dart';
+
+@DriftDatabase(tables: [
+  Farmers, Parcels, CropCycles, StageInstances, CropActivities, SyncQueue
+])
+class AppDatabase extends _$AppDatabase {
+  AppDatabase(QueryExecutor e) : super(e);
+
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (Migrator m) => m.createAll(),
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            // Future migrations here
+          }
+        },
+      );
+
+  // 🔍 Quick sync helper
+  Future<List<DataClass>> getPendingSyncItems() {
+    return (select(syncQueue)
+          ..where((t) => t.syncStatus.equals(SyncStatus.QUEUED_FOR_SYNC))
+          ..orderBy([t => t.priority.asc()]))
+        .get();
+  }
+}
+
+// 📋 TABLE DEFINITIONS
+class Farmers extends Table {
+  TextColumn get id => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get mobileNumber => text()();
+  TextColumn get villageId => text()();
+  TextColumn get assistanceMode => textEnum<AssistanceMode>();
+  TextColumn get syncStatus => textEnum<SyncStatus>().withDefault(const Constant('LOCAL_ONLY'));
+  IntColumn get syncVersion => integer().withDefault(const Constant(1));
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  // Audit fields
+  TextColumn get auditActorId => text()();
+  TextColumn get auditActorRole => textEnum<ActorRole>();
+  DateTimeColumn get auditTimestamp => dateTime()();
+  RealColumn get auditGpsLat => real().nullable()();
+  RealColumn get auditGpsLng => real().nullable()();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {mobileNumber, tenantId}, // Prevent duplicate enrollments per tenant
+      ];
+}
+
+class Parcels extends Table {
+  TextColumn get id => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get farmerId => text().references(Farmers, #id)();
+  TextColumn get villageId => text()();
+  TextColumn get geometryGeojson => text()(); // Stored as JSON string locally
+  TextColumn get ownershipType => textEnum<OwnershipType>();
+  TextColumn get irrigationType => textEnum<IrrigationType>().nullable()();
+  RealColumn get areaHectares => real()();
+  TextColumn get syncStatus => textEnum<SyncStatus>().withDefault(const Constant('LOCAL_ONLY'));
+  IntColumn get syncVersion => integer().withDefault(const Constant(1));
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  TextColumn get auditActorId => text()();
+  TextColumn get auditActorRole => textEnum<ActorRole>();
+  DateTimeColumn get auditTimestamp => dateTime()();
+  RealColumn get auditGpsLat => real().nullable()();
+  RealColumn get auditGpsLng => real().nullable()();
+}
+
+class CropCycles extends Table {
+  TextColumn get id => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get farmerId => text().references(Farmers, #id)();
+  TextColumn get parcelId => text().references(Parcels, #id)();
+  TextColumn get cropId => text()();
+  TextColumn get lifecycleTemplateId => text()();
+  DateTimeColumn get sowingDate => dateTime()();
+  DateTimeColumn get expectedHarvestDate => dateTime().nullable()();
+  TextColumn get status => textEnum<CropStatus>().withDefault(const Constant('PLANNED'));
+  TextColumn get syncStatus => textEnum<SyncStatus>().withDefault(const Constant('LOCAL_ONLY'));
+  IntColumn get syncVersion => integer().withDefault(const Constant(1));
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  TextColumn get auditActorId => text()();
+  TextColumn get auditActorRole => textEnum<ActorRole>();
+  DateTimeColumn get auditTimestamp => dateTime()();
+  RealColumn get auditGpsLat => real().nullable()();
+  RealColumn get auditGpsLng => real().nullable()();
+}
+
+class StageInstances extends Table {
+  TextColumn get id => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get cropCycleId => text().references(CropCycles, #id)();
+  TextColumn get workflowStageId => text()(); // From lifecycle_template
+  TextColumn get status => textEnum<StageStatus>().withDefault(const Constant('PENDING'));
+  DateTimeColumn get startedAt => dateTime().nullable()();
+  DateTimeColumn get completedAt => dateTime().nullable()();
+  TextColumn get syncStatus => textEnum<SyncStatus>().withDefault(const Constant('LOCAL_ONLY'));
+  IntColumn get syncVersion => integer().withDefault(const Constant(1));
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  TextColumn get auditActorId => text()();
+  TextColumn get auditActorRole => textEnum<ActorRole>();
+  DateTimeColumn get auditTimestamp => dateTime()();
+  RealColumn get auditGpsLat => real().nullable()();
+  RealColumn get auditGpsLng => real().nullable()();
+}
+
+class CropActivities extends Table {
+  TextColumn get id => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get cropCycleId => text().references(CropCycles, #id)();
+  TextColumn get stageInstanceId => text().references(StageInstances, #id)();
+  TextColumn get activityType => textEnum<ActivityType>();
+  DateTimeColumn get applicationDate => dateTime()();
+  RealColumn get quantityKg => real().nullable()();
+  RealColumn get costInr => real().nullable()();
+  TextColumn get applicationMethod => text().nullable()();
+  TextColumn get syncStatus => textEnum<SyncStatus>().withDefault(const Constant('LOCAL_ONLY'));
+  IntColumn get syncVersion => integer().withDefault(const Constant(1));
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  TextColumn get auditActorId => text()();
+  TextColumn get auditActorRole => textEnum<ActorRole>();
+  DateTimeColumn get auditTimestamp => dateTime()();
+  RealColumn get auditGpsLat => real().nullable()();
+  RealColumn get auditGpsLng => real().nullable()();
+}
+
+// 🔄 SYNC QUEUE (Persistent, survives reboots)
+class SyncQueue extends Table {
+  TextColumn get eventId => text()(); // Client-generated UUID for idempotency
+  TextColumn get entityType => textEnum<EntityType>();
+  TextColumn get localId => text()(); // Local DB ID
+  TextColumn get operation => textEnum<OperationType>();
+  TextColumn get payloadJson => text()(); // Serialized entity payload
+  DateTimeColumn get localTimestamp => dateTime()();
+  IntColumn get version => integer()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0));
+  IntColumn get maxRetries => integer().withDefault(const Constant(10));
+  DateTimeColumn get nextRetryAfter => dateTime().nullable()();
+  TextColumn get priority => textEnum<SyncPriority>().withDefault(const Constant('MEDIUM'));
+  TextColumn get dependencyIds => text().nullable()(); // Comma-separated localIds
+  TextColumn get lastError => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+}
+
+// 📦 ENUMS (Align with Canonical Registry v1)
+enum AssistanceMode { SELF_MANAGED, DEALER_ASSISTED, FIELD_AGENT_ASSISTED, HYBRID }
+enum OwnershipType { OWNED, LEASED, SHARED, UNKNOWN }
+enum IrrigationType { RAINFED, TUBEWELL, CANAL, DRIP, SPRINKLER, FLOOD }
+enum CropStatus { PLANNED, ACTIVE, COMPLETED, ABANDONED }
+enum StageStatus { PENDING, ACTIVE, COMPLETED, SKIPPED, FAILED }
+enum ActivityType { FERTILIZER_APPLICATION, PESTICIDE_APPLICATION, IRRIGATION }
+enum OperationType { CREATE, UPDATE }
+enum SyncPriority { CRITICAL, HIGH, MEDIUM, LOW }
+enum EntityType { FARMER, PARCEL, CROP_CYCLE, STAGE_INSTANCE, CROP_ACTIVITY }
+enum ActorRole { FARMER, DEALER, FIELD_AGENT }
+🛡️ Part 3: Day 2-3 Integration & Validation Checklist
+Task
+Command/Action
+Success Metric
+1. Run Drift Codegen
+cd mobile && dart run drift_dev --generate-impl lib/schema/
+✅ platform_database.g.dart generated without errors
+2. Validate API Contract
+schemathesis run backend/api/openapi_mvp_v1.yaml --base-url http://localhost:8000
+✅ All endpoints pass schema validation
+3. Enforce Semantic Rules
+python scripts/validate_semantics.py --scan-paths backend/api,mobile/lib/schema --registry backend/data/semantic_registry_v1.json
+✅ Zero field/plot/khet matches
+4. Test Offline Queue Persistence
+Create 3 mock farmers offline → kill app → restart → verify sync_queue count = 3
+✅ Queue survives app lifecycle
+5. Verify Audit Fields
+Insert row via API → check response → confirm audit object contains actor_id, gps_lat/lng, timestamp
+✅ 100% audit compliance
+6. CI Pipeline Gate
+Push to sprint1/contracts branch → verify GitHub Actions run validate + drift-schema-check jobs
+✅ Pipeline green, no drift mismatches
+🚀 Immediate Next Steps (Day 4-5)
+Wire up SyncManager in Flutter: Background worker that reads syncQueue → maps to POST /sync/events → updates syncStatus on success/fail.
+Implement Conflict Resolver Stub: Parse 200 response from /sync/events → route conflicts array to local manual_review queue.
+Add Offline Form Validation: Use Drift uniqueKeys to block duplicate farmer enrollments before queue insertion.
+Prepare Mock SMS Gateway: Set up local sms-mock-server to test REMINDER-FERT-001 trigger in Sprint 2.

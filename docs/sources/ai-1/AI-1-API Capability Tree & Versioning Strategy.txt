@@ -1,0 +1,282 @@
+🌐 API Capability Tree & Versioning Strategy
+Format: Rules & Pseudo-Logic Only
+Phase: Pre-Launch Validation
+Scope: Endpoint Catalog | Backward Compatibility | Deprecation Policy | Webhook Contracts | CI/CD Governance
+🌳 Part 1: API Capability Tree (Domain-Categorized)
+yaml
+api_capability_tree:
+  v1_root: /api/v1
+  
+  identity_and_access:
+    - POST /auth/otp/request
+    - POST /auth/otp/verify
+    - POST /auth/refresh
+    - GET /users/me
+    - PATCH /users/me/preferences
+    tenant_isolation: false (auth endpoints)
+    offline_safe: false
+
+  master_data_and_geography:
+    - GET /geography/states
+    - GET /geography/districts
+    - GET /geography/villages
+    - GET /master-data/crops
+    - GET /master-data/inputs
+    - GET /master-data/soil-types
+    tenant_isolation: false (canonical)
+    offline_safe: true (cached dropdowns)
+
+  farmer_management:
+    - POST /farmers
+    - GET /farmers/{id}
+    - PATCH /farmers/{id}
+    - GET /farmers?territory_id={id}&status={status}
+    tenant_isolation: true
+    offline_safe: true
+
+  parcel_management:
+    - POST /parcels
+    - GET /parcels/{id}
+    - PATCH /parcels/{id}/geometry
+    - GET /parcels?farmer_id={id}
+    tenant_isolation: true
+    offline_safe: true
+
+  crop_workflow_engine:
+    - POST /crop-cycles
+    - GET /crop-cycles/{id}
+    - PATCH /crop-cycles/{id}/stages/{stage_id}
+    - GET /crop-cycles?parcel_id={id}&status={status}
+    tenant_isolation: true
+    offline_safe: true
+
+  crop_activities_and_inputs:
+    - POST /crop-activities
+    - GET /crop-activities/{id}
+    - GET /crop-activities?crop_cycle_id={id}&stage={id}
+    tenant_isolation: true
+    offline_safe: true
+
+  economics_and_profitability:
+    - POST /economics/yield-records
+    - POST /economics/cost-entries
+    - GET /economics/profitability/{crop_cycle_id}
+    tenant_isolation: true
+    offline_safe: true
+
+  disease_and_advisory:
+    - POST /disease-reports
+    - GET /disease-reports/{id}
+    - POST /disease-reports/{id}/advisories
+    - GET /advisories?farmer_id={id}&status={status}
+    tenant_isolation: true
+    offline_safe: true
+
+  offline_synchronization:
+    - POST /sync/events (batch)
+    - GET /sync/status
+    - POST /sync/resolve-conflict
+    - GET /sync/queue/pending
+    tenant_isolation: true
+    offline_safe: false (server-only)
+
+  media_and_evidence:
+    - POST /media/upload
+    - GET /media/{id}/signed-url
+    - DELETE /media/{id}
+    tenant_isolation: true
+    offline_safe: false
+
+  notifications_and_campaigns:
+    - GET /notifications?user_id={id}&status={status}
+    - POST /notifications/acknowledge
+    - POST /campaigns (enterprise only)
+    tenant_isolation: true
+    offline_safe: true (read/acknowledge)
+
+  analytics_and_dashboards:
+    - GET /analytics/kpis?scope={territory}&dimensions={crop,season}
+    - GET /dashboards/territory-overview
+    - GET /benchmarks?crop={id}&geography={district}
+    tenant_isolation: true
+    offline_safe: false
+
+  content_and_broadcast:
+    - GET /content/articles?crop={id}&language={lang}
+    - GET /content/videos/{id}/metadata
+    tenant_isolation: false (public/territory-scoped)
+    offline_safe: true (cached)
+
+  webhooks_and_integrations:
+    - POST /webhooks/subscriptions
+    - GET /webhooks/subscriptions
+    - PATCH /webhooks/subscriptions/{id}
+    - DELETE /webhooks/subscriptions/{id}
+    tenant_isolation: true
+    offline_safe: false
+🔄 Part 2: Versioning Strategy & Contract Evolution
+pseudo
+RULE API_VERSIONING_MODEL:
+  USE URL_VERSIONING for MAJOR breaking changes: /api/v1/..., /api/v2/...
+  USE HEADER_NEGOTIATION for MINOR additive changes: X-API-Version: 1.1
+  MAJOR_VERSION increments when:
+    - field_removed or field_type_changed
+    - endpoint_method_changed (GET→POST)
+    - authentication_scope_changed
+    - canonical_semantic_changed
+  MINOR_VERSION increments when:
+    - new_endpoint_added
+    - new_field_added_to_response
+    - new_enum_value_added
+    - new_optional_query_parameter
+
+RULE CONSUMER_COMPATIBILITY_MATRIX:
+  CLIENT MUST support: CURRENT_VERSION AND CURRENT_VERSION - 1
+  SERVER MUST support: CURRENT_VERSION AND CURRENT_VERSION - 1 simultaneously
+  DEPRECATED_VERSION returns HTTP 410 GONE after sunset_period
+🛡️ Part 3: Backward Compatibility Rules
+yaml
+backward_compatibility_invariants:
+  additive_only:
+    - new_response_fields MUST be optional or have server_defaults
+    - new_request_fields MUST be optional
+    - new_endpoints MUST NOT alter existing routing_logic
+    - new_enum_values MUST NOT break existing_consumer_switch_statements
+    
+  immutable_contract:
+    - field_names_cannot_be_renamed
+    - field_data_types_cannot_change (e.g., string→number)
+    - enum_values_cannot_be_removed (only deprecated)
+    - query_parameters_cannot_become_required retroactively
+    
+  consumer_resilience:
+    - clients MUST ignore unknown_response_fields
+    - clients MUST handle unexpected_null_values gracefully
+    - clients MUST NOT rely_on_field_order in JSON arrays
+    - pagination_must_use_cursor_or_offset_not_assumed_continuity
+    
+  server_hardening:
+    - API_gateway MUST strip_unknown_request_fields_before_processing
+    - validation_errors MUST return RFC7807 Problem_Details format
+    - all_mutations MUST preserve_audit_metadata_regardless_of_version
+📅 Part 4: Deprecation & Sunset Policy
+pseudo
+RULE DEPRECATION_LIFECYCLE:
+  STAGE_1_ACTIVE: Current production version, full support
+  STAGE_2_DEPRECATION: Announced via headers + developer portal (min 180 days)
+  STAGE_3_SUNSET: Endpoint returns 410 Gone, logs blocked requests
+  EXCEPTION_PROCESS: Enterprise clients may request 90-day extension with SLA impact assessment
+
+RULE DEPRECATION_SIGNALING:
+  HTTP_Headers on all responses:
+    Deprecation: true
+    Sunset: 2026-12-31T00:00:00Z
+    Link: </api/v2/endpoints>; rel="successor-version"
+    
+  Developer Portal:
+    - Version usage dashboard per tenant
+    - Automated email/Slack alerts at 90d, 60d, 30d, 7d
+    - Migration guide with side-by-side contract diff
+
+RULE SUNSET_ENFORCEMENT:
+  IF request.version == SUNSET_VERSION THEN
+    RETURN 410 Gone
+    BODY: { "error": "DEPRECATED_ENDPOINT", "sunset_date": "...", "migration_url": "..." }
+    LOG: tenant_id, actor_id, deprecated_endpoint, timestamp
+  NEVER allow silent fallback to deprecated logic after sunset
+🔗 Part 5: Webhook Contracts & External Integration
+yaml
+webhook_architecture:
+  purpose: External event delivery for enterprises, insurers, partners
+  delivery_model: at_least_once with idempotent consumers
+  security: HMAC-SHA256 signature + TLS 1.2+ + optional IP_allowlist
+
+webhook_payload_contract:
+  envelope:
+    event_id: uuid (globally unique, idempotency key)
+    event_type: string (e.g., crop_stage_completed.v1, sync_conflict_detected.v1)
+    timestamp: ISO8601_UTC
+    tenant_id: uuid
+    entity_type: canonical_entity_name
+    entity_id: uuid
+    version: semver (e.g., "v1.0")
+    payload: object (entity-specific data)
+    metadata:
+      correlation_id: uuid
+      source_system: "agri_platform"
+      retry_count: integer
+  signature_header: X-Webhook-Signature: sha256=<hmac_hex>
+
+webhook_delivery_rules:
+  INITIAL_ATTEMPT: synchronous POST within 30s of event publication
+  RETRY_POLICY: exponential_backoff (30s → 1m → 2m → 4m → 8m → max_24h)
+  MAX_RETRIES: 10 then DLQ
+  SUCCESS_CRITERIA: HTTP 2xx OR 204 response
+  FAILURE_HANDLING: 
+    - 4xx client_error → stop_retrying log_to_audit
+    - 5xx server_error → retry_with_backoff
+  IDEMPOTENCY: consumer_must_check_event_id_before_processing
+
+webhook_subscription_management:
+  CREATE: POST /webhooks/subscriptions { url, events[], secret, active: true }
+  FILTER: support tenant_scoped AND event_type_scoped subscriptions
+  STATUS: GET /webhooks/subscriptions/{id}/delivery-status (success_rate, last_attempt)
+  REPLAY: POST /webhooks/subscriptions/{id}/replay?from_timestamp=...&to_timestamp=...
+
+consumer_validation_requirements:
+  - verify HMAC signature before parsing payload
+  - check event_id against processed_log
+  - acknowledge within 30s OR return 202 Accepted for async_processing
+  - NEVER block main thread on heavy payload processing
+🔍 Part 6: CI/CD API Governance Invariants
+yaml
+api_ci_cd_gates:
+  pre_merge_pr:
+    - contract_test: OpenAPI schema matches actual implementation
+    - semantic_check: no forbidden_aliases (field/plot/khet) in paths/fields
+    - version_check: breaking_changes trigger major_version bump
+    - tenant_check: all endpoints enforce X-Tenant-ID except auth/public
+    
+  pre_deploy_staging:
+    - load_test: p95_latency < 800ms for core CRUD
+    - security_test: unauthorized_access_returns_401_not_500
+    - compatibility_test: v1 and v0.9 consumers pass regression suite
+    - webhook_test: signature_validation + retry_logic simulated
+    
+  pre_deploy_production:
+    - deprecation_check: no undocumented deprecated endpoints active
+    - audit_check: all mutation endpoints emit audit_events
+    - sync_check: /sync/events handles batch_size=50 without timeout
+    - documentation: OpenAPI spec published to developer portal
+    
+  post_deploy_monitoring:
+    - error_rate < 1% for new version
+    - deprecated_endpoint_usage_tracked_per_tenant
+    - webhook_delivery_success_rate > 95%
+    - contract_drift_alerts_enabled
+📋 Pre-Launch API Readiness Checklist
+Category
+Validation Rule
+Status
+Endpoint Catalog
+All domains covered, canonical naming enforced, offline-safe tagged
+⬜
+Versioning
+URL + header strategy documented, semantic versioning aligned
+⬜
+Backward Compat
+Additive-only rule enforced, unknown fields ignored, contract tests pass
+⬜
+Deprecation
+Sunset headers active, 180-day lifecycle defined, portal alerts configured
+⬜
+Webhooks
+HMAC signature, at-least-once delivery, DLQ, replay endpoint tested
+⬜
+CI/CD Gates
+Schema validation, tenant isolation, audit emission, load testing automated
+⬜
+Documentation
+OpenAPI 3.0 published, migration guides, example payloads, error codes
+⬜
+💡 Final Guidance: "APIs are not just endpoints—they are long-term contracts with your ecosystem." Enforce additive-only evolution, signal deprecation early, and treat webhook delivery as a critical reliability surface. Versioning strategy prevents breaking rural sync clients and enterprise integrations simultaneously.

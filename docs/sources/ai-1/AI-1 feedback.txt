@@ -1,0 +1,2271 @@
+Agreed. This is the precise pivot point: from architectural exploration to governed implementation. Your 3-week reconciliation sprint is the correct next phase.
+Below are the adoption-ready Week 1 artifacts structured for immediate sign-off. These replace exploratory discussions with implementation law.
+📜 Week 1 — Architecture Reconciliation Deliverables
+1. Architecture Decision Record (ADR-001): Deployment Identity
+Field
+Content
+ID
+ADR-001
+Title
+Architecture Identity & Event Infrastructure Strategy
+Status
+✅ Accepted
+Context
+Platform requires scalable event flow but must prioritize MVP velocity and operational simplicity.
+Decision
+Modular Monolith for Phase 1. Domain events exist internally via in-process pub/sub (e.g., FastAPI BackgroundTasks + Redis Streams). External broker (Kafka/Redpanda) deferred until >50K concurrent syncs/day.
+Consequences
+Faster dev cycles, single deployable unit, simpler observability. Event contracts remain versioned and decoupled; extraction path preserved via clear module boundaries.
+Validation Gate
+No cross-module direct calls for event propagation. All state changes publish immutable events.
+2. Canonical Semantic Registry v1 (Implementation Law)
+Effective immediately. Any deviation requires ADR approval.
+Category
+Canonical Term
+Forbidden Internal Aliases
+Notes
+Entities
+farmer
+cultivator, grower
+UI may display localized terms
+parcel
+field, plot, khet
+Geospatial authority
+crop_cycle
+farming_season, instance
+Tied to parcel + farmer
+lifecycle_template
+workflow_template, crop_template
+Configurable blueprint
+workflow_stage
+crop_stage, phase
+Defined in template
+stage_instance
+active_stage, current_stage
+Runtime execution
+disease_report
+disease_case, incident
+Canonical entity
+Enums
+assistance_mode
+dealer_managed, assisted
+Values: self_managed, dealer_assisted, field_agent_assisted, hybrid
+ownership_type
+land_status
+Values: OWNED, LEASED, SHARED, UNKNOWN
+crop_lifecycle_status
+cycle_state
+Values: PLANNED, ACTIVE, PARTIALLY_TRACKED, COMPLETED, ABANDONED, ARCHIVED
+Units
+hectare, kilogram, INR, millimeter
+acre, quintal, local
+Storage = canonical. Display = localized.
+Events
+crop_stage_completed.v1
+stage_done, update_stage
+Noun + past tense + version
+sync_conflict_detected.v1
+sync_error, conflict
+Immutable facts only
+3. Workflow Authority Matrix
+Explicit ownership separation. Prevents business logic leakage.
+Component
+Owns
+Does NOT Own
+Workflow Engine
+Valid state transitions, rollback eligibility, stage sequencing, configuration validation
+Notification routing, KPI calculation, conflict resolution
+Rules Engine
+Trigger conditions, reminder timing, escalation policies, SLA thresholds
+Message delivery, data persistence, UI rendering
+Notification Engine
+Channel selection, delivery retry, tracking, audit logging
+Workflow state validation, business rule evaluation
+Analytics Module
+Aggregation, KPI calculation, benchmarking, confidence scoring
+Data mutation, workflow execution, real-time alerts
+Sync Engine
+Queue management, conflict resolution, eventual consistency, retry/backoff
+Business validation, notification dispatch, UI state
+Event Bus (In-Process)
+Immutable propagation, partitioning, idempotency enforcement, DLQ routing
+State validation, business logic, consumer retry
+4. Farmer Value Ladder (Operational Sequencing)
+Maps workflows to tangible, measurable farmer benefits. Justifies continued participation.
+Participation Level
+Core Workflow
+Farmer Benefit (Operational)
+Enterprise Signal
+Registration
+Identity capture + mobile verification
+Eligible for localized weather/SMS advisories
+Active farmer count, territory coverage
+Parcel Mapping
+GPS pin/walk + ownership + soil type
+Geo-targeted alerts, input recommendations
+Cultivated area, soil health coverage
+Crop Tracking
+Stage updates + input logging + event reporting
+Stage reminders, cost alerts, disease escalation
+Update frequency, advisory acknowledgment
+Economics
+Yield logging + sale price + cost tracking
+Profitability insights, input ROI visibility
+Net profit/acre, cost structure trends
+Long-term
+Multi-season history + assisted-digital continuity
+Credit/insurance eligibility, yield benchmarking
+Retention rate, longitudinal data completeness
+5. MVP Slice Definition: "Minimal Farmer Crop Lifecycle"
+Vertical operational slice. Fully working end-to-end path. Zero speculative features.
+✅ IN Scope
+Dealer-assisted farmer enrollment + mobile OTP
+Parcel creation (pin-drop polygon + ownership + area calc)
+Crop cycle creation (1 crop type, 1 lifecycle template)
+3 configurable stages: sowing → vegetative → harvest
+Offline local queue + background sync + exponential retry
+SMS stage reminders (triggered by workflow engine → rules engine → notification engine)
+Enterprise dashboard: active farmers, sync status, pending updates
+❌ OUT Scope (Deferred)
+AI diagnostics, NDVI, satellite imagery
+Insurer flows, credit scoring
+Advanced analytics, benchmarking, predictive models
+WhatsApp, IVR, video streaming
+Multi-tenant branding, complex conditional branching
+Dealer performance dashboards, commission tracking
+🎯 Success Criteria (Go/No-Go)
+End-to-end flow completes offline → syncs → triggers SMS reminder
+Zero data loss after simulated 48h offline period + network restoration
+Conflict on parcel geometry routes to manual review (never silent overwrite)
+Dashboard reflects real-time sync status + stage distribution
+CI/CD enforces Semantic Registry v1 + Workflow Authority Matrix
+🔐 Implementation Guardrails (Effective Immediately)
+Rule
+Enforcement
+No hardcoded crop stages or workflows
+Static analysis + PR template check
+All cross-module communication via events
+Lint rule + architecture guardian review
+Sync retry capped at 10 attempts with DLQ
+Unit test + integration test
+Parcel geometry changes require audit log
+DB trigger + middleware enforcement
+Analytics read-only, never mutates operational data
+Role-based DB access + API policy
+📅 Next Step: Week 2 — Governance Consolidation
+Once you approve these Week 1 artifacts, I will generate:
+Rules Engine Specification (trigger → condition → action matrix with versioning)
+Configuration Governance Model (tenant inheritance, compatibility rules, rollback semantics)
+Temporal & Observational Truth Model (valid time vs transaction time, supersession rules, audit reconstruction)
+Multi-Actor Conflict Semantics (actor precedence, merge behavior, escalation paths)
+Reply with APPROVE_WEEK1 and I will deliver the Week 2 governance pack in the same implementation-ready format. No new exploration. Only execution-bound artifacts.
+📜 Week 2 — Governance Consolidation Deliverables
+Agricultural Operations Intelligence Platform
+Status: ✅ Approved for Implementation
+Effective Date: Immediate
+Scope: Rules Engine | Configuration Governance | Temporal Truth Model | Multi-Actor Conflict Semantics
+Owner: Platform Architecture Team
+1. Rules Engine Specification v1 (Implementation Law)
+1.1 Purpose
+Centralize all business logic triggers, conditions, and actions in a single, versioned, auditable registry. Prevent business logic leakage across modules.
+1.2 Architecture Principles
+Principle
+Enforcement
+Rules are data, not code
+All rules stored in database, loaded at runtime
+Rules are versioned
+Semantic versioning (v1, v2); historical replayability required
+Rules are tenant-scoped
+Each rule includes tenant_id; platform defaults available
+Rules are workflow-aware
+Rules reference lifecycle_template_id, not hardcoded crop names
+Rules are auditable
+Every rule evaluation logs: rule_id, input, output, actor, timestamp
+1.3 Rule Structure (Canonical Schema)
+rule_definition:
+  rule_id: globally_unique_identifier          # e.g., "REMINDER-FERT-001"
+  rule_name: human_readable_name               # e.g., "Fertilizer Reminder - Vegetative Stage"
+  version: semantic_version                    # e.g., "v1.2.0"
+  tenant_id: uuid | "platform_default"         # Multi-tenant scoping
+  status: enum [active, draft, deprecated]     # Lifecycle state
+  
+  trigger:
+    event_name: canonical_event_name           # e.g., "crop_stage_completed.v1"
+    entity_type: canonical_entity              # e.g., "stage_instance"
+    filters:                                   # Optional pre-filters
+      - field: "stage_name"
+        operator: "equals"
+        value: "vegetative_growth"
+  
+  conditions:                                  # AND logic; all must pass
+    - field: "days_since_last_fertilizer"
+      operator: "greater_than"
+      value: 10
+    - field: "irrigation_type"
+      operator: "not_in"
+      value: ["RAINFED"]
+  
+  actions:                                     # Executed if all conditions pass
+    - action_type: "send_notification"
+      channel: "sms"
+      template_id: "FERT-REMINDER-V1"
+      recipient_resolver: "farmer_primary_mobile"
+    - action_type: "create_dashboard_task"
+      assignee_role: "dealer"
+      task_type: "follow_up_verification"
+  
+  scheduling:
+    execution_mode: enum [immediate, delayed, scheduled]
+    delay_minutes: integer | null              # For delayed mode
+    cron_expression: string | null             # For scheduled mode
+  
+  metadata:
+    created_by: user_id
+    approved_by: user_id | null
+    approval_timestamp: datetime | null
+    business_owner: role_name                  # e.g., "agronomy_lead"
+
+rule_definition:
+  rule_id: globally_unique_identifier          # e.g., "REMINDER-FERT-001"
+  rule_name: human_readable_name               # e.g., "Fertilizer Reminder - Vegetative Stage"
+  version: semantic_version                    # e.g., "v1.2.0"
+  tenant_id: uuid | "platform_default"         # Multi-tenant scoping
+  status: enum [active, draft, deprecated]     # Lifecycle state
+  
+  trigger:
+    event_name: canonical_event_name           # e.g., "crop_stage_completed.v1"
+    entity_type: canonical_entity              # e.g., "stage_instance"
+    filters:                                   # Optional pre-filters
+      - field: "stage_name"
+        operator: "equals"
+        value: "vegetative_growth"
+  
+  conditions:                                  # AND logic; all must pass
+    - field: "days_since_last_fertilizer"
+      operator: "greater_than"
+      value: 10
+    - field: "irrigation_type"
+      operator: "not_in"
+      value: ["RAINFED"]
+  
+  actions:                                     # Executed if all conditions pass
+    - action_type: "send_notification"
+      channel: "sms"
+      template_id: "FERT-REMINDER-V1"
+      recipient_resolver: "farmer_primary_mobile"
+    - action_type: "create_dashboard_task"
+      assignee_role: "dealer"
+      task_type: "follow_up_verification"
+  
+  scheduling:
+    execution_mode: enum [immediate, delayed, scheduled]
+    delay_minutes: integer | null              # For delayed mode
+    cron_expression: string | null             # For scheduled mode
+  
+  metadata:
+    created_by: user_id
+    approved_by: user_id | null
+    approval_timestamp: datetime | null
+    business_owner: role_name                  # e.g., "agronomy_lead"
+1.4 Canonical Rule Registry v1 (MVP Scope)
+
+Rule ID
+Trigger
+Conditions
+Actions
+Tenant Override
+REMINDER-FERT-001
+crop_stage_completed.v1 (stage=vegetative)
+days_since_last_fertilizer > 10 AND irrigation_type != RAINFED
+Send SMS fertilizer reminder; Create dealer follow-up task
+✅ Configurable threshold (7-14 days)
+ESCALATE-DISEASE-001
+disease_reported.v1
+severity = HIGH AND no_agronomist_assigned
+Assign to regional agronomist; Send urgent SMS to dealer
+✅ SLA threshold (12-48 hrs)
+ALERT-WEATHER-001
+environmental_event_reported.v1
+event_type = hailstorm AND crop_stage in [flowering, fruiting]
+Send weather alert to affected farmers; Flag for insurance review
+✅ Geographic scope config
+INACTIVITY-DEALER-001
+daily_sync_check
+dealer.last_update > 7_days AND dealer.active_farmer_count > 10
+Send re-engagement SMS; Notify territory manager
+✅ Inactivity threshold (3-14 days)
+BENCHMARK-YIELD-001
+crop_cycle_completed.v1
+yield_per_hectare < district_median * 0.7
+Flag for agronomist review; Suggest soil test
+✅ Benchmark percentile config
+1.5 Rule Execution Flow
+Event Published
+↓
+Rules Engine: Filter by trigger + tenant
+↓
+Condition Evaluation (with cached master data)
+↓
+Action Dispatch (async queue)
+↓
+Audit Log: rule_id, input_snapshot, output, execution_time
+↓
+Retry/DLQ handling (per action type)
+1.6 CI/CD Invariants (Enforce in Pipeline)
+yaml
+rules_engine_invariants:
+  - "All rules must reference canonical event names from Event Bus Registry"
+  - "All conditions must use fields from Canonical Semantic Registry v1"
+  - "No hardcoded crop names, stage names, or geography values in rule definitions"
+  - "All actions must reference canonical notification templates or task types"
+  - "Rule evaluation must be idempotent (safe for duplicate events)"
+  - "All rule changes require approval workflow if status=active"
+  - "Deprecated rules must remain queryable for historical replay"
+
+1.7 Validation Gate
+✅ Go/No-Go Criteria:
+Rules engine can evaluate REMINDER-FERT-001 with test payload
+Audit log captures full evaluation context
+Tenant override correctly applies threshold change
+DLQ captures failed action with retry metadata
+2. Configuration Governance Model v1
+2.1 Purpose
+Define what tenants can customize, what remains canonical, and how changes propagate. Prevent tenant entropy from destroying platform coherence.
+2.2 Configuration Hierarchy (Inheritance Model)
+Platform Defaults (Immutable)
+└─> Tenant Overrides (Editable by tenant_admin)
+    └─> Workflow Instance Overrides (Editable by agronomist/manager)
+        └─> Geography Overrides (Editable by territory_manager)
+2.3 Configurability Matrix (Implementation Law)
+Configuration Area
+Platform Default
+Tenant Override Allowed
+Workflow Override
+Validation Rule
+lifecycle_template.stages
+Canonical crop stages
+✅ Add optional stages; reorder; merge
+✅ Per-project variant
+Must include all required stages
+notification.thresholds
+Fertilizer reminder: 10 days
+✅ 7-14 days
+✅ Per-crop variant
+Must be integer 1-30
+analytics.kpi_formulas
+yield_per_hectare = harvest/area
+✅ Add normalization factors
+❌ Formula structure immutable
+Must reference canonical KPI ID
+parcel.validation_rules
+Min area: 0.1 ha; Max overlap: 5%
+✅ Adjust thresholds
+❌ Core geospatial rules immutable
+Must preserve parcel_geometry_is_authoritative
+assistance_mode.behavior
+Dealer can edit farmer profile
+✅ Restrict fields; require approval
+❌ Core attribution immutable
+Must preserve actor_id + subject_id
+sync.retry_policy
+Max retries: 10; Backoff: exponential
+✅ Adjust counts/intervals
+❌ Core eventual consistency immutable
+Must include DLQ handling
+2.4 Configuration Change Workflow
+yaml
+configuration_change_workflow:
+  draft:
+    created_by: tenant_admin
+    status: draft
+    validation: schema_only
+  
+  review:
+    assigned_to: platform_governance_team
+    checks:
+      - "No violation of platform invariants"
+      - "No breaking change to canonical semantics"
+      - "Backward compatibility preserved"
+    status: pending_approval
+  
+  approval:
+    approved_by: platform_architect
+    effective_date: datetime
+    version_bump: semantic_version
+  
+  deployment:
+    rollout: canary_10_percent
+    monitoring: rule_evaluation_latency, error_rate
+    rollback: automatic_if_error_rate > 1%
+  
+  audit:
+    log_all: true
+    fields: [changed_by, timestamp, before_value, after_value, tenant_id]
+2.5 Forbidden Configuration Patterns (CI/CD Blockers)
+forbidden_configuration_patterns:
+  - "Overriding canonical entity names (e.g., changing 'parcel' to 'field')"
+  - "Disabling audit logging for critical entities"
+  - "Removing required workflow stages from lifecycle_template"
+  - "Changing KPI formula structure (only normalization factors allowed)"
+  - "Disabling tenant isolation or cross-tenant access controls"
+  - "Overriding sync conflict resolution for parcel_geometry"
+  - "Hardcoding geography values in rules (must use hierarchy references)"
+2.6 CI/CD Invariants
+yaml
+config_governance_invariants:
+  - "All configuration changes must include tenant_id and version"
+  - "Platform invariants (Appendix A) cannot be overridden"
+  - "Deprecated configurations remain queryable for 18 months"
+  - "All overrides must include justification field for audit"
+  - "Configuration schema validated against Canonical Semantic Registry v1"
+3. Temporal & Observational Truth Model v1
+3.1 Purpose
+Define how the system handles time, observation validity, retroactive corrections, and conflicting evidence. Critical for audit reconstruction and analytics correctness.
+3.2 Core Time Dimensions
+Dimension
+Definition
+Example
+Storage Requirement
+Valid Time
+When the fact was true in the real world
+Farmer applied fertilizer on 2026-05-15
+valid_from, valid_to
+Transaction Time
+When the fact was recorded in the system
+Sync completed on 2026-05-17 14:30 UTC
+created_at, updated_at
+Observation Time
+When the data was captured (may differ from valid time)
+Photo timestamp: 2026-05-15 09:00 local
+observed_at, device_timestamp
+Processing Time
+When analytics/aggregation occurred
+KPI calculated on 2026-05-18 02:00 UTC
+processed_at
+3.3 Supersession Rules (Handling Corrections)
+yaml3. Temporal & Observational Truth Model v1
+3.1 Purpose
+Define how the system handles time, observation validity, retroactive corrections, and conflicting evidence. Critical for audit reconstruction and analytics correctness.
+3.2 Core Time Dimensions
+Dimension
+Definition
+Example
+Storage Requirement
+Valid Time
+When the fact was true in the real world
+Farmer applied fertilizer on 2026-05-15
+valid_from, valid_to
+Transaction Time
+When the fact was recorded in the system
+Sync completed on 2026-05-17 14:30 UTC
+created_at, updated_at
+Observation Time
+When the data was captured (may differ from valid time)
+Photo timestamp: 2026-05-15 09:00 local
+observed_at, device_timestamp
+Processing Time
+When analytics/aggregation occurred
+KPI calculated on 2026-05-18 02:00 UTC
+processed_at
+3.3 Supersession Rules (Handling Corrections)
+yaml
+3. Temporal & Observational Truth Model v1
+3.1 Purpose
+Define how the system handles time, observation validity, retroactive corrections, and conflicting evidence. Critical for audit reconstruction and analytics correctness.
+3.2 Core Time Dimensions
+Dimension
+Definition
+Example
+Storage Requirement
+Valid Time
+When the fact was true in the real world
+Farmer applied fertilizer on 2026-05-15
+valid_from, valid_to
+Transaction Time
+When the fact was recorded in the system
+Sync completed on 2026-05-17 14:30 UTC
+created_at, updated_at
+Observation Time
+When the data was captured (may differ from valid time)
+Photo timestamp: 2026-05-15 09:00 local
+observed_at, device_timestamp
+Processing Time
+When analytics/aggregation occurred
+KPI calculated on 2026-05-18 02:00 UTC
+processed_at
+3.3 Supersession Rules (Handling Corrections)
+yaml
+3.4 Observation Trust Scoring
+observation_trust_model:
+  factors:
+    - source_device_trust_score (0-1)
+    - gps_accuracy_meters (lower = higher trust)
+    - timestamp_consistency (device vs server vs valid_time)
+    - actor_role_trust_weight (agronomist > dealer > farmer)
+    - corroboration_count (other observations supporting same fact)
+  
+  trust_thresholds:
+    high_trust: score >= 0.8 → auto-accept
+    medium_trust: 0.5-0.79 → flag_for_review_if_critical_entity
+    low_trust: < 0.5 → require_manual_verification
+  
+  entity_specific_weights:
+    parcel_geometry: gps_accuracy_weight = 0.4, actor_role_weight = 0.3
+    disease_report: image_quality_weight = 0.3, corroboration_weight = 0.3
+    fertilizer_log: timestamp_consistency_weight = 0.2, actor_role_weight = 0.2
+3.5 Audit Reconstruction Protocol
+yaml
+audit_reconstruction:
+  required_for:
+    - parcel_geometry_changes
+    - workflow_state_rollbacks
+    - financial_calculation_corrections
+    - conflict_resolution_decisions
+  
+  reconstruction_fields:
+    - entity_id + entity_type
+    - valid_time_range
+    - transaction_time_sequence
+    - actor_chain (who observed, who corrected, who approved)
+    - evidence_package (photos, GPS logs, device metadata)
+    - trust_scores_at_each_step
+    - final_authoritative_version_id
+  
+  query_interface:
+    endpoint: "/audit/reconstruct/{entity_type}/{entity_id}"
+    params:
+      - valid_time_range (optional)
+      - include_trust_scores (default: true)
+      - format: json | pdf (for legal export)
+3.6 CI/CD Invariants
+yaml
+temporal_invariants:
+  - "All entity mutations must include valid_time, transaction_time, observation_time"
+  - "Supersession events must publish compensating_event.v1 with causal linkage"
+  - "Audit reconstruction endpoint must return complete lineage for critical entities"
+  - "Trust scoring must be configurable per entity type via Configuration Governance"
+  - "No silent overwrites: all corrections must preserve historical versions"
+4. Multi-Actor Conflict Semantics v1
+4.1 Purpose
+Define formal rules for when farmers, dealers, agronomists, and enterprises update overlapping truth. Prevent data corruption and ensure clear escalation paths.
+4.2 Actor Precedence Matrix
+Entity Type
+Farmer Edit
+Dealer Edit
+Field Agent Edit
+Agronomist Edit
+Enterprise Edit
+Resolution Rule
+farmer_profile
+✅ Self-managed fields
+✅ Assisted fields
+✅ Verification fields
+❌ Read-only
+❌ Read-only
+Semantic merge; farmer owns core identity
+parcel_geometry
+✅ Initial capture
+✅ Assisted capture
+✅ Verification update
+✅ Expert correction
+✅ Override (with audit)
+Manual review if difference > threshold; agronomist precedence for corrections
+crop_stage_instance
+✅ Progress update
+✅ Assisted update
+✅ Verification
+✅ Expert validation
+✅ Program override
+Workflow engine validates transition; agronomist can force with audit
+fertilizer_log
+✅ Self-log
+✅ Assisted log
+✅ Verification log
+✅ Recommendation log
+✅ Program requirement
+Append-only; all entries preserved with actor attribution
+disease_report
+✅ Initial report
+✅ Assisted report
+✅ Field verification
+✅ Expert diagnosis
+✅ Outbreak declaration
+Agronomist diagnosis supersedes; original report preserved
+advisory_acknowledgment
+✅ Farmer confirm
+✅ Dealer confirm
+✅ Field confirm
+✅ Expert confirm
+✅ Program confirm
+Latest confirmation wins; all attempts logged
+4.3 Merge Behavior Specification
+yaml
+merge_strategies:
+  semantic_merge:  # For structured profiles
+    applicable_to: [farmer_profile, parcel_metadata]
+    rules:
+      - "Non-conflicting fields: take latest value"
+      - "Conflicting fields: flag for manual review"
+      - "Actor with higher trust_weight wins if auto-resolve enabled"
+      - "Always preserve both versions in audit trail"
+  
+  append_only:  # For historical logs
+    applicable_to: [fertilizer_log, irrigation_log, advisory_history]
+    rules:
+      - "All entries preserved; no overwrites"
+      - "Duplicate detection: same actor + same timestamp + same values = skip"
+      - "Correction entries flagged with is_correction: true"
+  
+  authoritative_override:  # For expert corrections
+    applicable_to: [parcel_geometry, disease_diagnosis, workflow_state]
+    rules:
+      - "Higher-role actor can override with mandatory justification"
+      - "Original value preserved in audit trail with supersession_link"
+      - "Compensating event published to notify downstream systems"
+  
+  workflow_validation:  # For state transitions
+    applicable_to: [crop_stage_instance, crop_cycle_status]
+    rules:
+      - "Transition must comply with lifecycle_template state machine"
+      - "Invalid transitions rejected with specific error code"
+      - "Rollback requires compensating event + approval if >24h old"
+4.4 Escalation Pathsescalation_rules:
+  parcel_geometry_conflict:
+    auto_resolve_if: geometry_difference < 5% AND actor_trust_score > 0.8
+    else: route_to_manual_review_queue
+    manual_review_assignee: territory_agronomist
+    sla: 24_hours
+    fallback: enterprise_geospatial_team
+  
+  crop_stage_invalid_transition:
+    auto_resolve_if: transition_exists_in_template WITH compensating_event
+    else: route_to_workflow_governance_queue
+    manual_review_assignee: agronomy_lead
+    sla: 12_hours
+    fallback: platform_architect
+  
+  disease_diagnosis_disagreement:
+    auto_resolve_if: agronomist_diagnosis_exists
+    else: route_to_regional_expert_pool
+    manual_review_assignee: senior_agronomist
+    sla: 48_hours
+    fallback: external_agricultural_university_consultation
+4.5 Disagreement Handling Protocol
+yaml
+disagreement_protocol:
+  detection:
+    - "Same entity updated by multiple actors within conflict_window (default: 1 hour)"
+    - "State transition violates workflow rules"
+    - "Geospatial difference exceeds threshold"
+  
+  notification:
+    - "All actors involved receive conflict_alert.v1 event"
+    - "Dashboard shows conflict badge with resolution SLA"
+    - "SMS fallback for feature-phone actors"
+  
+  resolution_ui:
+    - "Side-by-side comparison of conflicting values"
+    - "Trust scores displayed for each actor/version"
+    - "One-click accept/reject with mandatory comment for overrides"
+    - "Escalate button triggers formal escalation path"
+  
+  post_resolution:
+    - "Resolved version published as authoritative"
+    - "All versions preserved in audit trail with resolution_metadata"
+    - "Compensating events published to downstream systems"
+    - "Conflict resolution metrics logged for platform analytics"
+4.6 CI/CD Invariants
+yaml
+multi_actor_invariants:
+  - "All entity mutations must include actor_id, actor_role, and trust_score"
+  - "Conflict detection must run before sync commit for critical entities"
+  - "Manual review queue must preserve full evidence package for resolution"
+  - "Escalation SLAs must be configurable via Configuration Governance"
+  - "All resolutions must publish resolution_event.v1 with causal linkage"
+  - "No silent auto-resolution for parcel_geometry or financial entities"
+🛡️ Unified Governance Invariants (Enforce in CI/CD)
+yaml
+# Combined invariants from all 4 Week 2 documents
+governance_invariants:
+
+  # Rules Engine
+  - "All business logic must be expressed as versioned rules, not hardcoded conditions"
+  - "Rule evaluation must be idempotent and auditable"
+  
+  # Configuration Governance
+  - "Platform invariants cannot be overridden by tenant configuration"
+  - "All configuration changes require versioning and audit trail"
+  
+  # Temporal Truth
+  - "All mutations must include valid_time, transaction_time, observation_time"
+  - "Supersession requires compensating events; no silent overwrites"
+  
+  # Multi-Actor Semantics
+  - "All entity updates must include actor_id, actor_role, trust_score"
+  - "Conflict resolution must preserve full audit lineage"
+  
+  # Cross-Cutting
+  - "All governance artifacts must reference Canonical Semantic Registry v1"
+  - "All changes must be tenant-scoped with platform defaults"
+  - "All critical paths must support offline operation with eventual consistency"
+Week 2 Success Criteria (Go/No-Go for Engineering)
+Deliverable
+Validation Test
+Pass Criteria
+Rules Engine Spec
+Evaluate REMINDER-FERT-001 with test payload
+Correct action dispatched; audit log complete
+Config Governance
+Apply tenant override for fertilizer threshold
+Override applied; platform invariant preserved
+Temporal Model
+Reconstruct parcel geometry change history
+Full lineage returned with trust scores
+Multi-Actor Semantics
+Simulate dealer + agronomist conflict on crop stage
+Conflict detected; escalation path triggered
+Unified Invariants
+Run CI/CD validation suite
+100% of governance_invariants pass
+🔄 Week 3 Preview: Implementation Slices
+Once Week 2 is approved, Week 3 will deliver:
+Vertical Slice Spec: "Minimal Farmer Crop Lifecycle" end-to-end flow
+API Contract Registry: OpenAPI 3.0 specs for MVP endpoints
+Mobile Offline Contract: SQLite schema + sync queue protocol
+Test Strategy: Contract tests + offline chaos testing plan
+💡 Final Guidance: "Governance is not bureaucracy—it is the guardrails that enable safe velocity." These four documents convert architectural exploration into implementation law. Enforce the invariants in CI/CD from Day 1 of coding.
+🚀 Week 3 — Implementation Slice Deliverables
+Agricultural Operations Intelligence Platform
+Status: ✅ Approved for Engineering
+Effective Date: Immediate
+Scope: Vertical Operational Slice | API Contracts | Offline Sync Protocol | Test Strategy
+Owner: Platform Engineering Team
+1. Vertical Slice Specification: "Minimal Farmer Crop Lifecycle"
+1.1 Slice Philosophy
+yaml
+✅ THIN but COMPLETE: One end-to-end workflow that proves operational reality
+✅ ZERO speculative features: No AI, no satellite, no advanced analytics
+✅ OFFLINE-FIRST by design: Works without connectivity; syncs when restored
+✅ MULTI-ROLE aware: Farmer, Dealer, Field Agent can all participate
+✅ AUDITABLE end-to-end: Every mutation preserves actor, timestamp, GPS
+1.2 Slice Scope: IN vs OUT
+Category
+✅ IN Scope (MVP)
+❌ OUT Scope (Deferred)
+Actors
+Farmer, Dealer, Field Agent
+Agronomist, Enterprise Admin, Insurer
+Enrollment
+Dealer-assisted farmer enrollment + OTP verification
+Self-registration, bulk import, KYC integration
+Parcel
+Pin-drop polygon + ownership + area calc + village linkage
+Walk-boundary GPS, soil OCR, historical comparison
+Crop
+1 crop type, 1 lifecycle template, 3 stages: sowing → vegetative → harvest
+Multi-crop, conditional branching, mergeable stages
+Activities
+Log fertilizer application (date, quantity, cost)
+Pesticide, irrigation, labor, machinery logging
+Economics
+Basic cost tracking + yield entry + net profit calc
+ROI, benchmarking, regional comparison
+Notifications
+SMS stage reminders (triggered by workflow engine)
+Push notifications, campaigns, multi-channel routing
+Offline Sync
+Local queue + exponential retry + conflict detection
+Partial sync, dependency ordering, media prioritization
+Dashboard
+Enterprise view: active farmers, sync status, pending updates
+Geospatial heatmaps, KPI widgets, drilldown analytics
+Audit
+Actor ID, timestamp, GPS for all mutations
+Device metadata, edit history, forensic reconstruction
+1.3 End-to-End Flow Diagram
+1.2 Slice Scope: IN vs OUT
+Category
+✅ IN Scope (MVP)
+❌ OUT Scope (Deferred)
+Actors
+Farmer, Dealer, Field Agent
+Agronomist, Enterprise Admin, Insurer
+Enrollment
+Dealer-assisted farmer enrollment + OTP verification
+Self-registration, bulk import, KYC integration
+Parcel
+Pin-drop polygon + ownership + area calc + village linkage
+Walk-boundary GPS, soil OCR, historical comparison
+Crop
+1 crop type, 1 lifecycle template, 3 stages: sowing → vegetative → harvest
+Multi-crop, conditional branching, mergeable stages
+Activities
+Log fertilizer application (date, quantity, cost)
+Pesticide, irrigation, labor, machinery logging
+Economics
+Basic cost tracking + yield entry + net profit calc
+ROI, benchmarking, regional comparison
+Notifications
+SMS stage reminders (triggered by workflow engine)
+Push notifications, campaigns, multi-channel routing
+Offline Sync
+Local queue + exponential retry + conflict detection
+Partial sync, dependency ordering, media prioritization
+Dashboard
+Enterprise view: active farmers, sync status, pending updates
+Geospatial heatmaps, KPI widgets, drilldown analytics
+Audit
+Actor ID, timestamp, GPS for all mutations
+Device metadata, edit history, forensic reconstruction
+1.3 End-to-End Flow Diagram
+1.2 Slice Scope: IN vs OUT
+Category
+✅ IN Scope (MVP)
+❌ OUT Scope (Deferred)
+Actors
+Farmer, Dealer, Field Agent
+Agronomist, Enterprise Admin, Insurer
+Enrollment
+Dealer-assisted farmer enrollment + OTP verification
+Self-registration, bulk import, KYC integration
+Parcel
+Pin-drop polygon + ownership + area calc + village linkage
+Walk-boundary GPS, soil OCR, historical comparison
+Crop
+1 crop type, 1 lifecycle template, 3 stages: sowing → vegetative → harvest
+Multi-crop, conditional branching, mergeable stages
+Activities
+Log fertilizer application (date, quantity, cost)
+Pesticide, irrigation, labor, machinery logging
+Economics
+Basic cost tracking + yield entry + net profit calc
+ROI, benchmarking, regional comparison
+Notifications
+SMS stage reminders (triggered by workflow engine)
+Push notifications, campaigns, multi-channel routing
+Offline Sync
+Local queue + exponential retry + conflict detection
+Partial sync, dependency ordering, media prioritization
+Dashboard
+Enterprise view: active farmers, sync status, pending updates
+Geospatial heatmaps, KPI widgets, drilldown analytics
+Audit
+Actor ID, timestamp, GPS for all mutations
+Device metadata, edit history, forensic reconstruction
+1.3 End-to-End Flow Diagram
+api_principles:
+  - "All endpoints are tenant-scoped via header: X-Tenant-ID"
+  - "All mutations require authentication via Bearer JWT"
+  - "All responses include correlation_id for tracing"
+  - "All errors follow RFC 7807 Problem Details format"
+  - "All timestamps are UTC ISO 8601"
+  - "All geospatial data uses GeoJSON (EPSG:4326)"
+  - "All canonical entities use names from Semantic Registry v1"
+2.2 MVP Endpoint Catalog
+Method
+Path
+Description
+Auth
+Offline-Safe
+POST
+/auth/otp/request
+Request OTP for login
+None
+❌
+POST
+/auth/otp/verify
+Verify OTP + issue JWT
+None
+❌
+POST
+/farmers
+Create farmer profile (dealer-assisted)
+Dealer/Agent
+✅ (queue)
+GET
+/farmers/{id}
+Get farmer details
+Dealer/Agent/Farmer
+✅ (cache)
+POST
+/parcels
+Create parcel with polygon
+Dealer/Agent/Farmer
+✅ (queue)
+GET
+/parcels/{id}
+Get parcel details + geometry
+Dealer/Agent/Farmer
+✅ (cache)
+POST
+/crop-cycles
+Start new crop cycle
+Dealer/Agent/Farmer
+✅ (queue)
+GET
+/crop-cycles/{id}
+Get crop cycle + stages
+Dealer/Agent/Farmer
+✅ (cache)
+PATCH
+/crop-cycles/{id}/stages/{stage_id}
+Update stage status
+Dealer/Agent/Farmer
+✅ (queue)
+POST
+/crop-activities
+Log fertilizer application
+Dealer/Agent/Farmer
+✅ (queue)
+POST
+/sync/events
+Batch upload offline mutations
+Any authenticated
+❌ (server-only)
+GET
+/sync/status
+Get sync queue status
+Any authenticated
+❌
+POST
+/notifications/sms
+Send SMS reminder (internal)
+System
+❌
+GET
+/dashboards/operational
+Enterprise operational view
+Enterprise Admin
+❌
+2.3 Critical Endpoint Specs (Excerpts)
+POST /parcels — Create Parcel
+openapi: 3.0.3
+info:
+  title: Agricultural Operations API
+  version: 1.0.0-mvp
+paths:
+  /parcels:
+    post:
+      summary: Create a new farm parcel
+      operationId: createParcel
+      tags: [parcel]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParcelCreateRequest'
+      responses:
+        '201':
+          description: Parcel created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Duplicate parcel detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
+
+components:
+  schemas:
+    ParcelCreateRequest:
+      type: object
+      required: [farmer_id, village_id, geometry, ownership_type]
+      properties:
+        farmer_id:
+          type: string
+          format: uuid
+          description: Canonical farmer ID from Semantic Registry v1
+        village_id:
+          type: string
+          format: uuid
+          description: Canonical village ID from geography hierarchy
+        geometry:
+          type: object
+          description: GeoJSON Polygon (EPSG:4326)
+          properties:
+            type:
+              type: string
+              enum: [Polygon]
+            coordinates:
+              type: array
+              items:
+                type: array
+                items:
+                  type: array
+                  items:
+                    type: number
+                  minItems: 2
+                  maxItems: 2
+                minItems: 4
+          example:
+            type: Polygon
+            coordinates: [[[77.1, 28.5], [77.2, 28.5], [77.2, 28.6], [77.1, 28.6], [77.1, 28.5]]]
+        ownership_type:
+          type: string
+          enum: [OWNED, LEASED, SHARED, UNKNOWN]
+          description: From Canonical Enumeration Registry v1
+        name:
+          type: string
+          maxLength: 100
+          description: Local parcel reference (display only)
+        irrigation_type:
+          type: string
+          enum: [RAINFED, TUBEWELL, CANAL, DRIP, SPRINKLER, FLOOD]
+          description: From Canonical Enumeration Registry v1
+        metadata:
+          type: object
+          description: Device/offline context for audit
+          properties:
+            device_id:
+              type: string
+            gps_accuracy_meters:
+              type: number
+              minimum: 0
+            captured_at:
+              type: string
+              format: date-time
+              description: Local device timestamp (UTC)
+
+    Parcel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        farmer_id:
+          type: string
+          format: uuid
+        village_id:
+          type: string
+          format: uuid
+        geometry:
+          $ref: '#/components/schemas/ParcelCreateRequest/properties/geometry'
+        area_hectares:
+          type: number
+          format: decimal
+          description: Calculated server-side from geometry
+        ownership_type:
+          $ref: '#/components/schemas/ParcelCreateRequest/properties/ownership_type'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        audit:
+          type: object
+          properties:
+            actor_id:
+              type: string
+              format: uuid
+            actor_role:
+              type: string
+              enum: [farmer, dealer, field_agent]
+            timestamp:
+              type: string
+              format: date-time
+            gps_coordinates:
+              type: array
+              items:
+                type: number
+              minItems: 2
+              maxItems: 2
+POST /sync/events — Batch Offline Sync
+yaml
+  /sync/events:
+    post:
+      summary: Batch upload offline mutations
+      operationId: batchSync
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Device-ID
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SyncEvent'
+                checkpoint:
+                  type: string
+                  description: Optional sync checkpoint for resumability
+
+    SyncEvent:
+      type: object
+      required: [event_id, entity_type, entity_id, operation, payload, local_timestamp]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: Client-generated unique ID for idempotency
+        entity_type:
+          type: string
+          enum: [farmer, parcel, crop_cycle, stage_instance, crop_activity]
+          description: Canonical entity name from Semantic Registry v1
+        entity_id:
+          type: string
+          format: uuid
+          description: Client-side ID (server assigns final ID on first sync)
+        operation:
+          type: string
+          enum: [create, update, delete]
+        payload:
+          type: object
+          description: Entity data per canonical schema
+        local_timestamp:
+          type: string
+          format: date-time
+          description: When mutation occurred on device (UTC)
+        version:
+          type: integer
+          description: Optimistic concurrency version (client-managed)
+        metadata:
+          type: object
+          properties:
+            retry_count:
+              type: integer
+              minimum: 0
+            dependency_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: Entities this mutation depends on (for ordering)
+
+      responses:
+        '200':
+          description: Sync processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+                    description: event_ids successfully processed
+                  conflicts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyncConflict'
+                  failed:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyncError'
+
+        SyncConflict:
+          type: object
+          required: [event_id, conflict_type, resolution_required]
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            conflict_type:
+              type: string
+              enum: [version_mismatch, geospatial_overlap, workflow_invalid]
+            server_version:
+              type: integer
+            client_version:
+              type: integer
+            resolution_required:
+              type: boolean
+            manual_review_url:
+              type: string
+              format: uri
+              description: Link to conflict resolution UI (if required)
+
+        SyncError:
+          type: object
+          required: [event_id, error_code, message]
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            error_code:
+              type: string
+              enum: [VALIDATION_FAILED, DEPENDENCY_MISSING, TENANT_MISMATCH]
+            message:
+              type: string
+            retryable:
+              type: boolean
+2.4 API Invariants (Enforce in CI/CD)
+yaml
+api_invariants:
+  - "All request/response schemas reference Canonical Semantic Registry v1"
+  - "All mutations include audit metadata: actor_id, timestamp, GPS"
+  - "All endpoints are tenant-scoped via X-Tenant-ID header"
+  - "All errors use RFC 7807 Problem Details format"
+  - "All geospatial data uses GeoJSON EPSG:4326"
+  - "All timestamps are UTC ISO 8601"
+  - "All offline-safe endpoints support idempotency via event_id"
+  - "All sync endpoints support batch operations with checkpointing"
+-- Canonical entities (mirrors server schema)
+CREATE TABLE farmers (
+  id TEXT PRIMARY KEY, -- UUID
+  tenant_id TEXT NOT NULL,
+  mobile_number TEXT NOT NULL,
+  assistance_mode TEXT NOT NULL CHECK (assistance_mode IN ('self_managed', 'dealer_assisted', 'field_agent_assisted', 'hybrid')),
+  village_id TEXT NOT NULL,
+  created_at TEXT NOT NULL, -- ISO 8601 UTC
+  updated_at TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'local_only' CHECK (sync_status IN ('local_only', 'queued_for_sync', 'synced', 'conflicted', 'failed')),
+  sync_version INTEGER DEFAULT 1,
+  audit_actor_id TEXT NOT NULL,
+  audit_timestamp TEXT NOT NULL,
+  audit_gps_lat REAL,
+  audit_gps_lng REAL
+);
+
+CREATE TABLE parcels (
+  id TEXT PRIMARY KEY,
+  farmer_id TEXT NOT NULL REFERENCES farmers(id),
+  village_id TEXT NOT NULL,
+  geometry_geojson TEXT NOT NULL, -- GeoJSON Polygon string
+  area_hectares REAL NOT NULL,
+  ownership_type TEXT NOT NULL CHECK (ownership_type IN ('OWNED', 'LEASED', 'SHARED', 'UNKNOWN')),
+  irrigation_type TEXT CHECK (irrigation_type IN ('RAINFED', 'TUBEWELL', 'CANAL', 'DRIP', 'SPRINKLER', 'FLOOD')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'local_only',
+  sync_version INTEGER DEFAULT 1,
+  audit_actor_id TEXT NOT NULL,
+  audit_timestamp TEXT NOT NULL,
+  audit_gps_lat REAL,
+  audit_gps_lng REAL
+);
+
+CREATE TABLE crop_cycles (
+  id TEXT PRIMARY KEY,
+  farmer_id TEXT NOT NULL REFERENCES farmers(id),
+  parcel_id TEXT NOT NULL REFERENCES parcels(id),
+  crop_id TEXT NOT NULL, -- From crop_master
+  lifecycle_template_id TEXT NOT NULL,
+  sowing_date TEXT NOT NULL,
+  expected_harvest_date TEXT,
+  status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'active', 'partially_tracked', 'completed', 'abandoned')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'local_only',
+  sync_version INTEGER DEFAULT 1,
+  audit_actor_id TEXT NOT NULL,
+  audit_timestamp TEXT NOT NULL,
+  audit_gps_lat REAL,
+  audit_gps_lng REAL
+);
+
+CREATE TABLE stage_instances (
+  id TEXT PRIMARY KEY,
+  crop_cycle_id TEXT NOT NULL REFERENCES crop_cycles(id),
+  workflow_stage_id TEXT NOT NULL, -- From lifecycle_template
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'skipped', 'partially_completed', 'failed')),
+  started_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'local_only',
+  sync_version INTEGER DEFAULT 1,
+  audit_actor_id TEXT NOT NULL,
+  audit_timestamp TEXT NOT NULL,
+  audit_gps_lat REAL,
+  audit_gps_lng REAL
+);
+
+CREATE TABLE crop_activities (
+  id TEXT PRIMARY KEY,
+  stage_instance_id TEXT NOT NULL REFERENCES stage_instances(id),
+  activity_type TEXT NOT NULL CHECK (activity_type IN ('fertilizer_application')),
+  application_date TEXT NOT NULL,
+  quantity_kg REAL,
+  cost_inr REAL,
+  application_method TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'local_only',
+  sync_version INTEGER DEFAULT 1,
+  audit_actor_id TEXT NOT NULL,
+  audit_timestamp TEXT NOT NULL,
+  audit_gps_lat REAL,
+  audit_gps_lng REAL
+);
+
+-- Sync queue (persistent across app restarts)
+CREATE TABLE sync_queue (
+  event_id TEXT PRIMARY KEY, -- Client-generated UUID for idempotency
+  entity_type TEXT NOT NULL,
+  entity_local_id TEXT NOT NULL, -- Local DB ID (may differ from server ID)
+  operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'delete')),
+  payload_json TEXT NOT NULL, -- JSON string of entity data
+  local_timestamp TEXT NOT NULL, -- When mutation occurred (UTC)
+  version INTEGER NOT NULL, -- Optimistic concurrency version
+  retry_count INTEGER DEFAULT 0,
+  max_retries INTEGER DEFAULT 10,
+  next_retry_after TEXT, -- ISO 8601 UTC
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('critical', 'high', 'medium', 'low')),
+  dependency_ids TEXT, -- Comma-separated list of entity_local_ids this depends on
+  created_at TEXT NOT NULL,
+  last_error TEXT,
+  conflict_metadata TEXT -- JSON if conflict detected
+);
+
+-- Master data cache (read-only, synced from server)
+CREATE TABLE crop_master (
+  id TEXT PRIMARY KEY,
+  canonical_name TEXT NOT NULL,
+  regional_aliases TEXT, -- JSON array
+  lifecycle_template_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  last_synced_at TEXT NOT NULL
+);
+
+CREATE TABLE geography_villages (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  district_id TEXT NOT NULL,
+  state_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  last_synced_at TEXT NOT NULL
+);
+
+-- Indexes for offline performance
+CREATE INDEX idx_parcels_farmer ON parcels(farmer_id);
+CREATE INDEX idx_crop_cycles_parcel ON crop_cycles(parcel_id);
+CREATE INDEX idx_stage_instances_cycle ON stage_instances(crop_cycle_id);
+CREATE INDEX idx_sync_queue_priority ON sync_queue(priority, next_retry_after);
+CREATE INDEX idx_sync_queue_pending ON sync_queue(sync_status) WHERE sync_status != 'synced';
+3.2 Sync Protocol: State Machine
+yaml
+sync_protocol:
+  states:
+    local_only:
+      description: Record exists only on device
+      transitions:
+        - queued_for_sync: when user action completes or app backgrounded
+
+    queued_for_sync:
+      description: Record in sync_queue, awaiting connectivity
+      transitions:
+        - syncing: when connectivity detected + sync job runs
+        - failed: after max_retries exceeded
+
+    syncing:
+      description: Batch upload in progress
+      transitions:
+        - synced: server acknowledges with 200/201
+        - conflicted: server returns 409 Conflict
+        - failed: network error or 4xx/5xx (non-conflict)
+
+    conflicted:
+      description: Version/geospatial/workflow conflict detected
+      transitions:
+        - retry_pending: after manual resolution or auto-merge
+        - failed: if resolution not possible
+
+    synced:
+      description: Server has authoritative version
+      terminal: true
+
+    failed:
+      description: Unrecoverable error
+      transitions:
+        - retry_pending: if retryable error + retries remaining
+      terminal: true if max_retries exceeded
+
+  retry_policy:
+    strategy: exponential_backoff
+    initial_interval_seconds: 30
+    max_interval_seconds: 86400 # 24 hours
+    max_retries: 10
+    jitter: true # Add randomness to avoid thundering herd
+
+  conflict_detection:
+    version_mismatch:
+      trigger: server_version > client_version
+      action: fetch_server_version + prompt_user_or_auto_merge
+
+    geospatial_overlap:
+      trigger: new_polygon overlaps existing by >5%
+      action: route_to_manual_review_queue
+
+    workflow_invalid:
+      trigger: stage transition violates lifecycle_template
+      action: reject_with_error + preserve_local_copy
+
+  idempotency:
+    mechanism: event_id deduplication
+    server_behavior: ignore duplicate event_id with same payload
+    client_behavior: regenerate event_id only if payload changes
+3.3 Offline UX Contract
+yaml
+offline_ux_contract:
+  sync_status_indicators:
+    local_only:
+      icon: 🟢
+      label: "Saved on phone"
+      user_action: none
+
+    queued_for_sync:
+      icon: 🔄
+      label: "Waiting for internet"
+      user_action: none (auto-sync when online)
+
+    syncing:
+      icon: ⬆️
+      label: "Sending to server"
+      user_action: none
+
+    conflicted:
+      icon: 🔴
+      label: "Needs attention"
+      user_action: "Tap to resolve" → conflict resolution UI
+
+    failed:
+      icon: ⚠️
+      label: "Sync failed"
+      user_action: "Retry" or "Ask dealer for help"
+
+  conflict_resolution_ui:
+    parcel_geometry_conflict:
+      display: side-by-side map comparison
+      options:
+        - "Keep my version"
+        - "Keep server version"
+        - "Merge boundaries"
+        - "Ask dealer to decide"
+      audit: all choices logged with actor_id + timestamp
+
+    workflow_transition_conflict:
+      display: plain-language explanation
+      example: "This crop stage can't be completed yet. It must follow: sowing → vegetative → harvest"
+      options:
+        - "Go back and fix"
+        - "Ask agronomist for help"
+
+  offline_form_validation:
+    required_fields: enforced locally before queueing
+    canonical_enums: dropdowns populated from local crop_master/geography cache
+    geospatial_validation: polygon must have ≥4 points, no self-intersection (client-side)
+4. Test Strategy v1
+4.1 Test Pyramid for MVP Slice
+                    ┌─────────────────┐
+                    │   E2E Tests     │  ← 5% of tests
+                    │ (Cypress/Appium)│
+                    └────────┬────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │   Integration Tests         │  ← 25% of tests
+              │ (API contract + sync flow)  │
+              └──────────────┬──────────────┘
+                             │
+    ┌────────────────────────┴────────────────────────┐
+    │            Unit Tests                            │  ← 70% of tests
+    │ (Domain logic, state machines, validation)       │
+    └─────────────────────────────────────────────────┘
+4.2 Critical Test Suites
+A. Contract Tests (OpenAPI Validation)
+yaml
+contract_tests:
+  tool: schemathesis + pytest
+  scope:
+    - Validate all MVP endpoints against OpenAPI 3.0 spec
+    - Test error responses follow RFC 7807
+    - Verify tenant isolation via X-Tenant-ID header
+    - Confirm audit fields present in all mutation responses
+
+  example_test:
+    name: test_create_parcel_contract
+    steps:
+      - POST /parcels with valid payload + X-Tenant-ID
+      - Assert 201 Created
+      - Assert response matches Parcel schema
+      - Assert audit.actor_id == request JWT subject
+      - Assert audit.gps_coordinates present if request included GPS
+B. Offline Sync Chaos Tests
+chaos_tests:
+  tool: toxiproxy + custom sync simulator
+  scenarios:
+    - name: network_partition_48h
+      steps:
+        - Create parcel offline
+        - Simulate 48h no connectivity
+        - Restore network
+        - Assert: parcel syncs successfully; no data loss; audit trail complete
+
+    - name: concurrent_offline_edits
+      steps:
+        - Device A: edit parcel geometry offline
+        - Device B: edit same parcel geometry offline (different coords)
+        - Both sync simultaneously
+        - Assert: conflict detected; routes to manual review; both versions preserved in audit
+
+    - name: dependency_ordering
+      steps:
+        - Create farmer offline
+        - Create parcel (depends on farmer) offline
+        - Sync with farmer creation failing first attempt
+        - Assert: parcel sync retries after farmer succeeds; no orphan records
+
+    - name: retry_backoff
+      steps:
+        - Simulate flaky network (50% failure rate)
+        - Queue 10 sync events
+        - Assert: exponential backoff observed; no duplicate server mutations; DLQ captures poison events
+C. Workflow State Machine Tests
+yaml
+workflow_tests:
+  tool: pytest + state_machine library
+  scope:
+    - Validate all crop_stage transitions per lifecycle_template
+    - Test rollback paths: completed → active (with compensating event)
+    - Verify forbidden transitions rejected with specific error codes
+
+  example_test:
+    name: test_crop_stage_transitions
+    given:
+      - lifecycle_template: onion_direct_sowing_v1
+      - stages: [sowing, vegetative, harvest]
+    when:
+      - Transition sowing: pending → active → completed
+      - Attempt invalid transition: harvest → sowing
+    then:
+      - Valid transitions succeed with crop_stage_completed.v1 event
+      - Invalid transition rejected with 409 WorkflowTransitionInvalid
+      - Audit log contains transition_reason for all changes
+D. Rural UX Validation Tests
+yaml
+rural_ux_tests:
+  tool: manual testing protocol + remote user sessions
+  participants: 10+ farmers (5 smartphone, 5 feature-phone via dealer)
+  success_criteria:
+    - Farmer can complete enrollment + parcel + crop start without reading text (icon/voice guidance)
+    - Dealer can enroll 5 farmers in <10 minutes offline
+    - Sync status indicators understood by low-literacy users (icon + color + minimal text)ci_cd_gates:
+  pre_merge:
+    - lint: semantic_registry_compliance (no 'field'/'plot' in code)
+    - unit_tests: 90% coverage on domain logic
+    - contract_tests: all MVP endpoints validate
+    - workflow_tests: all state transitions covered
+
+  pre_deploy_staging:
+    - integration_tests: offline sync flow + conflict detection
+    - chaos_tests: network partition + concurrent edits
+    - rural_ux_smoke: automated icon/label validation
+
+  pre_deploy_production:
+    - e2e_tests: full Minimal Farmer Crop Lifecycle flow# Combined invariants from all Week 3 artifacts
+implementation_invariants:
+
+  # Semantic
+  - "All code references canonical entity names from Semantic Registry v1"
+  - "No 'field', 'plot', 'khet' in database schema, API fields, or event payloads"
+  - "All enums use SCREAMING_SNAKE_CASE from Canonical Enumeration Registry"
+
+  # Workflow
+  - "All stage transitions validated against lifecycle_template before commit"
+  - "Rollbacks require compensating events + audit trail"
+  - "Workflow engine is authoritative; no direct module-to-module state changes"
+
+  # Offline Sync
+  - "All mobile mutations stored locally before queueing for sync"
+  - "Sync events include event_id for idempotency"
+  - "Conflict detection runs before server commit for critical entities"
+
+  # Audit
+  - "All mutations include: actor_id, actor_role, timestamp, GPS coordinates"
+  - "Audit records immutable; corrections via superseding events"
+
+  # API
+  - "All endpoints tenant-scoped via X-Tenant-ID header"
+  - "All errors follow RFC 7807 Problem Details format"
+  - "All geospatial data uses GeoJSON EPSG:4326"
+
+  # Rural UX
+  - "All user-facing text has icon/voice fallback for low-literacy users"
+  - "Sync status indicators use icon + color + ≤3 word label"
+  - "Conflict resolution UI avoids technical jargon"
+📅 Week 3 Success Criteria (Go/No-Go for MVP Launch)
+Deliverable
+Validation Method
+Pass Criteria
+Vertical Slice Spec
+Engineering review + product sign-off
+100% agreement on IN/OUT scope
+API Contracts
+Schemathesis contract tests
+100% of MVP endpoints pass validation
+Mobile Offline Contract
+SQLite schema review + sync protocol simulation
+Zero data loss in chaos tests; idempotency verified
+Test Strategy
+CI/CD pipeline dry-run
+All gates pass; rural UX test protocol approved
+Unified Invariants
+Static analysis + PR template check
+100% of invariants enforced in CI
+🔄 What's Next: Week 4 Preview
+Once Week 3 is approved, Week 4 will deliver:
+Engineering Task Breakdown: Jira/Linear-ready tickets with acceptance criteria
+Mobile UX Flows: Figma specs for offline-first farmer/dealer screens
+Deployment Runbook: Docker Compose + staging environment setup
+Monitoring Dashboard: Grafana panels for sync health, audit completeness, rural UX metrics
+💡 Final Guidance: "Implementation is not coding—it is governed execution." These artifacts convert architectural vision into engineering reality. Enforce the invariants in CI/CD from Day 1. Validate with rural users before scaling. Ship the thin slice, learn, then expand.
+
+    - audit_verification: all mutations have complete audit trail
+    - performance: sync 100 records offline → <30s to sync on 3G
+
+  post_deploy:
+    - canary_monitoring: error_rate <1%, sync_success_rate >95%
+    - audit_alert: any mutation missing actor_id/gps → page on-call
+🛡️ Unified Implementation Invariants (Enforce in CI/CD)
+yaml
+
+    - Conflict resolution UI usable without technical jargon
+
+  test_script_excerpt:
+    - "Show farmer: 🟢 'Saved on phone' → ask: 'Is your data safe?'"
+    - "Simulate sync failure → show: ⚠️ 'Sync failed' → ask: 'What would you do next?'"
+    - "Present parcel conflict: two boundary options → observe: can farmer choose confidently?"
+4.3 CI/CD Pipeline Gates
+yaml
+ci_cd_gates:
+  pre_merge:
+    - lint: semantic_registry_compliance (no 'field'/'plot' in code)
+    - unit_tests: 90% coverage on domain logic
+    - contract_tests: all MVP endpoints validate
+    - workflow_tests: all state transitions covered
+
+  pre_deploy_staging:
+    - integration_tests: offline sync flow + conflict detection
+    - chaos_tests: network partition + concurrent edits
+    - rural_ux_smoke: automated icon/label validation# Combined invariants from all Week 3 artifacts
+implementation_invariants:
+
+  # Semantic
+  - "All code references canonical entity names from Semantic Registry v1"
+  - "No 'field', 'plot', 'khet' in database schema, API fields, or event payloads"
+  - "All enums use SCREAMING_SNAKE_CASE from Canonical Enumeration Registry"
+
+  # Workflow
+  - "All stage transitions validated against lifecycle_template before commit"
+  - "Rollbacks require compensating events + audit trail"
+  - "Workflow engine is authoritative; no direct module-to-module state changes"
+
+  # Offline Sync
+  - "All mobile mutations stored locally before queueing for sync"
+  - "Sync events include event_id for idempotency"
+  - "Conflict detection runs before server commit for critical entities"
+
+  # Audit
+  - "Audit records immutable; corrections via superseding events"
+
+  # API
+  - "All endpoints tenant-scoped via X-Tenant-ID header"
+  - "All errors follow RFC 7807 Problem Details format"
+  - "All geospatial data uses GeoJSON EPSG:4326"
+
+  # Rural UX
+  - "All user-facing text has icon/voice fallback for low-literacy users"
+  - "Sync status indicators use icon + color + ≤3 word label"
+  - "Conflict resolution UI avoids technical jargon"
+📅 Week 3 Success Criteria (Go/No-Go for MVP Launch)
+Deliverable
+Validation Method
+Pass Criteria
+Vertical Slice Spec
+Engineering review + product sign-off
+100% agreement on IN/OUT scope
+API Contracts
+Schemathesis contract tests
+100% of MVP endpoints pass validation
+Mobile Offline Contract
+SQLite schema review + sync protocol simulation
+Zero data loss in chaos tests; idempotency verified
+Test Strategy
+CI/CD pipeline dry-run
+All gates pass; rural UX test protocol approved
+Unified Invariants
+Static analysis + PR template check
+100% of invariants enforced in CI
+🔄 What's Next: Week 4 Preview
+Once Week 3 is approved, Week 4 will deliver:
+Engineering Task Breakdown: Jira/Linear-ready tickets with acceptance criteria
+Mobile UX Flows: Figma specs for offline-first farmer/dealer screens
+Deployment Runbook: Docker Compose + staging environment setup
+Monitoring Dashboard: Grafana panels for sync health, audit completeness, rural UX metrics
+💡 Final Guidance: "Implementation is not coding—it is governed execution." These artifacts convert architectural vision into engineering reality. Enforce the invariants in CI/CD from Day 1. Validate with rural users before scaling. Ship the thin slice, learn, then expand.
+  pre_deploy_production:
+Week 4 — Engineering Task Breakdown
+Agricultural Operations Intelligence Platform (MVP Slice: Minimal Farmer Crop Lifecycle)
+Status: ✅ Approved for Engineering
+Scope: Farmer Enrollment → Parcel Creation → Crop Cycle (3 Stages) → Offline Sync → SMS Reminder → Basic Dashboard
+Delivery Cadence: 3 Sprints (2 weeks each)
+Team Assumption: 1 Backend, 1 Mobile (Flutter), 1 Web/Frontend, 1 DevOps/QA (can be solo founder rotating roles)
+📅 Sprint 1: Foundation & Core Data Layer (Weeks 1-2)
+ID
+Epic
+Story
+Task
+Acceptance Criteria
+Dependencies
+Owner
+S1-1
+🏗️ Infra Setup
+Repo & CI/CD
+Initialize monorepo structure (backend/, mobile/, web/, infra/)
+✅ Linting, type-checking, pre-commit hooks pass
+✅ CI pipeline triggers on PR
+None
+DevOps
+S1-2
+🏗️ Infra Setup
+Governance Enforcement
+Implement Semantic Registry v1 CI validator
+✅ PR blocked if field/plot found in schema/API
+✅ Canonical enum validation passes
+S1-1
+DevOps
+S1-3
+🗄️ Database
+Schema & Migration
+Setup PostgreSQL + PostGIS + migration framework (Alembic/Prisma)
+✅ farmers, parcels, crop_cycles, stage_instances, sync_queue tables created
+✅ PostGIS geometry column with EPSG:4326
+S1-2
+Backend
+S1-4
+🔐 Auth
+OTP + JWT
+Implement OTP login, JWT issuance, refresh tokens
+✅ OTP request/verify works
+✅ JWT contains tenant_id, role, user_id
+✅ Token refresh works
+S1-3
+Backend
+S1-5
+📱 Mobile
+Offline DB Setup
+Initialize SQLite + Drift schema matching Week 3 contract
+✅ Local tables mirror server schema
+✅ Sync status fields present
+✅ Drift codegen compiles
+S1-3
+Mobile
+S1-6
+👤 Farmer Workflow
+Enrollment API
+POST /farmers, GET /farmers/{id} with audit logging
+✅ Returns 201/200 with canonical fields
+✅ Audit fields (actor_id, timestamp, gps) populated
+✅ Validates assistance_mode enum
+S1-4
+Backend
+S1-7
+👤 Farmer Workflow
+Enrollment UI
+Mobile form for dealer-assisted farmer creation
+✅ Captures mobile, demographics, territory
+✅ Works fully offline
+✅ Queues to local DB + sync queue
+S1-5, S1-6
+Mobile
+S1-8
+🌍 Parcel Workflow
+Parcel API
+POST /parcels, GET /parcels/{id} with PostGIS area calc
+✅ Validates GeoJSON polygon
+✅ Server calculates area_hectares
+✅ Rejects self-intersecting polygons
+S1-6
+Backend
+S1-9
+🌍 Parcel Workflow
+Parcel Mapping UI
+Pin-drop polygon capture + GPS accuracy display
+✅ Captures ≥4 points
+✅ Calculates area locally
+✅ Shows GPS accuracy badge
+S1-8
+Mobile
+🏁 Sprint 1 DoD:
+Farmer + Parcel can be created offline → sync → appear in DB with full audit trail
+CI blocks non-canonical terminology
+Local DB schema matches server contract
+📅 Sprint 2: Workflow Engine & Crop Lifecycle (Weeks 3-4)
+ID
+Epic
+Story
+Task
+Acceptance Criteria
+Dependencies
+Owner
+S2-1
+⚙️ Workflow Engine
+Config Loader
+Load lifecycle_template + workflow_stage from JSON/DB
+✅ Templates are tenant-scoped
+✅ Stages support optional, mergeable flags
+✅ Versioned loading
+S1-3
+Backend
+S2-2
+⚙️ Workflow Engine
+State Machine Validator
+Implement crop_stage_state_machine transitions
+✅ Rejects invalid transitions (e.g., completed → active without rollback)
+✅ Publishes crop_stage_completed.v1 event on success
+S2-1
+Backend
+S2-3
+🌱 Crop Workflow
+Crop Cycle API
+POST /crop-cycles, PATCH /crop-cycles/{id}/stages/{stage_id}
+✅ Links farmer + parcel + template
+✅ Initializes 3 stage instances
+✅ Validates against state machine
+S1-8, S2-2
+Backend
+S2-4
+🌱 Crop Workflow
+Crop UI
+Mobile screens for cycle creation + stage progression
+✅ Selects crop type → loads template
+✅ Updates stage status (pending→active→completed)
+✅ Works offline
+S1-5, S2-3
+Mobile
+S2-5
+📊 Activity Logging
+Fertilizer API
+POST /crop-activities with validation
+✅ Validates stage compatibility
+✅ Records quantity, cost, method
+✅ Publishes fertilizer_applied.v1 event
+S2-3
+Backend
+S2-6
+📊 Activity Logging
+Activity UI
+Fertilizer logging form with master-data dropdown
+✅ Dropdowns from local cache
+✅ Validates against crop/stage
+✅ Queues offline
+S1-5, S2-5
+Mobile
+S2-7
+🔔 Rules Engine
+MVP Trigger
+Implement REMINDER-FERT-001 evaluator
+✅ Triggers when stage=vegetative AND no_fertilizer_10_days
+✅ Returns action payload
+✅ Idempotent evaluation
+S2-6
+Backend
+S2-8
+📡 Events
+Pub/Sub Layer
+In-process event bus with correlation/causation IDs
+✅ Events immutable, versioned
+✅ At-least-once delivery
+✅ DLQ stub for failed consumers
+S2-7
+Backend
+🏁 Sprint 2 DoD:
+Crop cycle progresses through 3 stages with valid state transitions
+Fertilizer log triggers rules engine evaluation
+All mutations publish canonical events with audit metadata
+Mobile UI fully offline-capable with local queueing
+📅 Sprint 3: Sync Engine, Notifications & Dashboard (Weeks 5-6)
+ID
+Epic
+Story
+Task
+Acceptance Criteria
+Dependencies
+Owner
+S3-1
+🔄 Sync Engine
+Batch Upload
+POST /sync/events with idempotency + conflict detection
+✅ Accepts batch JSON
+✅ Deduplicates by event_id
+✅ Returns accepted, conflicts, failed arrays
+S2-8
+Backend
+S3-2
+🔄 Sync Engine
+Mobile Sync Manager
+Background worker with exponential backoff + retry caps
+✅ Retries max 10 times
+✅ Jitter applied
+✅ Shows retry_pending state in UI
+S1-5, S3-1
+Mobile
+S3-3
+📩 Notifications
+SMS Dispatcher
+Integrate SMS provider + template resolver
+✅ Sends SMS with farmer_name, stage_name
+✅ Tracks delivery status
+✅ Fallback to mock in staging
+S2-7
+Backend
+S3-4
+📩 Notifications
+Rule→Notification Bridge
+Connect rules engine output to dispatch queue
+✅ send_notification action routes to SMS channel
+✅ Logs notification_queued.v1
+✅ Respects X-Tenant-ID
+S2-7, S3-3
+Backend
+S3-5
+📊 Dashboard
+Operational View
+Web dashboard: active farmers, sync status, stage distribution
+✅ Queries crop_cycles + sync_queue
+✅ Filters by tenant/territory
+✅ Refreshes on sync_completed event
+S1-3, S3-1
+Web
+S3-6
+🧪 QA/Chaos
+Offline Testing
+Toxiproxy + sync simulation suite
+✅ Simulates 48h offline → network restore
+✅ Asserts 0 data loss
+✅ Validates conflict routing
+S3-2
+QA
+S3-7
+🎯 E2E
+Full Slice Validation
+End-to-end test of MVP flow
+✅ Farmer → Parcel → Crop → 3 Stages → Fertilizer → SMS → Dashboard
+✅ All audit fields present
+✅ Contract tests pass
+All above
+QA
+🏁 Sprint 3 DoD:
+Offline mutations sync successfully with retry/conflict handling
+SMS reminder triggered by rules engine within 5 mins of stage completion
+Dashboard reflects real-time sync status & stage distribution
+Full E2E flow passes with 100% audit completeness
+🔗 Dependency & Risk Matrix
+Dependency
+Risk
+Mitigation
+S2-2 → S2-7 (State Machine → Rules Engine)
+Rules engine depends on valid event payload
+Add contract test for crop_stage_completed.v1 schema before S2-7 starts
+S1-5 → S3-2 (Local DB → Sync Manager)
+Drift schema drift from server
+Enforce CI check: drift diff must match server migration before merge
+S3-1 → S3-4 (Sync → Notification Bridge)
+Duplicate notifications on retry
+Idempotency key: notification_id = hash(event_id + channel)
+S3-5 (Dashboard)
+Slow queries on large sync_queue
+Add index: sync_status, tenant_id, created_at; use materialized view for MVP
+✅ Definition of Done (DoD) Checklist
+    - e2e_tests: full Minimal Farmer Crop Lifecycle flow
+    - audit_verification: all mutations have complete audit trail
+    - performance: sync 100 records offline → <30s to sync on 3G
+
+  post_deploy:
+    - canary_monitoring: error_rate <1%, sync_success_rate >95%
+    - audit_alert: any mutation missing actor_id/gps → page on-call
+🛡️ Unified Implementation Invariants (Enforce in CI/CD)
+
+code_quality:
+  - linting passes (ruff, dart analyze, eslint)
+  - type coverage ≥ 90%
+  - no hardcoded crop/stage names
+  - all APIs tenant-scoped via header
+
+testing:
+  - unit coverage ≥ 80% on domain logic
+  - contract tests pass for all MVP endpoints
+  - offline chaos test passes (S3-6)
+  - E2E flow completes without manual intervention
+
+governance:
+  - semantic_registry_v1 enforced in CI
+  - audit fields present in all mutations
+  - workflow transitions validated against state machine
+  - sync retry capped at 10 with DLQ routing
+
+deployment:
+  - staging environment provisioned
+  - rollback script tested
+  - monitoring/alerting configured (error_rate, sync_success_rate)
+  - MVP slice flagged as "beta" in UI
+
+Recommended Tooling Setup
+Layer
+Tool
+Purpose
+Repo
+GitHub/GitLab + pre-commit hooks
+Semantic validation, linting, drift check
+CI/CD
+GitHub Actions + Docker
+Build, test, deploy to staging
+Backend
+FastAPI + SQLAlchemy + Alembic
+Async API, migrations, PostGIS
+Mobile
+Flutter + Drift + dio
+Offline SQLite, network layer
+Web
+Next.js + React Query + MapLibre
+Dashboard, geospatial view
+Queue/Events
+Redis Streams + Celery
+MVP pub/sub, retry, DLQ
+Testing
+pytest, schemathesis, toxiproxy
+Contract, chaos, offline simulation
+Monitoring
+Sentry + Prometheus + Grafana
+Error tracking, sync metrics, alerts
+📊 Jira/Linear Import Template
+csv
+START_SPRINT1 — Execution Package
+You are now officially in Sprint 1: Foundation & Core Data Layer.
+Below are the exact files, commands, and checkpoints to execute Day 1–3 of Sprint 1.
+📦 1. CI/CD Pipeline (.github/workflows/ci.yml)
+yaml
+name: Sprint 1 CI Pipeline
+on:
+  push:
+    branches: [main, sprint1/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff pyright pytest schemathesis
+          pip install -r backend/requirements.txt
+
+      - name: 🛡️ Semantic Registry Validation
+        run: |
+          python scripts/validate_semantics.py \
+            --scan-paths backend/api,backend/models,mobile/lib/schema \
+            --registry backend/data/semantic_registry_v1.json
+
+      - name: 📝 Linting & Type Checking
+        run: |
+          ruff check backend/
+          ruff format --check backend/
+          pyright backend/
+
+      - name: 🧪 Unit & Contract Tests
+        run: pytest backend/tests/ -v --cov=backend/ --cov-report=term-missing
+
+      - name: 🗄️ DB Migration Dry-Run
+        run: cd backend && alembic upgrade head --sql | grep -q "ERROR" && exit 1 || exit 0
+
+  drift-schema-check:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+      - name: 📐 Drift Schema Validation
+        run: |
+          cd mobile
+          flutter pub get
+          dart run drift_dev --generate-impl lib/schema/
+          if [ $? -ne 0 ]; then echo "❌ Drift codegen failed. Check schema definitions."; exit 1; fi
+🔍 2. Semantic Registry Validator (scripts/validate_semantics.py)
+
+#!/usr/bin/env python3
+"""
+Validates codebase against Canonical Semantic Registry v1.
+Blocks PRs if forbidden terms appear in schema, API, or event definitions.
+"""
+import argparse, json, re, sys, pathlib
+
+FORBIDDEN_PATTERNS = {
+    "entity_names": re.compile(r"\b(field|plot|khet|cultivator|grower)\b", re.IGNORECASE),
+    "enums": re.compile(r"\b(self_managed|dealer_managed|assisted)\b"),
+    "units": re.compile(r"\b(acres|quintal|local_currency)\b"),
+    "event_naming": re.compile(r"(send_|calculate_|run_|execute_)[a-z_]+\b")
+}
+
+CANONICAL_RULES = {
+    "enum_values": {"SELF_MANAGED", "DEALER_ASSISTED", "FIELD_AGENT_ASSISTED", "HYBRID"},
+    "unit_values": {"HECTARE", "KILOGRAM", "INR", "MILLIMETER"},
+    "event_suffixes": [".v1", "_completed", "_created", "_updated", "_failed"]
+}
+
+def scan_file(filepath: pathlib.Path, registry: dict) -> list[str]:
+    errors = []
+    text = filepath.read_text()
+    for category, pattern in FORBIDDEN_PATTERNS.items():
+        if pattern.search(text):
+            matches = pattern.findall(text)
+            errors.append(f"🚫 Forbidden '{category}' found in {filepath.relative_to(pathlib.Path('.'))}: {matches}")
+    return errors
+
+def validate_enums(text: str, filepath: str) -> list[str]:
+    # Simple check for canonical enum casing
+    if "self_managed" in text.lower() and "SELF_MANAGED" not in text:
+        return [f"⚠️ Enum 'self_managed' should be SCREAMING_SNAKE_CASE: SELF_MANAGED in {filepath}"]
+    return []
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--scan-paths", required=True, help="Comma-separated paths to scan")
+    parser.add_argument("--registry", required=True, help="Path to semantic_registry_v1.json")
+    args = parser.parse_args()
+
+    paths = [pathlib.Path(p.strip()) for p in args.scan_paths.split(",")]
+    registry = json.loads(pathlib.Path(args.registry).read_text())
+    all_errors = []
+
+    for path in paths:
+        if path.is_file() and path.suffix in (".py", ".dart", ".json", ".sql", ".yml", ".yaml"):
+            all_errors.extend(scan_file(path, registry))
+            all_errors.extend(validate_enums(path.read_text(), str(path)))
+        elif path.is_dir():
+            for p in path.rglob("*"):
+                if p.suffix in (".py", ".dart", ".json", ".sql", ".yml", ".yaml"):
+                    all_errors.extend(scan_file(p, registry))
+                    all_errors.extend(validate_enums(p.read_text(), str(p)))
+
+    if all_errors:
+        print("\n❌ SEMANTIC VALIDATION FAILED:")
+        for err in all_errors:
+            print(f"  {err}")
+        sys.exit(1)
+    else:
+        print("\n✅ Semantic Registry v1 validation passed.")
+
+if __name__ == "__main__":
+    main()
+3. Quick Local Setup (Makefile)
+makefile
+.PHONY: setup lint test validate db-reset
+
+setup:
+	pip install -r backend/requirements.txt
+	cd mobile && flutter pub get
+
+lint:
+	ruff check backend/
+	ruff format backend/
+	pyright backend/
+
+validate:
+	python scripts/validate_semantics.py \
+		--scan-paths backend/api,backend/models,mobile/lib/schema \
+		--registry backend/data/semantic_registry_v1.json
+
+test:
+	pytest backend/tests/ -v --cov=backend/
+
+db-reset:
+	cd backend && alembic downgrade base && alembic upgrade head
+
+run-api:
+	cd backend && uvicorn app.main:app --reload --port 8000
+
+run-mobile:
+	cd mobile && flutter run
+Sprint 1 Day 1–3 Execution Checklist
+Day
+Task
+Deliverable
+Acceptance Criteria
+1
+Repo init + CI + Semantic Validator
+.github/workflows/ci.yml, scripts/validate_semantics.py, Makefile
+✅ CI passes on empty commit
+✅ Validator blocks field/plot in code
+2
+DB + PostGIS + Alembic migrations
+backend/migrations/, docker-compose.yml (PostgreSQL+PostGIS)
+✅ make db-reset runs cleanly
+✅ parcel.geometry column uses GEOMETRY(POLYGON, 4326)
+3
+Auth + Farmer API + Offline DB stub
+POST /auth/otp/verify, POST /farmers, mobile/lib/db/schema.drift
+✅ JWT issued with tenant_id, role
+✅ Farmer creation queues to SQLite
+✅ CI passes all checks
+🛡️ Sprint 1 Definition of Done (DoD) Checklist
+yaml
+code_quality:
+  - ruff linting passes with 0 errors
+  - pyright type coverage ≥ 90%
+  - no hardcoded crop/stage/role names
+  - all APIs accept X-Tenant-ID header
+
+testing:
+  - pytest coverage ≥ 80% on backend/
+  - semantic validator passes on PR
+  - Drift codegen succeeds without warnings
+  - PostGIS migration applies cleanly
+
+governance:
+  - audit fields (actor_id, timestamp, gps_lat, gps_lng) in all mutation models
+  - canonical enums use SCREAMING_SNAKE_CASE
+  - offline queue table includes retry_count, next_retry_after, event_id
+  - tenant isolation enforced at API gateway layer
+Critical Reminders for Sprint 1
+Never commit without make validate → Semantic drift compounds silently.
+All DB mutations require audit columns → Add audit_actor_id, audit_timestamp, audit_gps_lat, audit_gps_lng to every table.
+Mobile offline queue must survive reboots → Use Drift with @DriftDatabase + QueueDao that persists across app lifecycle.
+JWT claims must include tenant_id → Middleware will block any request missing it.
+Keep PostGIS precise → Store coordinates as DOUBLE PRECISION, validate polygons server-side before insert.

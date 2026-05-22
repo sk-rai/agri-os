@@ -1,0 +1,675 @@
+🗄️ Master Data Foundation: Step-by-Step Implementation Guide for AI Coding Agent
+Objective: Implement canonical master data tables (Geography, Soil, Crop, Seasons, Inputs) with offline-first caching, delta sync, and semantic validation.
+Prerequisites:
+PostgreSQL + PostGIS running
+Flutter/Drift mobile project initialized
+Python 3.11+ environment for scripts
+Access to LGD, Census, ICAR-NBSS&LUP data sources
+📁 Step 1: Repository Structure Setup
+# Create master data directories
+mkdir -p backend/src/modules/master_data/{services,models,api,scripts}
+mkdir -p mobile/lib/modules/master_data/{services,models,cache}
+mkdir -p scripts/acquire_master_data/
+mkdir -p docs/01-foundation/master_data/
+Files to Create:
+backend/src/modules/master_data/
+├── __init__.py
+├── models/
+│   ├── __init__.py
+│   ├── geography.py          # State/District/Tehsil/Village models
+│   ├── soil.py               # Soil master models
+│   ├── crop.py               # Crop master + varieties + templates
+│   ├── season.py             # Season master
+│   └── input.py              # Agricultural inputs master
+├── services/
+│   ├── __init__.py
+│   ├── geography_service.py  # CRUD + hierarchy resolution
+│   ├── cache_service.py      # Mobile cache generation
+│   └── sync_service.py       # Delta sync logic
+├── api/
+│   ├── __init__.py
+│   ├── geography_api.py      # GET /master-data/geography/*
+│   └── sync_api.py           # GET /master-data/sync
+└── scripts/
+    ├── acquire_lgd.py        # LGD scraper
+    ├── cross_reference_census.py
+    ├── enrich_pin_codes.py
+    ├── generate_mobile_cache.py
+    └── validate_semantics.py
+
+mobile/lib/modules/master_data/
+├── models/
+│   ├── geography_cache.dart  # Drift tables for offline cache
+│   └── sync_metadata.dart
+├── services/
+│   ├── master_data_loader.dart  # Load cache on app startup
+│   ├── delta_sync_manager.dart  # Handle version checks + delta fetch
+│   └── offline_search.dart      # FTS5 fuzzy search
+└── cache/
+    └── geography_cache_v1.json.gz  # Generated artifact
+🗃️ Step 2: PostgreSQL Schema Migrations
+File: backend/src/modules/master_data/models/geography.py
+python
+# Use SQLAlchemy + GeoAlchemy2 for PostGIS support
+from sqlalchemy import Column, String, UUID, DateTime, Boolean, ARRAY, DECIMAL, ForeignKey, Index
+from sqlalchemy.dialects.postgresql import JSONB
+from geoalchemy2 import Geometry
+from backend.src.core.database import Base
+
+class GeographyState(Base):
+    __tablename__ = "geography_states"
+    id = Column(UUID, primary_key=True, default=uuid4)
+    lgd_code = Column(String(20), unique=True, nullable=False, index=True)
+    canonical_name = Column(String(100), nullable=False)
+    census_name = Column(String(100))
+    aliases = Column(JSONB, default=list)  # ["UP", "U.P.", "उत्तर प्रदेश"]
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    version = Column(String(10), default="v1.0")
+    is_active = Column(Boolean, default=True)
+
+class GeographyDistrict(Base):
+    __tablename__ = "geography_districts"
+    id = Column(UUID, primary_key=True, default=uuid4)
+    lgd_code = Column(String(20), unique=True, nullable=False, index=True)
+    state_id = Column(UUID, ForeignKey("geography_states.id"), nullable=False)
+    canonical_name = Column(String(100), nullable=False)
+    census_name = Column(String(100))
+    aliases = Column(JSONB, default=list)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    version = Column(String(10), default="v1.0")
+    is_active = Column(Boolean, default=True)
+    __table_args__ = (Index("idx_district_state", "state_id"),)
+
+class GeographyVillage(Base):
+    __tablename__ = "geography_villages"
+    id = Column(UUID, primary_key=True, default=uuid4)
+    lgd_code = Column(String(30), unique=True, nullable=False, index=True)
+    district_id = Column(UUID, ForeignKey("geography_districts.id"), nullable=False)
+    canonical_name = Column(String(150), nullable=False)
+    census_name = Column(String(150))
+    pin_codes = Column(ARRAY(String), default=list)  # ["282001", "282002"]
+    census_village_code = Column(String(20))
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
+    aliases = Column(JSONB, default=list)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    version = Column(String(10), default="v1.0")
+    __table_args__ = (
+        Index("idx_village_district", "district_id"),
+        Index("idx_village_pin", "pin_codes", postgresql_using="gin"),
+        Index("idx_village_search", "canonical_name", postgresql_using="gin", 
+              postgresql_ops={"canonical_name": "gin_trgm_ops"}),  # Requires pg_trgm extension
+    )
+Migration Script: backend/alembic/versions/{timestamp}_add_master_data_tables.py
+python
+def upgrade():
+    # Enable PostGIS and pg_trgm extensions
+    op.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+    
+    # Create tables (use op.create_table with columns from models above)
+    # ...
+
+def downgrade():
+    op.drop_table("geography_villages")
+    op.drop_table("geography_districts")
+    op.drop_table("geography_states")
+    # Note: Do NOT drop extensions in downgrade
+Acceptance Criteria:
+alembic upgrade head runs without errors
+PostGIS functions available: ST_Area, ST_Within
+pg_trgm extension enabled for fuzzy search
+All tables have created_at, updated_at, version, is_active
+🔄 Step 3: Data Acquisition Scripts (Python)
+3.1 LGD Scraper (scripts/acquire_master_data/acquire_lgd.py)
+python
+#!/usr/bin/env python3
+"""
+Respectful LGD data acquisition script.
+Outputs: data/raw/lgd/{states,districts,villages}.csv
+"""
+import requests, time, pandas as pd
+from bs4 import BeautifulSoup
+from pathlib import Path
+
+BASE_URL = "https://lgdirectory.gov.in/"
+OUTPUT_DIR = Path("data/raw/lgd")
+RATE_LIMIT_SECONDS = 2  # Be kind to government servers
+
+def fetch_with_retry(url, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            time.sleep(RATE_LIMIT_SECONDS)
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as e:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2 ** attempt)
+
+def parse_states():
+    # If LGD offers API: use it
+    # Else: scrape state list page
+    # Return list of {lgd_code, canonical_name, aliases}
+    pass  # Implement respectful scraping logic
+
+def parse_districts(state_lgd_code):
+    # Fetch districts for given state
+    pass
+
+def parse_villages(district_lgd_code):
+    # Fetch villages for given district
+    pass
+
+if __name__ == "__main__":
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    states = parse_states()
+    pd.DataFrame(states).to_csv(OUTPUT_DIR / "states.csv", index=False)
+    
+    all_districts = []
+    for state in states:
+        districts = parse_districts(state["lgd_code"])
+        all_districts.extend(districts)
+    pd.DataFrame(all_districts).to_csv(OUTPUT_DIR / "districts.csv", index=False)
+    
+    all_villages = []
+    for district in all_districts:
+        villages = parse_villages(district["lgd_code"])
+        all_villages.extend(villages)
+    pd.DataFrame(all_villages).to_csv(OUTPUT_DIR / "villages.csv", index=False)
+    
+    print(f"✓ LGD data exported to {OUTPUT_DIR}")
+3.2 Census Cross-Reference (scripts/acquire_master_data/cross_reference_census.py)
+python
+#!/usr/bin/env python3
+"""
+Fuzzy-match LGD villages to Census 2011 village directory.
+Outputs: data/processed/villages_cross_referenced.csv
+"""
+import pandas as pd
+from fuzzywuzzy import process, fuzz
+
+LGD_VILLAGES = pd.read_csv("data/raw/lgd/villages.csv")
+CENSUS_VILLAGES = pd.read_csv("data/raw/census/census_2011_villages.csv")
+
+def match_village(lgd_row, census_df, threshold=85):
+    # Fuzzy match by: village_name + district_name
+    search_key = f"{lgd_row['canonical_name']}, {lgd_row['district_name']}"
+    
+    # Extract candidate census villages in same district
+    candidates = census_df[census_df["district_name"] == lgd_row["district_name"]]["village_name"].tolist()
+    
+    if not candidates:
+        return None
+    
+    # Fuzzy match
+    match, score = process.extractOne(search_key, candidates, scorer=fuzz.token_sort_ratio)
+    
+    if score >= threshold:
+        matched_census = census_df[
+            (census_df["village_name"] == match) & 
+            (census_df["district_name"] == lgd_row["district_name"])
+        ].iloc[0]
+        return {
+            "lgd_id": lgd_row["id"],
+            "census_village_code": matched_census["village_code"],
+            "census_name": matched_census["village_name"],
+            "match_score": score
+        }
+    return None
+
+if __name__ == "__main__":
+    results = []
+    for _, lgd_row in LGD_VILLAGES.iterrows():
+        match = match_village(lgd_row, CENSUS_VILLAGES)
+        if match:
+            results.append(match)
+    
+    matched_df = pd.DataFrame(results)
+    merged = LGD_VILLAGES.merge(matched_df, left_on="id", right_on="lgd_id", how="left")
+    merged.to_csv("data/processed/villages_cross_referenced.csv", index=False)
+    print(f"✓ Cross-referenced {len(matched_df)} villages")
+3.3 PIN Code Enrichment (scripts/acquire_master_data/enrich_pin_codes.py)
+#!/usr/bin/env python3
+"""
+Join ArcGIS PIN dataset to villages by name + district fuzzy match.
+Outputs: data/processed/villages_with_pins.csv
+"""
+import pandas as pd
+import geopandas as gpd
+from fuzzywuzzy import process, fuzz
+
+VILLAGES = pd.read_csv("data/processed/villages_cross_referenced.csv")
+PIN_DATA = gpd.read_file("data/raw/arcgis/pin_codes.geojson")  # From ArcGIS item
+
+def match_pin_to_village(village_row, pin_gdf, threshold=80):
+    # Search PIN points near village centroid
+    village_point = Point(village_row["longitude"], village_row["latitude"])
+    
+    # Find PINs within 5km buffer
+    nearby_pins = pin_gdf[pin_gdf.geometry.buffer(0.05).contains(village_point)]  # ~5km approx
+    
+    if nearby_pins.empty:
+        # Fallback: fuzzy match by village name + district
+        candidates = pin_gdf["village_name"].dropna().unique().tolist()
+        match, score = process.extractOne(
+            f"{village_row['canonical_name']}, {village_row['district_name']}",
+            candidates,
+            scorer=fuzz.token_sort_ratio
+        )
+        if score >= threshold:
+            return pin_gdf[pin_gdf["village_name"] == match]["pin_code"].tolist()
+        return []
+    
+    return nearby_pins["pin_code"].dropna().unique().tolist()
+
+if __name__ == "__main__":
+    VILLAGES["pin_codes"] = VILLAGES.apply(
+        lambda row: match_pin_to_village(row, PIN_DATA), axis=1
+    )
+    VILLAGES.to_csv("data/processed/villages_with_pins.csv", index=False)
+    print(f"✓ Enriched {VILLAGES['pin_codes'].apply(len).sum()} PIN codes")
+3.4 Mobile Cache Generator (scripts/acquire_master_data/generate_mobile_cache.py)
+#!/usr/bin/env python3
+"""
+Generate offline-ready compressed JSON cache for mobile app.
+Outputs: mobile/assets/cache/geography_cache_v1.json.gz
+"""
+import json, gzip, pandas as pd
+from pathlib import Path
+
+VILLAGES = pd.read_csv("data/processed/villages_with_pins.csv")
+DISTRICTS = pd.read_csv("data/processed/districts.csv")
+STATES = pd.read_csv("data/processed/states.csv")
+
+def build_cache():
+    cache = {
+        "version": "v1.0",
+        "last_updated": pd.Timestamp.now().isoformat(),
+        "states": STATES[["id", "lgd_code", "canonical_name", "aliases"]].to_dict("records"),
+        "districts_by_state": {},
+        "villages_by_district": {},
+        "search_index": {
+            "village_trigrams": {},  # FTS5 index data (optional: precompute)
+            "village_phonetic": {}   # Soundex index (optional)
+        }
+    }
+    
+    # Group districts by state
+    for state_id in STATES["id"].unique():
+        state_districts = DISTRICTS[DISTRICTS["state_id"] == state_id]
+        cache["districts_by_state"][state_id] = state_districts[
+            ["id", "lgd_code", "canonical_name", "aliases", "tehsil_count", "village_count"]
+        ].to_dict("records")
+    
+    # Group villages by district
+    for district_id in DISTRICTS["id"].unique():
+        district_villages = VILLAGES[VILLAGES["district_id"] == district_id]
+        cache["villages_by_district"][district_id] = district_villages[
+            ["id", "lgd_code", "canonical_name", "aliases", "pin_codes", "latitude", "longitude", "census_code"]
+        ].to_dict("records")
+    
+    return cache
+
+if __name__ == "__main__":
+    cache = build_cache()
+    
+    # Compress with gzip
+    output_path = Path("mobile/assets/cache/geography_cache_v1.json.gz")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with gzip.open(output_path, "wt", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False, separators=(",", ":"))
+    
+    print(f"✓ Mobile cache generated: {output_path} ({output_path.stat().st_size / 1024:.1f} KB)")
+Acceptance Criteria for Scripts:
+LGD scraper respects rate limits (≥2s between requests)
+Census fuzzy match achieves ≥85% precision on sample
+PIN enrichment adds ≥1 PIN per village for 90% of villages
+Mobile cache ≤5MB compressed, loads in <500ms on mid-range Android
+All scripts have --dry-run and --state=Maharashtra flags for testing
+🌐 Step 4: Backend API Endpoints for Master Data Sync
+File: backend/src/modules/master_data/api/geography_api.py
+python
+from fastapi import APIRouter, Depends, Query, Header
+from backend.src.core.security import get_current_user
+from backend.src.modules.master_data.services.geography_service import GeographyService
+
+router = APIRouter(prefix="/master-data", tags=["master-data"])
+
+@router.get("/geography/states")
+async def get_states(
+    current_user = Depends(get_current_user),
+    x_tenant_id: str = Header(...)
+):
+    """Return list of states (cached, tenant-isolated if needed)"""
+    service = GeographyService()
+    return await service.get_states(tenant_id=x_tenant_id)
+
+@router.get("/geography/districts")
+async def get_districts(
+    state_id: str = Query(...),
+    current_user = Depends(get_current_user),
+    x_tenant_id: str = Header(...)
+):
+    """Return districts for given state"""
+    service = GeographyService()
+    return await service.get_districts(state_id=state_id, tenant_id=x_tenant_id)
+
+@router.get("/geography/villages")
+async def get_villages(
+    district_id: str = Query(...),
+    tehsil_id: str = Query(None),
+    search: str = Query(None, description="Fuzzy search by name/PIN"),
+    limit: int = Query(20, le=100),
+    current_user = Depends(get_current_user),
+    x_tenant_id: str = Header(...)
+):
+    """Return villages with optional fuzzy search"""
+    service = GeographyService()
+    return await service.get_villages(
+        district_id=district_id,
+        tehsil_id=tehsil_id,
+        search=search,
+        limit=limit,
+        tenant_id=x_tenant_id
+    )
+
+@router.get("/geography/versions")
+async def get_master_data_versions(
+    current_user = Depends(get_current_user),
+    x_tenant_id: str = Header(...)
+):
+    """Return current version for each master data entity type"""
+    return {
+        "geography": "v1.0",
+        "soil": "v1.0",
+        "crop": "v1.0",
+        "season": "v1.0",
+        "input": "v1.0"
+    }
+
+@router.get("/geography/sync")
+async def get_geography_delta(
+    last_version: str = Query("v1.0"),
+    scope_state_id: str = Query(None),
+    current_user = Depends(get_current_user),
+    x_tenant_id: str = Header(...)
+):
+    """Delta sync endpoint: return new/updated/tombstoned records since last_version"""
+    service = GeographyService()
+    return await service.get_delta(
+        since_version=last_version,
+        scope_state_id=scope_state_id,
+        tenant_id=x_tenant_id
+    )
+Delta Response Schema:
+{
+  "version": "v1.1",
+  "entity_type": "villages",
+  "scope": { "state_id": "uuid" },
+  "new_records": [ /* array of new villages */ ],
+  "updated_records": [ /* array with changed fields */ ],
+  "tombstones": [ /* array of deprecated village IDs */ ]
+}
+Acceptance Criteria:
+All endpoints enforce X-Tenant-ID header
+Fuzzy search uses pg_trgm: WHERE canonical_name % :query
+Delta endpoint returns only changed records since last_version
+Response time <200ms for cached queries, <800ms for DB queries
+OpenAPI schema generated and validated via schemathesis
+📱 Step 5: Mobile Offline Cache Integration (Flutter/Drift)
+File: mobile/lib/modules/master_data/models/geography_cache.dart
+dart
+import 'package:drift/drift.dart';
+
+part 'geography_cache.g.dart';
+
+@DriftDatabase(tables: [GeographyStates, GeographyDistricts, GeographyVillages])
+class MasterDataDatabase extends _$MasterDataDatabase {
+  MasterDataDatabase(QueryExecutor e) : super(e);
+  @override int get schemaVersion => 1;
+}
+
+class GeographyStates extends Table {
+  TextColumn get id => text()();
+  TextColumn get lgdCode => text()();
+  TextColumn get canonicalName => text()();
+  TextColumn get aliases => text()(); // JSON string
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  // ... other fields
+}
+
+// Similar tables for districts, villages
+
+// FTS5 virtual table for offline fuzzy search
+
+class VillageSearchIndex extends VirtualTable {
+  TextColumn get villageId => text()();
+  TextColumn get searchableText => text()(); // "canonical_name aliases pin_codes"
+  
+  @override
+  String get tableName => 'village_search_fts5';
+  
+  @override
+  List<String> get options => ['content="geography_villages"', 'content_rowid="id"'];
+}
+File: mobile/lib/modules/master_data/services/master_data_loader.dart
+dart
+class MasterDataLoader {
+  final MasterDataDatabase db;
+  final String assetCachePath; // "assets/cache/geography_cache_v1.json.gz"
+  
+  MasterDataLoader(this.db, this.assetCachePath);
+  
+  /// Load compressed cache on first launch or version mismatch
+  Future<void> ensureCacheLoaded(String currentCacheVersion) async {
+    final metadata = await db.select(db.cacheMetadata).get();
+    final needsRefresh = metadata.isEmpty || metadata.first.version != currentCacheVersion;
+    
+    if (needsRefresh) {
+      // Load and decompress gzip JSON from assets
+      final compressed = await rootBundle.load(assetCachePath);
+      final bytes = compressed.buffer.asUint8List();
+      final decompressed = gzip.decode(bytes);
+      final cache = jsonDecode(utf8.decode(decompressed)) as Map<String, dynamic>;
+      
+      // Transactionally insert into Drift tables
+      await db.transaction(() async {
+        await _insertStates(cache['states']);
+        await _insertDistricts(cache['districts_by_state']);
+        await _insertVillages(cache['villages_by_district']);
+        await _rebuildFts5Index(); // Rebuild FTS5 index after bulk insert
+        await db.into(db.cacheMetadata).insert(CacheMetadataCompanion.insert(
+          version: currentCacheVersion,
+          lastSyncedAt: DateTime.now(),
+        ), mode: InsertMode.replace);
+      });
+    }
+  }
+  
+  /// Offline fuzzy search using FTS5
+  Future<List<Village>> searchVillages(String query, {String? districtId, int limit = 20}) async {
+    final results = await (db.select(db.villageSearchIndex)
+          ..where((t) => t.searchableText.matches(query))
+          ..limit(limit))
+        .get();
+    
+    // Join with geography_villages table to get full village dataAcceptance Criteria:
+Cache loads in <500ms on mid-range Android (test with flutter run --profile)
+FTS5 search returns results for aliases/PIN codes offline
+Cache survives app kill + restart (persistence test)
+Delta sync updates cache without data loss (integration test)
+🧪 Step 6: Validation & Testing
+6.1 Semantic Validation Gate (scripts/validate_semantics.py)
+python
+    final villageIds = results.map((r) => r.villageId).toList();
+    return await (db.select(db.geographyVillages)
+          ..where((t) => t.id.isIn(villageIds))
+          ..where((t) => t.isActive.equals(true)))
+        .get();
+  }
+}
+#!/usr/bin/env python3
+"""Block PRs if forbidden aliases appear in schema/code"""
+import re, sys, pathlib
+
+FORBIDDEN_PATTERNS = {
+    "entity_names": re.compile(r"\b(field|plot|khet|cultivator)\b", re.IGNORECASE),
+    "units": re.compile(r"\b(acres|quintal|local_currency)\b"),
+}
+
+def scan_file(filepath: pathlib.Path) -> list[str]:
+    errors = []
+    text = filepath.read_text()
+    for category, pattern in FORBIDDEN_PATTERNS.items():
+        if pattern.search(text):
+            errors.append(f"🚫 Forbidden '{category}' in {filepath}")
+    return errors
+
+if __name__ == "__main__":
+    paths = [pathlib.Path(p) for p in sys.argv[1:]]
+    all_errors = []
+    for p in paths:
+        if p.suffix in (".py", ".dart", ".sql", ".json"):
+            all_errors.extend(scan_file(p))
+    
+    if all_errors:
+        print("\n❌ SEMANTIC VALIDATION FAILED:")
+        for e in all_errors: print(f"  {e}")
+        sys.exit(1)
+    print("✅ Semantic validation passed")
+6.2 Offline Geography Dropdown Test (Flutter Integration Test)
+dart
+// mobile/test/integration/master_data_dropdown_test.dart
+testWidgets('Geography dropdown works offline', (tester) async {
+  // Arrange: ensure cache loaded, airplane mode ON
+  await MasterDataLoader(db, 'assets/cache/geography_cache_v1.json.gz')
+      .ensureCacheLoaded('v1.0');
+  await Connectivity().simulateConnectivity(ConnectivityResult.none);
+  
+  // Act: open farmer enrollment form, select state → district → village
+  await tester.pumpWidget(MyApp());
+  await tester.tap(find.byIcon(Icons.add)); // Open enrollment
+  await tester.enterText(find.byType(DropdownButton<State>), 'Uttar Pradesh');
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byType(DropdownButton<District>), 'Agra');
+  await tester.pumpAndSettle();
+  
+  // Assert: village dropdown populated, search works offline
+  expect(find.byType(DropdownButton<Village>), findsOneWidget);
+  await tester.enterText(find.byType(TextField).first, 'Rampur');
+  await tester.pumpAndSettle();
+  expect(find.textContaining('Rampur'), findsWidgets); // Fuzzy search results
+});
+Acceptance Criteria:
+Semantic validator blocks field/plot/khet in code/DB/API
+Integration test passes with airplane mode ON
+Fuzzy search returns results for transliterated names (Roman ↔ Devanagari)
+Cache size ≤5MB, load time ≤500ms on target device
+🔄 Step 7: CI/CD Integration
+File: .github/workflows/master_data_ci.yml
+name: Master Data CI
+on:
+  push:
+    paths:
+      - 'backend/src/modules/master_data/**'
+      - 'mobile/lib/modules/master_data/**'
+      - 'scripts/acquire_master_data/**'
+  pull_request:
+    paths:
+      - 'backend/src/modules/master_data/**'
+      - 'mobile/lib/modules/master_data/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semantic Validation
+        run: python scripts/validate_semantics.py backend/ mobile/ scripts/
+      - name: Migration Dry-Run
+        run: cd backend && alembic upgrade head --sql | grep -q "ERROR" && exit 1 || exit 0
+      - name: Mobile Cache Generation Test
+        run: python scripts/acquire_master_data/generate_mobile_cache.py --dry-run
+      - name: Flutter Drift Codegen
+        run: cd mobile && dart run drift_dev --generate-impl lib/modules/master_data/models/
+Acceptance Criteria:
+CI pipeline passes on PR with master data changes
+Semantic validator runs before merge
+Mobile cache generation succeeds in CI environment
+Drift codegen produces no warnings
+🎯 Step 8: Pilot Validation (One State First)
+Recommended Pilot: Maharashtra (high agri activity, good data coverage)
+bash
+# Run acquisition scripts for Maharashtra only
+python scripts/acquire_master_data/acquire_lgd.py --state=Maharashtra --dry-run
+python scripts/acquire_master_data/cross_reference_census.py --state=Maharashtra
+python scripts/acquire_master_data/enrich_pin_codes.py --state=Maharashtra
+python scripts/acquire_master_data/generate_mobile_cache.py --state=Maharashtra
+
+# Deploy to staging, test with 5 field agents
+# Validate: dropdown performance, offline search, sync delta
+Pilot Success Metrics:
+Geography dropdown population <200ms offline
+Fuzzy search returns correct village for ≥90% of test queries
+Delta sync updates cache without data loss
+Field agents can enroll farmers using offline geography selection
+📋 Master Data Implementation Checklist
+Task
+File/Script
+Acceptance Criteria
+Owner
+Schema
+backend/src/modules/master_data/models/*.py
+Alembic migration runs, PostGIS/pg_trgm enabled
+Backend
+LGD Scraper
+scripts/acquire_master_data/acquire_lgd.py
+Respects rate limits, exports CSV
+Data Eng
+Census Cross-Ref
+scripts/acquire_master_data/cross_reference_census.py
+≥85% fuzzy match precision
+Data Eng
+PIN Enrichment
+scripts/acquire_master_data/enrich_pin_codes.py
+≥1 PIN per village for 90% villages
+Data Eng
+Mobile Cache
+scripts/acquire_master_data/generate_mobile_cache.py
+≤5MB compressed, <500ms load
+Mobile
+Backend API
+backend/src/modules/master_data/api/*.py
+OpenAPI valid, <800ms response, tenant-isolated
+Backend
+Mobile Loader
+mobile/lib/modules/master_data/services/*.dart
+Cache loads offline, FTS5 search works
+Mobile
+Semantic Validator
+scripts/validate_semantics.py
+Blocks forbidden aliases in CI
+DevOps
+Integration Test
+mobile/test/integration/master_data_dropdown_test.dart
+Passes with airplane mode ON
+QA
+Pilot Validation
+Maharashtra test deployment
+Field agents can enroll farmers offline
+Product
+🚀 Immediate Next Actions (Today)
+Run schema migration: cd backend && alembic upgrade head
+Test LGD scraper for one district: python scripts/acquire_master_data/acquire_lgd.py --district=0901 --dry-run
+Generate Maharashtra cache: python scripts/acquire_master_data/generate_mobile_cache.py --state=Maharashtra
+Load cache in mobile app: Verify dropdown population time <500ms
+Add semantic validator to CI: Update .github/workflows/ci.yml
+💡 Pro Tip: Start with one state (Maharashtra) as pilot. Validate the entire flow: LGD → Census → PIN → mobile cache → offline dropdown → sync delta. Then scale to pan-India.

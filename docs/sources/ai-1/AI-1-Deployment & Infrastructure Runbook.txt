@@ -1,0 +1,766 @@
+Deployment & Infrastructure Runbook (Pre-Launch)
+Format: Rules & Pseudo-Logic Only
+Phase: Pre-Launch Validation
+Scope: Container Orchestration | CI/CD Promotion | Staging/Prod Sync | Backup/DR | Monitoring Thresholds
+🎯 Deployment Philosophy & Core Principles
+Foundational Deployment Rules
+pseudo
+RULE MODULAR_MONOLITH_FIRST:
+  IF deployment_phase == "MVP" THEN
+    architecture = "modular_monolith"
+    container_count = 1_primary + 1_worker + 1_redis
+    orchestration = "docker_compose OR k8s_single_namespace"
+  ELSE IF deployment_phase == "scale" THEN
+    evaluate_microservice_extraction_candidates:
+      - notification_service
+      - analytics_service
+      - OCR_service
+
+RULE OFFLINE_FIRST_INFRA:
+  ALL infrastructure components MUST support:
+    - intermittent connectivity tolerance
+    - async queue resilience
+    - eventual consistency acceptance
+    - rural bandwidth optimization
+
+RULE TENANT_ISOLATION_AT_DEPLOYMENT:
+  IF multi_tenant_mode == true THEN
+    database_isolation = "schema_per_tenant OR row_level_security"
+    storage_isolation = "prefix_per_tenant_in_object_store"
+    cache_isolation = "tenant_id_prefix_in_redis_keys"
+    NEVER allow cross_tenant_query_without_explicit_permission
+
+RULE AUDIT_INFRASTRUCTURE:
+  ALL deployment_changes MUST:
+    - log actor_id + timestamp + change_description
+    - preserve previous_configuration_version
+    - support_rollback_to_last_known_good
+🌐 Environment Architecture Rules
+Environment Hierarchy & Promotion Flow
+yaml
+environment_topology:
+  development:
+    purpose: feature_development + unit_testing
+    data: synthetic_anonymized_only
+    connectivity: simulated_unreliable_network
+    access: engineering_team_only
+    auto_deploy: on_merge_to_develop_branch
+    
+  staging:
+    purpose: integration_testing + rural_ux_validation + pen_test
+    data: anonymized_production_subset + synthetic_stress_data
+    connectivity: real_rural_network_simulation (toxiproxy)
+    access: engineering + QA + selected_rural_testers
+    auto_deploy: on_tag_creation_v*.*.*-staging
+    promotion_gate: all_tests_pass + rural_ux_report_attached
+    
+  production:
+    purpose: live_farmer_operations + enterprise_dashboards
+    data: real_production_data (PII_encrypted)
+    connectivity: real_rural_networks
+    access: role_based_RBAC + audit_logging_mandatory
+    auto_deploy: MANUAL_APPROVAL_REQUIRED
+    promotion_gate: 
+      - staging_validation_complete
+      - pen_test_critical_issues = 0
+      - rural_ux_completion_rate >= 80%
+      - rollback_plan_documented
+Environment Sync & Data Management Rules
+pseudoRULE STAGING_DATA_SANITIZATION:
+  WHEN promoting data FROM production TO staging:
+    DIRECT_PII_fields = MASK_OR_HASH
+    GPS_coordinates = ROUND_TO_DISTRICT_LEVEL
+    mobile_numbers = REPLACE_WITH_SYNTHETIC_VALID_FORMAT
+    government_ids = NEVER_COPY_TO_STAGING
+    audit_logs = RETAIN_DEIDENTIFIED_FOR_DEBUGGING
+
+RULE CONFIGURATION_PROMOTION:
+  configuration_changes MUST follow:
+    dev → staging: auto_promote_if_tests_pass
+    staging → prod: manual_approval + change_window + rollback_plan
+    
+  forbidden_promotions:
+    - prod_config → staging (security risk)
+    - untested_workflow_changes → prod
+
+RULE FEATURE_FLAG_GOVERNANCE:
+  feature_flags MUST support:
+    - tenant_scoped_rollout (enable_for_tenant_X_only)
+    - geography_scoped_rollout (enable_for_district_Y_only)
+    - percentage_rollout (enable_for_10%_of_users)
+    - instant_rollback (disable_flag_without_redeploy)
+    
+  audit_requirement:
+    - flag_change_logged_with_actor_id + timestamp + reason
+📦 Container & Orchestration Rules (Pseudo-Specs)
+Primary Application Container Specification
+yaml
+container_spec_primary:
+  base_image: python:3.11-slim  # or node:18-alpine for JS stack
+  user: nonroot  # security best practice
+  working_dir: /app
+  
+  health_check:
+    endpoint: /health
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s  # allow DB migrations to complete
+    
+  resource_limits:
+    memory: 
+      request: 512Mi
+      limit: 1Gi
+    cpu:
+      request: 250m
+      limit: 1000m
+      
+  environment_variables:
+    - name: TENANT_ISOLATION_MODE
+      value: schema_per_tenant  # or row_level_security
+    - name: OFFLINE_SYNC_ENABLED
+      value: "true"
+    - name: AUDIT_LOG_LEVEL
+      value: INFO  # DEBUG in staging, INFO in prod
+    - name: CANONICAL_SEMANTIC_REGISTRY_PATH
+      value: /app/config/semantic_registry_v1.json
+      
+  volumes:
+    - name: config-volume
+      mount_path: /app/config
+      source: configmap/semantic_registry_v1
+    - name: audit-log-volume
+      mount_path: /var/log/audit
+      source: persistent_volume_claim
+      
+  liveness_probe:
+    http_get:
+      path: /health/live
+      port: 8000
+    initial_delay_seconds: 60
+    period_seconds: 30
+    
+  readiness_probe:
+    http_get:
+      path: /health/ready
+      port: 8000
+    initial_delay_seconds: 30
+    period_seconds: 10
+Background Worker Container Specification
+yaml
+container_spec_worker:
+  purpose: async_task_processing + sync_queue_management + notification_dispatch
+  base_image: python:3.11-slim
+  
+  resource_limits:
+    memory: 
+      request: 256Mi
+      limit: 512Mi
+    cpu:
+      request: 100m
+      limit: 500m
+      
+  environment_variables:
+    - name: WORKER_CONCURRENCY
+      value: "4"  # tune based on load testing
+    - name: SYNC_BATCH_SIZE
+      value: "20"  # offline sync batch size
+    - name: NOTIFICATION_RETRY_MAX
+      value: "10"
+    - name: OFFLINE_GRACE_PERIOD_SECONDS
+      value: "86400"  # 24 hours offline token grace
+      
+  dependencies:
+    - primary_app_container  # must start after primary is ready
+    - redis_queue_service
+    - postgres_database
+    
+  graceful_shutdown:
+    timeout_seconds: 30
+    behavior: finish_current_task_then_exit
+Redis Queue Service Specification
+yaml
+container_spec_redis:
+  purpose: async_queue + cache + offline_sync_coordination
+  base_image: redis:7-alpine
+  
+  persistence:
+    enabled: true
+    storage_class: standard-ssd
+    size: 10Gi
+    backup_frequency: hourly
+    
+  configuration:
+    maxmemory: 512mb
+    maxmemory_policy: allkeys-lru  # evict least recently used
+    appendonly: yes  # enable AOF persistence
+    
+  security:
+    requirepass: ${REDIS_PASSWORD_FROM_SECRET}
+    protected_mode: yes
+    bind: 127.0.0.1  # internal network only
+    
+  monitoring:
+    metrics_endpoint: /metrics
+    export_to: prometheus
+Database Container Specification (PostgreSQL + PostGIS)
+yaml
+container_spec_postgres:
+  base_image: postgis/postgis:15-3.3-alpine
+  user: postgres
+  
+  resource_limits:
+    memory:
+      request: 1Gi
+      limit: 4Gi
+    cpu:
+      request: 500m
+      limit: 2000m
+    storage:
+      request: 50Gi
+      limit: 200Gi
+      storage_class: ssd-premium
+      
+  configuration:
+    max_connections: 100
+    shared_buffers: 256MB
+    effective_cache_size: 1GB
+    work_mem: 4MB
+    maintenance_work_mem: 64MB
+    checkpoint_completion_target: 0.9
+    wal_buffers: 16MB
+    default_statistics_target: 100
+    
+  extensions_required:
+    - postgis
+    - pg_stat_statements  # for query monitoring
+    - pgcrypto  # for encryption functions
+    
+  backup_configuration:
+    method: pg_dump + WAL_archiving
+    frequency: hourly_incremental + daily_full
+    retention: 30_days_hot + 1_year_cold
+    encryption: AES-256 at rest
+    
+  high_availability:
+    mode: read_replica_for_analytics
+    failover: manual_approval_required_for_MVP
+    replication_lag_alert_threshold: 60_seconds
+🔁 CI/CD Promotion Pipeline Rules
+Build & Test Stage Rules
+pseudo
+RULE CI_BUILD_PIPELINE:
+  TRIGGER: push_to_branch OR pull_request_created
+  
+  STAGES:
+    1. lint_and_semantic_check:
+       - ruff/pyright for Python OR eslint/tsc for JS
+       - validate_semantics.py against Canonical Semantic Registry v1
+       - FAIL if forbidden terms found (field/plot/khet internally)
+       
+    2. unit_tests:
+       - coverage >= 80% on domain logic
+       - workflow_state_machine_tests MUST pass
+       - offline_queue_persistence_tests MUST pass
+       
+    3. contract_tests:
+       - OpenAPI schema validation via schemathesis
+       - Event schema compatibility check
+       - FAIL if breaking changes without version bump
+       
+    4. integration_tests:
+       - sync_flow_with_conflict_detection
+       - notification_trigger_to_delivery
+       - FAIL if offline_sync loses data
+
+    5. build_container:
+       - multi_stage_docker_build
+       - scan_for_vulnerabilities (trivy/grype)
+       - tag_with: ${COMMIT_SHA}-${ENVIRONMENT}
+       - push_to: container_registry/tenant-isolated-path
+Staging Promotion Gate Rules
+pseudo
+RULE STAGING_DEPLOYMENT_GATE:
+  PRE_CONDITIONS:
+    - all_CI_stages_passed
+    - semantic_registry_validation_passed
+    - no_CRITICAL_security_vulnerabilities
+    
+  AUTOMATED_VALIDATIONS:
+    - deploy_to_staging_namespace
+    - run_smoke_tests_against_staging_endpoint
+    - execute_rural_ux_automated_checks:
+        * icon+label_rendering_validation
+        * offline_form_submission_simulation
+        * sync_status_indicator_visibility
+        
+  MANUAL_APPROVAL_REQUIRED:
+    - rural_ux_test_report_attached (15+ participants)
+    - pen_test_summary_attached (zero P0 issues)
+    - rollback_plan_documented
+    
+  POST_DEPLOYMENT_VALIDATION:
+    - health_check_endpoint_returns_200
+    - audit_log_receiving_entries
+    - sync_queue_processing_without_errors
+    - notification_delivery_success_rate > 95%
+Production Promotion Gate Rules
+pseudo
+RULE PRODUCTION_DEPLOYMENT_GATE:
+  PRE_CONDITIONS:
+    - staging_deployment_successful_for_24_hours
+    - error_rate < 1% in staging
+    - sync_success_rate > 95% in staging
+    - rural_ux_completion_rate >= 80%
+    
+  CHANGE_WINDOW_REQUIREMENTS:
+    - deployment_time: 02:00-06:00_local_time (low farmer activity)
+    - rollback_window: 30_minutes_post_deploy
+    - communication: notify_enterprise_clients_24h_prior
+    
+  MANUAL_APPROVAL_CHAIN:
+    1. engineering_lead: confirms technical readiness
+    2. product_lead: confirms rural_ux_validation_complete
+    3. security_lead: confirms pen_test_critical_issues = 0
+    4. ops_lead: confirms rollback_plan_tested
+    
+  CANARY_DEPLOYMENT_STRATEGY:
+    - deploy_to_10%_of_production_nodes_first
+    - monitor_for_15_minutes:
+        * error_rate < 0.5%
+        * latency_p95 < 2x_baseline
+        * sync_queue_depth stable
+    - IF metrics_ok THEN rollout_to_100%
+    - IF metrics_bad THEN auto_rollback_to_previous_version
+    
+  POST_DEPLOYMENT_VALIDATION:
+    - synthetic_transaction_monitoring:
+        * farmer_enrollment_flow
+        * parcel_creation_flow
+        * offline_sync_simulation
+    - real_user_monitoring_alerts_enabled
+    - audit_log_verification: deployment_event_logged
+💾 Backup & Disaster Recovery Rules
+Database Backup Strategy
+yaml
+backup_strategy_postgres:
+  full_backup:
+    frequency: daily_at_02:00_UTC
+    method: pg_dump_with_compression
+    retention: 
+      hot_storage: 30_days
+      cold_archive: 1_year
+    encryption: AES-256_with_KMS_managed_keys
+    verification: weekly_restore_test_to_isolated_env
+    
+  incremental_backup:
+    frequency: hourly_via_WAL_archiving
+    retention: 7_days
+    point_in_time_recovery: supported_with_WAL
+    
+  tenant_isolation_in_backups:
+    schema_per_tenant_mode: backup_each_schema_separately
+    row_level_security_mode: include_tenant_id_in_backup_metadata
+    
+  backup_access_control:
+    read_access: ops_team_only
+    restore_access: senior_ops_with_dual_approval
+    audit_logging: all_backup_restore_actions_logged
+Object Storage Backup Strategy (Media/Evidence)
+yaml
+backup_strategy_object_storage:
+  lifecycle_policy:
+    hot_tier: 0-90_days (frequent access)
+    cold_tier: 90_days-2_years (infrequent access)
+    archive_tier: 2-5_years (compliance/audit)
+    deletion: after_5_years_unless_insurer_critical
+    
+  replication:
+    cross_region_replication: enabled_for_production
+    replication_lag_alert: > 1_hour
+    
+  integrity_verification:
+    checksum_validation: on_upload_and_periodic_scan
+    corruption_detection: automated_quarantine_of_corrupt_objects
+    
+  tenant_isolation:
+    storage_path_pattern: s3://bucket/{tenant_id}/{entity_type}/{media_id}
+    access_policy: signed_URLs_with_tenant_scoped_IAM_roles
+Disaster Recovery Runbook (Pseudo-Flow)
+pseudo
+SCENARIO DATABASE_CORRUPTION:
+  DETECTION:
+    - health_check_fails_with_DB_connection_error
+    - application_logs_show_query_failures
+    - monitoring_alert: postgres_replication_lag > threshold
+    
+  IMMEDIATE_RESPONSE:
+    1. pause_incoming_traffic_to_affected_instance
+    2. promote_read_replica_to_primary_IF_replication_lag < 60s
+    3. IF no_viable_replica: initiate_restore_from_latest_backup
+    
+  RESTORE_PROCEDURE:
+    1. provision_new_DB_instance_from_backup
+    2. apply_WAL_archives_up_to_point_of_failure
+    3. run_data_integrity_checks:
+        * foreign_key_validation
+        * geospatial_index_validation
+        * audit_chain_hash_validation
+    4. IF checks_pass: update_application_config_to_new_DB_endpoint
+    5. IF checks_fail: escalate_to_senior_engineering + manual_intervention
+    
+  POST_RECOVERY:
+    1. verify_application_health_endpoints
+    2. run_synthetic_transactions_to_validate_core_workflows
+    3. notify_enterprise_clients_of_incident_resolution
+    4. document_root_cause_analysis_within_48_hours
+Offline Sync Queue Recovery Rules
+pseudo
+RULE SYNC_QUEUE_RESILIENCE:
+  WHEN device_comes_back_online_after_extended_offline:
+    - sync_manager_detects_connectivity_restoration
+    - queue_processor_prioritizes_critical_entities_first:
+        * parcel_updates
+        * workflow_stage_changes
+        * disease_reports
+    - retry_logic_applies_exponential_backoff_with_jitter
+    - DLQ_captures_poison_events_after_max_retries
+    
+  WHEN server_receives_outdated_sync_payload:
+    - validate_entity_version_against_current_server_version
+    - IF client_version < server_version - threshold:
+        * return_409_CONFLICT_with_server_state_snapshot
+        * client_merges_or_prompts_user_for_resolution
+    - audit_log_records_conflict_resolution_action
+    
+  WHEN partial_sync_failure_occurs:
+    - checkpoint_current_progress_in_sync_queue
+    - retry_only_failed_entities_not_already_synced
+    - preserve_audit_trail_of_partial_sync_attempt
+📊 Monitoring & Alerting Thresholds
+Application Health Monitoring Rules
+yaml
+monitoring_metrics_application:
+  availability:
+    metric: uptime_percentage
+    threshold: >= 99.5%_monthly
+    alert_if: < 99.0%_for_5_minutes
+    
+  latency:
+    metric: p95_response_time_ms
+    threshold: < 2000ms_for_core_workflows
+    alert_if: > 5000ms_for_10_minutes
+    
+  error_rate:
+    metric: http_5xx_percentage
+    threshold: < 1.0%_of_total_requests
+    alert_if: > 5.0%_for_5_minutes
+    
+  sync_health:
+    metric: sync_success_rate_percentage
+    threshold: >= 95.0%_of_sync_attempts
+    alert_if: < 90.0%_for_15_minutes
+    
+  offline_queue_depth:
+    metric: pending_sync_items_count
+    threshold: < 1000_per_active_device
+    alert_if: > 5000_for_any_device_indicates_sync_stall
+Rural Connectivity-Aware Alerting Rules
+pseudo
+RULE RURAL_NETWORK_ALERTING:
+  # Avoid alerting on expected rural connectivity issues
+  
+  IF connectivity_loss_duration < 4_hours:
+    DO_NOT_ALERT  # expected offline operation
+    
+  IF connectivity_loss_duration >= 4_hours AND device_has_pending_critical_sync:
+    ALERT_with_priority=MEDIUM:
+      "Device {device_id} offline >4h with {pending_count} critical items"
+      
+  IF sync_failure_rate_for_geography > 20%_for_1_hour:
+    ALERT_with_priority=HIGH:
+      "Regional sync degradation in {village/district}: {failure_rate}%"
+      POSSIBLE_CAUSES: network_outage, server_issue, config_error
+      
+  IF notification_delivery_failure_for_SMS > 10%_for_30_minutes:
+    ALERT_with_priority=HIGH:
+      "SMS delivery degradation: {failure_rate}% - check provider status"
+Business Metric Monitoring Rules
+yaml
+monitoring_metrics_business:
+  farmer_engagement:
+    metric: daily_active_farmers_percentage
+    baseline: established_per_enterprise_program
+    alert_if: drops > 30%_week_over_week_without_campaign_explanation
+    
+  workflow_completion:
+    metric: crop_stage_update_completion_rate
+    threshold: >= 70%_of_active_crop_cycles_updated_weekly
+    alert_if: < 50%_indicates_adoption_or_usability_issue
+    
+  advisory_effectiveness:
+    metric: advisory_acknowledgment_rate
+    threshold: >= 60%_of_sent_advisories_acknowledged
+    alert_if: < 40%_may_indicate_irrelevant_or_mistimed_content
+    
+  dealer_performance:
+    metric: assisted_farmer_update_frequency
+    threshold: >= 1_update_per_assisted_farmer_per_week
+    alert_if: dealer_has > 20_assisted_farmers_with_zero_updates_in_2_weeks
+    
+  data_quality:
+    metric: incomplete_workflow_percentage
+    threshold: < 15%_of_crop_cycles_with_missing_critical_stages
+    alert_if: > 30%_indicates_form_complexity_or_training_gap
+Alert Routing & Escalation Rules
+pseudo
+RULE ALERT_ESCALATION_MATRIX:
+  PRIORITY_P0_CRITICAL:
+    conditions:
+      - production_unavailable
+      - data_corruption_detected
+      - security_breach_suspected
+      - PII_exposure_confirmed
+    notification:
+      - page_on_call_engineering_lead_via_PagerDuty
+      - notify_security_team_immediately
+      - enterprise_client_communication_within_15_minutes
+    resolution_SLA: 1_hour
+    
+  PRIORITY_P1_HIGH:
+    conditions:
+      - sync_success_rate < 90%_for_30_minutes
+      - notification_delivery_failure > 10%
+      - rural_ux_critical_issue_reported
+    notification:
+      - slack_alert_to_engineering_channel
+      - email_to_product_lead
+    resolution_SLA: 4_hours
+    
+  PRIORITY_P2_MEDIUM:
+    conditions:
+      - latency_p95 > 2x_baseline_for_1_hour
+      - dealer_performance_metrics_declining
+      - configuration_change_causing_minor_issues
+    notification:
+      - slack_alert_to_team_channel
+      - ticket_created_in_Jira/Linear
+    resolution_SLA: 24_hours
+    
+  PRIORITY_P3_LOW:
+    conditions:
+      - non_critical_feature_flag_issue
+      - documentation_update_needed
+      - minor_UI_inconsistency_reported
+    notification:
+      - weekly_digest_email
+      - backlog_item_created
+    resolution_SLA: next_sprint
+🔐 Security Hardening Rules (Infrastructure Layer)
+Network Security Rules
+pseudo
+RULE NETWORK_ISOLATION:
+  production_namespace:
+    ingress: allow_only_from_load_balancer_with_WAF
+    egress: allow_only_to_approved_external_services:
+      - SMS_provider_APIs (whitelisted_IPs)
+      - object_storage_endpoint
+      - monitoring_endpoints
+    internal_communication: service_mesh_with_mTLS
+    
+  staging_namespace:
+    ingress: allow_from_engineering_VPN + rural_tester_whitelist
+    egress: same_as_production_but_with_test_credentials
+    
+  development_namespace:
+    ingress: allow_from_engineering_IP_ranges_only
+    egress: unrestricted_for_development_flexibility
+    data: synthetic_only_NEVER_production_PII
+Secret Management Rules
+yaml
+secret_management:
+  storage:
+    production: HashiCorp_Vault_OR_AWS_Secrets_Manager
+    staging: same_as_production_but_with_test_secrets
+    development: local_encrypted_file_NEVER_committed_to_repo
+    
+  rotation_policy:
+    database_passwords: every_90_days
+    API_keys: every_180_days_or_on_suspicion_of_compromise
+    JWT_signing_keys: every_365_days_with_graceful_key_rollover
+    
+  access_control:
+    read_access: application_service_accounts_only
+    write_access: CI/CD_pipeline_with_audit_logging
+    emergency_access: break_glass_procedure_with_dual_approval
+    
+  audit_requirement:
+    all_secret_access_logged_with_actor_timestamp_purpose
+    failed_access_attempts_alerted_immediately
+Container Security Rules
+pseudo
+RULE CONTAINER_HARDENING:
+  BUILD_TIME:
+    - use_minimal_base_images (alpine/slim variants)
+    - scan_for_vulnerabilities_with_trivy_grype
+    - FAIL_build_if_CRITICAL_or_HIGH_CVEs_found_without_exception_approval
+    - run_as_nonroot_user_inside_container
+    - remove_unnecessary_packages_and_build_tools
+    
+  RUNTIME:
+    - read_only_root_filesystem_where_possible
+    - drop_unnecessary_Linux_capabilities
+    - enforce_resource_limits_to_prevent_DoS
+    - enable_seccomp_and_AppArmor_profiles
+    
+  REGISTRY:
+    - sign_container_images_with_cosign_or_notary
+    - verify_signatures_before_deployment
+    - retain_image_vulnerability_scan_reports_for_audit
+🌾 Rural Connectivity Optimization Rules
+Bandwidth-Aware Deployment Configuration
+yaml
+rural_optimization_config:
+  API_response_compression:
+    enabled: true
+    algorithm: gzip_or_brotli
+    threshold: compress_responses > 1KB
+    
+  media_delivery:
+    thumbnail_first_strategy: send_320x240_preview_before_full_resolution
+    adaptive_quality: scale_image_quality_based_on_detected_bandwidth
+    offline_caching: cache_frequently_accessed_master_data_locally
+    
+  sync_protocol:
+    delta_sync_only: transfer_only_changed_fields_not_full_entities
+    metadata_first: sync_text_metadata_before_large_media_payloads
+    priority_queue: critical_workflow_updates_before_analytics_cache
+    
+  notification_delivery:
+    SMS_fallback: if_push_notification_fails_after_3_attempts
+    batch_delivery: group_non_urgent_notifications_to_reduce_network_calls
+    offline_queue: queue_notifications_locally_when_device_offline
+Graceful Degradation Rules
+pseudo
+RULE OFFLINE_MODE_BEHAVIOR:
+  WHEN connectivity_lost:
+    - mobile_app_switches_to_offline_mode_indicator
+    - all_mutations_saved_to_local_SQLite_with_sync_queue
+    - read_operations_serve_from_local_cache
+    - user_sees_clear_status: "🟢 Working offline - changes will sync later"
+    
+  WHEN_connectivity_restored:
+    - sync_manager_detects_and_starts_background_sync
+    - user_sees_progress: "🔄 Syncing {pending_count} items..."
+    - conflicts_detected_route_to_manual_review_UI
+    - user_notified_only_if_manual_action_required
+    
+  WHEN_connectivity_intermittent:
+    - implement_exponential_backoff_for_retry_attempts
+    - avoid_thundering_herd_by_adding_random_jitter
+    - prioritize_critical_entities_over_analytics_cache
+✅ Pre-Launch Go/No-Go Checklist
+Infrastructure Readiness Gates
+yaml
+infrastructure_go_no_go:
+  REQUIRED_PASSED:
+    - [ ] staging_environment_stable_for_72_hours
+    - [ ] production_infrastructure_provisioned_and_tested
+    - [ ] backup_restore_procedure_validated_with_drill
+    - [ ] monitoring_alerts_tested_end_to_end
+    - [ ] rollback_procedure_tested_and_documented
+    - [ ] security_pen_test_critical_issues = 0
+    - [ ] rural_ux_validation_completion_rate >= 80%
+    - [ ] offline_sync_reliability >= 95% in staging
+    - [ ] canonical_semantic_registry_enforced_in_CI
+    - [ ] audit_logging_verified_for_all_critical_mutations
+    
+  REQUIRED_DOCUMENTED:
+    - [ ] incident_response_runbook
+    - [ ] disaster_recovery_procedure
+    - [ ] enterprise_client_communication_template
+    - [ ] on_call_rotation_schedule
+    - [ ] escalation_contact_list
+    
+  GO_DECISION_CRITERIA:
+    IF all_REQUIRED_PASSED = true AND all_REQUIRED_DOCUMENTED = true:
+      APPROVE_PRODUCTION_LAUNCH
+    ELSE:
+      REMAIN_IN_STAGING_AND_REMEDY_GAPS
+🔄 Post-Launch Operational Rules
+Change Management Rules
+pseudo
+RULE PRODUCTION_CHANGE_GOVERNANCE:
+  configuration_changes:
+    - require_approval_from_product_lead + engineering_lead
+    - deploy_during_low_activity_window (02:00-06:00 local)
+    - enable_feature_flag_for_10%_canary_first
+    - monitor_for_30_minutes_before_full_rollout
+    - document_change_in_audit_log_with_rollback_instructions
+    
+  code_deployments:
+    - follow_semantic_versioning
+    - include_changelog_with_farmer_impact_assessment
+    - require_successful_staging_validation_first
+    - maintain_1_version_rollback_capability
+    
+  emergency_changes:
+    - allow_bypass_of_normal_approval_for_P0_incidents
+    - require_post_incident_review_within_24_hours
+    - document_justification_and_lessons_learned
+Continuous Improvement Rules
+pseudo
+RULE POST_LAUNCH_LEARNING:
+  weekly_review:
+    - analyze_error_logs_for_recurring_patterns
+    - review_rural_ux_feedback_for_usability_gaps
+    - assess_sync_failure_root_causes
+    - update_monitoring_thresholds_based_on_real_data
+    
+  monthly_retrospective:
+    - evaluate_deployment_success_rate
+    - assess_incident_response_effectiveness
+    - review_security_audit_findings
+    - plan_infrastructure_improvements_for_next_quarter
+    
+  quarterly_architecture_review:
+    - evaluate_modular_monolith_vs_microservice_extraction
+    - assess_scaling_patterns_and_bottlenecks
+    - review_cost_optimization_opportunities
+    - plan_next_phase_intelligence_layers (NDVI/AI)
+📋 Unified Infrastructure Invariants (Enforce in CI/CD)
+yaml
+infrastructure_invariants:
+  # Deployment
+  - "modular_monolith_architecture_for_MVP_phase"
+  - "tenant_isolation_enforced_at_database_storage_and_cache_layers"
+  - "all_containers_run_as_nonroot_with_resource_limits"
+  - "health_checks_and_readiness_probes_configured_for_all_services"
+  
+  # CI/CD
+  - "semantic_registry_validation_in_pre_merge_pipeline"
+  - "rural_ux_automated_checks_in_staging_deployment"
+  - "manual_approval_required_for_production_promotion"
+  - "canary_deployment_strategy_with_auto_rollback"
+  
+  # Observability
+  - "all_critical_endpoints_have_latency_error_and_availability_alerts"
+  - "rural_connectivity_aware_alerting_to_avoid_false_positives"
+  - "business_metrics_monitored_for_farmer_engagement_and_adoption"
+  
+  # Resilience
+  - "offline_sync_queue_persists_across_app_restarts_and_device_reboots"
+  - "exponential_backoff_with_jitter_for_all_retry_logic"
+  - "DLQ_enabled_for_poison_event_isolation_and_manual_review"
+  
+  # Security
+  - "secrets_managed_via_Vault_or_cloud_secret_manager_NEVER_in_code"
+  - "all_production_access_requires_RBAC_and_audit_logging"
+  - "container_images_scanned_for_vulnerabilities_before_deployment"
+  
+  # Backup/DR
+  - "database_backups_encrypted_tested_and_retention_policy_enforced"
+  - "object_storage_lifecycle_policy_configured_for_cost_optimization"
+  - "disaster_recovery_runbook_tested_quarterly_with_documented_results"
+💡 Final Guidance: "Infrastructure is not a one-time setup—it is the living guardrails that enable safe, rural-ready operations." This runbook converts architectural vision into operational reality. Enforce the invariants in CI/CD from Day 1. Test rollback before you need it. Monitor for farmer impact, not just server metrics.
+
