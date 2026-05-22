@@ -17,6 +17,15 @@ from app.modules.master_data.models import (  # noqa: F401
     GeographyDistrict,
     GeographyBlock,
     GeographyVillage,
+    SoilType,
+    Season,
+    CropCategory,
+    Crop,
+    CropVariety,
+    CropLifecycleTemplate,
+    InputCategory,
+    Manufacturer,
+    AgriculturalInput,
 )
 
 config = context.config
