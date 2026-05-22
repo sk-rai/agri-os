@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.middleware import TenantMiddleware
 from app.modules.master_data.api import master_data_router
+from app.modules.auth import auth_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -32,6 +33,7 @@ app.add_middleware(
 
 # --- Routers ---
 app.include_router(master_data_router)
+app.include_router(auth_router)
 
 
 # --- Health Check ---
