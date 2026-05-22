@@ -78,7 +78,7 @@ class SyncConflict(Base, UUIDPrimaryKey):
         nullable=False,
     )
     resolved_at = Column(DateTime(timezone=True))
-    resolved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    resolved_by = Column(UUID(as_uuid=True))  # Actor who resolved (no FK for MVP flexibility)
 
     __table_args__ = (
         Index("idx_sync_conflicts_tenant_status", "tenant_id", "status"),

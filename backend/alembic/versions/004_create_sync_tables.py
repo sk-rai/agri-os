@@ -57,7 +57,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), server_default="PENDING_REVIEW", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("resolved_at", sa.DateTime(timezone=True)),
-        sa.Column("resolved_by", UUID(as_uuid=True), sa.ForeignKey("users.id")),
+        sa.Column("resolved_by", UUID(as_uuid=True)),
     )
     op.create_index(
         "idx_sync_conflicts_tenant_status",
