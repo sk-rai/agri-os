@@ -1,0 +1,62 @@
+# Agri-OS Platform Architecture Specification
+# Source: AI-1 consolidated architecture YAML
+# Status: REFERENCE — implementation decisions in individual ADRs take precedence
+# Note: Mobile stack is Kotlin (not Flutter) per founder decision
+
+# This file is the high-level architecture overview.
+# For binding decisions, see individual ADR files.
+# For behavioral contracts, see docs/reconciliation/contracts/
+
+platform_core:
+  type: modular_monolith
+  offline_first: true
+  multi_tenant: true
+  event_driven: true
+  geospatial_first: true
+
+stack:
+  backend: fastapi + postgresql + postgis
+  mobile: kotlin_native  # Changed from flutter per founder decision
+  web: next.js + react
+  storage: s3_compatible_object_store  # Render.com for MVP
+  queue: in_process_mediator  # Per ADR-001, Kafka deferred to Phase 2
+
+canonical_entities:
+  farmer:
+    entity_type: operator
+    has_many: [parcels, crop_cycles, advisories, notifications]
+    assistance_modes: [self_managed, dealer_assisted, field_agent_assisted, hybrid]
+    constraint: duplicate_mobile_detection_required
+  parcel:
+    entity_type: geospatial
+    geometry: polygon_4326
+    geometry_required: false  # GPS is OPTIONAL per founder decision
+    ownership: [owned, leased, shared, unknown]
+    progressive_model: [NONE, PIN_DROP, GPS_WALK, SATELLITE]
+  crop_cycle:
+    entity_type: workflow_instance
+    has_many: [stage_instances, activities, advisories]
+    status: [planned, active, partially_tracked, completed, abandoned, archived]
+  crop_activity:
+    entity_type: operational_log
+    types: [fertilizer, pesticide, irrigation, labor, machinery]
+    constraint: stage_aware
+
+mvp_scope:
+  included:
+    - farmer_onboarding
+    - parcel_mapping
+    - crop_lifecycle
+    - input_logging
+    - economics
+    - sync_engine
+    - notifications
+    - basic_analytics
+    - web_admin
+  deferred:
+    - ai_disease_diagnosis
+    - ndvi_satellite
+    - predictive_yield
+    - marketplace
+    - financial_services
+    - advanced_climate_models
