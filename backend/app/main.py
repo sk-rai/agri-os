@@ -13,6 +13,7 @@ from app.core.middleware import TenantMiddleware
 from app.modules.master_data.api import master_data_router
 from app.modules.auth import auth_router
 from app.modules.sync import sync_router, dashboard_router, conflicts_router
+from app.modules.farmer import farmer_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -38,6 +39,7 @@ app.include_router(auth_router)
 app.include_router(sync_router)
 app.include_router(dashboard_router)
 app.include_router(conflicts_router)
+app.include_router(farmer_router)
 
 
 # --- Health Check ---

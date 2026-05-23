@@ -18,6 +18,7 @@ TENANT_EXEMPT_PATHS = [
     "/openapi.json",
     "/api/v1/master-data/",  # Master data is shared (MVP)
     "/api/v1/auth/",  # Auth endpoints don't require tenant yet
+    "/api/v1/tenants",  # Tenant creation doesn't require existing tenant
 ]
 
 
