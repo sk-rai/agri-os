@@ -158,6 +158,19 @@ def create_tenant(body: TenantCreate, db: Session = Depends(get_db)):
     return tenant
 
 
+@router.get("/tenants", response_model=list[TenantResponse])
+def list_tenants(
+    db: Session = Depends(get_db),
+):
+    """List all active tenants. Used by super-admin for platform management."""
+    return (
+        db.query(Tenant)
+        .filter(Tenant.is_active == True)
+        .order_by(Tenant.name)
+        .all()
+    )
+
+
 # --- Project Endpoints ---
 
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
