@@ -1,18 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<"phone" | "otp">("phone");
-  const [mobile, setMobile] = useState("+91");
+  const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [devOtp, setDevOtp] = useState("");
+
+  useEffect(() => { setMounted(true); }, []);
 
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +63,10 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm mt-1">Admin Login</p>
         </div>
 
+        {!mounted ? (
+          <div className="text-center text-gray-400 py-8">Loading...</div>
+        ) : (
+        <>
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mb-4 text-sm">
             {error}
@@ -77,8 +84,9 @@ export default function LoginPage() {
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
                 placeholder="e.g., my-agri-corp"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900"
                 required
+                suppressHydrationWarning
               />
             </div>
             <div>
@@ -91,8 +99,9 @@ export default function LoginPage() {
                 onChange={(e) => setMobile(e.target.value)}
                 placeholder="+919876543210"
                 pattern="^\+91[6-9]\d{9}$"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900"
                 required
+                suppressHydrationWarning
               />
             </div>
             <button
@@ -117,6 +126,7 @@ export default function LoginPage() {
                 maxLength={6}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl tracking-widest"
                 required
+                suppressHydrationWarning
               />
               {devOtp && (
                 <p className="text-xs text-gray-400 mt-1 text-center">
@@ -139,6 +149,8 @@ export default function LoginPage() {
               ← Back to phone number
             </button>
           </form>
+        )}
+        </>
         )}
       </div>
     </div>
