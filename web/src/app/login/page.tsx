@@ -124,7 +124,7 @@ export default function LoginPage() {
                 onChange={(e) => setOtp(e.target.value)}
                 placeholder="6-digit code"
                 maxLength={6}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl tracking-widest"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-2xl tracking-widest text-gray-900"
                 required
                 suppressHydrationWarning
               />
