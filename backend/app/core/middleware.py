@@ -28,6 +28,10 @@ class TenantMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
+        # Skip CORS preflight requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip tenant check for exempt paths
         if any(path.startswith(exempt) for exempt in TENANT_EXEMPT_PATHS):
             request.state.tenant_id = None
