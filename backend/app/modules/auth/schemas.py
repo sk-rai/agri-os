@@ -47,3 +47,4 @@ class OTPRequestResponse(BaseModel):
     """Response after OTP request."""
     message: str = "OTP sent successfully"
     expires_in: int = 300  # 5 minutes
+    dev_otp: Optional[str] = None  # DEV ONLY: OTP for testing without SMS

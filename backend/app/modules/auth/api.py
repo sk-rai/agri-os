@@ -37,6 +37,7 @@ def request_otp(
     # DEV ONLY: include OTP in response for testing
     # TODO: Remove in production, send via Twilio instead
     response.message = f"OTP sent to {body.mobile_number[-4:]}. Dev OTP: {otp}"
+    response.dev_otp = otp
     return response
 
 
