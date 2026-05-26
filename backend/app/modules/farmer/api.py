@@ -77,9 +77,11 @@ class FarmerCreate(BaseModel):
     mobile_number: str = Field(..., pattern=r"^\+91[6-9]\d{9}$")
     village_id: uuid.UUID
     primary_crop_code: Optional[str] = None
+    crops_by_season: Optional[dict] = None  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
     display_name: Optional[str] = None
     total_land_area: Optional[float] = None
     total_land_unit: str = "BIGHA"
+    language_preference: str = "hi"  # ISO 639-1
     enrollment_gps_lat: Optional[float] = None
     enrollment_gps_lng: Optional[float] = None
 
@@ -126,12 +128,19 @@ class ParcelResponse(BaseModel):
 
 
 class GeometryUpdate(BaseModel):
-    """Progressive geometry update — add GPS data to existing parcel."""
+    """Progressive geometry update — add GPS data to existing parcel.
+
+    Accepts 3 formats:
+    - PIN_DROP: centroid_lat + centroid_lng (single point)
+    - GPS_WALK: geojson with type "Polygon"
+    - SATELLITE: geojson with type "Polygon" (from remote sensing)
+
+    GeoJSON format: {"type": "Point|Polygon", "coordinates": ...}
+    """
     geometry_source: str = Field(..., pattern=r"^(PIN_DROP|GPS_WALK|SATELLITE)$")
     centroid_lat: Optional[float] = None
     centroid_lng: Optional[float] = None
-    # For GPS_WALK: GeoJSON polygon coordinates
-    polygon_geojson: Optional[dict] = None
+    geojson: Optional[dict] = None  # Standard GeoJSON: Point, MultiPoint, or Polygon
     accuracy_meters: Optional[float] = None
 
 
@@ -259,9 +268,11 @@ def enroll_farmer(
         mobile_number=body.mobile_number,
         village_id=body.village_id,
         primary_crop_code=body.primary_crop_code,
+        crops_by_season=body.crops_by_season or {},
         display_name=body.display_name,
         total_land_area=body.total_land_area,
         total_land_unit=body.total_land_unit,
+        language_preference=body.language_preference,
         enrolled_by=uuid.UUID(x_actor_id),
         enrollment_gps_lat=body.enrollment_gps_lat,
         enrollment_gps_lng=body.enrollment_gps_lng,
