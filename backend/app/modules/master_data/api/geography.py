@@ -83,6 +83,7 @@ class VillageSearchResult(BaseModel):
     canonical_name: str
     block_name: str
     district_name: str
+    pin_codes: Optional[list[str]] = None
     similarity: float
 
     class Config:
@@ -192,6 +193,7 @@ def search_villages(
                 v.id,
                 v.lgd_code,
                 v.canonical_name,
+                v.pin_codes,
                 b.canonical_name as block_name,
                 d.canonical_name as district_name,
                 similarity(v.canonical_name, :query) as sim
@@ -213,6 +215,7 @@ def search_villages(
             canonical_name=r.canonical_name,
             block_name=r.block_name,
             district_name=r.district_name,
+            pin_codes=r.pin_codes,
             similarity=round(r.sim, 3),
         )
         for r in results
