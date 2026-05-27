@@ -75,7 +75,8 @@ class RoleAssign(BaseModel):
 class FarmerCreate(BaseModel):
     """Minimum for enrollment: mobile + village. Everything else is progressive."""
     mobile_number: str = Field(..., pattern=r"^\+91[6-9]\d{9}$")
-    village_id: uuid.UUID
+    village_id: Optional[uuid.UUID] = None  # From geography DB (preferred)
+    village_name_manual: Optional[str] = None  # If village not in DB (new settlement, etc.)
     primary_crop_code: Optional[str] = None
     crops_by_season: Optional[dict] = None  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
     display_name: Optional[str] = None
@@ -101,7 +102,8 @@ class FarmerResponse(BaseModel):
 class ParcelCreate(BaseModel):
     """Minimum: farmer_id + village + reported area. GPS is optional."""
     farmer_id: uuid.UUID
-    village_id: uuid.UUID
+    village_id: Optional[uuid.UUID] = None  # From geography DB (preferred)
+    village_name_manual: Optional[str] = None  # If village not in DB
     reported_area: float = Field(..., gt=0)
     reported_area_unit: str = "BIGHA"
     current_crop_code: Optional[str] = None
@@ -262,11 +264,15 @@ def enroll_farmer(
     x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Enroll a farmer (progressive — only mobile + village required)."""
+    # Validate: at least one of village_id or village_name_manual must be provided
+    if not body.village_id and not body.village_name_manual:
+        raise HTTPException(400, "Either village_id or village_name_manual is required")
+
     farmer = Farmer(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
         mobile_number=body.mobile_number,
-        village_id=body.village_id,
+        village_id=body.village_id,  # Can be None if manual village
         primary_crop_code=body.primary_crop_code,
         crops_by_season=body.crops_by_season or {},
         display_name=body.display_name,
@@ -312,6 +318,10 @@ def create_parcel(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Register a parcel. GPS is optional — reported area is sufficient."""
+    # Validate: at least one of village_id or village_name_manual
+    if not body.village_id and not body.village_name_manual:
+        raise HTTPException(400, "Either village_id or village_name_manual is required")
+
     # Determine geometry source from provided data
     geometry_source = "NONE"
     if body.centroid_lat and body.centroid_lng:
@@ -321,7 +331,8 @@ def create_parcel(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
         farmer_id=body.farmer_id,
-        village_id=body.village_id,
+        village_id=body.village_id,  # Can be None for manual villages
+        village_name_manual=body.village_name_manual,
         reported_area=body.reported_area,
         reported_area_unit=body.reported_area_unit,
         current_crop_code=body.current_crop_code,

@@ -132,7 +132,8 @@ class Farmer(Base, UUIDPrimaryKey, AuditMixin):
 
     # Minimum required (enrollment day)
     mobile_number = Column(String(15), nullable=False)
-    village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"), nullable=False)
+    village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"))  # Nullable for manual villages
+    village_name_manual = Column(String(200))  # If village not in LGD DB
     primary_crop_code = Column(String(30))  # From canonical crop codes
     crops_by_season = Column(JSONB, default=dict)  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
 
@@ -190,7 +191,8 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
 
     # Always required (enrollment day)
-    village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"), nullable=False)
+    village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"))  # Nullable for manual
+    village_name_manual = Column(String(200))  # If village not in LGD DB
     reported_area = Column(DECIMAL(10, 2), nullable=False)  # Farmer says "3 bigha"
     reported_area_unit = Column(String(20), nullable=False, default="BIGHA")
     # BIGHA, BISWA, HECTARE, ACRE, KATHA, GUNTHA
