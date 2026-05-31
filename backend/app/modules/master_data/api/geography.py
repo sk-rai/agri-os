@@ -3,13 +3,9 @@
 GET /api/v1/master-data/geography/states
 GET /api/v1/master-data/geography/districts?state_id=
 GET /api/v1/master-data/geography/blocks?district_id=
-GET /api/v1/master-data/geography/villages?block_id=&search=
-GET /api/v1/master-data/geography/villages/search?q=&limit=
-
-All endpoints support:
-- Pagination (offset/limit)
-- Tenant isolation (via middleware)
-- Fuzzy search on village names (pg_trgm)
+GET /api/v1/master-data/geography/villages?block_id=  (block-scoped)
+GET /api/v1/master-data/geography/villages?district_id=  (district-wide, for offline cache)
+GET /api/v1/master-data/geography/villages/search?q=&district_id=  (fuzzy, optionally scoped)
 """
 
 from typing import Optional
@@ -148,20 +144,32 @@ def list_blocks(
 
 @router.get("/villages", response_model=list[VillageResponse])
 def list_villages(
-    block_id: UUID = Query(..., description="Filter by block UUID"),
+    block_id: Optional[UUID] = Query(None, description="Filter by block UUID"),
+    district_id: Optional[UUID] = Query(None, description="Filter by district UUID (district-wide search)"),
     search: Optional[str] = Query(None, min_length=2, description="Filter by name (ILIKE)"),
     offset: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(5000, ge=1, le=50000),
     db: Session = Depends(get_db),
 ):
-    """List villages for a given block, with optional name filter."""
-    query = (
-        db.query(GeographyVillage)
-        .filter(
-            GeographyVillage.block_id == block_id,
-            GeographyVillage.is_active == True,
-        )
-    )
+    """List villages for a given block or district.
+
+    Supports two modes:
+    - block_id: villages in a specific block (original behavior)
+    - district_id: ALL villages in a district (for district-wide caching)
+
+    Limit raised to 5000 to support full district download for offline cache.
+    Azamgarh has ~14K villages — use pagination for large districts.
+    """
+    if not block_id and not district_id:
+        raise HTTPException(400, "Either block_id or district_id is required")
+
+    query = db.query(GeographyVillage).filter(GeographyVillage.is_active == True)
+
+    if block_id:
+        query = query.filter(GeographyVillage.block_id == block_id)
+    elif district_id:
+        query = query.filter(GeographyVillage.district_id == district_id)
+
     if search:
         query = query.filter(
             GeographyVillage.canonical_name.ilike(f"%{search}%")
@@ -178,35 +186,59 @@ def list_villages(
 @router.get("/villages/search", response_model=list[VillageSearchResult])
 def search_villages(
     q: str = Query(..., min_length=2, description="Fuzzy search query"),
-    limit: int = Query(10, ge=1, le=50),
+    district_id: Optional[UUID] = Query(None, description="Scope search to a district"),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
     """Fuzzy search villages by name using pg_trgm.
 
     Returns results ranked by similarity score.
-    Designed for mobile offline-cache miss scenarios where
-    the user types a partial/misspelled village name.
+    Optionally scoped to a district for faster, more relevant results.
+    Designed for mobile offline-cache miss scenarios.
     """
-    results = db.execute(
-        text("""
-            SELECT
-                v.id,
-                v.lgd_code,
-                v.canonical_name,
-                v.pin_codes,
-                b.canonical_name as block_name,
-                d.canonical_name as district_name,
-                similarity(v.canonical_name, :query) as sim
-            FROM geography_villages v
-            JOIN geography_blocks b ON b.id = v.block_id
-            JOIN geography_districts d ON d.id = v.district_id
-            WHERE v.canonical_name % :query
-            AND v.is_active = true
-            ORDER BY sim DESC
-            LIMIT :limit
-        """),
-        {"query": q, "limit": limit},
-    ).fetchall()
+    if district_id:
+        results = db.execute(
+            text("""
+                SELECT
+                    v.id,
+                    v.lgd_code,
+                    v.canonical_name,
+                    v.pin_codes,
+                    b.canonical_name as block_name,
+                    d.canonical_name as district_name,
+                    similarity(v.canonical_name, :query) as sim
+                FROM geography_villages v
+                JOIN geography_blocks b ON b.id = v.block_id
+                JOIN geography_districts d ON d.id = v.district_id
+                WHERE v.canonical_name % :query
+                AND v.district_id = :district_id
+                AND v.is_active = true
+                ORDER BY sim DESC
+                LIMIT :limit
+            """),
+            {"query": q, "limit": limit, "district_id": str(district_id)},
+        ).fetchall()
+    else:
+        results = db.execute(
+            text("""
+                SELECT
+                    v.id,
+                    v.lgd_code,
+                    v.canonical_name,
+                    v.pin_codes,
+                    b.canonical_name as block_name,
+                    d.canonical_name as district_name,
+                    similarity(v.canonical_name, :query) as sim
+                FROM geography_villages v
+                JOIN geography_blocks b ON b.id = v.block_id
+                JOIN geography_districts d ON d.id = v.district_id
+                WHERE v.canonical_name % :query
+                AND v.is_active = true
+                ORDER BY sim DESC
+                LIMIT :limit
+            """),
+            {"query": q, "limit": limit},
+        ).fetchall()
 
     return [
         VillageSearchResult(
