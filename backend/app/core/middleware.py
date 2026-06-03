@@ -19,6 +19,7 @@ TENANT_EXEMPT_PATHS = [
     "/api/v1/master-data/",  # Master data is shared (MVP)
     "/api/v1/auth/",  # Auth endpoints don't require tenant yet
     "/api/v1/tenants",  # Tenant creation doesn't require existing tenant
+    "/api/v1/soil-profiles/infer",  # Soil inference is geography-based, no tenant
 ]
 
 
