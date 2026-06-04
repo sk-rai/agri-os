@@ -80,6 +80,10 @@ class FarmerCreate(BaseModel):
     primary_crop_code: Optional[str] = None
     crops_by_season: Optional[dict] = None  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
     display_name: Optional[str] = None
+    father_name: Optional[str] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    aadhaar_number: Optional[str] = Field(None, pattern=r"^\d{12}$")
     total_land_area: Optional[float] = None
     total_land_unit: str = "BIGHA"
     language_preference: str = "hi"  # ISO 639-1
@@ -110,6 +114,9 @@ class ParcelCreate(BaseModel):
     soil_type_code: Optional[str] = None
     local_name: Optional[str] = None
     survey_number: Optional[str] = None
+    ownership_type: str = "OWNED"  # OWNED, LEASED, SHARED, FAMILY
+    annual_rent: Optional[float] = None  # Required if LEASED
+    annual_rent_currency: str = "INR"
     # Optional GPS (pin drop)
     centroid_lat: Optional[float] = None
     centroid_lng: Optional[float] = None
@@ -273,9 +280,14 @@ def enroll_farmer(
         tenant_id=x_tenant_id,
         mobile_number=body.mobile_number,
         village_id=body.village_id,  # Can be None if manual village
+        village_name_manual=body.village_name_manual,
         primary_crop_code=body.primary_crop_code,
         crops_by_season=body.crops_by_season or {},
         display_name=body.display_name,
+        father_name=body.father_name,
+        age=body.age,
+        gender=body.gender,
+        aadhaar_number=body.aadhaar_number,
         total_land_area=body.total_land_area,
         total_land_unit=body.total_land_unit,
         language_preference=body.language_preference,
@@ -339,6 +351,9 @@ def create_parcel(
         soil_type_code=body.soil_type_code,
         local_name=body.local_name,
         survey_number=body.survey_number,
+        ownership_type=body.ownership_type,
+        annual_rent=body.annual_rent,
+        annual_rent_currency=body.annual_rent_currency,
         geometry_source=geometry_source,
         centroid_lat=body.centroid_lat,
         centroid_lng=body.centroid_lng,
@@ -407,4 +422,91 @@ def update_parcel_geometry(
         "status": "geometry_updated",
         "geometry_source": parcel.geometry_source,
         "parcel_id": str(parcel_id),
+    }
+
+
+# --- Form Field Config (lightweight toggles for Android) ---
+
+@router.get("/config/form-fields")
+def get_form_field_config(
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return which optional fields are enabled for this tenant.
+
+    Not full SDUI — just toggles for optional form sections.
+    Default: all enabled for pilot tenants.
+    """
+    # For MVP: return defaults. In future: load from tenant config in DB.
+    return {
+        "farmer": {
+            "aadhaar_number": True,
+            "father_name": True,
+            "age": True,
+            "gender": True,
+            "crops_by_season": True,
+            "assistance_mode": True,
+            "language_preference": True,
+        },
+        "parcel": {
+            "survey_number": True,
+            "ownership_type": True,
+            "annual_rent_for_leased": True,
+            "soil_type_code": True,
+            "local_name": True,
+            "gps_pin_drop": True,
+            "gps_walk_boundary": False,  # Not in MVP
+        },
+        "soil_profile": {
+            "shc_card_section": True,
+            "soil_texture": True,
+            "soil_color": True,
+            "macro_nutrients": True,
+            "micro_nutrients": False,  # Advanced — off by default
+        },
+    }
+
+
+# --- Farmer /me endpoint (for pre-registered/bulk-import flow) ---
+
+@router.get("/farmers/me")
+def get_my_farmer_profile(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: str = Header(..., alias="X-Actor-ID"),
+):
+    """Get farmer profile for the logged-in user.
+
+    Returns 404 if no farmer profile exists (user hasn't been pre-registered).
+    Used for bulk-import flow where enterprise pre-registers farmers.
+    """
+    from app.modules.auth.models import User
+
+    # Find user by actor_id
+    user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    # Find farmer by mobile number + tenant
+    farmer = (
+        db.query(Farmer)
+        .filter(
+            Farmer.mobile_number == user.mobile_number,
+            Farmer.tenant_id == x_tenant_id,
+        )
+        .first()
+    )
+    if not farmer:
+        raise HTTPException(404, "No farmer profile found for this user")
+
+    return {
+        "id": str(farmer.id),
+        "mobile_number": farmer.mobile_number,
+        "display_name": farmer.display_name,
+        "village_id": str(farmer.village_id) if farmer.village_id else None,
+        "village_name_manual": farmer.village_name_manual,
+        "primary_crop_code": farmer.primary_crop_code,
+        "crops_by_season": farmer.crops_by_season,
+        "total_land_area": str(farmer.total_land_area) if farmer.total_land_area else None,
+        "total_land_unit": farmer.total_land_unit,
+        "status": farmer.status,
     }

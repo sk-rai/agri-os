@@ -148,6 +148,7 @@ class Farmer(Base, UUIDPrimaryKey, AuditMixin):
     # BIGHA, BISWA, HECTARE, ACRE, KATHA
     government_id_type = Column(String(30))  # AADHAAR, VOTER_ID, etc.
     government_id_hash = Column(String(64))  # SHA256 hash (never store plaintext)
+    aadhaar_number = Column(String(12))  # 12-digit Aadhaar (plaintext for pilot, encrypt in prod)
     bank_account_linked = Column(Boolean, default=False)
     language_preference = Column(String(10), default="hi")
 
@@ -212,9 +213,11 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
 
     # Parcel identification
     local_name = Column(String(100))  # Farmer's name for this land
-    survey_number = Column(String(50))  # Government survey/khasra number
+    survey_number = Column(String(100))  # Government survey/khasra number
     ownership_type = Column(String(30), default="OWNED")
     # OWNED, LEASED, SHARED, FAMILY
+    annual_rent = Column(DECIMAL(12, 2))  # Only for LEASED parcels
+    annual_rent_currency = Column(String(3), default="INR")
 
     # Status
     status = Column(String(20), default="ACTIVE", nullable=False)
