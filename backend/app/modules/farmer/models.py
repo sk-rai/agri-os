@@ -218,6 +218,8 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     # OWNED, LEASED, SHARED, FAMILY
     annual_rent = Column(DECIMAL(12, 2))  # Only for LEASED parcels
     annual_rent_currency = Column(String(3), default="INR")
+    irrigation_source = Column(String(50))
+    # TUBEWELL_DIESEL, TUBEWELL_ELECTRIC, CANAL, PURCHASED_WATER, RAIN_FED, POND_TANK, RIVER_STREAM
 
     # Status
     status = Column(String(20), default="ACTIVE", nullable=False)

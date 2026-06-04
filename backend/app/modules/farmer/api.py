@@ -117,6 +117,8 @@ class ParcelCreate(BaseModel):
     ownership_type: str = "OWNED"  # OWNED, LEASED, SHARED, FAMILY
     annual_rent: Optional[float] = None  # Required if LEASED
     annual_rent_currency: str = "INR"
+    irrigation_source: Optional[str] = None
+    # TUBEWELL_DIESEL, TUBEWELL_ELECTRIC, CANAL, PURCHASED_WATER, RAIN_FED, POND_TANK, RIVER_STREAM
     # Optional GPS (pin drop)
     centroid_lat: Optional[float] = None
     centroid_lng: Optional[float] = None
@@ -354,6 +356,7 @@ def create_parcel(
         ownership_type=body.ownership_type,
         annual_rent=body.annual_rent,
         annual_rent_currency=body.annual_rent_currency,
+        irrigation_source=body.irrigation_source,
         geometry_source=geometry_source,
         centroid_lat=body.centroid_lat,
         centroid_lng=body.centroid_lng,
@@ -451,6 +454,7 @@ def get_form_field_config(
             "survey_number": True,
             "ownership_type": True,
             "annual_rent_for_leased": True,
+            "irrigation_source": True,
             "soil_type_code": True,
             "local_name": True,
             "gps_pin_drop": True,
