@@ -121,6 +121,7 @@ class ParcelCreate(BaseModel):
     sharecrop_percentage: Optional[int] = Field(None, ge=1, le=100)  # For SHARECROP
     irrigation_source: Optional[str] = None
     # TUBEWELL_DIESEL, TUBEWELL_ELECTRIC, CANAL, PURCHASED_WATER, RAIN_FED, POND_TANK, RIVER_STREAM
+    crops_by_season: Optional[dict] = None  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
     # Optional GPS (pin drop)
     centroid_lat: Optional[float] = None
     centroid_lng: Optional[float] = None
@@ -361,6 +362,7 @@ def create_parcel(
         share_percentage=body.share_percentage,
         sharecrop_percentage=body.sharecrop_percentage,
         irrigation_source=body.irrigation_source,
+        crops_by_season=body.crops_by_season or {},
         geometry_source=geometry_source,
         centroid_lat=body.centroid_lat,
         centroid_lng=body.centroid_lng,

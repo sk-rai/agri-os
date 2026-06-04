@@ -222,6 +222,7 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     # TUBEWELL_DIESEL, TUBEWELL_ELECTRIC, CANAL, PURCHASED_WATER, RAIN_FED, POND_TANK, RIVER_STREAM
     share_percentage = Column(Integer)  # For SHARED ownership (1-100)
     sharecrop_percentage = Column(Integer)  # For SHARECROP (harvest share %)
+    crops_by_season = Column(JSONB, default=dict)  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
 
     # Status
     status = Column(String(20), default="ACTIVE", nullable=False)
