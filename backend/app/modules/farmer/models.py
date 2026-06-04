@@ -215,11 +215,13 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     local_name = Column(String(100))  # Farmer's name for this land
     survey_number = Column(String(100))  # Government survey/khasra number
     ownership_type = Column(String(30), default="OWNED")
-    # OWNED, LEASED, SHARED, FAMILY
+    # OWNED, LEASED, SHARED, SHARECROP, FAMILY
     annual_rent = Column(DECIMAL(12, 2))  # Only for LEASED parcels
     annual_rent_currency = Column(String(3), default="INR")
     irrigation_source = Column(String(50))
     # TUBEWELL_DIESEL, TUBEWELL_ELECTRIC, CANAL, PURCHASED_WATER, RAIN_FED, POND_TANK, RIVER_STREAM
+    share_percentage = Column(Integer)  # For SHARED ownership (1-100)
+    sharecrop_percentage = Column(Integer)  # For SHARECROP (harvest share %)
 
     # Status
     status = Column(String(20), default="ACTIVE", nullable=False)

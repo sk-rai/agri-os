@@ -114,9 +114,11 @@ class ParcelCreate(BaseModel):
     soil_type_code: Optional[str] = None
     local_name: Optional[str] = None
     survey_number: Optional[str] = None
-    ownership_type: str = "OWNED"  # OWNED, LEASED, SHARED, FAMILY
+    ownership_type: str = "OWNED"  # OWNED, LEASED, SHARED, SHARECROP, FAMILY
     annual_rent: Optional[float] = None  # Required if LEASED
     annual_rent_currency: str = "INR"
+    share_percentage: Optional[int] = Field(None, ge=1, le=100)  # For SHARED
+    sharecrop_percentage: Optional[int] = Field(None, ge=1, le=100)  # For SHARECROP
     irrigation_source: Optional[str] = None
     # TUBEWELL_DIESEL, TUBEWELL_ELECTRIC, CANAL, PURCHASED_WATER, RAIN_FED, POND_TANK, RIVER_STREAM
     # Optional GPS (pin drop)
@@ -356,6 +358,8 @@ def create_parcel(
         ownership_type=body.ownership_type,
         annual_rent=body.annual_rent,
         annual_rent_currency=body.annual_rent_currency,
+        share_percentage=body.share_percentage,
+        sharecrop_percentage=body.sharecrop_percentage,
         irrigation_source=body.irrigation_source,
         geometry_source=geometry_source,
         centroid_lat=body.centroid_lat,
