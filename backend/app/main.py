@@ -16,6 +16,7 @@ from app.modules.sync import sync_router, dashboard_router, conflicts_router
 from app.modules.farmer import farmer_router
 from app.modules.farmer.soil_profile import router as soil_profile_router
 from app.modules.workflow import workflow_router
+from app.modules.workflow.forms import router as forms_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -50,6 +51,7 @@ app.include_router(conflicts_router)
 app.include_router(farmer_router)
 app.include_router(soil_profile_router)
 app.include_router(workflow_router)
+app.include_router(forms_router)
 
 
 # --- Health Check ---

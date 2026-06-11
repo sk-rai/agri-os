@@ -20,6 +20,7 @@ TENANT_EXEMPT_PATHS = [
     "/api/v1/auth/",  # Auth endpoints don't require tenant yet
     "/api/v1/tenants",  # Tenant creation doesn't require existing tenant
     "/api/v1/soil-profiles/infer",  # Soil inference is geography-based, no tenant
+    "/api/v1/forms",  # Form schemas are cacheable, no tenant context needed
 ]
 
 
