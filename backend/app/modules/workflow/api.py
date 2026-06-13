@@ -68,6 +68,9 @@ class CropCycleResponse(BaseModel):
     status: str
     crop_code: str
     season_code: str
+    planned_sowing_date: Optional[date] = None
+    expected_harvest_date: Optional[date] = None  # Calculated from template
+    inferred_current_stage: Optional[str] = None  # If sowing_date is in past
     stages: list[dict]
     events_published: list[str]
 
@@ -199,16 +202,51 @@ def create_crop_cycle(
 
     db.commit()
 
+    # Calculate expected dates from template
+    sowing = body.planned_sowing_date or date.today()
+    cumulative_days = 0
+    stage_schedule = []
+    for s in stage_instances:
+        expected_start = sowing + timedelta(days=cumulative_days)
+        duration = s.expected_duration_days or 0
+        expected_end = expected_start + timedelta(days=duration)
+        stage_schedule.append({
+            "id": str(s.id),
+            "code": s.stage_code,
+            "name": s.stage_name,
+            "order": s.stage_order,
+            "status": s.status,
+            "day_offset": cumulative_days,
+            "expected_start_date": expected_start.isoformat(),
+            "expected_end_date": expected_end.isoformat(),
+            "duration_days": duration,
+        })
+        cumulative_days += duration
+
+    expected_harvest = sowing + timedelta(days=cumulative_days)
+
+    # Infer current stage if sowing date is in the past
+    inferred_stage = None
+    if sowing <= date.today():
+        days_elapsed = (date.today() - sowing).days
+        running_days = 0
+        for s_info in stage_schedule:
+            running_days += s_info["duration_days"]
+            if days_elapsed <= running_days:
+                inferred_stage = s_info["code"]
+                break
+        if not inferred_stage and stage_schedule:
+            inferred_stage = stage_schedule[-1]["code"]  # Past all stages
+
     return CropCycleResponse(
         id=cycle_id,
-        status="PLANNED",
+        status="PLANNED" if sowing > date.today() else "ACTIVE",
         crop_code=body.crop_code,
         season_code=body.season_code,
-        stages=[
-            {"id": str(s.id), "code": s.stage_code, "name": s.stage_name,
-             "order": s.stage_order, "status": s.status}
-            for s in stage_instances
-        ],
+        planned_sowing_date=sowing,
+        expected_harvest_date=expected_harvest,
+        inferred_current_stage=inferred_stage,
+        stages=stage_schedule,
         events_published=["crop_cycle_created.v1"],
     )
 
@@ -419,4 +457,65 @@ def log_activity(
         "stage_code": active_stage.stage_code if active_stage else None,
         "cycle_total_input_cost": str(cycle.total_input_cost or 0),
         "events_published": ["crop_activity_logged.v1"],
+    }
+
+
+# --- Crop Template Endpoint ---
+
+@router.get("/templates/{crop_code}")
+def get_crop_template(
+    crop_code: str,
+    season: Optional[str] = Query(None, description="Filter by season (KHARIF/RABI/ZAID)"),
+    db: Session = Depends(get_db),
+):
+    """Get crop lifecycle template with stage definitions and durations.
+
+    Returns stage codes with day_offset for timeline calculation.
+    Android uses this to show stage timeline and calculate expected dates.
+    """
+    from app.modules.master_data.models import Crop
+
+    # Find crop by code
+    crop = db.query(Crop).filter(Crop.code == crop_code.upper()).first()
+    if not crop:
+        raise HTTPException(404, f"Crop '{crop_code}' not found")
+
+    # Find template
+    query = db.query(CropLifecycleTemplate).filter(
+        CropLifecycleTemplate.crop_id == crop.id,
+        CropLifecycleTemplate.is_active == True,
+    )
+    if season:
+        query = query.filter(CropLifecycleTemplate.season_code == season.upper())
+
+    template = query.filter(CropLifecycleTemplate.is_default == True).first()
+    if not template:
+        template = query.first()
+    if not template:
+        raise HTTPException(404, f"No lifecycle template found for {crop_code}")
+
+    # Build stage schedule with day_offsets
+    stages = template.stages or []
+    cumulative = 0
+    stage_schedule = []
+    for s in stages:
+        duration = s.get("duration_days", 0)
+        stage_schedule.append({
+            "code": s["code"],
+            "name": s["name"],
+            "order": s["order"],
+            "day_offset": cumulative,
+            "duration_days": duration,
+            "bbch_range_start": s.get("bbch_range_start"),
+            "bbch_range_end": s.get("bbch_range_end"),
+        })
+        cumulative += duration
+
+    return {
+        "template_id": str(template.id),
+        "crop_code": crop_code.upper(),
+        "crop_name": crop.canonical_name,
+        "season_code": template.season_code,
+        "total_duration_days": cumulative,
+        "stages": stage_schedule,
     }

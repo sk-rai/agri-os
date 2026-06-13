@@ -56,7 +56,7 @@ class FormSchema(BaseModel):
 
 CROP_CYCLE_CREATE_FORM = FormSchema(
     form_id="crop_cycle_create",
-    version="1.1.0",
+    version="1.2.0",
     title={"en": "Start Crop Cycle", "hi": "फसल चक्र शुरू करें"},
     description={"en": "Select your parcel, season, and crop to begin tracking", "hi": "ट्रैकिंग शुरू करने के लिए अपना खेत, मौसम और फसल चुनें"},
     submit_endpoint="/api/v1/crop-cycles",
@@ -107,13 +107,6 @@ CROP_CYCLE_CREATE_FORM = FormSchema(
             required=True,
             default_value="today",
             hint={"en": "When did you sow or plan to sow?", "hi": "कब बुवाई की या करनी है?"},
-        ),
-        FormField(
-            id="expected_harvest_date",
-            type="date",
-            label={"en": "Expected Harvest Date", "hi": "कटाई की अनुमानित तारीख"},
-            required=False,
-            hint={"en": "Approximate harvest month", "hi": "अनुमानित कटाई का महीना"},
         ),
         FormField(
             id="seed_source",
