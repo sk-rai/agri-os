@@ -502,14 +502,25 @@ def get_crop_template(
         duration = s.get("duration_days", 0)
         stage_schedule.append({
             "code": s["code"],
-            "name": s["name"],
+            "name": s.get("name") if isinstance(s.get("name"), dict) else {"en": s.get("name", ""), "hi": s.get("name", "")},
             "order": s["order"],
             "day_offset": cumulative,
             "duration_days": duration,
-            "bbch_range_start": s.get("bbch_range_start"),
-            "bbch_range_end": s.get("bbch_range_end"),
+            "stage_type": s.get("stage_type"),
+            "phase": s.get("phase"),
+            "bbch_range": s.get("bbch_range"),
+            "propagation_step": s.get("propagation_step", False),
+            "description": s.get("description"),
+            "farmer_actions": s.get("farmer_actions", []),
+            "typical_inputs": s.get("typical_inputs", []),
+            "key_observations": s.get("key_observations", []),
+            "icon": s.get("icon"),
+            "color": s.get("color"),
         })
         cumulative += duration
+
+    # Template-level metadata (stored in aliases field)
+    metadata = template.aliases if isinstance(template.aliases, dict) else {}
 
     return {
         "template_id": str(template.id),
@@ -517,5 +528,10 @@ def get_crop_template(
         "crop_name": crop.canonical_name,
         "season_code": template.season_code,
         "total_duration_days": cumulative,
+        "crop_group": metadata.get("crop_group"),
+        "propagation_method": metadata.get("propagation_method"),
+        "has_nursery": metadata.get("has_nursery", False),
+        "date_label": metadata.get("date_label", {"en": "Sowing Date", "hi": "बुवाई की तारीख"}),
+        "staging_system": metadata.get("staging_system"),
         "stages": stage_schedule,
     }
