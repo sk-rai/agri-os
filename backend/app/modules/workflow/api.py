@@ -28,14 +28,20 @@ router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
 # --- Schemas ---
 
 class CropCycleCreate(BaseModel):
-    farmer_id: uuid.UUID
     parcel_id: uuid.UUID
+    farmer_id: Optional[uuid.UUID] = None  # Auto-derived from X-Actor-ID if not provided
     project_id: Optional[uuid.UUID] = None
     crop_code: str
     variety_code: Optional[str] = None
     season_code: str = Field(..., pattern=r"^(KHARIF|RABI|ZAID)$")
-    lifecycle_template_id: uuid.UUID
+    lifecycle_template_id: Optional[uuid.UUID] = None  # Auto-looked up from crop_code + season_code
     planned_sowing_date: Optional[date] = None
+    # Seed info (from form)
+    seed_source: Optional[str] = None
+    purchase_source: Optional[str] = None
+    seed_brand: Optional[str] = None
+    seed_quantity_kg: Optional[float] = None
+    seed_price: Optional[float] = None
 
 
 class StageTransition(BaseModel):
@@ -127,13 +133,56 @@ def create_crop_cycle(
     """Create a crop cycle and auto-instantiate stages from lifecycle template.
 
     Loads stages from crop_lifecycle_templates (never hardcoded).
-    Sets initial status to PLANNED.
+    Auto-derives farmer_id from X-Actor-ID and lifecycle_template_id from crop_code+season.
     """
+    # Auto-derive farmer_id from actor (parcel owner or self-enrollment)
+    farmer_id = body.farmer_id
+    if not farmer_id:
+        from app.modules.farmer.models import Farmer, Parcel
+        # Try to get farmer from parcel
+        parcel = db.query(Parcel).filter(Parcel.id == body.parcel_id).first()
+        if parcel:
+            farmer_id = parcel.farmer_id
+        else:
+            # Fallback: find farmer by actor's mobile
+            from app.modules.auth.models import User
+            user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
+            if user:
+                farmer = db.query(Farmer).filter(
+                    Farmer.mobile_number == user.mobile_number,
+                    Farmer.tenant_id == x_tenant_id,
+                ).first()
+                if farmer:
+                    farmer_id = farmer.id
+    if not farmer_id:
+        raise HTTPException(400, "Cannot determine farmer. Provide farmer_id or ensure parcel exists.")
+
+    # Auto-lookup lifecycle template from crop_code + season_code
+    template_id = body.lifecycle_template_id
+    if not template_id:
+        from app.modules.master_data.models import Crop
+        crop = db.query(Crop).filter(Crop.code == body.crop_code.upper()).first()
+        if crop:
+            template = (
+                db.query(CropLifecycleTemplate)
+                .filter(
+                    CropLifecycleTemplate.crop_id == crop.id,
+                    CropLifecycleTemplate.season_code == body.season_code.upper(),
+                    CropLifecycleTemplate.is_active == True,
+                )
+                .first()
+            )
+            if template:
+                template_id = template.id
+
     # Validate lifecycle template exists
+    if not template_id:
+        raise HTTPException(404, f"No lifecycle template found for {body.crop_code}/{body.season_code}")
+
     template = (
         db.query(CropLifecycleTemplate)
         .filter(
-            CropLifecycleTemplate.id == body.lifecycle_template_id,
+            CropLifecycleTemplate.id == template_id,
             CropLifecycleTemplate.is_active == True,
         )
         .first()
@@ -146,13 +195,13 @@ def create_crop_cycle(
     cycle = CropCycle(
         id=cycle_id,
         tenant_id=x_tenant_id,
-        farmer_id=body.farmer_id,
+        farmer_id=farmer_id,
         parcel_id=body.parcel_id,
         project_id=body.project_id,
         crop_code=body.crop_code,
         variety_code=body.variety_code,
         season_code=body.season_code,
-        lifecycle_template_id=body.lifecycle_template_id,
+        lifecycle_template_id=template_id,
         planned_sowing_date=body.planned_sowing_date,
         status="PLANNED",
         created_at=datetime.now(timezone.utc),
@@ -194,7 +243,7 @@ def create_crop_cycle(
         payload={
             "crop_code": body.crop_code,
             "season_code": body.season_code,
-            "template_id": str(body.lifecycle_template_id),
+            "template_id": str(template_id),
             "stages_count": len(stages_data),
         },
         metadata={"device_id": "api"},
