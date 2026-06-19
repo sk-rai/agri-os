@@ -161,7 +161,14 @@ def create_crop_cycle(
     template_id = body.lifecycle_template_id
     if not template_id:
         from app.modules.master_data.models import Crop
-        crop = db.query(Crop).filter(Crop.code == body.crop_code.upper()).first()
+        # crop_code might be a UUID (from Android dropdown) or a code string
+        crop = None
+        try:
+            crop_uuid = uuid.UUID(body.crop_code)
+            crop = db.query(Crop).filter(Crop.id == crop_uuid).first()
+        except (ValueError, AttributeError):
+            crop = db.query(Crop).filter(Crop.code == body.crop_code.upper()).first()
+
         if crop:
             template = (
                 db.query(CropLifecycleTemplate)
