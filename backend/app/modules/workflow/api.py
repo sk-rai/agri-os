@@ -242,16 +242,20 @@ def create_crop_cycle(
     stages_data = template.stages or []
     stage_instances = []
     for stage_def in stages_data:
+        # stage_name can be a dict (i18n) or a plain string (legacy)
+        raw_name = stage_def.get("name", "")
+        stage_name = raw_name.get("en", str(raw_name)) if isinstance(raw_name, dict) else str(raw_name)
+
         instance = CropStageInstance(
             id=uuid.uuid4(),
             crop_cycle_id=cycle_id,
             tenant_id=x_tenant_id,
             stage_code=stage_def["code"],
-            stage_name=stage_def["name"],
+            stage_name=stage_name,
             stage_order=stage_def["order"],
             expected_duration_days=stage_def.get("duration_days"),
-            bbch_range_start=stage_def.get("bbch_range_start"),
-            bbch_range_end=stage_def.get("bbch_range_end"),
+            bbch_range_start=stage_def.get("bbch_range", [None, None])[0] if isinstance(stage_def.get("bbch_range"), list) else stage_def.get("bbch_range_start"),
+            bbch_range_end=stage_def.get("bbch_range", [None, None])[1] if isinstance(stage_def.get("bbch_range"), list) else stage_def.get("bbch_range_end"),
             status="PENDING",
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
