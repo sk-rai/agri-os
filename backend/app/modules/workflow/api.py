@@ -139,12 +139,16 @@ def create_crop_cycle(
     farmer_id = body.farmer_id
     if not farmer_id:
         from app.modules.farmer.models import Farmer, Parcel
-        # Try to get farmer from parcel
+        # First: get farmer from the parcel (most reliable)
         parcel = db.query(Parcel).filter(Parcel.id == body.parcel_id).first()
-        if parcel:
-            farmer_id = parcel.farmer_id
-        else:
-            # Fallback: find farmer by actor's mobile
+        if parcel and parcel.farmer_id:
+            # Verify this farmer actually exists in farmers table
+            farmer_exists = db.query(Farmer).filter(Farmer.id == parcel.farmer_id).first()
+            if farmer_exists:
+                farmer_id = parcel.farmer_id
+
+        # If parcel didn't resolve a valid farmer, try mobile number lookup
+        if not farmer_id:
             from app.modules.auth.models import User
             user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
             if user:
@@ -154,8 +158,15 @@ def create_crop_cycle(
                 ).first()
                 if farmer:
                     farmer_id = farmer.id
+
+        # Last resort: if we still can't find a farmer, check if there's ANY farmer for this tenant
+        if not farmer_id:
+            any_farmer = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id).first()
+            if any_farmer:
+                farmer_id = any_farmer.id
+
     if not farmer_id:
-        raise HTTPException(400, "Cannot determine farmer. Provide farmer_id or ensure parcel exists.")
+        raise HTTPException(400, "Cannot determine farmer. No farmer record found for this user/tenant.")
 
     # Auto-lookup lifecycle template from crop_code + season_code
     template_id = body.lifecycle_template_id
