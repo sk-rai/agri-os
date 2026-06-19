@@ -41,6 +41,7 @@ class TokenResponse(BaseModel):
     device_key: Optional[str] = None  # Only returned on first OTP verify
     user_id: UUID
     role: str
+    tenant_id: Optional[str] = None  # Tenant the user belongs to
 
 
 class OTPRequestResponse(BaseModel):

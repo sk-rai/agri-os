@@ -72,6 +72,7 @@ def verify_otp(
         device_key=device_key,
         user_id=user.id,
         role=user.role,
+        tenant_id=user.tenant_id or "default",
     )
 
 
@@ -99,4 +100,5 @@ def device_login(
         expires_in=expires_in,
         user_id=user.id,
         role=user.role,
+        tenant_id=user.tenant_id or "default",
     )
