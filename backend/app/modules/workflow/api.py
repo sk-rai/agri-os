@@ -197,6 +197,17 @@ def create_crop_cycle(
     if not template:
         raise HTTPException(404, "Lifecycle template not found")
 
+    # Resolve crop_code: if UUID was sent, convert to short code for storage
+    resolved_crop_code = body.crop_code
+    try:
+        crop_uuid = uuid.UUID(body.crop_code)
+        from app.modules.master_data.models import Crop as CropModel
+        crop_by_id = db.query(CropModel).filter(CropModel.id == crop_uuid).first()
+        if crop_by_id:
+            resolved_crop_code = crop_by_id.code
+    except (ValueError, AttributeError):
+        resolved_crop_code = body.crop_code.upper()
+
     # Create crop cycle
     cycle_id = uuid.uuid4()
     cycle = CropCycle(
@@ -205,7 +216,7 @@ def create_crop_cycle(
         farmer_id=farmer_id,
         parcel_id=body.parcel_id,
         project_id=body.project_id,
-        crop_code=body.crop_code,
+        crop_code=resolved_crop_code,
         variety_code=body.variety_code,
         season_code=body.season_code,
         lifecycle_template_id=template_id,
@@ -248,7 +259,7 @@ def create_crop_cycle(
         entity_id=str(cycle_id),
         action="CROP_CYCLE_CREATED",
         payload={
-            "crop_code": body.crop_code,
+            "crop_code": resolved_crop_code,
             "season_code": body.season_code,
             "template_id": str(template_id),
             "stages_count": len(stages_data),
@@ -297,7 +308,7 @@ def create_crop_cycle(
     return CropCycleResponse(
         id=cycle_id,
         status="PLANNED" if sowing > date.today() else "ACTIVE",
-        crop_code=body.crop_code,
+        crop_code=resolved_crop_code,
         season_code=body.season_code,
         planned_sowing_date=sowing,
         expected_harvest_date=expected_harvest,
