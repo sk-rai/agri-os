@@ -333,6 +333,78 @@ def create_crop_cycle(
     )
 
 
+@router.get("/{cycle_id}")
+def get_crop_cycle(
+    cycle_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Get a crop cycle with its stages and current status."""
+    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+
+    # Get stage instances
+    stages = (
+        db.query(CropStageInstance)
+        .filter(CropStageInstance.crop_cycle_id == cycle_id)
+        .order_by(CropStageInstance.stage_order)
+        .all()
+    )
+
+    # Calculate expected dates
+    sowing = cycle.planned_sowing_date or cycle.actual_sowing_date or date.today()
+    cumulative_days = 0
+    stage_schedule = []
+    inferred_stage = None
+
+    for s in stages:
+        expected_start = sowing + timedelta(days=cumulative_days)
+        duration = s.expected_duration_days or 0
+        expected_end = expected_start + timedelta(days=duration)
+        stage_schedule.append({
+            "id": str(s.id),
+            "code": s.stage_code,
+            "name": s.stage_name,
+            "order": s.stage_order,
+            "status": s.status,
+            "day_offset": cumulative_days,
+            "expected_start_date": expected_start.isoformat(),
+            "expected_end_date": expected_end.isoformat(),
+            "duration_days": duration,
+            "actual_start_date": s.actual_start_date.isoformat() if s.actual_start_date else None,
+            "actual_end_date": s.actual_end_date.isoformat() if s.actual_end_date else None,
+        })
+        cumulative_days += duration
+
+    # Infer current stage
+    if sowing <= date.today():
+        days_elapsed = (date.today() - sowing).days
+        running_days = 0
+        for s_info in stage_schedule:
+            running_days += s_info["duration_days"]
+            if days_elapsed <= running_days:
+                inferred_stage = s_info["code"]
+                break
+        if not inferred_stage and stage_schedule:
+            inferred_stage = stage_schedule[-1]["code"]
+
+    expected_harvest = sowing + timedelta(days=cumulative_days)
+
+    return {
+        "id": str(cycle.id),
+        "status": cycle.status,
+        "crop_code": cycle.crop_code,
+        "season_code": cycle.season_code,
+        "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+        "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
+        "expected_harvest_date": expected_harvest.isoformat(),
+        "inferred_current_stage": inferred_stage,
+        "total_input_cost": str(cycle.total_input_cost) if cycle.total_input_cost else "0",
+        "stages": stage_schedule,
+    }
+
+
 @router.patch("/{cycle_id}/stages/{stage_id}")
 def advance_stage(
     cycle_id: uuid.UUID,
