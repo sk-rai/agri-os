@@ -614,6 +614,57 @@ def log_activity(
     }
 
 
+@router.get("/{cycle_id}/activities")
+def list_activities(
+    cycle_id: uuid.UUID,
+    stage_code: Optional[str] = Query(None, description="Filter by stage code"),
+    activity_type: Optional[str] = Query(None, description="Filter by activity type"),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """List activities for a crop cycle, optionally filtered by stage or type."""
+    query = db.query(CropActivity).filter(
+        CropActivity.crop_cycle_id == cycle_id,
+        CropActivity.tenant_id == x_tenant_id,
+    )
+
+    if stage_code:
+        # Filter by stage code via stage instance join
+        stage_ids = (
+            db.query(CropStageInstance.id)
+            .filter(
+                CropStageInstance.crop_cycle_id == cycle_id,
+                CropStageInstance.stage_code == stage_code.upper(),
+            )
+            .all()
+        )
+        stage_id_list = [s[0] for s in stage_ids]
+        if stage_id_list:
+            query = query.filter(CropActivity.stage_instance_id.in_(stage_id_list))
+        else:
+            return []
+
+    if activity_type:
+        query = query.filter(CropActivity.activity_type == activity_type.upper())
+
+    activities = query.order_by(CropActivity.activity_date.desc()).all()
+
+    return [
+        {
+            "id": str(a.id),
+            "activity_type": a.activity_type,
+            "input_name": a.input_name,
+            "quantity": str(a.quantity) if a.quantity else None,
+            "quantity_unit": a.quantity_unit,
+            "cost_amount": str(a.cost_amount) if a.cost_amount else None,
+            "activity_date": a.activity_date.isoformat() if a.activity_date else None,
+            "stage_code": None,  # Will resolve below
+            "notes": a.notes,
+        }
+        for a in activities
+    ]
+
+
 # --- Crop Template Endpoint ---
 
 @router.get("/templates/{crop_code}")
