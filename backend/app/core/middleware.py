@@ -21,6 +21,7 @@ TENANT_EXEMPT_PATHS = [
     "/api/v1/tenants",  # Tenant creation doesn't require existing tenant
     "/api/v1/soil-profiles/infer",  # Soil inference is geography-based, no tenant
     "/api/v1/forms",  # Form schemas are cacheable, no tenant context needed
+    "/api/v1/crop-cycles/templates",  # Crop templates are reference data
 ]
 
 

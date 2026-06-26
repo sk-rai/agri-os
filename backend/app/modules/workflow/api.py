@@ -719,6 +719,7 @@ def get_crop_template(
             "farmer_actions": s.get("farmer_actions", []),
             "typical_inputs": s.get("typical_inputs", []),
             "key_observations": s.get("key_observations", []),
+            "recommended_activities": s.get("recommended_activities", []),
             "icon": s.get("icon"),
             "color": s.get("color"),
         })
