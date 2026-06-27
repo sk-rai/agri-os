@@ -336,6 +336,144 @@ def create_crop_cycle(
     )
 
 
+@router.get("/{cycle_id}/recommended-activities")
+def get_recommended_activities(
+    cycle_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return cycle-aware recommended activities with calculated dates.
+
+    Merges the crop cycle stage schedule, lifecycle template recommendations,
+    and logged activities for this cycle. Templates remain reference data; this
+    endpoint is the Android-facing source for dated recommendations.
+    """
+    cycle = (
+        db.query(CropCycle)
+        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
+        .first()
+    )
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+
+    template = (
+        db.query(CropLifecycleTemplate)
+        .filter(
+            CropLifecycleTemplate.id == cycle.lifecycle_template_id,
+            CropLifecycleTemplate.is_active == True,
+        )
+        .first()
+    )
+    if not template:
+        raise HTTPException(404, "Lifecycle template not found")
+
+    stage_instances = (
+        db.query(CropStageInstance)
+        .filter(
+            CropStageInstance.crop_cycle_id == cycle_id,
+            CropStageInstance.tenant_id == x_tenant_id,
+        )
+        .order_by(CropStageInstance.stage_order)
+        .all()
+    )
+
+    sowing = cycle.planned_sowing_date or cycle.actual_sowing_date or date.today()
+    cumulative_days = 0
+    stage_schedule = {}
+    for stage in stage_instances:
+        expected_start = sowing + timedelta(days=cumulative_days)
+        duration = stage.expected_duration_days or 0
+        expected_end = expected_start + timedelta(days=duration)
+        anchor_date = stage.actual_start_date or expected_start
+        stage_schedule[stage.stage_code] = {
+            "id": str(stage.id),
+            "code": stage.stage_code,
+            "name": stage.stage_name,
+            "order": stage.stage_order,
+            "status": stage.status,
+            "day_offset": cumulative_days,
+            "duration_days": duration,
+            "expected_start_date": expected_start,
+            "expected_end_date": expected_end,
+            "actual_start_date": stage.actual_start_date,
+            "actual_end_date": stage.actual_end_date,
+            "anchor_date": anchor_date,
+        }
+        cumulative_days += duration
+
+    logged_activities = (
+        db.query(CropActivity)
+        .filter(
+            CropActivity.crop_cycle_id == cycle_id,
+            CropActivity.tenant_id == x_tenant_id,
+        )
+        .all()
+    )
+    stage_code_by_id = {stage.id: stage.stage_code for stage in stage_instances}
+    logged_by_key = {}
+    for activity in logged_activities:
+        stage_code = stage_code_by_id.get(activity.stage_instance_id)
+        key = (
+            stage_code,
+            (activity.activity_type or "").upper(),
+            (activity.input_name or "").strip().lower(),
+        )
+        logged_by_key.setdefault(key, []).append(activity)
+
+    recommendations = []
+    template_stages = template.stages or []
+    for stage_def in template_stages:
+        stage_code = stage_def.get("code")
+        if not stage_code or stage_code not in stage_schedule:
+            continue
+
+        stage_info = stage_schedule[stage_code]
+        raw_stage_name = stage_def.get("name")
+        if isinstance(raw_stage_name, dict):
+            stage_name = raw_stage_name.get("en") or next(iter(raw_stage_name.values()), stage_info["name"])
+        else:
+            stage_name = str(raw_stage_name or stage_info["name"])
+
+        for rec in stage_def.get("recommended_activities", []) or []:
+            day_offset = int(rec.get("day_offset") or 0)
+            recommended_date = stage_info["anchor_date"] + timedelta(days=day_offset)
+            key = (
+                stage_code,
+                (rec.get("activity_type") or "").upper(),
+                (rec.get("input_name") or "").strip().lower(),
+            )
+            matched_logs = logged_by_key.get(key, [])
+
+            recommendations.append({
+                "stage_code": stage_code,
+                "stage_name": stage_name,
+                "stage_expected_start_date": stage_info["expected_start_date"].isoformat(),
+                "stage_actual_start_date": stage_info["actual_start_date"].isoformat() if stage_info["actual_start_date"] else None,
+                "anchor_date": stage_info["anchor_date"].isoformat(),
+                "activity_type": rec.get("activity_type"),
+                "input_name": rec.get("input_name"),
+                "day_offset": day_offset,
+                "recommended_date": recommended_date.isoformat(),
+                "typical_quantity": rec.get("typical_quantity"),
+                "typical_cost_per_acre": rec.get("typical_cost_per_acre"),
+                "is_critical": rec.get("is_critical", False),
+                "description": rec.get("description"),
+                "logged": bool(matched_logs),
+                "logged_activity_ids": [str(a.id) for a in matched_logs],
+                "logged_activity_date": matched_logs[0].activity_date.isoformat() if matched_logs and matched_logs[0].activity_date else None,
+                "logged_cost_amount": str(matched_logs[0].cost_amount) if matched_logs and matched_logs[0].cost_amount is not None else None,
+            })
+
+    return {
+        "cycle_id": str(cycle.id),
+        "crop_code": cycle.crop_code,
+        "season_code": cycle.season_code,
+        "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+        "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
+        "recommendations": recommendations,
+    }
+
+
 @router.get("/{cycle_id}")
 def get_crop_cycle(
     cycle_id: uuid.UUID,
