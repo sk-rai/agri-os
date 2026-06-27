@@ -55,7 +55,7 @@ class StageTransition(BaseModel):
 
 
 class ActivityCreate(BaseModel):
-    activity_type: str = Field(..., pattern=r"^(FERTILIZER|PESTICIDE|IRRIGATION|LABOR|MACHINERY|HARVEST|OTHER)$")
+    activity_type: str = Field(..., pattern=r"^(FERTILIZER|PESTICIDE|IRRIGATION|LABOR|MACHINERY|HARVEST|SEED|OTHER)$")
     input_code: Optional[str] = None
     input_name: Optional[str] = None
     quantity: Optional[float] = None
@@ -67,6 +67,9 @@ class ActivityCreate(BaseModel):
     gps_lat: Optional[float] = None
     gps_lng: Optional[float] = None
     notes: Optional[str] = None
+    # Irrigation-specific
+    irrigation_source: Optional[str] = None
+    duration_hours: Optional[float] = None
 
 
 class CropCycleResponse(BaseModel):
@@ -649,6 +652,14 @@ def list_activities(
 
     activities = query.order_by(CropActivity.activity_date.desc()).all()
 
+    # Build stage code lookup
+    stage_map = {}
+    stage_instances = db.query(CropStageInstance).filter(
+        CropStageInstance.crop_cycle_id == cycle_id
+    ).all()
+    for s in stage_instances:
+        stage_map[s.id] = s.stage_code
+
     return [
         {
             "id": str(a.id),
@@ -658,7 +669,7 @@ def list_activities(
             "quantity_unit": a.quantity_unit,
             "cost_amount": str(a.cost_amount) if a.cost_amount else None,
             "activity_date": a.activity_date.isoformat() if a.activity_date else None,
-            "stage_code": None,  # Will resolve below
+            "stage_code": stage_map.get(a.stage_instance_id),
             "notes": a.notes,
         }
         for a in activities

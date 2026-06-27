@@ -168,7 +168,7 @@ CROP_CYCLE_CREATE_FORM = FormSchema(
 
 ACTIVITY_LOG_FORM = FormSchema(
     form_id="activity_log",
-    version="1.1.0",
+    version="1.2.0",
     title={"en": "Log Activity", "hi": "गतिविधि दर्ज करें"},
     description={"en": "Record input usage or farm operation", "hi": "खाद, दवाई या खेती का काम दर्ज करें"},
     submit_endpoint="/api/v1/crop-cycles/{crop_cycle_id}/activities",
@@ -221,6 +221,30 @@ ACTIVITY_LOG_FORM = FormSchema(
                 FormFieldOption(value="DAYS", label={"en": "Days", "hi": "दिन"}),
                 FormFieldOption(value="SESSION", label={"en": "Session", "hi": "बार"}),
             ],
+        ),
+        FormField(
+            id="irrigation_source",
+            type="single_select",
+            label={"en": "Irrigation Source", "hi": "सिंचाई का स्रोत"},
+            required=False,
+            depends_on="activity_type",
+            options=[
+                FormFieldOption(value="TUBEWELL_DIESEL", label={"en": "Tubewell (Diesel)", "hi": "ट्यूबवेल (डीज़ल)"}),
+                FormFieldOption(value="TUBEWELL_ELECTRIC", label={"en": "Tubewell (Electric)", "hi": "ट्यूबवेल (बिजली)"}),
+                FormFieldOption(value="CANAL", label={"en": "Canal", "hi": "नहर"}),
+                FormFieldOption(value="PURCHASED_WATER", label={"en": "Purchased Water", "hi": "खरीदा पानी"}),
+                FormFieldOption(value="RAIN_FED", label={"en": "Rain-fed", "hi": "बारिश से"}),
+            ],
+            hint={"en": "Pre-filled from parcel data if available", "hi": "पार्सल डेटा से स्वतः भरा"},
+        ),
+        FormField(
+            id="duration_hours",
+            type="number",
+            label={"en": "Duration (hours)", "hi": "अवधि (घंटे)"},
+            required=False,
+            depends_on="activity_type",
+            validation={"min": 0},
+            hint={"en": "How long did pump/canal run?", "hi": "पंप/नहर कितनी देर चला?"},
         ),
         FormField(
             id="cost_amount",
