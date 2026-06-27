@@ -35,6 +35,7 @@ class FormField(BaseModel):
     source: Optional[str] = None  # API endpoint or "local_*" for Room data
     options: Optional[list[FormFieldOption]] = None
     depends_on: Optional[str] = None
+    depends_on_value: Optional[str] = None
     default_value: Optional[str] = None
     placeholder: Optional[dict[str, str]] = None
     validation: Optional[dict] = None
@@ -168,7 +169,7 @@ CROP_CYCLE_CREATE_FORM = FormSchema(
 
 ACTIVITY_LOG_FORM = FormSchema(
     form_id="activity_log",
-    version="1.2.0",
+    version="1.2.1",
     title={"en": "Log Activity", "hi": "गतिविधि दर्ज करें"},
     description={"en": "Record input usage or farm operation", "hi": "खाद, दवाई या खेती का काम दर्ज करें"},
     submit_endpoint="/api/v1/crop-cycles/{crop_cycle_id}/activities",
@@ -228,6 +229,7 @@ ACTIVITY_LOG_FORM = FormSchema(
             label={"en": "Irrigation Source", "hi": "सिंचाई का स्रोत"},
             required=False,
             depends_on="activity_type",
+            depends_on_value="IRRIGATION",
             options=[
                 FormFieldOption(value="TUBEWELL_DIESEL", label={"en": "Tubewell (Diesel)", "hi": "ट्यूबवेल (डीज़ल)"}),
                 FormFieldOption(value="TUBEWELL_ELECTRIC", label={"en": "Tubewell (Electric)", "hi": "ट्यूबवेल (बिजली)"}),
@@ -243,6 +245,7 @@ ACTIVITY_LOG_FORM = FormSchema(
             label={"en": "Duration (hours)", "hi": "अवधि (घंटे)"},
             required=False,
             depends_on="activity_type",
+            depends_on_value="IRRIGATION",
             validation={"min": 0},
             hint={"en": "How long did pump/canal run?", "hi": "पंप/नहर कितनी देर चला?"},
         ),
