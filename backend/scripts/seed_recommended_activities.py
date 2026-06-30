@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.database import SessionLocal
 from app.modules.master_data.models import CropLifecycleTemplate
+from sqlalchemy.orm.attributes import flag_modified
 
 # Rice Kharif — recommended activities per stage
 RICE_ACTIVITIES = {
@@ -70,11 +71,13 @@ def update_template_with_recommendations():
         stages = rice_template.stages or []
         updated_stages = []
         for stage in stages:
-            code = stage["code"]
+            stage_copy = dict(stage)
+            code = stage_copy["code"]
             if code in RICE_ACTIVITIES:
-                stage["recommended_activities"] = RICE_ACTIVITIES[code]
-            updated_stages.append(stage)
+                stage_copy["recommended_activities"] = RICE_ACTIVITIES[code]
+            updated_stages.append(stage_copy)
         rice_template.stages = updated_stages
+        flag_modified(rice_template, "stages")
         rice_template.updated_at = datetime.now(timezone.utc)
         db.commit()
         print(f"Updated RICE_KHARIF_DEFAULT with recommended activities for {len(RICE_ACTIVITIES)} stages")

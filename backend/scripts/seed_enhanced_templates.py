@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
+from scripts.seed_recommended_activities import RICE_ACTIVITIES
 
 
 def now():
@@ -256,22 +257,35 @@ ENHANCED_TEMPLATES = [
 ]
 
 
+def stages_with_recommendations(tmpl_data: dict) -> list[dict]:
+    """Return enhanced stages without losing seeded recommendation rows."""
+    stages = []
+    for stage in tmpl_data["stages"]:
+        stage_copy = dict(stage)
+        if tmpl_data["code"] == "RICE_KHARIF_DEFAULT":
+            stage_copy["recommended_activities"] = RICE_ACTIVITIES.get(stage_copy["code"], [])
+        stages.append(stage_copy)
+    return stages
+
+
 def seed_enhanced_templates(db: Session):
     """Update existing templates with enhanced stage schema."""
     for tmpl_data in ENHANCED_TEMPLATES:
+        stages = stages_with_recommendations(tmpl_data)
+
         # Find existing template
         existing = db.query(CropLifecycleTemplate).filter(
             CropLifecycleTemplate.code == tmpl_data["code"]
         ).first()
 
         if existing:
-            # Update with enhanced stages and metadata
-            existing.stages = tmpl_data["stages"]
+            # Update with enhanced stages, recommendation rows, and metadata
+            existing.stages = stages
             existing.total_duration_days = tmpl_data["total_duration_days"]
             existing.updated_at = now()
             # Store metadata in aliases field (reuse JSONB field for now)
             existing.aliases = tmpl_data["metadata"]
-            print(f"  Updated: {tmpl_data['code']} ({len(tmpl_data['stages'])} stages)")
+            print(f"  Updated: {tmpl_data['code']} ({len(stages)} stages)")
         else:
             # Find crop
             crop = db.query(Crop).filter(Crop.code == tmpl_data["crop_code"]).first()
@@ -286,7 +300,7 @@ def seed_enhanced_templates(db: Session):
                 season_code=tmpl_data["season_code"],
                 canonical_name=tmpl_data["canonical_name"],
                 total_duration_days=tmpl_data["total_duration_days"],
-                stages=tmpl_data["stages"],
+                stages=stages,
                 is_default=True,
                 aliases=tmpl_data["metadata"],
                 created_at=now(),
