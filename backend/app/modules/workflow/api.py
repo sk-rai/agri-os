@@ -585,19 +585,67 @@ def advance_stage(
             f"{[a for (s, a), _ in VALID_TRANSITIONS.items() if s == stage.status]}",
         )
 
+    auto_completed_stages = []
+    today = date.today()
+
+    if body.action == "START":
+        cycle_stages = (
+            db.query(CropStageInstance)
+            .filter(
+                CropStageInstance.crop_cycle_id == cycle_id,
+                CropStageInstance.tenant_id == x_tenant_id,
+            )
+            .order_by(CropStageInstance.stage_order)
+            .all()
+        )
+
+        earlier_stages = [s for s in cycle_stages if s.stage_order < stage.stage_order]
+        blocked_stages = [
+            s for s in earlier_stages
+            if s.status not in ("COMPLETED", "SKIPPED", "ACTIVE")
+        ]
+        if blocked_stages:
+            raise HTTPException(
+                409,
+                "Cannot start stage before earlier stages are completed or skipped: "
+                f"{[s.stage_code for s in blocked_stages]}",
+            )
+
+        later_active_stages = [
+            s for s in cycle_stages
+            if s.id != stage.id and s.stage_order > stage.stage_order and s.status == "ACTIVE"
+        ]
+        if later_active_stages:
+            raise HTTPException(
+                409,
+                "Cannot start an earlier stage while later stages are active: "
+                f"{[s.stage_code for s in later_active_stages]}",
+            )
+
+        # Keep a single ACTIVE stage invariant. If a user starts the next stage
+        # while the previous one is still active, closing the previous stage
+        # matches the field workflow expectation: NURSERY becomes COMPLETED when
+        # TRANSPLANTING starts.
+        for earlier_stage in earlier_stages:
+            if earlier_stage.status == "ACTIVE":
+                earlier_stage.status = "COMPLETED"
+                earlier_stage.actual_end_date = earlier_stage.actual_end_date or today
+                earlier_stage.completed_by = uuid.UUID(x_actor_id)
+                earlier_stage.updated_at = datetime.now(timezone.utc)
+                auto_completed_stages.append(earlier_stage)
+
     # Apply transition
     stage.status = new_status
     stage.updated_at = datetime.now(timezone.utc)
 
     if body.action == "START":
-        stage.actual_start_date = date.today()
+        stage.actual_start_date = today
         stage.started_by = uuid.UUID(x_actor_id)
     elif body.action == "COMPLETE":
-        stage.actual_end_date = date.today()
+        stage.actual_end_date = today
         stage.completed_by = uuid.UUID(x_actor_id)
     elif body.action == "SKIP":
         stage.skip_reason = body.skip_reason or body.notes
-
     # Update crop cycle status (auto-aggregate)
     all_stages = (
         db.query(CropStageInstance)
@@ -615,6 +663,8 @@ def advance_stage(
 
     # Determine events published
     events_published = []
+    for auto_completed_stage in auto_completed_stages:
+        events_published.append(f"crop_stage_completed.v1:{auto_completed_stage.stage_code}")
     if body.action == "COMPLETE":
         events_published.append("crop_stage_completed.v1")
     if cycle.status != old_cycle_status:
@@ -637,6 +687,7 @@ def advance_stage(
             "old_status": transition_key[0],
             "new_status": new_status,
             "cycle_status": cycle.status,
+            "auto_completed_stage_codes": [s.stage_code for s in auto_completed_stages],
         },
         metadata={
             "gps_lat": body.gps_lat,
@@ -653,6 +704,7 @@ def advance_stage(
         "old_status": transition_key[0],
         "new_status": new_status,
         "cycle_status": cycle.status,
+        "auto_completed_stage_codes": [s.stage_code for s in auto_completed_stages],
         "events_published": events_published,
     }
 
@@ -685,8 +737,10 @@ def log_activity(
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
+            CropStageInstance.tenant_id == x_tenant_id,
             CropStageInstance.status == "ACTIVE",
         )
+        .order_by(CropStageInstance.stage_order.desc())
         .first()
     )
 
