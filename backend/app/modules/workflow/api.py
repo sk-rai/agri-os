@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.modules.workflow.models import CropCycle, CropStageInstance, CropActivity
-from app.modules.master_data.models import CropLifecycleTemplate
+from app.modules.master_data.models import Crop, CropLifecycleTemplate
+from app.modules.farmer.models import Parcel
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
@@ -74,14 +75,17 @@ class ActivityCreate(BaseModel):
 
 class CropCycleResponse(BaseModel):
     id: uuid.UUID
+    parcel_id: Optional[uuid.UUID] = None
+    farmer_id: Optional[uuid.UUID] = None
     status: str
     crop_code: str
+    crop_name: Optional[str] = None
     season_code: str
     planned_sowing_date: Optional[date] = None
     expected_harvest_date: Optional[date] = None  # Calculated from template
     inferred_current_stage: Optional[str] = None  # If sowing_date is in past
     stages: list[dict]
-    events_published: list[str]
+    events_published: list[str] = []
 
     class Config:
         from_attributes = True
@@ -122,6 +126,74 @@ def compute_cycle_status(stages: list[CropStageInstance]) -> str:
     if any(s == "COMPLETED" for s in statuses) and not any(s == "ACTIVE" for s in statuses):
         return "PARTIALLY_TRACKED"
     return "ACTIVE"
+
+
+def build_crop_cycle_response(
+    cycle: CropCycle,
+    stages: list[CropStageInstance],
+    crop_name: Optional[str] = None,
+    events_published: Optional[list[str]] = None,
+) -> dict:
+    """Build Android-facing crop cycle response with calculated stage schedule."""
+    sowing = cycle.planned_sowing_date or cycle.actual_sowing_date or date.today()
+    cumulative_days = 0
+    stage_schedule = []
+    inferred_stage = None
+
+    for s in stages:
+        expected_start = sowing + timedelta(days=cumulative_days)
+        duration = s.expected_duration_days or 0
+        expected_end = expected_start + timedelta(days=duration)
+        stage_schedule.append({
+            "id": str(s.id),
+            "code": s.stage_code,
+            "name": s.stage_name,
+            "order": s.stage_order,
+            "status": s.status,
+            "day_offset": cumulative_days,
+            "expected_start_date": expected_start.isoformat(),
+            "expected_end_date": expected_end.isoformat(),
+            "duration_days": duration,
+            "actual_start_date": s.actual_start_date.isoformat() if s.actual_start_date else None,
+            "actual_end_date": s.actual_end_date.isoformat() if s.actual_end_date else None,
+        })
+        cumulative_days += duration
+
+    active_stage = next((s_info for s_info in stage_schedule if s_info["status"] == "ACTIVE"), None)
+    if active_stage:
+        inferred_stage = active_stage["code"]
+    elif cycle.status == "COMPLETED" and stage_schedule:
+        inferred_stage = stage_schedule[-1]["code"]
+    elif sowing <= date.today():
+        days_elapsed = (date.today() - sowing).days
+        running_days = 0
+        for s_info in stage_schedule:
+            running_days += s_info["duration_days"]
+            if days_elapsed <= running_days:
+                inferred_stage = s_info["code"]
+                break
+        if not inferred_stage and stage_schedule:
+            inferred_stage = stage_schedule[-1]["code"]
+
+    expected_harvest = sowing + timedelta(days=cumulative_days)
+
+    return {
+        "id": str(cycle.id),
+        "parcel_id": str(cycle.parcel_id) if cycle.parcel_id else None,
+        "farmer_id": str(cycle.farmer_id) if cycle.farmer_id else None,
+        "status": cycle.status,
+        "crop_code": cycle.crop_code,
+        "crop_name": crop_name,
+        "season_code": cycle.season_code,
+        "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+        "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
+        "expected_harvest_date": expected_harvest.isoformat(),
+        "actual_harvest_date": cycle.actual_harvest_date.isoformat() if cycle.actual_harvest_date else None,
+        "inferred_current_stage": inferred_stage,
+        "total_input_cost": str(cycle.total_input_cost) if cycle.total_input_cost else "0",
+        "stages": stage_schedule,
+        "events_published": events_published or [],
+    }
 
 
 # --- Endpoints ---
@@ -312,7 +384,12 @@ def create_crop_cycle(
 
     # Infer current stage if sowing date is in the past
     inferred_stage = None
-    if sowing <= date.today():
+    active_stage = next((s_info for s_info in stage_schedule if s_info["status"] == "ACTIVE"), None)
+    if active_stage:
+        inferred_stage = active_stage["code"]
+    elif cycle.status == "COMPLETED" and stage_schedule:
+        inferred_stage = stage_schedule[-1]["code"]
+    elif sowing <= date.today():
         days_elapsed = (date.today() - sowing).days
         running_days = 0
         for s_info in stage_schedule:
@@ -334,6 +411,147 @@ def create_crop_cycle(
         stages=stage_schedule,
         events_published=["crop_cycle_created.v1"],
     )
+
+
+
+
+@router.get("")
+def list_crop_cycles(
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """List crop cycles for Android Home/parcel filtering."""
+    query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id)
+    if farmer_id:
+        query = query.filter(CropCycle.farmer_id == farmer_id)
+    if parcel_id:
+        query = query.filter(CropCycle.parcel_id == parcel_id)
+    if status:
+        query = query.filter(CropCycle.status == status.upper())
+
+    cycles = query.order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc()).all()
+    crop_codes = sorted({c.crop_code for c in cycles if c.crop_code})
+    crop_names = {
+        crop.code: crop.canonical_name
+        for crop in db.query(Crop).filter(Crop.code.in_(crop_codes)).all()
+    } if crop_codes else {}
+
+    result = []
+    for cycle in cycles:
+        stages = (
+            db.query(CropStageInstance)
+            .filter(
+                CropStageInstance.crop_cycle_id == cycle.id,
+                CropStageInstance.tenant_id == x_tenant_id,
+            )
+            .order_by(CropStageInstance.stage_order)
+            .all()
+        )
+        result.append(build_crop_cycle_response(cycle, stages, crop_names.get(cycle.crop_code)))
+    return result
+
+
+@router.get("/eligible-parcels")
+def list_eligible_parcels(
+    farmer_id: uuid.UUID = Query(...),
+    season: Optional[str] = Query(None),
+    season_year: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return parcels with crop-cycle eligibility and summary for Android dropdowns."""
+    target_year = season_year or date.today().year
+    season_filter = season.upper() if season else None
+
+    parcels = (
+        db.query(Parcel)
+        .filter(
+            Parcel.tenant_id == x_tenant_id,
+            Parcel.farmer_id == farmer_id,
+            Parcel.status == "ACTIVE",
+        )
+        .order_by(Parcel.created_at.desc())
+        .all()
+    )
+    parcel_ids = [p.id for p in parcels]
+    cycles = []
+    if parcel_ids:
+        cycles = (
+            db.query(CropCycle)
+            .filter(
+                CropCycle.tenant_id == x_tenant_id,
+                CropCycle.farmer_id == farmer_id,
+                CropCycle.parcel_id.in_(parcel_ids),
+            )
+            .order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc())
+            .all()
+        )
+
+    cycles_by_parcel = {}
+    for cycle in cycles:
+        cycles_by_parcel.setdefault(cycle.parcel_id, []).append(cycle)
+
+    def cycle_summary(cycle: CropCycle) -> dict:
+        stage_durations = [
+            duration or 0
+            for (duration,) in db.query(CropStageInstance.expected_duration_days)
+            .filter(
+                CropStageInstance.crop_cycle_id == cycle.id,
+                CropStageInstance.tenant_id == x_tenant_id,
+            )
+            .order_by(CropStageInstance.stage_order)
+            .all()
+        ]
+        sowing = cycle.planned_sowing_date or cycle.actual_sowing_date
+        expected_harvest = sowing + timedelta(days=sum(stage_durations)) if sowing else cycle.expected_harvest_date
+        return {
+            "id": str(cycle.id),
+            "crop_code": cycle.crop_code,
+            "season_code": cycle.season_code,
+            "status": cycle.status,
+            "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+            "expected_harvest_date": expected_harvest.isoformat() if expected_harvest else None,
+            "actual_harvest_date": cycle.actual_harvest_date.isoformat() if cycle.actual_harvest_date else None,
+        }
+
+    response = []
+    for parcel in parcels:
+        parcel_cycles = cycles_by_parcel.get(parcel.id, [])
+        active_cycle = next((c for c in parcel_cycles if c.status == "ACTIVE"), None)
+        completed_cycles = [c for c in parcel_cycles if c.status == "COMPLETED"]
+        completed_same_season = [
+            c for c in completed_cycles
+            if (not season_filter or c.season_code == season_filter)
+            and ((c.planned_sowing_date or c.actual_sowing_date) and (c.planned_sowing_date or c.actual_sowing_date).year == target_year)
+        ]
+
+        if active_cycle:
+            eligible = False
+            eligibility_status = "HAS_ACTIVE_CYCLE"
+        elif completed_same_season:
+            eligible = False
+            eligibility_status = "COMPLETED_THIS_SEASON"
+        else:
+            eligible = True
+            eligibility_status = "ELIGIBLE"
+
+        response.append({
+            "parcel_id": str(parcel.id),
+            "farmer_id": str(parcel.farmer_id),
+            "survey_number": parcel.survey_number,
+            "local_name": parcel.local_name,
+            "area": str(parcel.reported_area) if parcel.reported_area is not None else None,
+            "unit": parcel.reported_area_unit,
+            "village_name": parcel.village_name_manual,
+            "eligible": eligible,
+            "eligibility_status": eligibility_status,
+            "active_cycle": cycle_summary(active_cycle) if active_cycle else None,
+            "completed_cycles": [cycle_summary(c) for c in completed_cycles],
+        })
+    return response
 
 
 @router.get("/{cycle_id}/recommended-activities")
@@ -481,69 +699,25 @@ def get_crop_cycle(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Get a crop cycle with its stages and current status."""
-    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id).first()
+    cycle = (
+        db.query(CropCycle)
+        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
+        .first()
+    )
     if not cycle:
         raise HTTPException(404, "Crop cycle not found")
 
-    # Get stage instances
     stages = (
         db.query(CropStageInstance)
-        .filter(CropStageInstance.crop_cycle_id == cycle_id)
+        .filter(
+            CropStageInstance.crop_cycle_id == cycle_id,
+            CropStageInstance.tenant_id == x_tenant_id,
+        )
         .order_by(CropStageInstance.stage_order)
         .all()
     )
-
-    # Calculate expected dates
-    sowing = cycle.planned_sowing_date or cycle.actual_sowing_date or date.today()
-    cumulative_days = 0
-    stage_schedule = []
-    inferred_stage = None
-
-    for s in stages:
-        expected_start = sowing + timedelta(days=cumulative_days)
-        duration = s.expected_duration_days or 0
-        expected_end = expected_start + timedelta(days=duration)
-        stage_schedule.append({
-            "id": str(s.id),
-            "code": s.stage_code,
-            "name": s.stage_name,
-            "order": s.stage_order,
-            "status": s.status,
-            "day_offset": cumulative_days,
-            "expected_start_date": expected_start.isoformat(),
-            "expected_end_date": expected_end.isoformat(),
-            "duration_days": duration,
-            "actual_start_date": s.actual_start_date.isoformat() if s.actual_start_date else None,
-            "actual_end_date": s.actual_end_date.isoformat() if s.actual_end_date else None,
-        })
-        cumulative_days += duration
-
-    # Infer current stage
-    if sowing <= date.today():
-        days_elapsed = (date.today() - sowing).days
-        running_days = 0
-        for s_info in stage_schedule:
-            running_days += s_info["duration_days"]
-            if days_elapsed <= running_days:
-                inferred_stage = s_info["code"]
-                break
-        if not inferred_stage and stage_schedule:
-            inferred_stage = stage_schedule[-1]["code"]
-
-    expected_harvest = sowing + timedelta(days=cumulative_days)
-
-    return {
-        "id": str(cycle.id),
-        "status": cycle.status,
-        "crop_code": cycle.crop_code,
-        "season_code": cycle.season_code,
-        "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
-        "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
-        "expected_harvest_date": expected_harvest.isoformat(),
-        "inferred_current_stage": inferred_stage,
-        "total_input_cost": str(cycle.total_input_cost) if cycle.total_input_cost else "0",
-        "stages": stage_schedule,
-    }
+    crop = db.query(Crop).filter(Crop.code == cycle.crop_code).first()
+    return build_crop_cycle_response(cycle, stages, crop.canonical_name if crop else None)
 
 
 @router.patch("/{cycle_id}/stages/{stage_id}")
@@ -667,6 +841,8 @@ def advance_stage(
         events_published.append(f"crop_stage_completed.v1:{auto_completed_stage.stage_code}")
     if body.action == "COMPLETE":
         events_published.append("crop_stage_completed.v1")
+    if cycle.status == "COMPLETED" and stage.stage_code == "HARVEST" and body.action == "COMPLETE":
+        cycle.actual_harvest_date = today
     if cycle.status != old_cycle_status:
         events_published.append(f"crop_cycle_status_changed.v1:{cycle.status}")
     if cycle.status == "COMPLETED":
