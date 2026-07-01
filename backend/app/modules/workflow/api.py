@@ -549,11 +549,34 @@ def list_eligible_parcels(
         source: str = "parcel",
     ):
         eligible, eligibility_status, active_cycle, completed_cycles = eligibility_for(parcel_cycles)
-        label = local_name or survey_number
-        if not label and area and unit:
-            label = f"{area} {unit} parcel"
-        if not label:
+
+        def format_decimal_label(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            try:
+                formatted = f"{float(value):.1f}"
+                return formatted
+            except (TypeError, ValueError):
+                return str(value)
+
+        def title_label(value: Optional[str]) -> Optional[str]:
+            return str(value).replace("_", " ").title() if value else None
+
+        if source == "cycle_only":
             label = f"Parcel {str(parcel_id)[:8]}"
+        elif area and unit and ownership_type:
+            area_label = format_decimal_label(area)
+            label = f"{area_label} {title_label(unit)} ({title_label(ownership_type)})"
+            if survey_number:
+                label = f"{label} - {survey_number}"
+            elif local_name:
+                label = f"{label} - {local_name}"
+        else:
+            label = local_name or survey_number
+            if not label and area and unit:
+                label = f"{format_decimal_label(area)} {title_label(unit)} parcel"
+            if not label:
+                label = f"Parcel {str(parcel_id)[:8]}"
 
         response.append({
             "parcel_id": str(parcel_id),
