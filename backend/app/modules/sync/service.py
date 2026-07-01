@@ -319,6 +319,7 @@ def filter_already_processed(
         .filter(
             SyncProcessedEvent.tenant_id == tenant_id,
             SyncProcessedEvent.event_id.in_(uuid_list),
+            SyncProcessedEvent.status == "COMMITTED",
         )
         .all()
     )
@@ -326,6 +327,40 @@ def filter_already_processed(
 
 
 # --- Dependency Validation ---
+
+def upsert_processed_event_record(
+    db: Session,
+    tenant_id: str,
+    actor_id: str,
+    event: SyncEvent,
+    status: str,
+    server_version: Optional[int] = None,
+) -> SyncProcessedEvent:
+    """Create or update the idempotency row for this event.
+
+    DEPENDENCY_MISSING events are retryable; when the client resubmits the same
+    event after dependencies exist, this lets the row advance to COMMITTED
+    instead of colliding on the event_id primary key.
+    """
+    event_uuid = uuid.UUID(str(event.event_id))
+    record = db.query(SyncProcessedEvent).filter(
+        SyncProcessedEvent.tenant_id == tenant_id,
+        SyncProcessedEvent.event_id == event_uuid,
+    ).first()
+
+    if not record:
+        record = SyncProcessedEvent(event_id=event_uuid, tenant_id=tenant_id)
+        db.add(record)
+
+    record.actor_id = uuid.UUID(actor_id)
+    record.entity_type = event.entity_type
+    record.entity_id = uuid.UUID(event.entity_id) if event.entity_id else None
+    record.operation = event.operation
+    record.server_version = server_version if server_version is not None else event.client_version
+    record.status = status
+    record.processed_at = datetime.now(timezone.utc)
+    return record
+
 
 def validate_dependencies(
     db: Session, tenant_id: str, dependency_ids: list[str]
@@ -338,7 +373,25 @@ def validate_dependencies(
     if not dependency_ids:
         return []
 
-    processed = filter_already_processed(db, tenant_id, dependency_ids)
+    dependency_uuid_list = [uuid.UUID(str(dep)) for dep in dependency_ids]
+    processed_rows = (
+        db.query(SyncProcessedEvent.event_id, SyncProcessedEvent.entity_id)
+        .filter(
+            SyncProcessedEvent.tenant_id == tenant_id,
+            SyncProcessedEvent.status == "COMMITTED",
+            (
+                SyncProcessedEvent.event_id.in_(dependency_uuid_list)
+                | SyncProcessedEvent.entity_id.in_(dependency_uuid_list)
+            ),
+        )
+        .all()
+    )
+    processed = set()
+    for event_id, entity_id in processed_rows:
+        processed.add(str(event_id))
+        if entity_id:
+            processed.add(str(entity_id))
+
     return [d for d in dependency_ids if d not in processed]
 
 
@@ -480,17 +533,9 @@ def process_sync_batch(
         missing_deps = validate_dependencies(db, tenant_id, event.dependency_ids)
         if missing_deps:
             # Record as failed with DEPENDENCY_MISSING
-            record = SyncProcessedEvent(
-                event_id=uuid.UUID(event_id_str),
-                tenant_id=tenant_id,
-                actor_id=uuid.UUID(actor_id),
-                entity_type=event.entity_type,
-                entity_id=uuid.UUID(event.entity_id) if event.entity_id else None,
-                operation=event.operation,
-                status="DEPENDENCY_MISSING",
-                processed_at=datetime.now(timezone.utc),
+            upsert_processed_event_record(
+                db, tenant_id, actor_id, event, "DEPENDENCY_MISSING"
             )
-            db.add(record)
             result.failed.append({
                 "event_id": event_id_str,
                 "error_code": "DEPENDENCY_MISSING",
@@ -502,17 +547,9 @@ def process_sync_batch(
         conflict = detect_conflict(db, tenant_id, event)
         if conflict:
             # Record processed event with CONFLICT status (flush to satisfy FK)
-            record = SyncProcessedEvent(
-                event_id=uuid.UUID(event_id_str),
-                tenant_id=tenant_id,
-                actor_id=uuid.UUID(actor_id),
-                entity_type=event.entity_type,
-                entity_id=uuid.UUID(event.entity_id) if event.entity_id else None,
-                operation=event.operation,
-                status="CONFLICT",
-                processed_at=datetime.now(timezone.utc),
+            record = upsert_processed_event_record(
+                db, tenant_id, actor_id, event, "CONFLICT"
             )
-            db.add(record)
             db.flush()  # Flush so FK constraint is satisfied
 
             # Insert conflict record
@@ -553,18 +590,9 @@ def process_sync_batch(
             with db.begin_nested():
                 materialize_operational_event(db, tenant_id, actor_id, event)
 
-                record = SyncProcessedEvent(
-                    event_id=uuid.UUID(event_id_str),
-                    tenant_id=tenant_id,
-                    actor_id=uuid.UUID(actor_id),
-                    entity_type=event.entity_type,
-                    entity_id=uuid.UUID(event.entity_id) if event.entity_id else None,
-                    operation=event.operation,
-                    server_version=event.client_version,
-                    status="COMMITTED",
-                    processed_at=datetime.now(timezone.utc),
+                upsert_processed_event_record(
+                    db, tenant_id, actor_id, event, "COMMITTED", event.client_version
                 )
-                db.add(record)
 
                 append_audit(
                     db, tenant_id, actor_id, correlation_id,
