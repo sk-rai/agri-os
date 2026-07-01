@@ -460,9 +460,15 @@ def list_eligible_parcels(
     season: Optional[str] = Query(None),
     season_year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    """Return parcels with crop-cycle eligibility and summary for Android dropdowns."""
+    """Return parcels with crop-cycle eligibility and summary for Android dropdowns.
+
+    For MVP Android compatibility, this endpoint defaults to tenant "default"
+    when the tenant header is omitted. It also returns cycle-derived placeholder
+    parcel rows when older test cycles reference parcels that are missing from
+    the parcel master table.
+    """
     target_year = season_year or date.today().year
     season_filter = season.upper() if season else None
 
@@ -476,19 +482,16 @@ def list_eligible_parcels(
         .order_by(Parcel.created_at.desc())
         .all()
     )
-    parcel_ids = [p.id for p in parcels]
-    cycles = []
-    if parcel_ids:
-        cycles = (
-            db.query(CropCycle)
-            .filter(
-                CropCycle.tenant_id == x_tenant_id,
-                CropCycle.farmer_id == farmer_id,
-                CropCycle.parcel_id.in_(parcel_ids),
-            )
-            .order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc())
-            .all()
+
+    cycles = (
+        db.query(CropCycle)
+        .filter(
+            CropCycle.tenant_id == x_tenant_id,
+            CropCycle.farmer_id == farmer_id,
         )
+        .order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc())
+        .all()
+    )
 
     cycles_by_parcel = {}
     for cycle in cycles:
@@ -517,9 +520,7 @@ def list_eligible_parcels(
             "actual_harvest_date": cycle.actual_harvest_date.isoformat() if cycle.actual_harvest_date else None,
         }
 
-    response = []
-    for parcel in parcels:
-        parcel_cycles = cycles_by_parcel.get(parcel.id, [])
+    def eligibility_for(parcel_cycles: list[CropCycle]) -> tuple[bool, str, Optional[CropCycle], list[CropCycle]]:
         active_cycle = next((c for c in parcel_cycles if c.status == "ACTIVE"), None)
         completed_cycles = [c for c in parcel_cycles if c.status == "COMPLETED"]
         completed_same_season = [
@@ -529,28 +530,75 @@ def list_eligible_parcels(
         ]
 
         if active_cycle:
-            eligible = False
-            eligibility_status = "HAS_ACTIVE_CYCLE"
-        elif completed_same_season:
-            eligible = False
-            eligibility_status = "COMPLETED_THIS_SEASON"
-        else:
-            eligible = True
-            eligibility_status = "ELIGIBLE"
+            return False, "HAS_ACTIVE_CYCLE", active_cycle, completed_cycles
+        if completed_same_season:
+            return False, "COMPLETED_THIS_SEASON", None, completed_cycles
+        return True, "ELIGIBLE", None, completed_cycles
+
+    def append_response_row(
+        *,
+        parcel_id: uuid.UUID,
+        farmer_id_value: uuid.UUID,
+        parcel_cycles: list[CropCycle],
+        survey_number: Optional[str] = None,
+        local_name: Optional[str] = None,
+        area: Optional[str] = None,
+        unit: Optional[str] = None,
+        village_name: Optional[str] = None,
+        ownership_type: Optional[str] = None,
+        source: str = "parcel",
+    ):
+        eligible, eligibility_status, active_cycle, completed_cycles = eligibility_for(parcel_cycles)
+        label = local_name or survey_number
+        if not label and area and unit:
+            label = f"{area} {unit} parcel"
+        if not label:
+            label = f"Parcel {str(parcel_id)[:8]}"
 
         response.append({
-            "parcel_id": str(parcel.id),
-            "farmer_id": str(parcel.farmer_id),
-            "survey_number": parcel.survey_number,
-            "local_name": parcel.local_name,
-            "area": str(parcel.reported_area) if parcel.reported_area is not None else None,
-            "unit": parcel.reported_area_unit,
-            "village_name": parcel.village_name_manual,
+            "parcel_id": str(parcel_id),
+            "farmer_id": str(farmer_id_value),
+            "survey_number": survey_number,
+            "local_name": local_name,
+            "display_name": label,
+            "label": label,
+            "area": area,
+            "unit": unit,
+            "village_name": village_name,
+            "ownership_type": ownership_type,
             "eligible": eligible,
             "eligibility_status": eligibility_status,
+            "source": source,
             "active_cycle": cycle_summary(active_cycle) if active_cycle else None,
             "completed_cycles": [cycle_summary(c) for c in completed_cycles],
         })
+
+    response = []
+    known_parcel_ids = set()
+    for parcel in parcels:
+        known_parcel_ids.add(parcel.id)
+        append_response_row(
+            parcel_id=parcel.id,
+            farmer_id_value=parcel.farmer_id,
+            parcel_cycles=cycles_by_parcel.get(parcel.id, []),
+            survey_number=parcel.survey_number,
+            local_name=parcel.local_name,
+            area=str(parcel.reported_area) if parcel.reported_area is not None else None,
+            unit=parcel.reported_area_unit,
+            village_name=parcel.village_name_manual,
+            ownership_type=parcel.ownership_type,
+        )
+
+    for parcel_id, parcel_cycles in cycles_by_parcel.items():
+        if parcel_id in known_parcel_ids:
+            continue
+        append_response_row(
+            parcel_id=parcel_id,
+            farmer_id_value=farmer_id,
+            parcel_cycles=parcel_cycles,
+            source="cycle_only",
+        )
+
     return response
 
 

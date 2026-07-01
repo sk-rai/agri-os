@@ -9,21 +9,203 @@ Per governance:
 - Sync Engine Contract §3-7: Retry formula, dependency filtering, idempotency
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from app.modules.sync.models import (
     SyncProcessedEvent,
     SyncConflict,
     AuditChainEntry,
 )
+from app.modules.farmer.models import Farmer, Parcel
+
+
+def _uuid_or_none(value) -> Optional[uuid.UUID]:
+    if not value:
+        return None
+    return uuid.UUID(str(value))
+
+
+def _decimal_or_none(value) -> Optional[Decimal]:
+    if value is None or value == "":
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _first_payload_value(payload: dict, *keys: str):
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
+def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    """Upsert accepted mobile farmer sync events into the operational table.
+
+    The Android/local entity_id is intentionally preserved as farmers.id so
+    dependent parcel/crop-cycle payloads can refer to the same identifier.
+    """
+    if event.operation == "DELETE":
+        if event.entity_id:
+            farmer = db.query(Farmer).filter(
+                Farmer.id == uuid.UUID(event.entity_id),
+                Farmer.tenant_id == tenant_id,
+            ).first()
+            if farmer:
+                farmer.status = "INACTIVE"
+                farmer.is_active = False
+                farmer.updated_at = datetime.now(timezone.utc)
+        return
+
+    payload = event.payload or {}
+    farmer_id = _uuid_or_none(event.entity_id or payload.get("id") or payload.get("farmer_id"))
+    if not farmer_id:
+        raise ValueError("farmer sync event requires entity_id or payload.id")
+
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
+    if not farmer:
+        farmer = Farmer(
+            id=farmer_id,
+            tenant_id=tenant_id,
+            mobile_number=_first_payload_value(payload, "mobile_number", "mobileNumber", "phone") or "+919999999999",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(farmer)
+
+    field_map = {
+        "project_id": ("project_id", "projectId"),
+        "user_id": ("user_id", "userId"),
+        "mobile_number": ("mobile_number", "mobileNumber", "phone"),
+        "village_id": ("village_id", "villageId"),
+        "village_name_manual": ("village_name_manual", "villageNameManual", "village_name", "villageName"),
+        "primary_crop_code": ("primary_crop_code", "primaryCropCode"),
+        "crops_by_season": ("crops_by_season", "cropsBySeason"),
+        "display_name": ("display_name", "displayName", "name"),
+        "father_name": ("father_name", "fatherName"),
+        "age": ("age",),
+        "gender": ("gender",),
+        "aadhaar_number": ("aadhaar_number", "aadhaarNumber"),
+        "total_land_area": ("total_land_area", "totalLandArea"),
+        "total_land_unit": ("total_land_unit", "totalLandUnit"),
+        "language_preference": ("language_preference", "languagePreference"),
+        "enrollment_gps_lat": ("enrollment_gps_lat", "enrollmentGpsLat", "latitude"),
+        "enrollment_gps_lng": ("enrollment_gps_lng", "enrollmentGpsLng", "longitude"),
+        "status": ("status",),
+    }
+    uuid_fields = {"project_id", "user_id", "village_id"}
+    decimal_fields = {"total_land_area", "enrollment_gps_lat", "enrollment_gps_lng"}
+    for attr, keys in field_map.items():
+        value = _first_payload_value(payload, *keys)
+        if value is None:
+            continue
+        if attr in uuid_fields:
+            value = _uuid_or_none(value)
+        elif attr in decimal_fields:
+            value = _decimal_or_none(value)
+        setattr(farmer, attr, value)
+
+    farmer.enrolled_by = _uuid_or_none(payload.get("enrolled_by") or payload.get("enrolledBy")) or _uuid_or_none(actor_id)
+    farmer.updated_at = datetime.now(timezone.utc)
+
+
+def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
+    """Upsert accepted mobile parcel sync events into the operational table."""
+    payload = event.payload or {}
+    parcel_id = _uuid_or_none(event.entity_id or payload.get("id") or payload.get("parcel_id"))
+
+    if event.operation == "DELETE":
+        if parcel_id:
+            parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
+            if parcel:
+                parcel.status = "INACTIVE"
+                parcel.is_active = False
+                parcel.updated_at = datetime.now(timezone.utc)
+        return
+
+    if not parcel_id:
+        raise ValueError("parcel sync event requires entity_id or payload.id")
+
+    farmer_id = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+    if not farmer_id:
+        raise ValueError("parcel sync event requires farmer_id/farmerId")
+
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
+    if not parcel:
+        parcel = Parcel(
+            id=parcel_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            reported_area=_decimal_or_none(_first_payload_value(payload, "reported_area", "reportedArea", "area")) or Decimal("0"),
+            reported_area_unit=_first_payload_value(payload, "reported_area_unit", "reportedAreaUnit", "unit") or "BIGHA",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(parcel)
+
+    parcel.farmer_id = farmer_id
+    field_map = {
+        "project_id": ("project_id", "projectId"),
+        "village_id": ("village_id", "villageId"),
+        "village_name_manual": ("village_name_manual", "villageNameManual", "village_name", "villageName"),
+        "reported_area": ("reported_area", "reportedArea", "area"),
+        "reported_area_unit": ("reported_area_unit", "reportedAreaUnit", "unit"),
+        "current_crop_code": ("current_crop_code", "currentCropCode"),
+        "soil_type_code": ("soil_type_code", "soilTypeCode"),
+        "geometry_source": ("geometry_source", "geometrySource"),
+        "centroid_lat": ("centroid_lat", "centroidLat", "latitude"),
+        "centroid_lng": ("centroid_lng", "centroidLng", "longitude"),
+        "computed_area_hectares": ("computed_area_hectares", "computedAreaHectares"),
+        "geometry_accuracy_meters": ("geometry_accuracy_meters", "geometryAccuracyMeters"),
+        "local_name": ("local_name", "localName"),
+        "survey_number": ("survey_number", "surveyNumber"),
+        "ownership_type": ("ownership_type", "ownershipType"),
+        "annual_rent": ("annual_rent", "annualRent"),
+        "annual_rent_currency": ("annual_rent_currency", "annualRentCurrency"),
+        "share_percentage": ("share_percentage", "sharePercentage"),
+        "sharecrop_percentage": ("sharecrop_percentage", "sharecropPercentage"),
+        "irrigation_source": ("irrigation_source", "irrigationSource"),
+        "crops_by_season": ("crops_by_season", "cropsBySeason"),
+        "status": ("status",),
+    }
+    uuid_fields = {"project_id", "village_id"}
+    decimal_fields = {
+        "reported_area", "centroid_lat", "centroid_lng",
+        "computed_area_hectares", "geometry_accuracy_meters", "annual_rent",
+    }
+    int_fields = {"share_percentage", "sharecrop_percentage"}
+    for attr, keys in field_map.items():
+        value = _first_payload_value(payload, *keys)
+        if value is None:
+            continue
+        if attr in uuid_fields:
+            value = _uuid_or_none(value)
+        elif attr in decimal_fields:
+            value = _decimal_or_none(value)
+        elif attr in int_fields:
+            value = int(value)
+        setattr(parcel, attr, value)
+
+    parcel.updated_at = datetime.now(timezone.utc)
+
+
+def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    entity_type = (event.entity_type or "").lower()
+    if entity_type == "farmer":
+        _materialize_farmer_event(db, tenant_id, actor_id, event)
+    elif entity_type == "parcel":
+        _materialize_parcel_event(db, tenant_id, event)
 
 
 # --- Schemas for sync events ---
@@ -366,26 +548,37 @@ def process_sync_batch(
             })
             continue
 
-        # Step 4: Commit (event is safe)
-        record = SyncProcessedEvent(
-            event_id=uuid.UUID(event_id_str),
-            tenant_id=tenant_id,
-            actor_id=uuid.UUID(actor_id),
-            entity_type=event.entity_type,
-            entity_id=uuid.UUID(event.entity_id) if event.entity_id else None,
-            operation=event.operation,
-            server_version=event.client_version,
-            status="COMMITTED",
-            processed_at=datetime.now(timezone.utc),
-        )
-        db.add(record)
+        # Step 4/5: Materialize, record idempotency, and audit as one per-event unit.
+        try:
+            with db.begin_nested():
+                materialize_operational_event(db, tenant_id, actor_id, event)
 
-        # Step 5: Audit chain
-        append_audit(
-            db, tenant_id, actor_id, correlation_id,
-            event.entity_type, event.entity_id,
-            "SYNC_COMMIT", event.payload, event.metadata,
-        )
+                record = SyncProcessedEvent(
+                    event_id=uuid.UUID(event_id_str),
+                    tenant_id=tenant_id,
+                    actor_id=uuid.UUID(actor_id),
+                    entity_type=event.entity_type,
+                    entity_id=uuid.UUID(event.entity_id) if event.entity_id else None,
+                    operation=event.operation,
+                    server_version=event.client_version,
+                    status="COMMITTED",
+                    processed_at=datetime.now(timezone.utc),
+                )
+                db.add(record)
+
+                append_audit(
+                    db, tenant_id, actor_id, correlation_id,
+                    event.entity_type, event.entity_id,
+                    "SYNC_COMMIT", event.payload, event.metadata,
+                )
+                db.flush()
+        except Exception as exc:
+            result.failed.append({
+                "event_id": event_id_str,
+                "error_code": "MATERIALIZATION_FAILED",
+                "message": str(exc),
+            })
+            continue
 
         result.accepted.append(event_id_str)
 

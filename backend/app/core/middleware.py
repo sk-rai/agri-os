@@ -22,6 +22,7 @@ TENANT_EXEMPT_PATHS = [
     "/api/v1/soil-profiles/infer",  # Soil inference is geography-based, no tenant
     "/api/v1/forms",  # Form schemas are cacheable, no tenant context needed
     "/api/v1/crop-cycles/templates",  # Crop templates are reference data
+    "/api/v1/crop-cycles/eligible-parcels",  # Android parcel picker defaults tenant for MVP
 ]
 
 
