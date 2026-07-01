@@ -55,6 +55,12 @@ class StageTransition(BaseModel):
     gps_lng: Optional[float] = None
 
 
+class CropCycleCompleteRequest(BaseModel):
+    notes: Optional[str] = None
+    gps_lat: Optional[float] = None
+    gps_lng: Optional[float] = None
+
+
 class ActivityCreate(BaseModel):
     activity_type: str = Field(..., pattern=r"^(FERTILIZER|PESTICIDE|IRRIGATION|LABOR|MACHINERY|HARVEST|SEED|OTHER)$")
     input_code: Optional[str] = None
@@ -126,6 +132,37 @@ def compute_cycle_status(stages: list[CropStageInstance]) -> str:
     if any(s == "COMPLETED" for s in statuses) and not any(s == "ACTIVE" for s in statuses):
         return "PARTIALLY_TRACKED"
     return "ACTIVE"
+
+
+def finalize_crop_cycle_completion(
+    cycle: CropCycle,
+    stages: list[CropStageInstance],
+    actor_id: str,
+    completed_on: date,
+) -> list[CropStageInstance]:
+    """Mark the whole cycle complete when the final harvest is completed.
+
+    Android treats COMPLETED crop cycles as read-only/history. If HARVEST is
+    completed after users skipped ahead through testing, older PENDING/ACTIVE
+    stages should no longer keep the cycle active.
+    """
+    auto_completed = []
+    actor_uuid = uuid.UUID(actor_id)
+    now = datetime.now(timezone.utc)
+
+    for stage in stages:
+        if stage.status != "COMPLETED":
+            stage.status = "COMPLETED"
+            stage.actual_start_date = stage.actual_start_date or completed_on
+            stage.actual_end_date = stage.actual_end_date or completed_on
+            stage.completed_by = stage.completed_by or actor_uuid
+            stage.updated_at = now
+            auto_completed.append(stage)
+
+    cycle.status = "COMPLETED"
+    cycle.actual_harvest_date = cycle.actual_harvest_date or completed_on
+    cycle.updated_at = now
+    return auto_completed
 
 
 def build_crop_cycle_response(
@@ -819,6 +856,16 @@ def advance_stage(
     if not stage:
         raise HTTPException(404, "Stage instance not found")
 
+    cycle = (
+        db.query(CropCycle)
+        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
+        .first()
+    )
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+    if cycle.status == "COMPLETED":
+        raise HTTPException(409, "Completed crop cycles are read-only")
+
     # Validate transition
     transition_key = (stage.status, body.action)
     new_status = VALID_TRANSITIONS.get(transition_key)
@@ -891,16 +938,27 @@ def advance_stage(
         stage.completed_by = uuid.UUID(x_actor_id)
     elif body.action == "SKIP":
         stage.skip_reason = body.skip_reason or body.notes
-    # Update crop cycle status (auto-aggregate)
+    # Update crop cycle status (auto-aggregate). Completing HARVEST is the
+    # product-level closeout signal: it force-completes any earlier stages that
+    # were left pending/active during testing and marks the cycle COMPLETED.
     all_stages = (
         db.query(CropStageInstance)
-        .filter(CropStageInstance.crop_cycle_id == cycle_id)
+        .filter(
+            CropStageInstance.crop_cycle_id == cycle_id,
+            CropStageInstance.tenant_id == x_tenant_id,
+        )
+        .order_by(CropStageInstance.stage_order)
         .all()
     )
-    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id).first()
     old_cycle_status = cycle.status
-    cycle.status = compute_cycle_status(all_stages)
-    cycle.updated_at = datetime.now(timezone.utc)
+
+    if body.action == "COMPLETE" and stage.stage_code == "HARVEST":
+        auto_completed_stages.extend(
+            finalize_crop_cycle_completion(cycle, all_stages, x_actor_id, today)
+        )
+    else:
+        cycle.status = compute_cycle_status(all_stages)
+        cycle.updated_at = datetime.now(timezone.utc)
 
     # If first stage started, set actual_sowing_date
     if body.action == "START" and stage.stage_order == 1:
@@ -912,8 +970,6 @@ def advance_stage(
         events_published.append(f"crop_stage_completed.v1:{auto_completed_stage.stage_code}")
     if body.action == "COMPLETE":
         events_published.append("crop_stage_completed.v1")
-    if cycle.status == "COMPLETED" and stage.stage_code == "HARVEST" and body.action == "COMPLETE":
-        cycle.actual_harvest_date = today
     if cycle.status != old_cycle_status:
         events_published.append(f"crop_cycle_status_changed.v1:{cycle.status}")
     if cycle.status == "COMPLETED":
@@ -944,6 +1000,17 @@ def advance_stage(
     )
 
     db.commit()
+    db.refresh(cycle)
+    updated_stages = (
+        db.query(CropStageInstance)
+        .filter(
+            CropStageInstance.crop_cycle_id == cycle_id,
+            CropStageInstance.tenant_id == x_tenant_id,
+        )
+        .order_by(CropStageInstance.stage_order)
+        .all()
+    )
+    crop = db.query(Crop).filter(Crop.code == cycle.crop_code).first()
 
     return {
         "stage_id": str(stage_id),
@@ -953,7 +1020,80 @@ def advance_stage(
         "cycle_status": cycle.status,
         "auto_completed_stage_codes": [s.stage_code for s in auto_completed_stages],
         "events_published": events_published,
+        "crop_cycle": build_crop_cycle_response(
+            cycle, updated_stages, crop.canonical_name if crop else None, events_published
+        ),
     }
+
+
+@router.post("/{cycle_id}/complete")
+def complete_crop_cycle(
+    cycle_id: uuid.UUID,
+    body: Optional[CropCycleCompleteRequest] = None,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: str = Header(..., alias="X-Actor-ID"),
+):
+    """Explicitly complete a crop cycle and all its stages.
+
+    This is a backend escape hatch for Android/product flows where the user
+    finishes harvest and wants the cycle moved to history/read-only.
+    """
+    cycle = (
+        db.query(CropCycle)
+        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
+        .first()
+    )
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+
+    stages = (
+        db.query(CropStageInstance)
+        .filter(
+            CropStageInstance.crop_cycle_id == cycle_id,
+            CropStageInstance.tenant_id == x_tenant_id,
+        )
+        .order_by(CropStageInstance.stage_order)
+        .all()
+    )
+    if not stages:
+        raise HTTPException(409, "Cannot complete cycle without stages")
+
+    old_cycle_status = cycle.status
+    completed_on = date.today()
+    auto_completed_stages = finalize_crop_cycle_completion(cycle, stages, x_actor_id, completed_on)
+
+    events_published = [f"crop_stage_completed.v1:{s.stage_code}" for s in auto_completed_stages]
+    if cycle.status != old_cycle_status:
+        events_published.append(f"crop_cycle_status_changed.v1:{cycle.status}")
+    events_published.append("crop_cycle_completed.v1")
+
+    correlation_id = str(uuid.uuid4())
+    append_audit(
+        db=db,
+        tenant_id=x_tenant_id,
+        actor_id=x_actor_id,
+        correlation_id=correlation_id,
+        entity_type="crop_cycle",
+        entity_id=str(cycle_id),
+        action="CROP_CYCLE_COMPLETED",
+        payload={
+            "old_status": old_cycle_status,
+            "new_status": cycle.status,
+            "auto_completed_stage_codes": [s.stage_code for s in auto_completed_stages],
+        },
+        metadata={
+            "gps_lat": body.gps_lat if body else None,
+            "gps_lng": body.gps_lng if body else None,
+        },
+    )
+
+    db.commit()
+    db.refresh(cycle)
+    crop = db.query(Crop).filter(Crop.code == cycle.crop_code).first()
+    return build_crop_cycle_response(
+        cycle, stages, crop.canonical_name if crop else None, events_published
+    )
 
 
 @router.post("/{cycle_id}/activities", status_code=201)
@@ -978,6 +1118,8 @@ def log_activity(
     )
     if not cycle:
         raise HTTPException(404, "Crop cycle not found")
+    if cycle.status == "COMPLETED":
+        raise HTTPException(409, "Completed crop cycles are read-only")
 
     # Find currently active stage (if any)
     active_stage = (
