@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
-from scripts.seed_recommended_activities import RICE_ACTIVITIES
+from scripts.seed_recommended_activities import RICE_ACTIVITIES, SUGARCANE_ACTIVITIES
 
 
 def now():
@@ -264,6 +264,8 @@ def stages_with_recommendations(tmpl_data: dict) -> list[dict]:
         stage_copy = dict(stage)
         if tmpl_data["code"] == "RICE_KHARIF_DEFAULT":
             stage_copy["recommended_activities"] = RICE_ACTIVITIES.get(stage_copy["code"], [])
+        elif tmpl_data["code"] == "SUGARCANE_DEFAULT":
+            stage_copy["recommended_activities"] = SUGARCANE_ACTIVITIES.get(stage_copy["code"], [])
         stages.append(stage_copy)
     return stages
 

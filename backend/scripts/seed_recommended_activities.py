@@ -59,31 +59,80 @@ RICE_ACTIVITIES = {
 }
 
 
+# Sugarcane Kharif ? recommended activities per stage
+# day_offset is relative to stage start date. Values are practical defaults for UP
+# and can later move to CSV/web-managed configuration.
+SUGARCANE_ACTIVITIES = {
+    "PLANTING": [
+        {"day_offset": 0, "activity_type": "LABOR", "input_name": "Deep Ploughing & Field Preparation", "typical_quantity": "2-3 ploughings + leveling", "typical_cost_per_acre": 3500, "is_critical": True, "description": {"en": "Prepare a fine, well-drained seedbed before cane set planting", "hi": "????? ?? ????? ?? ???? ??? ?? ???? ????? ?? ???????? ????"}},
+        {"day_offset": 1, "activity_type": "FERTILIZER", "input_name": "FYM/Compost", "typical_quantity": "4-5 tonnes/acre", "typical_cost_per_acre": 3000, "is_critical": True, "description": {"en": "Apply well-decomposed FYM during final field preparation", "hi": "????? ??? ?????? ??? ????? ???? ???? ??? ?????"}},
+        {"day_offset": 2, "activity_type": "SEED", "input_name": "Healthy Cane Setts", "typical_quantity": "18,000-22,000 three-budded setts/acre", "typical_cost_per_acre": 9000, "is_critical": True, "description": {"en": "Use disease-free cane setts from healthy seed cane", "hi": "?????? ??? ????? ?? ???????? ??? ??? ???? ??? ?????"}},
+        {"day_offset": 2, "activity_type": "OTHER", "input_name": "Sett Treatment", "typical_quantity": "Fungicide/insecticide dip as advised", "typical_cost_per_acre": 500, "is_critical": True, "description": {"en": "Treat setts before planting to reduce sett rot and early pests", "hi": "??? ??? ?? ??????? ????? ?? ???? ?? ??? ????? ?? ???? ????? ????"}},
+        {"day_offset": 3, "activity_type": "FERTILIZER", "input_name": "Basal NPK Dose", "typical_quantity": "DAP/SSP + MOP as per soil test", "typical_cost_per_acre": 2500, "is_critical": True, "description": {"en": "Apply basal phosphorus and potash in furrows before covering setts", "hi": "??? ???? ?? ???? ?????? ??? ???????? ?? ????? ?? ???? ????? ???"}},
+        {"day_offset": 4, "activity_type": "IRRIGATION", "input_name": "First Irrigation After Planting", "typical_quantity": "Light irrigation", "typical_cost_per_acre": 600, "is_critical": True, "description": {"en": "Irrigate lightly after planting for sett establishment", "hi": "??? ???? ?? ??? ????? ?? ??? ????? ?????? ????"}},
+    ],
+    "GERMINATION": [
+        {"day_offset": 7, "activity_type": "IRRIGATION", "input_name": "Moisture Maintenance", "typical_quantity": "Irrigate every 7-10 days if dry", "typical_cost_per_acre": 600, "is_critical": True, "description": {"en": "Maintain soil moisture during germination; avoid waterlogging", "hi": "?????? ?? ??? ??? ???? ????, ?????? ? ???? ???"}},
+        {"day_offset": 15, "activity_type": "OTHER", "input_name": "Gap Filling", "typical_quantity": "Fill missing hills/rows", "typical_cost_per_acre": 500, "is_critical": True, "description": {"en": "Fill gaps using sprouted setts to maintain plant population", "hi": "??? ?????? ???? ???? ?? ??? ???? ??? ?? ??????? ??? ?????"}},
+        {"day_offset": 20, "activity_type": "PESTICIDE", "input_name": "Early Shoot Borer Monitoring", "typical_quantity": "Field scouting", "typical_cost_per_acre": 0, "is_critical": False, "description": {"en": "Scout for dead hearts and early shoot borer symptoms", "hi": "??? ????? ?? ????? ??? ???? ?? ????? ?????"}},
+        {"day_offset": 25, "activity_type": "LABOR", "input_name": "First Hoeing / Light Weeding", "typical_quantity": "One operation", "typical_cost_per_acre": 1200, "is_critical": False, "description": {"en": "Remove early weeds and loosen top soil", "hi": "??????? ??????? ????? ?? ???? ?????? ??????? ????"}},
+    ],
+    "TILLERING": [
+        {"day_offset": 0, "activity_type": "FERTILIZER", "input_name": "Urea First Top Dressing", "typical_quantity": "45-50 kg/acre", "typical_cost_per_acre": 800, "is_critical": True, "description": {"en": "Apply first nitrogen split at tillering start", "hi": "????? ?????? ?? ?????? ?? ?????? ?? ???? ??? ???????? ????"}},
+        {"day_offset": 10, "activity_type": "LABOR", "input_name": "Interculture & Weeding", "typical_quantity": "One hoeing/weeding", "typical_cost_per_acre": 1500, "is_critical": True, "description": {"en": "Control weeds before canopy closes", "hi": "??? ???? ?? ???? ??????? ???????? ????"}},
+        {"day_offset": 20, "activity_type": "PESTICIDE", "input_name": "Shoot Borer Control If Needed", "typical_quantity": "Need-based application", "typical_cost_per_acre": 700, "is_critical": False, "description": {"en": "Apply recommended control if borer incidence crosses threshold", "hi": "???? ?????? ???? ?? ???? ?? ?? ???????? ???????? ????"}},
+        {"day_offset": 30, "activity_type": "IRRIGATION", "input_name": "Tillering Irrigation", "typical_quantity": "Irrigate as per soil moisture", "typical_cost_per_acre": 700, "is_critical": True, "description": {"en": "Avoid moisture stress during tiller formation", "hi": "????? ???? ??? ??? ?? ??? ? ???? ???"}},
+    ],
+    "GRAND_GROWTH": [
+        {"day_offset": 0, "activity_type": "FERTILIZER", "input_name": "Urea Second Top Dressing", "typical_quantity": "45-50 kg/acre", "typical_cost_per_acre": 800, "is_critical": True, "description": {"en": "Apply second nitrogen split at grand growth start", "hi": "??? ?????? ?? ?????? ?? ?????? ?? ????? ????? ???"}},
+        {"day_offset": 20, "activity_type": "LABOR", "input_name": "Earthing Up", "typical_quantity": "One operation", "typical_cost_per_acre": 2000, "is_critical": True, "description": {"en": "Earth up rows to support canes and improve root growth", "hi": "????? ?? ????? ?? ??? ?????? ?? ??? ?????? ??????"}},
+        {"day_offset": 30, "activity_type": "IRRIGATION", "input_name": "Critical Growth Irrigation", "typical_quantity": "Every 10-15 days if no rain", "typical_cost_per_acre": 900, "is_critical": True, "description": {"en": "Grand growth is a high water-demand phase", "hi": "??? ?????? ?????? ??? ???? ?? ???? ???? ???? ??"}},
+        {"day_offset": 45, "activity_type": "PESTICIDE", "input_name": "Top Borer / Pyrilla Monitoring", "typical_quantity": "Field scouting", "typical_cost_per_acre": 0, "is_critical": False, "description": {"en": "Monitor for top borer, pyrilla and leaf diseases", "hi": "??? ????, ??????? ?? ????? ????? ?? ??????? ????"}},
+    ],
+    "MATURITY": [
+        {"day_offset": 0, "activity_type": "IRRIGATION", "input_name": "Reduce Irrigation Frequency", "typical_quantity": "Avoid excess irrigation", "typical_cost_per_acre": 0, "is_critical": True, "description": {"en": "Reduce excess irrigation during ripening to improve sugar accumulation", "hi": "???? ?? ???? ???? ?? ??? ???? ?????? ?? ????"}},
+        {"day_offset": 20, "activity_type": "OTHER", "input_name": "Trash Management", "typical_quantity": "Remove dry leaves if needed", "typical_cost_per_acre": 800, "is_critical": False, "description": {"en": "Remove excess dry trash only if it interferes with field operations", "hi": "????? ???? ?? ???? ???????? ?????"}},
+        {"day_offset": 35, "activity_type": "OTHER", "input_name": "Maturity Check", "typical_quantity": "Check cane hardness and brix if available", "typical_cost_per_acre": 0, "is_critical": True, "description": {"en": "Check maturity before deciding harvest date", "hi": "???? ?? ????? ?? ???? ?? ???? ????????? ??????"}},
+        {"day_offset": 50, "activity_type": "OTHER", "input_name": "Harvest Planning", "typical_quantity": "Arrange labor/transport/mill slot", "typical_cost_per_acre": 0, "is_critical": True, "description": {"en": "Arrange harvest labor, transport and mill supply timing", "hi": "???? ?????, ?????? ?? ??? ??????? ??? ?? ???????? ????"}},
+    ],
+    "HARVEST": [
+        {"day_offset": 0, "activity_type": "LABOR", "input_name": "Cane Cutting", "typical_quantity": "Cut mature canes close to ground", "typical_cost_per_acre": 6000, "is_critical": True, "description": {"en": "Harvest mature canes close to ground level", "hi": "??? ????? ?? ???? ?? ??? ?? ?????"}},
+        {"day_offset": 0, "activity_type": "LABOR", "input_name": "Detrashing & Bundling", "typical_quantity": "Clean and bundle canes", "typical_cost_per_acre": 2000, "is_critical": True, "description": {"en": "Remove tops/trash and bundle cane for transport", "hi": "?????/???? ???????? ????? ????? ?? ???? ?????"}},
+        {"day_offset": 1, "activity_type": "MACHINERY", "input_name": "Transport to Mill/Crusher", "typical_quantity": "Same day or within 24 hours", "typical_cost_per_acre": 3500, "is_critical": True, "description": {"en": "Transport quickly after cutting to reduce sucrose loss", "hi": "???? ???? ?? ???? ?? ??? ???? ?? ??? ????? ?????? ????"}},
+        {"day_offset": 3, "activity_type": "OTHER", "input_name": "Ratoon Decision", "typical_quantity": "Inspect stubble and field condition", "typical_cost_per_acre": 0, "is_critical": False, "description": {"en": "Decide whether to keep ratoon crop based on stand and pest status", "hi": "?????? ?? ??? ?????? ????? ???? ??? ???? ?? ?????? ???"}},
+    ],
+}
+
+
 def update_template_with_recommendations():
     db = SessionLocal()
 
-    # Update RICE template
-    rice_template = db.query(CropLifecycleTemplate).filter(
-        CropLifecycleTemplate.code == "RICE_KHARIF_DEFAULT"
-    ).first()
+    templates = {
+        "RICE_KHARIF_DEFAULT": RICE_ACTIVITIES,
+        "SUGARCANE_DEFAULT": SUGARCANE_ACTIVITIES,
+    }
 
-    if rice_template:
-        stages = rice_template.stages or []
-        updated_stages = []
-        for stage in stages:
-            stage_copy = dict(stage)
-            code = stage_copy["code"]
-            if code in RICE_ACTIVITIES:
-                stage_copy["recommended_activities"] = RICE_ACTIVITIES[code]
-            updated_stages.append(stage_copy)
-        rice_template.stages = updated_stages
-        flag_modified(rice_template, "stages")
-        rice_template.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        print(f"Updated RICE_KHARIF_DEFAULT with recommended activities for {len(RICE_ACTIVITIES)} stages")
-    else:
-        print("RICE_KHARIF_DEFAULT template not found")
+    for template_code, activities_by_stage in templates.items():
+        template = db.query(CropLifecycleTemplate).filter(
+            CropLifecycleTemplate.code == template_code
+        ).first()
 
+        if template:
+            stages = template.stages or []
+            updated_stages = []
+            for stage in stages:
+                stage_copy = dict(stage)
+                code = stage_copy["code"]
+                stage_copy["recommended_activities"] = activities_by_stage.get(code, [])
+                updated_stages.append(stage_copy)
+            template.stages = updated_stages
+            flag_modified(template, "stages")
+            template.updated_at = datetime.now(timezone.utc)
+            print(f"Updated {template_code} with recommended activities for {len(activities_by_stage)} stages")
+        else:
+            print(f"{template_code} template not found")
+
+    db.commit()
     db.close()
 
 
