@@ -331,6 +331,62 @@ def create_crop_cycle(
     except (ValueError, AttributeError):
         resolved_crop_code = body.crop_code.upper()
 
+    requested_sowing_date = body.planned_sowing_date or date.today()
+    requested_season_code = body.season_code.upper()
+
+    existing_cycles = (
+        db.query(CropCycle)
+        .filter(
+            CropCycle.tenant_id == x_tenant_id,
+            CropCycle.farmer_id == farmer_id,
+            CropCycle.parcel_id == body.parcel_id,
+            CropCycle.status != "ARCHIVED",
+        )
+        .all()
+    )
+
+    in_progress_cycle = next(
+        (c for c in existing_cycles if c.status in ("PLANNED", "ACTIVE", "PARTIALLY_TRACKED")),
+        None,
+    )
+    if in_progress_cycle:
+        raise HTTPException(
+            409,
+            {
+                "error": "PARCEL_HAS_IN_PROGRESS_CYCLE",
+                "message": "Parcel already has an in-progress crop cycle",
+                "cycle_id": str(in_progress_cycle.id),
+                "status": in_progress_cycle.status,
+                "crop_code": in_progress_cycle.crop_code,
+                "season_code": in_progress_cycle.season_code,
+            },
+        )
+
+    duplicate_completed_cycle = next(
+        (
+            c for c in existing_cycles
+            if c.status == "COMPLETED"
+            and c.crop_code == resolved_crop_code
+            and c.season_code == requested_season_code
+            and (c.planned_sowing_date or c.actual_sowing_date)
+            and (c.planned_sowing_date or c.actual_sowing_date).year == requested_sowing_date.year
+        ),
+        None,
+    )
+    if duplicate_completed_cycle:
+        raise HTTPException(
+            409,
+            {
+                "error": "CYCLE_ALREADY_COMPLETED_THIS_SEASON",
+                "message": "Parcel already has a completed cycle for this crop/season/year",
+                "cycle_id": str(duplicate_completed_cycle.id),
+                "status": duplicate_completed_cycle.status,
+                "crop_code": duplicate_completed_cycle.crop_code,
+                "season_code": duplicate_completed_cycle.season_code,
+                "season_year": requested_sowing_date.year,
+            },
+        )
+
     # Create crop cycle
     cycle_id = uuid.uuid4()
     cycle = CropCycle(
@@ -341,9 +397,9 @@ def create_crop_cycle(
         project_id=body.project_id,
         crop_code=resolved_crop_code,
         variety_code=body.variety_code,
-        season_code=body.season_code,
+        season_code=requested_season_code,
         lifecycle_template_id=template_id,
-        planned_sowing_date=body.planned_sowing_date,
+        planned_sowing_date=requested_sowing_date,
         status="PLANNED",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -387,7 +443,7 @@ def create_crop_cycle(
         action="CROP_CYCLE_CREATED",
         payload={
             "crop_code": resolved_crop_code,
-            "season_code": body.season_code,
+            "season_code": requested_season_code,
             "template_id": str(template_id),
             "stages_count": len(stages_data),
         },
@@ -397,7 +453,7 @@ def create_crop_cycle(
     db.commit()
 
     # Calculate expected dates from template
-    sowing = body.planned_sowing_date or date.today()
+    sowing = requested_sowing_date
     cumulative_days = 0
     stage_schedule = []
     for s in stage_instances:
@@ -441,7 +497,7 @@ def create_crop_cycle(
         id=cycle_id,
         status="PLANNED" if sowing > date.today() else "ACTIVE",
         crop_code=resolved_crop_code,
-        season_code=body.season_code,
+        season_code=requested_season_code,
         planned_sowing_date=sowing,
         expected_harvest_date=expected_harvest,
         inferred_current_stage=inferred_stage,
