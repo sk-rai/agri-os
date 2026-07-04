@@ -11,11 +11,13 @@ GET  /api/v1/parcels                    — List parcels (tenant-scoped)
 PATCH /api/v1/parcels/{id}/geometry     — Add/update GPS data (progressive)
 """
 
+import json
 import uuid
 from datetime import datetime, timezone, date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
@@ -151,11 +153,91 @@ class GeometryUpdate(BaseModel):
 
     GeoJSON format: {"type": "Point|Polygon", "coordinates": ...}
     """
-    geometry_source: str = Field(..., pattern=r"^(PIN_DROP|GPS_WALK|SATELLITE)$")
+    geometry_source: str = Field(..., pattern=r"^(NONE|PIN_DROP|GPS_WALK|MANUAL_DRAW|SATELLITE)$")
     centroid_lat: Optional[float] = None
     centroid_lng: Optional[float] = None
     geojson: Optional[dict] = None  # Standard GeoJSON: Point, MultiPoint, or Polygon
     accuracy_meters: Optional[float] = None
+
+
+
+
+def _validate_lng_lat(point: list, label: str) -> tuple[float, float]:
+    if not isinstance(point, list) or len(point) < 2:
+        raise HTTPException(400, f"{label} must be [longitude, latitude]")
+    try:
+        lng = float(point[0])
+        lat = float(point[1])
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"{label} coordinates must be numeric")
+    if not -180 <= lng <= 180:
+        raise HTTPException(400, f"{label} longitude out of range")
+    if not -90 <= lat <= 90:
+        raise HTTPException(400, f"{label} latitude out of range")
+    return lng, lat
+
+
+def normalize_geojson_for_parcel(geojson: Optional[dict], geometry_source: str) -> tuple[Optional[dict], Optional[float], Optional[float]]:
+    """Validate Android GeoJSON and return normalized geometry + centroid lat/lng.
+
+    GeoJSON coordinates are [longitude, latitude]. For polygons, the first ring
+    is closed automatically if Android omitted the final repeated point.
+    """
+    if not geojson:
+        return None, None, None
+
+    geometry_type = geojson.get("type")
+    coordinates = geojson.get("coordinates")
+
+    if geometry_type == "Point":
+        lng, lat = _validate_lng_lat(coordinates, "Point")
+        if geometry_source not in ("PIN_DROP", "GPS_WALK", "MANUAL_DRAW", "SATELLITE"):
+            raise HTTPException(400, "Point GeoJSON requires a GPS geometry_source")
+        return {"type": "Point", "coordinates": [lng, lat]}, lat, lng
+
+    if geometry_type == "Polygon":
+        if geometry_source not in ("GPS_WALK", "MANUAL_DRAW", "SATELLITE"):
+            raise HTTPException(400, "Polygon GeoJSON requires GPS_WALK, MANUAL_DRAW, or SATELLITE geometry_source")
+        if not isinstance(coordinates, list) or not coordinates or not isinstance(coordinates[0], list):
+            raise HTTPException(400, "Polygon coordinates must contain at least one linear ring")
+
+        normalized_rings = []
+        for ring_index, ring in enumerate(coordinates):
+            if not isinstance(ring, list):
+                raise HTTPException(400, f"Polygon ring {ring_index} must be a list")
+            normalized_ring = []
+            for point_index, point in enumerate(ring):
+                lng, lat = _validate_lng_lat(point, f"Polygon ring {ring_index} point {point_index}")
+                normalized_ring.append([lng, lat])
+
+            if len(normalized_ring) < 3:
+                raise HTTPException(400, f"Polygon ring {ring_index} must have at least 3 distinct points")
+            if normalized_ring[0] != normalized_ring[-1]:
+                normalized_ring.append(normalized_ring[0])
+            if len(normalized_ring) < 4:
+                raise HTTPException(400, f"Polygon ring {ring_index} must have at least 4 coordinates including closure")
+            normalized_rings.append(normalized_ring)
+
+        return {"type": "Polygon", "coordinates": normalized_rings}, None, None
+
+    raise HTTPException(400, "GeoJSON type must be Point or Polygon")
+
+
+def _centroid_from_geojson(db: Session, normalized_geojson: dict) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    if normalized_geojson.get("type") != "Polygon":
+        return None, None, None
+    row = db.execute(
+        text(
+            """
+            SELECT
+                ST_Y(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326))) AS lat,
+                ST_X(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326))) AS lng,
+                ST_Area(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)::geography) / 10000.0 AS area_hectares
+            """
+        ),
+        {"geojson": json.dumps(normalized_geojson)},
+    ).fetchone()
+    return (float(row.lat), float(row.lng), float(row.area_hectares)) if row else (None, None, None)
 
 
 # --- Tenant Endpoints ---
@@ -412,17 +494,61 @@ def update_parcel_geometry(
     if not parcel:
         raise HTTPException(404, "Parcel not found")
 
+    normalized_geojson, point_lat, point_lng = normalize_geojson_for_parcel(
+        body.geojson, body.geometry_source
+    )
+
+    if body.geometry_source == "PIN_DROP" and not normalized_geojson and (body.centroid_lat is None or body.centroid_lng is None):
+        raise HTTPException(400, "PIN_DROP requires centroid_lat/centroid_lng or Point GeoJSON")
+    if body.geometry_source in ("GPS_WALK", "MANUAL_DRAW", "SATELLITE") and (not normalized_geojson or normalized_geojson.get("type") != "Polygon"):
+        raise HTTPException(400, f"{body.geometry_source} requires Polygon GeoJSON")
+
     parcel.geometry_source = body.geometry_source
     parcel.geometry_accuracy_meters = body.accuracy_meters
     parcel.geometry_captured_at = datetime.now(timezone.utc)
     parcel.geometry_captured_by = uuid.UUID(x_actor_id)
 
-    if body.centroid_lat and body.centroid_lng:
+    if point_lat is not None and point_lng is not None:
+        parcel.centroid_lat = point_lat
+        parcel.centroid_lng = point_lng
+    elif body.centroid_lat is not None and body.centroid_lng is not None:
         parcel.centroid_lat = body.centroid_lat
         parcel.centroid_lng = body.centroid_lng
 
-    # TODO: If polygon_geojson provided, convert to PostGIS geometry
-    # and compute area via ST_Area()
+    computed_area_hectares = None
+    if normalized_geojson and normalized_geojson.get("type") == "Polygon":
+        centroid_lat, centroid_lng, computed_area_hectares = _centroid_from_geojson(db, normalized_geojson)
+        parcel.centroid_lat = centroid_lat
+        parcel.centroid_lng = centroid_lng
+        parcel.computed_area_hectares = computed_area_hectares
+        db.flush()
+        db.execute(
+            text(
+                """
+                UPDATE parcels
+                SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)
+                WHERE id = :parcel_id AND tenant_id = :tenant_id
+                """
+            ),
+            {
+                "geojson": json.dumps(normalized_geojson),
+                "parcel_id": str(parcel_id),
+                "tenant_id": x_tenant_id,
+            },
+        )
+    elif body.geometry_source in ("NONE", "PIN_DROP"):
+        parcel.computed_area_hectares = None
+        db.flush()
+        db.execute(
+            text(
+                """
+                UPDATE parcels
+                SET geometry = NULL
+                WHERE id = :parcel_id AND tenant_id = :tenant_id
+                """
+            ),
+            {"parcel_id": str(parcel_id), "tenant_id": x_tenant_id},
+        )
 
     parcel.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -431,6 +557,10 @@ def update_parcel_geometry(
         "status": "geometry_updated",
         "geometry_source": parcel.geometry_source,
         "parcel_id": str(parcel_id),
+        "centroid_lat": str(parcel.centroid_lat) if parcel.centroid_lat is not None else None,
+        "centroid_lng": str(parcel.centroid_lng) if parcel.centroid_lng is not None else None,
+        "computed_area_hectares": str(parcel.computed_area_hectares) if parcel.computed_area_hectares is not None else None,
+        "geojson_type": normalized_geojson.get("type") if normalized_geojson else None,
     }
 
 

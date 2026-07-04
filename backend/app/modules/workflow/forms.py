@@ -29,7 +29,7 @@ class FormFieldOption(BaseModel):
 
 class FormField(BaseModel):
     id: str
-    type: str  # text, number, date, dropdown, single_select, multi_select
+    type: str  # text, number, date, dropdown, single_select, multi_select, GPS_POINT, GPS_POLYGON, PHOTO, SECTION
     label: dict[str, str]
     required: bool = False
     source: Optional[str] = None  # API endpoint or "local_*" for Room data
@@ -40,6 +40,13 @@ class FormField(BaseModel):
     placeholder: Optional[dict[str, str]] = None
     validation: Optional[dict] = None
     hint: Optional[dict[str, str]] = None
+    canonical_field: Optional[str] = None
+    android_hint: Optional[dict] = None
+    capture_modes: Optional[list[str]] = None
+    output_format: Optional[str] = None
+    min_points: Optional[int] = None
+    accuracy_required_meters: Optional[float] = None
+    allow_offline_capture: bool = True
 
 
 class FormSchema(BaseModel):
