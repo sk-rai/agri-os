@@ -14,6 +14,7 @@ PATCH /api/v1/parcels/{id}/geometry     — Add/update GPS data (progressive)
 import json
 import uuid
 from datetime import datetime, timezone, date
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -161,6 +162,32 @@ class GeometryUpdate(BaseModel):
 
 
 
+def normalize_mobile_number(mobile_number: str) -> str:
+    """Normalize Indian mobile numbers for profile lookup.
+
+    Android may have either +919900000001 or 9900000001 depending on which
+    screen/local entity produced the value. Store and compare as +91XXXXXXXXXX.
+    """
+    value = (mobile_number or "").strip().replace(" ", "").replace("-", "")
+    if value.startswith("91") and len(value) == 12:
+        value = f"+{value}"
+    elif len(value) == 10 and value[0] in "6789":
+        value = f"+91{value}"
+    return value
+
+
+def _json_number(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def _iso_date(value):
+    return value.isoformat() if value else None
+
+
 
 def _validate_lng_lat(point: list, label: str) -> tuple[float, float]:
     if not isinstance(point, list) or len(point) < 2:
@@ -238,6 +265,221 @@ def _centroid_from_geojson(db: Session, normalized_geojson: dict) -> tuple[Optio
         {"geojson": json.dumps(normalized_geojson)},
     ).fetchone()
     return (float(row.lat), float(row.lng), float(row.area_hectares)) if row else (None, None, None)
+
+
+def _select_hydration_farmer(db: Session, tenant_id: str, mobile_number: str) -> tuple[Optional[Farmer], list[Farmer]]:
+    normalized_mobile = normalize_mobile_number(mobile_number)
+    candidates = (
+        db.query(Farmer)
+        .filter(Farmer.tenant_id == tenant_id, Farmer.mobile_number == normalized_mobile)
+        .all()
+    )
+    if not candidates:
+        return None, []
+
+    from app.modules.workflow.models import CropCycle
+
+    scored = []
+    for farmer in candidates:
+        parcel_count = db.query(Parcel).filter(Parcel.farmer_id == farmer.id, Parcel.tenant_id == tenant_id).count()
+        cycle_count = db.query(CropCycle).filter(CropCycle.farmer_id == farmer.id, CropCycle.tenant_id == tenant_id).count()
+        active_rank = 1 if farmer.status == "ACTIVE" else 0
+        updated_at = farmer.updated_at or farmer.created_at or datetime.min.replace(tzinfo=timezone.utc)
+        scored.append(((active_rank, parcel_count, cycle_count, updated_at), farmer))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    selected = scored[0][1]
+    duplicates = [farmer for _, farmer in scored[1:]]
+    return selected, duplicates
+
+
+def _farmer_payload(farmer: Farmer) -> dict:
+    return {
+        "id": str(farmer.id),
+        "tenant_id": farmer.tenant_id,
+        "project_id": str(farmer.project_id) if farmer.project_id else None,
+        "user_id": str(farmer.user_id) if farmer.user_id else None,
+        "mobile_number": farmer.mobile_number,
+        "display_name": farmer.display_name,
+        "father_name": farmer.father_name,
+        "age": farmer.age,
+        "gender": farmer.gender,
+        "village_id": str(farmer.village_id) if farmer.village_id else None,
+        "village_name_manual": farmer.village_name_manual,
+        "primary_crop_code": farmer.primary_crop_code,
+        "crops_by_season": farmer.crops_by_season or {},
+        "total_land_area": _json_number(farmer.total_land_area),
+        "total_land_unit": farmer.total_land_unit,
+        "language_preference": farmer.language_preference,
+        "status": farmer.status,
+        "created_at": _iso_date(farmer.created_at),
+        "updated_at": _iso_date(farmer.updated_at),
+    }
+
+
+def _parcel_geojson(db: Session, parcel: Parcel) -> Optional[dict]:
+    row = db.execute(
+        text("SELECT ST_AsGeoJSON(geometry) AS geojson FROM parcels WHERE id=:id AND tenant_id=:tenant_id"),
+        {"id": str(parcel.id), "tenant_id": parcel.tenant_id},
+    ).fetchone()
+    if not row or not row.geojson:
+        return None
+    return json.loads(row.geojson)
+
+
+def _parcel_payload(db: Session, parcel: Parcel) -> dict:
+    geojson = _parcel_geojson(db, parcel)
+    return {
+        "id": str(parcel.id),
+        "farmer_id": str(parcel.farmer_id),
+        "tenant_id": parcel.tenant_id,
+        "project_id": str(parcel.project_id) if parcel.project_id else None,
+        "village_id": str(parcel.village_id) if parcel.village_id else None,
+        "village_name_manual": parcel.village_name_manual,
+        "reported_area": _json_number(parcel.reported_area),
+        "reported_area_unit": parcel.reported_area_unit,
+        "current_crop_code": parcel.current_crop_code,
+        "soil_type_code": parcel.soil_type_code,
+        "local_name": parcel.local_name,
+        "survey_number": parcel.survey_number,
+        "ownership_type": parcel.ownership_type,
+        "annual_rent": _json_number(parcel.annual_rent),
+        "annual_rent_currency": parcel.annual_rent_currency,
+        "share_percentage": parcel.share_percentage,
+        "sharecrop_percentage": parcel.sharecrop_percentage,
+        "irrigation_source": parcel.irrigation_source,
+        "crops_by_season": parcel.crops_by_season or {},
+        "geometry_source": parcel.geometry_source,
+        "centroid_lat": _json_number(parcel.centroid_lat),
+        "centroid_lng": _json_number(parcel.centroid_lng),
+        "computed_area_hectares": _json_number(parcel.computed_area_hectares),
+        "geometry_accuracy_meters": _json_number(parcel.geometry_accuracy_meters),
+        "geometry_captured_at": _iso_date(parcel.geometry_captured_at),
+        "geojson": geojson,
+        "geojson_type": geojson.get("type") if geojson else None,
+        "status": parcel.status,
+        "created_at": _iso_date(parcel.created_at),
+        "updated_at": _iso_date(parcel.updated_at),
+    }
+
+
+def _soil_profile_payload(profile) -> dict:
+    return {
+        "id": str(profile.id),
+        "parcel_id": str(profile.parcel_id),
+        "farmer_id": str(profile.farmer_id),
+        "soil_type_code": profile.soil_type_code,
+        "soil_texture": profile.soil_texture,
+        "soil_color": profile.soil_color,
+        "test_date": _iso_date(profile.test_date),
+        "lab_name": profile.lab_name,
+        "shc_card_number": profile.shc_card_number,
+        "nitrogen_n": _json_number(profile.nitrogen_n),
+        "phosphorus_p": _json_number(profile.phosphorus_p),
+        "potassium_k": _json_number(profile.potassium_k),
+        "sulphur_s": _json_number(profile.sulphur_s),
+        "zinc_zn": _json_number(profile.zinc_zn),
+        "iron_fe": _json_number(profile.iron_fe),
+        "copper_cu": _json_number(profile.copper_cu),
+        "manganese_mn": _json_number(profile.manganese_mn),
+        "boron_bo": _json_number(profile.boron_bo),
+        "ph": _json_number(profile.ph),
+        "ec": _json_number(profile.ec),
+        "organic_carbon_oc": _json_number(profile.organic_carbon_oc),
+        "ratings": profile.ratings or {},
+        "recommendations": profile.recommendations or {},
+        "data_source": profile.data_source,
+        "notes": profile.notes,
+        "created_at": _iso_date(profile.created_at),
+        "updated_at": _iso_date(profile.updated_at),
+    }
+
+
+def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer]) -> dict:
+    from app.modules.farmer.soil_profile import SoilProfile
+    from app.modules.master_data.models import Crop
+    from app.modules.workflow.api import build_crop_cycle_response
+    from app.modules.workflow.models import CropCycle, CropStageInstance
+
+    parcels = (
+        db.query(Parcel)
+        .filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == farmer.id)
+        .order_by(Parcel.created_at, Parcel.id)
+        .all()
+    )
+    soil_profiles = (
+        db.query(SoilProfile)
+        .filter(SoilProfile.tenant_id == tenant_id, SoilProfile.farmer_id == farmer.id)
+        .order_by(SoilProfile.test_date.desc(), SoilProfile.updated_at.desc())
+        .all()
+    )
+    cycles = (
+        db.query(CropCycle)
+        .filter(CropCycle.tenant_id == tenant_id, CropCycle.farmer_id == farmer.id)
+        .order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc())
+        .all()
+    )
+
+    crop_codes = sorted({cycle.crop_code for cycle in cycles if cycle.crop_code})
+    crop_names = {
+        crop.code: crop.canonical_name
+        for crop in db.query(Crop).filter(Crop.code.in_(crop_codes)).all()
+    } if crop_codes else {}
+
+    cycle_payloads = []
+    for cycle in cycles:
+        stages = (
+            db.query(CropStageInstance)
+            .filter(
+                CropStageInstance.crop_cycle_id == cycle.id,
+                CropStageInstance.tenant_id == tenant_id,
+            )
+            .order_by(CropStageInstance.stage_order)
+            .all()
+        )
+        cycle_payloads.append(build_crop_cycle_response(cycle, stages, crop_names.get(cycle.crop_code)))
+
+    active_statuses = {"PLANNED", "ACTIVE", "PARTIALLY_TRACKED"}
+    completed_statuses = {"COMPLETED"}
+
+    duplicate_payloads = []
+    for duplicate in duplicate_farmers:
+        duplicate_payloads.append({
+            "id": str(duplicate.id),
+            "mobile_number": duplicate.mobile_number,
+            "display_name": duplicate.display_name,
+            "status": duplicate.status,
+            "parcel_count": db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == duplicate.id).count(),
+            "crop_cycle_count": db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id, CropCycle.farmer_id == duplicate.id).count(),
+            "created_at": _iso_date(duplicate.created_at),
+            "updated_at": _iso_date(duplicate.updated_at),
+        })
+
+    return {
+        "profile_exists": True,
+        "tenant_id": tenant_id,
+        "farmer": _farmer_payload(farmer),
+        "parcels": [_parcel_payload(db, parcel) for parcel in parcels],
+        "soil_profiles": [_soil_profile_payload(profile) for profile in soil_profiles],
+        "crop_cycles": {
+            "active": [cycle for cycle in cycle_payloads if cycle["status"] in active_statuses],
+            "completed": [cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses],
+            "other": [cycle for cycle in cycle_payloads if cycle["status"] not in active_statuses and cycle["status"] not in completed_statuses and cycle["status"] != "ARCHIVED"],
+        },
+        "summary": {
+            "parcel_count": len(parcels),
+            "soil_profile_count": len(soil_profiles),
+            "active_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] in active_statuses]),
+            "completed_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses]),
+            "archived_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] == "ARCHIVED"]),
+            "duplicate_farmer_count": len(duplicate_farmers),
+        },
+        "duplicates": duplicate_payloads,
+        "geometry_contract": {
+            "pin_drop": "PIN_DROP returns geometry_source plus centroid_lat/centroid_lng. geojson is null for MVP because backend does not store Point geometry in PostGIS.",
+            "gps_walk": "GPS_WALK returns geometry_source, centroid_lat/centroid_lng, computed_area_hectares, and Polygon GeoJSON when captured.",
+        },
+    }
 
 
 # --- Tenant Endpoints ---
@@ -362,10 +604,31 @@ def enroll_farmer(
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
 
+    normalized_mobile = normalize_mobile_number(body.mobile_number)
+    existing_farmer = (
+        db.query(Farmer)
+        .filter(
+            Farmer.tenant_id == x_tenant_id,
+            Farmer.mobile_number == normalized_mobile,
+            Farmer.status != "INACTIVE",
+        )
+        .order_by(Farmer.updated_at.desc(), Farmer.created_at.desc())
+        .first()
+    )
+    if existing_farmer:
+        raise HTTPException(
+            409,
+            {
+                "message": "Farmer profile already exists for this mobile number",
+                "farmer_id": str(existing_farmer.id),
+                "hydrate_endpoint": f"/api/v1/farmers/by-mobile/{normalized_mobile}",
+            },
+        )
+
     farmer = Farmer(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
-        mobile_number=body.mobile_number,
+        mobile_number=normalized_mobile,
         village_id=body.village_id,  # Can be None if manual village
         village_name_manual=body.village_name_manual,
         primary_crop_code=body.primary_crop_code,
@@ -607,6 +870,44 @@ def get_form_field_config(
 
 
 # --- Farmer /me endpoint (for pre-registered/bulk-import flow) ---
+
+@router.get("/farmers/by-mobile/{mobile_number:path}")
+def get_farmer_profile_by_mobile(
+    mobile_number: str,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Hydrate Android local storage after mobile login.
+
+    Returns farmer + parcels + soil profiles + active/completed crop cycles.
+    If multiple farmer rows share the mobile number, selects the richest active
+    profile and reports the extras under `duplicates` for cleanup.
+    """
+    normalized_mobile = normalize_mobile_number(mobile_number)
+    farmer, duplicates = _select_hydration_farmer(db, x_tenant_id, normalized_mobile)
+    if not farmer:
+        raise HTTPException(404, "No farmer profile found for this mobile number")
+    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates)
+
+
+@router.get("/farmers/me/profile")
+def get_my_profile_hydration(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: str = Header(..., alias="X-Actor-ID"),
+):
+    """Authenticated profile hydration endpoint for Android after login."""
+    from app.modules.auth.models import User
+
+    user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    farmer, duplicates = _select_hydration_farmer(db, x_tenant_id, user.mobile_number)
+    if not farmer:
+        raise HTTPException(404, "No farmer profile found for this user")
+    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates)
+
 
 @router.get("/farmers/me")
 def get_my_farmer_profile(

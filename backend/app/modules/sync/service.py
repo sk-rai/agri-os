@@ -75,10 +75,22 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
 
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
     if not farmer:
+        mobile_number = _first_payload_value(payload, "mobile_number", "mobileNumber", "phone") or "+919999999999"
+        if mobile_number and not str(mobile_number).startswith("+91") and len(str(mobile_number)) == 10:
+            mobile_number = f"+91{mobile_number}"
+
+        farmer = (
+            db.query(Farmer)
+            .filter(Farmer.tenant_id == tenant_id, Farmer.mobile_number == mobile_number)
+            .order_by(Farmer.updated_at.desc(), Farmer.created_at.desc())
+            .first()
+        )
+
+    if not farmer:
         farmer = Farmer(
             id=farmer_id,
             tenant_id=tenant_id,
-            mobile_number=_first_payload_value(payload, "mobile_number", "mobileNumber", "phone") or "+919999999999",
+            mobile_number=mobile_number,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
