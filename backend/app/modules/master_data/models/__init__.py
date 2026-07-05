@@ -11,6 +11,11 @@ from app.modules.master_data.models.crop import (
     Crop,
     CropVariety,
     CropLifecycleTemplate,
+    CropTaxonomyNode,
+    CropTaxonomyEdge,
+    CropTaxonomyAssignment,
+    CropPropagationType,
+    CropPropagationOption,
 )
 from app.modules.master_data.models.input import (
     InputCategory,
@@ -29,6 +34,11 @@ __all__ = [
     "Crop",
     "CropVariety",
     "CropLifecycleTemplate",
+    "CropTaxonomyNode",
+    "CropTaxonomyEdge",
+    "CropTaxonomyAssignment",
+    "CropPropagationType",
+    "CropPropagationOption",
     "InputCategory",
     "Manufacturer",
     "AgriculturalInput",
