@@ -12,6 +12,16 @@ from app.core.database import Base
 from app.core.config import settings
 
 # Import all models so they register with Base.metadata
+from app.modules.workflow.models import (  # noqa: F401
+    CropCycle,
+    CropStageInstance,
+    CropActivity,
+    WorkflowTemplate,
+    WorkflowTemplateVersion,
+    WorkflowTemplateStage,
+    WorkflowTemplateRecommendation,
+)
+
 from app.modules.master_data.models import (  # noqa: F401
     GeographyState,
     GeographyDistrict,

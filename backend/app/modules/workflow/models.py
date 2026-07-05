@@ -21,13 +21,124 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, String, Integer, Text, DECIMAL, Date, DateTime,
-    ForeignKey, Index, Boolean, CheckConstraint,
+    ForeignKey, Index, Boolean, CheckConstraint, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 from app.shared.models import AuditMixin, UUIDPrimaryKey
+
+
+class WorkflowTemplate(Base, UUIDPrimaryKey, AuditMixin):
+    """Configurable crop-cycle workflow template header.
+
+    A template is scoped by crop, season, propagation type, and optionally
+    tenant/project. Versions hold the actual stage/recommendation structure.
+    """
+
+    __tablename__ = "workflow_templates"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, default="default")
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    code = Column(String(80), nullable=False)
+    crop_id = Column(UUID(as_uuid=True), ForeignKey("crops.id"), nullable=False)
+    crop_code = Column(String(30), nullable=False)
+    season_code = Column(String(20), nullable=False)
+    propagation_type_code = Column(String(50))
+    canonical_name = Column(String(150), nullable=False)
+    description = Column(Text)
+    is_default = Column(Boolean, nullable=False, default=False)
+    lifecycle_template_id = Column(UUID(as_uuid=True), ForeignKey("crop_lifecycle_templates.id"))
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_workflow_template_tenant_code"),
+        Index("idx_workflow_template_crop_season", "crop_code", "season_code"),
+        Index("idx_workflow_template_tenant", "tenant_id"),
+        Index("idx_workflow_template_default", "crop_code", "season_code", "is_default"),
+    )
+
+
+class WorkflowTemplateVersion(Base, UUIDPrimaryKey, AuditMixin):
+    """Published/draft version of a workflow template."""
+
+    __tablename__ = "workflow_template_versions"
+
+    template_id = Column(UUID(as_uuid=True), ForeignKey("workflow_templates.id"), nullable=False)
+    version_number = Column(String(30), nullable=False)
+    status = Column(String(30), nullable=False, default="DRAFT")
+    # DRAFT, PUBLISHED, ARCHIVED
+    effective_from = Column(Date)
+    effective_to = Column(Date)
+    total_duration_days = Column(Integer)
+    schema_version = Column(String(30), nullable=False, default="1.0.0")
+    metadata_ = Column("metadata", JSONB, default=dict)
+    published_at = Column(DateTime(timezone=True))
+    published_by = Column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        UniqueConstraint("template_id", "version_number", name="uq_workflow_template_version"),
+        Index("idx_workflow_template_version_template", "template_id"),
+        Index("idx_workflow_template_version_status", "status"),
+        CheckConstraint(
+            "status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')",
+            name="ck_workflow_template_version_status",
+        ),
+    )
+
+
+class WorkflowTemplateStage(Base, UUIDPrimaryKey, AuditMixin):
+    """Stage definition inside a workflow template version."""
+
+    __tablename__ = "workflow_template_stages"
+
+    template_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_template_versions.id"), nullable=False)
+    stage_code = Column(String(50), nullable=False)
+    stage_name = Column(JSONB, nullable=False, default=dict)
+    stage_order = Column(Integer, nullable=False)
+    duration_days = Column(Integer, nullable=False, default=0)
+    stage_type = Column(String(50))
+    phase = Column(String(50))
+    bbch_range = Column(JSONB)
+    propagation_step = Column(Boolean, nullable=False, default=False)
+    description = Column(JSONB)
+    farmer_actions = Column(JSONB, default=list)
+    typical_inputs = Column(JSONB, default=list)
+    key_observations = Column(JSONB, default=list)
+    icon = Column(String(80))
+    color = Column(String(30))
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        UniqueConstraint("template_version_id", "stage_code", name="uq_workflow_template_stage_code"),
+        UniqueConstraint("template_version_id", "stage_order", name="uq_workflow_template_stage_order"),
+        Index("idx_workflow_template_stage_version", "template_version_id"),
+        Index("idx_workflow_template_stage_order", "template_version_id", "stage_order"),
+    )
+
+
+class WorkflowTemplateRecommendation(Base, UUIDPrimaryKey, AuditMixin):
+    """Recommended activity definition attached to a workflow stage."""
+
+    __tablename__ = "workflow_template_recommendations"
+
+    template_stage_id = Column(UUID(as_uuid=True), ForeignKey("workflow_template_stages.id"), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    day_offset = Column(Integer, nullable=False, default=0)
+    activity_type = Column(String(30), nullable=False)
+    input_code = Column(String(50))
+    input_name = Column(String(200), nullable=False)
+    typical_quantity = Column(String(120))
+    typical_cost_per_acre = Column(DECIMAL(12, 2))
+    is_critical = Column(Boolean, nullable=False, default=False)
+    description = Column(JSONB)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_workflow_template_rec_stage", "template_stage_id"),
+        Index("idx_workflow_template_rec_activity", "activity_type"),
+    )
 
 
 class CropCycle(Base, UUIDPrimaryKey, AuditMixin):

@@ -19,6 +19,11 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.modules.workflow.models import CropCycle, CropStageInstance, CropActivity
+from app.modules.workflow.template_service import (
+    find_published_workflow_template,
+    workflow_template_metadata,
+    workflow_version_to_stage_definitions,
+)
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
 from app.modules.farmer.models import Parcel
 from app.modules.sync.service import append_audit
@@ -406,8 +411,20 @@ def create_crop_cycle(
     )
     db.add(cycle)
 
-    # Auto-instantiate stages from template
-    stages_data = template.stages or []
+    # Auto-instantiate stages from published versioned workflow template when available.
+    # Fall back to the legacy JSONB lifecycle template to preserve existing crops.
+    workflow_pair = find_published_workflow_template(
+        db,
+        crop_code=resolved_crop_code,
+        season_code=requested_season_code,
+        tenant_id=x_tenant_id,
+        lifecycle_template_id=template.id,
+    )
+    if workflow_pair:
+        _, workflow_version = workflow_pair
+        stages_data = workflow_version_to_stage_definitions(db, workflow_version.id)
+    else:
+        stages_data = template.stages or []
     stage_instances = []
     for stage_def in stages_data:
         # stage_name can be a dict (i18n) or a plain string (legacy)
@@ -803,7 +820,18 @@ def get_recommended_activities(
         logged_by_key.setdefault(key, []).append(activity)
 
     recommendations = []
-    template_stages = template.stages or []
+    workflow_pair = find_published_workflow_template(
+        db,
+        crop_code=cycle.crop_code,
+        season_code=cycle.season_code,
+        tenant_id=x_tenant_id,
+        lifecycle_template_id=template.id,
+    )
+    if workflow_pair:
+        _, workflow_version = workflow_pair
+        template_stages = workflow_version_to_stage_definitions(db, workflow_version.id)
+    else:
+        template_stages = template.stages or []
     for stage_def in template_stages:
         stage_code = stage_def.get("code")
         if not stage_code or stage_code not in stage_schedule:
@@ -1347,8 +1375,22 @@ def get_crop_template(
     if not template:
         raise HTTPException(404, f"No lifecycle template found for {crop_code}")
 
-    # Build stage schedule with day_offsets
-    stages = template.stages or []
+    # Build stage schedule with day_offsets. Prefer normalized workflow tables,
+    # falling back to legacy lifecycle JSON if a published workflow has not been seeded.
+    workflow_pair = find_published_workflow_template(
+        db,
+        crop_code=crop_code.upper(),
+        season_code=template.season_code,
+        tenant_id="default",
+        lifecycle_template_id=template.id,
+    )
+    workflow_metadata = None
+    if workflow_pair:
+        workflow_template, workflow_version = workflow_pair
+        stages = workflow_version_to_stage_definitions(db, workflow_version.id)
+        workflow_metadata = workflow_template_metadata(workflow_template, workflow_version)
+    else:
+        stages = template.stages or []
     cumulative = 0
     stage_schedule = []
     for s in stages:
@@ -1373,8 +1415,8 @@ def get_crop_template(
         })
         cumulative += duration
 
-    # Template-level metadata (stored in aliases field)
-    metadata = template.aliases if isinstance(template.aliases, dict) else {}
+    # Template-level metadata (stored in aliases field in the legacy model)
+    metadata = workflow_metadata or (template.aliases if isinstance(template.aliases, dict) else {})
 
     return {
         "template_id": str(template.id),
@@ -1387,5 +1429,9 @@ def get_crop_template(
         "has_nursery": metadata.get("has_nursery", False),
         "date_label": metadata.get("date_label", {"en": "Sowing Date", "hi": "बुवाई की तारीख"}),
         "staging_system": metadata.get("staging_system"),
+        "template_source": metadata.get("source", "legacy_lifecycle_template"),
+        "workflow_template_id": metadata.get("workflow_template_id"),
+        "workflow_template_version_id": metadata.get("workflow_template_version_id"),
+        "workflow_template_version": metadata.get("workflow_template_version"),
         "stages": stage_schedule,
     }
