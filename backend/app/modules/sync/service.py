@@ -212,12 +212,153 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
     parcel.updated_at = datetime.now(timezone.utc)
 
 
+def _validate_lng_lat(point: list, label: str) -> tuple[float, float]:
+    if not isinstance(point, list) or len(point) < 2:
+        raise ValueError(f"{label} must be [longitude, latitude]")
+    lng = float(point[0])
+    lat = float(point[1])
+    if not -180 <= lng <= 180:
+        raise ValueError(f"{label} longitude out of range")
+    if not -90 <= lat <= 90:
+        raise ValueError(f"{label} latitude out of range")
+    return lng, lat
+
+
+def _normalize_parcel_geojson(geojson: Optional[dict], geometry_source: str) -> tuple[Optional[dict], Optional[Decimal], Optional[Decimal]]:
+    if not geojson:
+        return None, None, None
+
+    geometry_type = geojson.get("type")
+    coordinates = geojson.get("coordinates")
+
+    if geometry_type == "Point":
+        lng, lat = _validate_lng_lat(coordinates, "Point")
+        if geometry_source not in ("PIN_DROP", "GPS_WALK", "MANUAL_DRAW", "SATELLITE"):
+            raise ValueError("Point GeoJSON requires a GPS geometry_source")
+        return {"type": "Point", "coordinates": [lng, lat]}, Decimal(str(lat)), Decimal(str(lng))
+
+    if geometry_type == "Polygon":
+        if geometry_source not in ("GPS_WALK", "MANUAL_DRAW", "SATELLITE"):
+            raise ValueError("Polygon GeoJSON requires GPS_WALK, MANUAL_DRAW, or SATELLITE geometry_source")
+        if not isinstance(coordinates, list) or not coordinates or not isinstance(coordinates[0], list):
+            raise ValueError("Polygon coordinates must contain at least one linear ring")
+
+        normalized_rings = []
+        for ring_index, ring in enumerate(coordinates):
+            if not isinstance(ring, list):
+                raise ValueError(f"Polygon ring {ring_index} must be a list")
+            normalized_ring = []
+            for point_index, point in enumerate(ring):
+                lng, lat = _validate_lng_lat(point, f"Polygon ring {ring_index} point {point_index}")
+                normalized_ring.append([lng, lat])
+            if len(normalized_ring) < 3:
+                raise ValueError(f"Polygon ring {ring_index} must have at least 3 distinct points")
+            if normalized_ring[0] != normalized_ring[-1]:
+                normalized_ring.append(normalized_ring[0])
+            if len(normalized_ring) < 4:
+                raise ValueError(f"Polygon ring {ring_index} must have at least 4 coordinates including closure")
+            normalized_rings.append(normalized_ring)
+        return {"type": "Polygon", "coordinates": normalized_rings}, None, None
+
+    raise ValueError("GeoJSON type must be Point or Polygon")
+
+
+def _polygon_centroid_area(db: Session, normalized_geojson: dict) -> tuple[Decimal, Decimal, Decimal]:
+    row = db.execute(
+        text(
+            """
+            SELECT
+                ST_Y(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326))) AS lat,
+                ST_X(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326))) AS lng,
+                ST_Area(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)::geography) / 10000.0 AS area_hectares
+            """
+        ),
+        {"geojson": json.dumps(normalized_geojson)},
+    ).fetchone()
+    if not row:
+        raise ValueError("Could not compute polygon centroid/area")
+    return Decimal(str(row.lat)), Decimal(str(row.lng)), Decimal(str(row.area_hectares))
+
+
+def _materialize_parcel_geometry_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    """Apply offline geometry updates from Android sync.
+
+    Supports entity_type PARCEL_GEOMETRY. entity_id is the parcel_id; payload may
+    also include parcel_id/parcelId. PIN_DROP is centroid-only for MVP. GPS_WALK
+    stores a PostGIS polygon and computes centroid + area.
+    """
+    if event.operation == "DELETE":
+        raise ValueError("PARCEL_GEOMETRY DELETE is not supported")
+
+    payload = event.payload or {}
+    parcel_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "parcel_id", "parcelId"))
+    if not parcel_id:
+        raise ValueError("PARCEL_GEOMETRY requires entity_id or parcel_id")
+
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
+    if not parcel:
+        raise ValueError(f"Parcel {parcel_id} not found for geometry sync")
+
+    geometry_source = _first_payload_value(payload, "geometry_source", "geometrySource") or parcel.geometry_source or "NONE"
+    geometry_source = str(geometry_source).upper()
+    if geometry_source not in ("NONE", "PIN_DROP", "GPS_WALK", "MANUAL_DRAW", "SATELLITE"):
+        raise ValueError(f"Unsupported geometry_source {geometry_source}")
+
+    geojson = _first_payload_value(payload, "geojson", "geoJson", "geometry")
+    normalized_geojson, point_lat, point_lng = _normalize_parcel_geojson(geojson, geometry_source)
+
+    centroid_lat = point_lat or _decimal_or_none(_first_payload_value(payload, "centroid_lat", "centroidLat", "latitude"))
+    centroid_lng = point_lng or _decimal_or_none(_first_payload_value(payload, "centroid_lng", "centroidLng", "longitude"))
+    accuracy_meters = _decimal_or_none(_first_payload_value(payload, "accuracy_meters", "accuracyMeters", "geometry_accuracy_meters", "geometryAccuracyMeters"))
+
+    if geometry_source == "PIN_DROP" and normalized_geojson is None and (centroid_lat is None or centroid_lng is None):
+        raise ValueError("PIN_DROP requires centroid_lat/centroid_lng or Point GeoJSON")
+    if geometry_source in ("GPS_WALK", "MANUAL_DRAW", "SATELLITE") and (not normalized_geojson or normalized_geojson.get("type") != "Polygon"):
+        raise ValueError(f"{geometry_source} requires Polygon GeoJSON")
+
+    parcel.geometry_source = geometry_source
+    parcel.geometry_accuracy_meters = accuracy_meters
+    parcel.geometry_captured_at = datetime.now(timezone.utc)
+    parcel.geometry_captured_by = _uuid_or_none(actor_id)
+
+    if normalized_geojson and normalized_geojson.get("type") == "Polygon":
+        centroid_lat, centroid_lng, area_hectares = _polygon_centroid_area(db, normalized_geojson)
+        parcel.centroid_lat = centroid_lat
+        parcel.centroid_lng = centroid_lng
+        parcel.computed_area_hectares = area_hectares
+        db.flush()
+        db.execute(
+            text(
+                """
+                UPDATE parcels
+                SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)
+                WHERE id = :parcel_id AND tenant_id = :tenant_id
+                """
+            ),
+            {"geojson": json.dumps(normalized_geojson), "parcel_id": str(parcel_id), "tenant_id": tenant_id},
+        )
+    else:
+        if centroid_lat is not None and centroid_lng is not None:
+            parcel.centroid_lat = centroid_lat
+            parcel.centroid_lng = centroid_lng
+        parcel.computed_area_hectares = None
+        db.flush()
+        db.execute(
+            text("UPDATE parcels SET geometry = NULL WHERE id = :parcel_id AND tenant_id = :tenant_id"),
+            {"parcel_id": str(parcel_id), "tenant_id": tenant_id},
+        )
+
+    parcel.updated_at = datetime.now(timezone.utc)
+
+
 def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
     entity_type = (event.entity_type or "").lower()
     if entity_type == "farmer":
         _materialize_farmer_event(db, tenant_id, actor_id, event)
     elif entity_type == "parcel":
         _materialize_parcel_event(db, tenant_id, event)
+    elif entity_type in ("parcel_geometry", "parcelgeometry"):
+        _materialize_parcel_geometry_event(db, tenant_id, actor_id, event)
 
 
 # --- Schemas for sync events ---

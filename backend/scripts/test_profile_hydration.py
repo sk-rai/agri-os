@@ -6,6 +6,8 @@ Validates:
 - duplicate farmer selection prefers the richer profile
 - duplicate direct enrollment is rejected
 - hydration includes parcel geometry fields and crop-cycle summaries
+- PARCEL_GEOMETRY sync stores GPS_WALK polygon GeoJSON, centroid, and area
+- duplicate farmer cleanup endpoints list and archive empty duplicates
 """
 
 import sys
@@ -75,6 +77,8 @@ mobile_10 = f"98{uuid.uuid4().int % 100000000:08d}"
 mobile = f"+91{mobile_10}"
 headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": str(uuid.uuid4())}
 rich_farmer_id = None
+empty_duplicate_id = None
+parcel_id = None
 
 db = SessionLocal()
 try:
@@ -161,6 +165,8 @@ try:
     )
     db.add_all([user, parcel, cycle, stage])
     rich_farmer_id = str(rich_farmer.id)
+    empty_duplicate_id = str(empty_duplicate.id)
+    parcel_id = str(parcel.id)
     db.commit()
 finally:
     db.close()
@@ -169,6 +175,7 @@ print("\n[1] Hydrate by 10-digit mobile")
 r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers={"X-Tenant-ID": tenant_id})
 test("Hydration by mobile returns 200", r.status_code == 200, f"Status: {r.status_code}")
 body = r.json()
+test("Hydration includes schema version", body["schema_version"] == "profile_hydration.v1")
 test("Selects richer farmer over empty duplicate", body["farmer"]["id"] == rich_farmer_id)
 test("Reports duplicate farmer", body["summary"]["duplicate_farmer_count"] == 1)
 test("Includes parcel", body["summary"]["parcel_count"] == 1)
@@ -193,7 +200,70 @@ r = client.post(
 )
 test("Duplicate enrollment rejected", r.status_code == 409, f"Status: {r.status_code}")
 
-print("\n[4] Cleanup temporary hydration test data")
+print("\n[4] Duplicate farmer cleanup endpoints")
+r = client.get(f"/api/v1/farmers/duplicates?mobile_number={mobile_10}", headers={"X-Tenant-ID": tenant_id})
+test("Duplicate list returns 200", r.status_code == 200, f"Status: {r.status_code}")
+dup_body = r.json()
+test("Duplicate list has one group", dup_body["group_count"] == 1)
+test("Duplicate list recommends richer farmer", dup_body["groups"][0]["recommended_primary_farmer_id"] == rich_farmer_id)
+
+r = client.post(
+    f"/api/v1/farmers/{rich_farmer_id}/duplicates/archive",
+    headers=headers,
+    json={
+        "duplicate_farmer_ids": [empty_duplicate_id],
+        "reason": "profile hydration regression cleanup",
+    },
+)
+test("Empty duplicate archived", r.status_code == 200, f"Status: {r.status_code}")
+test("Archive response contains duplicate", r.json()["archived"][0]["id"] == empty_duplicate_id)
+
+r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers={"X-Tenant-ID": tenant_id})
+test("Hydration still returns primary after archive", r.status_code == 200)
+test("Archived duplicate no longer counted", r.json()["summary"]["duplicate_farmer_count"] == 0)
+
+print("\n[5] PARCEL_GEOMETRY sync stores GPS_WALK polygon")
+polygon = {
+    "type": "Polygon",
+    "coordinates": [[
+        [72.87770, 19.03740],
+        [72.87810, 19.03740],
+        [72.87810, 19.03780],
+        [72.87770, 19.03780],
+    ]],
+}
+r = client.post(
+    "/api/v1/sync/events",
+    headers=headers,
+    json={
+        "events": [
+            {
+                "event_id": str(uuid.uuid4()),
+                "entity_type": "PARCEL_GEOMETRY",
+                "entity_id": parcel_id,
+                "operation": "UPDATE",
+                "payload": {
+                    "geometry_source": "GPS_WALK",
+                    "geojson": polygon,
+                    "accuracy_meters": 6.5,
+                },
+                "version": 1,
+                "dependency_ids": [],
+                "metadata": {"source": "profile_hydration_regression"},
+            }
+        ]
+    },
+)
+test("PARCEL_GEOMETRY sync accepted", r.status_code == 200 and len(r.json()["accepted"]) == 1, f"Status: {r.status_code} Body: {r.text}")
+
+r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers={"X-Tenant-ID": tenant_id})
+parcel_body = r.json()["parcels"][0]
+test("GPS_WALK source returned in hydration", parcel_body["geometry_source"] == "GPS_WALK")
+test("GPS_WALK returns Polygon GeoJSON", parcel_body["geojson_type"] == "Polygon")
+test("GPS_WALK computes centroid", parcel_body["centroid_lat"] is not None and parcel_body["centroid_lng"] is not None)
+test("GPS_WALK computes area", parcel_body["computed_area_hectares"] is not None and parcel_body["computed_area_hectares"] > 0)
+
+print("\n[6] Cleanup temporary hydration test data")
 db = SessionLocal()
 try:
     db.query(CropStageInstance).filter(CropStageInstance.tenant_id == tenant_id).delete(synchronize_session=False)

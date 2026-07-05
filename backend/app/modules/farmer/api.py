@@ -161,6 +161,12 @@ class GeometryUpdate(BaseModel):
     accuracy_meters: Optional[float] = None
 
 
+class DuplicateFarmerArchiveRequest(BaseModel):
+    duplicate_farmer_ids: list[uuid.UUID] = Field(..., min_length=1)
+    reason: Optional[str] = None
+    force: bool = False
+
+
 
 def normalize_mobile_number(mobile_number: str) -> str:
     """Normalize Indian mobile numbers for profile lookup.
@@ -271,7 +277,11 @@ def _select_hydration_farmer(db: Session, tenant_id: str, mobile_number: str) ->
     normalized_mobile = normalize_mobile_number(mobile_number)
     candidates = (
         db.query(Farmer)
-        .filter(Farmer.tenant_id == tenant_id, Farmer.mobile_number == normalized_mobile)
+        .filter(
+            Farmer.tenant_id == tenant_id,
+            Farmer.mobile_number == normalized_mobile,
+            Farmer.status != "ARCHIVED",
+        )
         .all()
     )
     if not candidates:
@@ -456,6 +466,8 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         })
 
     return {
+        "schema_version": "profile_hydration.v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "profile_exists": True,
         "tenant_id": tenant_id,
         "farmer": _farmer_payload(farmer),
@@ -870,6 +882,120 @@ def get_form_field_config(
 
 
 # --- Farmer /me endpoint (for pre-registered/bulk-import flow) ---
+
+@router.get("/farmers/duplicates")
+def list_duplicate_farmers(
+    mobile_number: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """List tenant/mobile duplicate farmer profiles for admin cleanup."""
+    from app.modules.workflow.models import CropCycle
+
+    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.status != "ARCHIVED")
+    if mobile_number:
+        query = query.filter(Farmer.mobile_number == normalize_mobile_number(mobile_number))
+
+    farmers = query.order_by(Farmer.mobile_number, Farmer.updated_at.desc(), Farmer.created_at.desc()).all()
+    groups: dict[str, list[Farmer]] = {}
+    for farmer in farmers:
+        groups.setdefault(farmer.mobile_number, []).append(farmer)
+
+    response = []
+    for mobile, group in groups.items():
+        if len(group) < 2:
+            continue
+        selected, duplicates = _select_hydration_farmer(db, x_tenant_id, mobile)
+        response.append({
+            "mobile_number": mobile,
+            "recommended_primary_farmer_id": str(selected.id) if selected else None,
+            "farmers": [
+                {
+                    "id": str(farmer.id),
+                    "display_name": farmer.display_name,
+                    "status": farmer.status,
+                    "parcel_count": db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id).count(),
+                    "crop_cycle_count": db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.farmer_id == farmer.id).count(),
+                    "is_recommended_primary": bool(selected and farmer.id == selected.id),
+                    "created_at": _iso_date(farmer.created_at),
+                    "updated_at": _iso_date(farmer.updated_at),
+                }
+                for farmer in group
+            ],
+            "duplicate_count": len(duplicates),
+        })
+    return {
+        "schema_version": "farmer_duplicates.v1",
+        "tenant_id": x_tenant_id,
+        "groups": response,
+        "group_count": len(response),
+    }
+
+
+@router.post("/farmers/{primary_farmer_id}/duplicates/archive")
+def archive_duplicate_farmers(
+    primary_farmer_id: uuid.UUID,
+    body: DuplicateFarmerArchiveRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: str = Header(..., alias="X-Actor-ID"),
+):
+    """Safely archive duplicate farmer rows for the same mobile number."""
+    from app.modules.workflow.models import CropCycle
+
+    primary = db.query(Farmer).filter(Farmer.id == primary_farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not primary:
+        raise HTTPException(404, "Primary farmer not found")
+
+    archived = []
+    blocked = []
+    now = datetime.now(timezone.utc)
+    for duplicate_id in body.duplicate_farmer_ids:
+        duplicate = db.query(Farmer).filter(Farmer.id == duplicate_id, Farmer.tenant_id == x_tenant_id).first()
+        if not duplicate:
+            blocked.append({"id": str(duplicate_id), "reason": "not_found"})
+            continue
+        if duplicate.id == primary.id:
+            blocked.append({"id": str(duplicate.id), "reason": "cannot_archive_primary"})
+            continue
+        if duplicate.mobile_number != primary.mobile_number:
+            blocked.append({"id": str(duplicate.id), "reason": "mobile_number_mismatch"})
+            continue
+
+        parcel_count = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == duplicate.id).count()
+        crop_cycle_count = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.farmer_id == duplicate.id).count()
+        if not body.force and (parcel_count or crop_cycle_count):
+            blocked.append({
+                "id": str(duplicate.id),
+                "reason": "has_child_records",
+                "parcel_count": parcel_count,
+                "crop_cycle_count": crop_cycle_count,
+            })
+            continue
+
+        duplicate.status = "ARCHIVED"
+        duplicate.updated_at = now
+        archived.append({
+            "id": str(duplicate.id),
+            "display_name": duplicate.display_name,
+            "parcel_count": parcel_count,
+            "crop_cycle_count": crop_cycle_count,
+        })
+
+    if blocked and not archived:
+        raise HTTPException(400, {"message": "No duplicate farmers archived", "blocked": blocked})
+
+    db.commit()
+    return {
+        "schema_version": "farmer_duplicate_archive.v1",
+        "primary_farmer_id": str(primary.id),
+        "mobile_number": primary.mobile_number,
+        "archived": archived,
+        "blocked": blocked,
+        "reason": body.reason,
+        "actor_id": x_actor_id,
+    }
+
 
 @router.get("/farmers/by-mobile/{mobile_number:path}")
 def get_farmer_profile_by_mobile(
