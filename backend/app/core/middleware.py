@@ -24,6 +24,7 @@ TENANT_EXEMPT_PATHS = [
     "/api/v1/workflows",  # Workflow schemas are cacheable, no tenant context needed
     "/api/v1/crop-cycles/templates",  # Crop templates are reference data
     "/api/v1/crop-catalog",  # Crop taxonomy/propagation catalog is shared reference data
+    "/api/v1/input-catalog",  # Agricultural input catalog is shared reference data
     "/api/v1/crop-cycles/eligible-parcels",  # Android parcel picker defaults tenant for MVP
 ]
 
