@@ -23,6 +23,7 @@ from app.modules.workflow.template_service import (
     find_published_workflow_template,
     workflow_template_metadata,
     workflow_version_to_stage_definitions,
+    workflow_version_to_stage_definitions_for_scope,
 )
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
 from app.modules.farmer.models import Parcel
@@ -422,7 +423,12 @@ def create_crop_cycle(
     )
     if workflow_pair:
         _, workflow_version = workflow_pair
-        stages_data = workflow_version_to_stage_definitions(db, workflow_version.id)
+        stages_data = workflow_version_to_stage_definitions_for_scope(
+            db,
+            workflow_version.id,
+            tenant_id=x_tenant_id,
+            project_id=body.project_id,
+        )
     else:
         stages_data = template.stages or []
     stage_instances = []
@@ -829,7 +835,12 @@ def get_recommended_activities(
     )
     if workflow_pair:
         _, workflow_version = workflow_pair
-        template_stages = workflow_version_to_stage_definitions(db, workflow_version.id)
+        template_stages = workflow_version_to_stage_definitions_for_scope(
+            db,
+            workflow_version.id,
+            tenant_id=x_tenant_id,
+            project_id=cycle.project_id,
+        )
     else:
         template_stages = template.stages or []
     for stage_def in template_stages:
@@ -1387,7 +1398,7 @@ def get_crop_template(
     workflow_metadata = None
     if workflow_pair:
         workflow_template, workflow_version = workflow_pair
-        stages = workflow_version_to_stage_definitions(db, workflow_version.id)
+        stages = workflow_version_to_stage_definitions_for_scope(db, workflow_version.id, tenant_id="default")
         workflow_metadata = workflow_template_metadata(workflow_template, workflow_version)
     else:
         stages = template.stages or []

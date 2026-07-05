@@ -141,6 +141,70 @@ class WorkflowTemplateRecommendation(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class WorkflowTemplateEnablement(Base, UUIDPrimaryKey, AuditMixin):
+    """Tenant/project visibility rule for a workflow template.
+
+    If a tenant/project has no enablement rows, Android receives the system
+    default published workflows. Once rows exist for a scope, only enabled rows
+    are returned for that scope.
+    """
+
+    __tablename__ = "workflow_template_enablements"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, default="default")
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    template_id = Column(UUID(as_uuid=True), ForeignKey("workflow_templates.id"), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+    display_order = Column(Integer, nullable=False, default=0)
+    effective_from = Column(Date)
+    effective_to = Column(Date)
+    display_label = Column(JSONB)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "project_id", "template_id", name="uq_workflow_template_enablement_scope"),
+        Index("idx_workflow_template_enablement_scope", "tenant_id", "project_id"),
+        Index("idx_workflow_template_enablement_template", "template_id"),
+        Index("idx_workflow_template_enablement_enabled", "enabled"),
+    )
+
+
+class WorkflowTemplateOverride(Base, UUIDPrimaryKey, AuditMixin):
+    """Tenant/project override applied to a published workflow version.
+
+    MVP operations are intentionally small and renderer-safe:
+    HIDE, RENAME, CHANGE_DURATION, CHANGE_OFFSET, CHANGE_QUANTITY.
+    """
+
+    __tablename__ = "workflow_template_overrides"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, default="default")
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    template_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_template_versions.id"), nullable=False)
+    target_type = Column(String(30), nullable=False)
+    # STAGE, RECOMMENDATION
+    target_code = Column(String(220), nullable=False)
+    operation = Column(String(40), nullable=False)
+    # HIDE, RENAME, CHANGE_DURATION, CHANGE_OFFSET, CHANGE_QUANTITY
+    override_payload = Column(JSONB, nullable=False, default=dict)
+    priority = Column(Integer, nullable=False, default=100)
+    reason = Column(Text)
+
+    __table_args__ = (
+        Index("idx_workflow_template_override_scope", "tenant_id", "project_id"),
+        Index("idx_workflow_template_override_version", "template_version_id"),
+        Index("idx_workflow_template_override_target", "target_type", "target_code"),
+        CheckConstraint(
+            "target_type IN ('STAGE', 'RECOMMENDATION')",
+            name="ck_workflow_template_override_target_type",
+        ),
+        CheckConstraint(
+            "operation IN ('HIDE', 'RENAME', 'CHANGE_DURATION', 'CHANGE_OFFSET', 'CHANGE_QUANTITY')",
+            name="ck_workflow_template_override_operation",
+        ),
+    )
+
+
 class CropCycle(Base, UUIDPrimaryKey, AuditMixin):
     """One growing season of one crop on one parcel.
 

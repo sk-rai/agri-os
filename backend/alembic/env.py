@@ -20,6 +20,8 @@ from app.modules.workflow.models import (  # noqa: F401
     WorkflowTemplateVersion,
     WorkflowTemplateStage,
     WorkflowTemplateRecommendation,
+    WorkflowTemplateEnablement,
+    WorkflowTemplateOverride,
 )
 
 from app.modules.master_data.models import (  # noqa: F401
