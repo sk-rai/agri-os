@@ -1,4 +1,4 @@
-﻿"""Regression for project workflow override create/delete endpoints."""
+"""Regression for project workflow override create/delete endpoints."""
 
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -51,6 +51,41 @@ def stage_codes(preview_payload):
     return [stage["code"] for stage in preview_payload["android_preview"]["stages"]]
 
 
+def stage_by_code(preview_payload, code):
+    return next(stage for stage in preview_payload["android_preview"]["stages"] if stage["code"] == code)
+
+
+def recommendation_by_target(preview_payload, target_code):
+    for stage in preview_payload["android_preview"]["stages"]:
+        stage_code = stage["code"]
+        for rec in stage.get("recommended_activities", []):
+            input_name = (rec.get("input_name") or "").strip()
+            activity_type = (rec.get("activity_type") or "").strip().upper()
+            candidates = {
+                input_name,
+                input_name.lower(),
+                f"{stage_code}|{input_name}",
+                f"{stage_code}|{activity_type}|{input_name}",
+            }
+            input_code = rec.get("input_code")
+            if input_code:
+                candidates.add(str(input_code))
+                candidates.add(f"{stage_code}|{input_code}")
+            if target_code in candidates:
+                return rec
+    raise AssertionError(f"Recommendation target not found: {target_code}")
+
+
+def create_override(client, project_id, version_id, payload):
+    response = client.post(
+        f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides",
+        headers={"X-Tenant-ID": TENANT_ID},
+        json={"template_version_id": str(version_id), **payload},
+    )
+    check(response.status_code == 200, f"{payload['operation']} override returns 200", f"Status: {response.status_code}")
+    return response.json()
+
+
 def main():
     print("=" * 72)
     print("PROJECT WORKFLOW OVERRIDE REGRESSION")
@@ -99,21 +134,14 @@ def main():
         check(base.status_code == 200, "Base project preview returns 200", f"Status: {base.status_code}")
         check("FLOWERING" in stage_codes(base.json()), "FLOWERING stage initially visible")
 
-        created = client.post(
-            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides",
-            headers={"X-Tenant-ID": TENANT_ID},
-            json={
-                "template_version_id": str(version.id),
-                "target_type": "STAGE",
-                "target_code": "FLOWERING",
-                "operation": "HIDE",
-                "override_payload": {},
-                "priority": 10,
-                "reason": "Regression hide flowering",
-            },
-        )
-        check(created.status_code == 200, "Create override returns 200", f"Status: {created.status_code}")
-        created_payload = created.json()
+        created_payload = create_override(client, project_id, version.id, {
+            "target_type": "STAGE",
+            "target_code": "FLOWERING",
+            "operation": "HIDE",
+            "override_payload": {},
+            "priority": 10,
+            "reason": "Regression hide flowering",
+        })
         check("FLOWERING" not in stage_codes(created_payload), "FLOWERING hidden after override")
         check(len(created_payload["applied_overrides"]) == 1, "Preview reports applied override")
         override_id = created_payload["applied_overrides"][0]["id"]
@@ -126,12 +154,72 @@ def main():
         deleted_payload = deleted.json()
         check("FLOWERING" in stage_codes(deleted_payload), "FLOWERING visible again after override removal")
         check(len(deleted_payload["applied_overrides"]) == 0, "Preview has no applied overrides after delete")
+
+        base_payload = base.json()
+        nursery = stage_by_code(base_payload, "NURSERY")
+        nursery_rec = nursery["recommended_activities"][0]
+        rec_target = f"NURSERY|{nursery_rec['input_code']}" if nursery_rec.get("input_code") else f"NURSERY|{nursery_rec['activity_type']}|{nursery_rec['input_name']}"
+
+        renamed = create_override(client, project_id, version.id, {
+            "target_type": "STAGE",
+            "target_code": "NURSERY",
+            "operation": "RENAME",
+            "override_payload": {"name": {"en": "Custom Nursery", "hi": "Custom Nursery"}},
+            "priority": 20,
+            "reason": "Regression rename stage",
+        })
+        check(stage_by_code(renamed, "NURSERY")["name"]["en"] == "Custom Nursery", "Stage rename appears in preview")
+
+        duration_changed = create_override(client, project_id, version.id, {
+            "target_type": "STAGE",
+            "target_code": "NURSERY",
+            "operation": "CHANGE_DURATION",
+            "override_payload": {"duration_days": 17},
+            "priority": 30,
+            "reason": "Regression duration change",
+        })
+        check(stage_by_code(duration_changed, "NURSERY")["duration_days"] == 17, "Stage duration change appears in preview")
+
+        offset_changed = create_override(client, project_id, version.id, {
+            "target_type": "RECOMMENDATION",
+            "target_code": rec_target,
+            "operation": "CHANGE_OFFSET",
+            "override_payload": {"day_offset": 9},
+            "priority": 40,
+            "reason": "Regression recommendation offset change",
+        })
+        check(recommendation_by_target(offset_changed, rec_target)["day_offset"] == 9, "Recommendation offset change appears in preview")
+
+        quantity_changed = create_override(client, project_id, version.id, {
+            "target_type": "RECOMMENDATION",
+            "target_code": rec_target,
+            "operation": "CHANGE_QUANTITY",
+            "override_payload": {"typical_quantity": "custom quantity"},
+            "priority": 50,
+            "reason": "Regression recommendation quantity change",
+        })
+        check(recommendation_by_target(quantity_changed, rec_target)["typical_quantity"] == "custom quantity", "Recommendation quantity change appears in preview")
+        check(len(quantity_changed["applied_overrides"]) == 4, "Preview reports all non-hide applied overrides")
+
+        invalid = client.post(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides",
+            headers={"X-Tenant-ID": TENANT_ID},
+            json={
+                "template_version_id": str(version.id),
+                "target_type": "STAGE",
+                "target_code": "NURSERY",
+                "operation": "CHANGE_OFFSET",
+                "override_payload": {"day_offset": 3},
+                "priority": 60,
+            },
+        )
+        check(invalid.status_code == 400, "Invalid operation/target combination is rejected", f"Status: {invalid.status_code}")
     finally:
         cleanup(db, project_id)
         db.close()
 
     print("\n" + "=" * 72)
-    print("🟢 Project workflow override create/delete validated")
+    print("🟢 Project workflow override editor actions validated")
     print("=" * 72)
 
 

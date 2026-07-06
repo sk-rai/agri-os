@@ -44,6 +44,38 @@ class WorkflowOverrideCreate(BaseModel):
     reason: Optional[str] = None
 
 
+def _validate_override_payload(target_type: str, operation: str, payload: dict) -> None:
+    """Reject incomplete project override payloads before preview rendering."""
+    if operation == "HIDE":
+        return
+    if operation == "RENAME":
+        if target_type == "STAGE" and not (payload.get("name") or payload.get("label")):
+            raise HTTPException(400, "RENAME stage override requires name or label")
+        if target_type == "RECOMMENDATION" and not (payload.get("input_name") or payload.get("name")):
+            raise HTTPException(400, "RENAME recommendation override requires input_name or name")
+    elif operation == "CHANGE_DURATION":
+        if target_type != "STAGE":
+            raise HTTPException(400, "CHANGE_DURATION can only target STAGE")
+        try:
+            duration_days = int(payload.get("duration_days"))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "CHANGE_DURATION requires integer duration_days")
+        if duration_days < 0:
+            raise HTTPException(400, "duration_days cannot be negative")
+    elif operation == "CHANGE_OFFSET":
+        if target_type != "RECOMMENDATION":
+            raise HTTPException(400, "CHANGE_OFFSET can only target RECOMMENDATION")
+        try:
+            int(payload.get("day_offset"))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "CHANGE_OFFSET requires integer day_offset")
+    elif operation == "CHANGE_QUANTITY":
+        if target_type != "RECOMMENDATION":
+            raise HTTPException(400, "CHANGE_QUANTITY can only target RECOMMENDATION")
+        if payload.get("typical_quantity") in (None, ""):
+            raise HTTPException(400, "CHANGE_QUANTITY requires typical_quantity")
+
+
 def _label(template, enablement):
     if enablement and enablement.display_label:
         return enablement.display_label
@@ -454,6 +486,7 @@ def create_project_workflow_override(
         raise HTTPException(400, "target_type must be STAGE or RECOMMENDATION")
     if operation not in ("HIDE", "RENAME", "CHANGE_DURATION", "CHANGE_OFFSET", "CHANGE_QUANTITY"):
         raise HTTPException(400, "Unsupported override operation")
+    _validate_override_payload(target_type, operation, body.override_payload or {})
 
     override = WorkflowTemplateOverride(
         id=uuid.uuid4(),

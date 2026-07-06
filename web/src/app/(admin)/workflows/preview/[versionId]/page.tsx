@@ -11,6 +11,9 @@ import {
   type WorkflowPreviewWarning,
 } from "@/lib/api";
 
+type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
+type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY";
+
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
   if (typeof value === "string") return value;
@@ -36,7 +39,13 @@ export default function WorkflowPreviewPage() {
   }, [params.versionId, searchParams]);
 
 
-  const createHideOverride = async (targetType: "STAGE" | "RECOMMENDATION", targetCode: string, reason: string) => {
+  const createOverride = async (
+    targetType: WorkflowTargetType,
+    targetCode: string,
+    operation: WorkflowOverrideOperation,
+    overridePayload: Record<string, unknown>,
+    reason: string,
+  ) => {
     if (!preview?.project_id) return;
     setBusyTarget(`${targetType}:${targetCode}`);
     setError(null);
@@ -45,8 +54,8 @@ export default function WorkflowPreviewPage() {
         template_version_id: preview.workflow_template_version_id,
         target_type: targetType,
         target_code: targetCode,
-        operation: "HIDE",
-        override_payload: {},
+        operation,
+        override_payload: overridePayload,
         priority: 100,
         reason,
       });
@@ -145,8 +154,7 @@ export default function WorkflowPreviewPage() {
               stage={stage}
               projectScoped={Boolean(preview.project_id)}
               busyTarget={busyTarget}
-              onHideStage={(stageCode) => createHideOverride("STAGE", stageCode, `Hide stage ${stageCode}`)}
-              onHideRecommendation={(targetCode) => createHideOverride("RECOMMENDATION", targetCode, `Hide recommendation ${targetCode}`)}
+              onCreateOverride={createOverride}
             />
           ))}
         </div>
@@ -256,44 +264,97 @@ function StagePreview({
   stage,
   projectScoped,
   busyTarget,
-  onHideStage,
-  onHideRecommendation,
+  onCreateOverride,
 }: {
   stage: WorkflowStage;
   projectScoped: boolean;
   busyTarget: string | null;
-  onHideStage: (stageCode: string) => void;
-  onHideRecommendation: (targetCode: string) => void;
+  onCreateOverride: (
+    targetType: WorkflowTargetType,
+    targetCode: string,
+    operation: WorkflowOverrideOperation,
+    overridePayload: Record<string, unknown>,
+    reason: string,
+  ) => void;
 }) {
   const recs = stage.recommended_activities || [];
+  const [stageName, setStageName] = useState(labelText(stage.name));
+  const [durationDays, setDurationDays] = useState(String(stage.duration_days));
+
+  useEffect(() => {
+    setStageName(labelText(stage.name));
+    setDurationDays(String(stage.duration_days));
+  }, [stage.name, stage.duration_days]);
+
+  const stageBusy = busyTarget === `STAGE:${stage.code}`;
+
   return (
     <details open={stage.order === 1}>
       <summary className="cursor-pointer list-none p-5 hover:bg-gray-50">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Stage {stage.order} · {stage.code}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Stage {stage.order} ? {stage.code}</p>
             <h3 className="mt-1 font-semibold text-gray-900">{labelText(stage.name)}</h3>
-            <p className="mt-1 text-sm text-gray-500">{stage.duration_days} days · {recs.length} recommendations</p>
+            <p className="mt-1 text-sm text-gray-500">{stage.duration_days} days ? {recs.length} recommendations</p>
           </div>
           <div className="flex items-center gap-3">
             {projectScoped ? (
               <button
                 type="button"
-                disabled={busyTarget === `STAGE:${stage.code}`}
+                disabled={stageBusy}
                 onClick={(event) => {
                   event.preventDefault();
-                  onHideStage(stage.code);
+                  onCreateOverride("STAGE", stage.code, "HIDE", {}, `Hide stage ${stage.code}`);
                 }}
                 className="rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
               >
-                {busyTarget === `STAGE:${stage.code}` ? "Hiding..." : "Hide stage"}
+                {stageBusy ? "Saving..." : "Hide stage"}
               </button>
             ) : null}
-            <span className="text-sm text-gray-400">⌄</span>
+            <span className="text-sm text-gray-400">?</span>
           </div>
         </div>
       </summary>
       <div className="px-5 pb-5">
+        {projectScoped ? (
+          <div className="mb-4 grid gap-3 rounded-lg border border-dashed bg-gray-50 p-3 md:grid-cols-[1fr_140px_auto_auto]">
+            <label className="text-xs font-medium text-gray-500">
+              Stage label
+              <input
+                value={stageName}
+                onChange={(event) => setStageName(event.target.value)}
+                className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+              />
+            </label>
+            <label className="text-xs font-medium text-gray-500">
+              Duration
+              <input
+                type="number"
+                min="0"
+                value={durationDays}
+                onChange={(event) => setDurationDays(event.target.value)}
+                className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={stageBusy || !stageName.trim()}
+              onClick={() => onCreateOverride("STAGE", stage.code, "RENAME", { name: { en: stageName.trim(), hi: stageName.trim() } }, `Rename stage ${stage.code}`)}
+              className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              Rename stage
+            </button>
+            <button
+              type="button"
+              disabled={stageBusy || durationDays === ""}
+              onClick={() => onCreateOverride("STAGE", stage.code, "CHANGE_DURATION", { duration_days: Number(durationDays) }, `Change duration for ${stage.code}`)}
+              className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              Save duration
+            </button>
+          </div>
+        ) : null}
+
         {recs.length === 0 ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No recommendations.</p> : (
           <div className="overflow-hidden rounded-lg border">
             <table className="w-full text-sm">
@@ -303,7 +364,7 @@ function StagePreview({
                   <th className="px-3 py-2 text-left font-medium">Activity</th>
                   <th className="px-3 py-2 text-left font-medium">Input</th>
                   <th className="px-3 py-2 text-left font-medium">Quantity</th>
-                  {projectScoped ? <th className="px-3 py-2 text-right font-medium">Action</th> : null}
+                  {projectScoped ? <th className="px-3 py-2 text-right font-medium">Override editor</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -314,7 +375,7 @@ function StagePreview({
                     rec={rec}
                     projectScoped={projectScoped}
                     busyTarget={busyTarget}
-                    onHideRecommendation={onHideRecommendation}
+                    onCreateOverride={onCreateOverride}
                   />
                 ))}
               </tbody>
@@ -331,15 +392,33 @@ function RecommendationPreview({
   rec,
   projectScoped,
   busyTarget,
-  onHideRecommendation,
+  onCreateOverride,
 }: {
   stageCode: string;
   rec: WorkflowRecommendation;
   projectScoped: boolean;
   busyTarget: string | null;
-  onHideRecommendation: (targetCode: string) => void;
+  onCreateOverride: (
+    targetType: WorkflowTargetType,
+    targetCode: string,
+    operation: WorkflowOverrideOperation,
+    overridePayload: Record<string, unknown>,
+    reason: string,
+  ) => void;
 }) {
   const targetCode = rec.input_code ? `${stageCode}|${rec.input_code}` : `${stageCode}|${rec.activity_type}|${rec.input_name}`;
+  const [inputName, setInputName] = useState(rec.input_name || "");
+  const [dayOffset, setDayOffset] = useState(String(rec.day_offset ?? 0));
+  const [quantity, setQuantity] = useState(rec.typical_quantity || "");
+
+  useEffect(() => {
+    setInputName(rec.input_name || "");
+    setDayOffset(String(rec.day_offset ?? 0));
+    setQuantity(rec.typical_quantity || "");
+  }, [rec.input_name, rec.day_offset, rec.typical_quantity]);
+
+  const recBusy = busyTarget === `RECOMMENDATION:${targetCode}`;
+
   return (
     <tr>
       <td className="px-3 py-2 font-mono text-xs">+{rec.day_offset}</td>
@@ -348,17 +427,66 @@ function RecommendationPreview({
         <p className="font-medium text-gray-900">{rec.input_name}</p>
         <p className="font-mono text-xs text-gray-400">{rec.input_code || "No input_code"}</p>
       </td>
-      <td className="px-3 py-2 text-gray-600">{rec.typical_quantity || "—"}</td>
+      <td className="px-3 py-2 text-gray-600">{rec.typical_quantity || "?"}</td>
       {projectScoped ? (
-        <td className="px-3 py-2 text-right">
-          <button
-            type="button"
-            disabled={busyTarget === `RECOMMENDATION:${targetCode}`}
-            onClick={() => onHideRecommendation(targetCode)}
-            className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
-          >
-            {busyTarget === `RECOMMENDATION:${targetCode}` ? "Hiding..." : "Hide"}
-          </button>
+        <td className="min-w-[360px] px-3 py-2 text-right">
+          <div className="grid gap-2 text-left">
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input
+                value={inputName}
+                onChange={(event) => setInputName(event.target.value)}
+                className="rounded border px-2 py-1 text-xs text-gray-900"
+                aria-label="Recommendation label"
+              />
+              <button
+                type="button"
+                disabled={recBusy || !inputName.trim()}
+                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "RENAME", { input_name: inputName.trim() }, `Rename recommendation ${targetCode}`)}
+                className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                Rename
+              </button>
+            </div>
+            <div className="grid grid-cols-[80px_1fr_auto_auto_auto] gap-2">
+              <input
+                type="number"
+                value={dayOffset}
+                onChange={(event) => setDayOffset(event.target.value)}
+                className="rounded border px-2 py-1 text-xs text-gray-900"
+                aria-label="Day offset"
+              />
+              <input
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+                className="rounded border px-2 py-1 text-xs text-gray-900"
+                aria-label="Typical quantity"
+              />
+              <button
+                type="button"
+                disabled={recBusy || dayOffset === ""}
+                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "CHANGE_OFFSET", { day_offset: Number(dayOffset) }, `Change offset for ${targetCode}`)}
+                className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                Offset
+              </button>
+              <button
+                type="button"
+                disabled={recBusy || !quantity.trim()}
+                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "CHANGE_QUANTITY", { typical_quantity: quantity.trim() }, `Change quantity for ${targetCode}`)}
+                className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                Quantity
+              </button>
+              <button
+                type="button"
+                disabled={recBusy}
+                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "HIDE", {}, `Hide recommendation ${targetCode}`)}
+                className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {recBusy ? "Saving..." : "Hide"}
+              </button>
+            </div>
+          </div>
         </td>
       ) : null}
     </tr>
