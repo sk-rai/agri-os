@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, Crop
-from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateEnablement, WorkflowTemplateVersion
+from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateEnablement, WorkflowTemplateOverride, WorkflowTemplateVersion
 from app.modules.workflow.template_service import (
     list_enabled_workflow_versions,
     workflow_template_metadata,
@@ -32,6 +32,16 @@ class WorkflowEnablementUpdate(BaseModel):
     enabled: bool
     display_order: Optional[int] = None
     display_label: Optional[dict[str, str]] = None
+
+
+class WorkflowOverrideCreate(BaseModel):
+    template_version_id: uuid.UUID
+    target_type: str
+    target_code: str
+    operation: str
+    override_payload: dict = {}
+    priority: int = 100
+    reason: Optional[str] = None
 
 
 def _label(template, enablement):
@@ -405,3 +415,88 @@ def upsert_project_workflow_enablement(
     db.commit()
     return _project_workflow_enablement_summary(db, project_id, x_tenant_id)
 
+
+
+
+@router.post("/projects/{project_id}/workflow-overrides")
+def create_project_workflow_override(
+    project_id: uuid.UUID,
+    body: WorkflowOverrideCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Create a project-level workflow override and return updated preview.
+
+    This customizes project rendering without mutating the base workflow template.
+    """
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    version_row = (
+        db.query(WorkflowTemplate, WorkflowTemplateVersion)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+        .filter(
+            WorkflowTemplateVersion.id == body.template_version_id,
+            WorkflowTemplateVersion.is_active == True,
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplate.is_active == True,
+            WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+        )
+        .first()
+    )
+    if not version_row:
+        raise HTTPException(404, "Workflow template version not found")
+
+    target_type = body.target_type.upper()
+    operation = body.operation.upper()
+    if target_type not in ("STAGE", "RECOMMENDATION"):
+        raise HTTPException(400, "target_type must be STAGE or RECOMMENDATION")
+    if operation not in ("HIDE", "RENAME", "CHANGE_DURATION", "CHANGE_OFFSET", "CHANGE_QUANTITY"):
+        raise HTTPException(400, "Unsupported override operation")
+
+    override = WorkflowTemplateOverride(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        template_version_id=body.template_version_id,
+        target_type=target_type,
+        target_code=body.target_code,
+        operation=operation,
+        override_payload=body.override_payload or {},
+        priority=body.priority,
+        reason=body.reason,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(override)
+    db.commit()
+    return preview_workflow_template_version(body.template_version_id, project_id, db, x_tenant_id)
+
+
+@router.delete("/projects/{project_id}/workflow-overrides/{override_id}")
+def delete_project_workflow_override(
+    project_id: uuid.UUID,
+    override_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Archive a project-level override and return updated preview."""
+    override = (
+        db.query(WorkflowTemplateOverride)
+        .filter(
+            WorkflowTemplateOverride.id == override_id,
+            WorkflowTemplateOverride.project_id == project_id,
+            WorkflowTemplateOverride.tenant_id == x_tenant_id,
+            WorkflowTemplateOverride.is_active == True,
+        )
+        .first()
+    )
+    if not override:
+        raise HTTPException(404, "Workflow override not found")
+
+    version_id = override.template_version_id
+    override.is_active = False
+    override.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return preview_workflow_template_version(version_id, project_id, db, x_tenant_id)

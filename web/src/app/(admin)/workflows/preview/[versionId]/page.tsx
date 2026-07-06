@@ -23,6 +23,7 @@ export default function WorkflowPreviewPage() {
   const [preview, setPreview] = useState<WorkflowPreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyTarget, setBusyTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.versionId) return;
@@ -33,6 +34,43 @@ export default function WorkflowPreviewPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [params.versionId, searchParams]);
+
+
+  const createHideOverride = async (targetType: "STAGE" | "RECOMMENDATION", targetCode: string, reason: string) => {
+    if (!preview?.project_id) return;
+    setBusyTarget(`${targetType}:${targetCode}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.createProjectOverride(preview.project_id, {
+        template_version_id: preview.workflow_template_version_id,
+        target_type: targetType,
+        target_code: targetCode,
+        operation: "HIDE",
+        override_payload: {},
+        priority: 100,
+        reason,
+      });
+      setPreview(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create override");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
+  const removeOverride = async (overrideId: string) => {
+    if (!preview?.project_id) return;
+    setBusyTarget(`OVERRIDE:${overrideId}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.deleteProjectOverride(preview.project_id, overrideId);
+      setPreview(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove override");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
 
   if (loading) return <div className="text-gray-500">Loading workflow preview...</div>;
   if (error) return <div className="text-red-500">Error: {error}</div>;
@@ -88,7 +126,12 @@ export default function WorkflowPreviewPage() {
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
         <WarningsPanel warnings={preview.warnings} warningCounts={warningCounts} />
-        <OverridesPanel overrides={preview.applied_overrides} />
+        <OverridesPanel
+          overrides={preview.applied_overrides}
+          projectScoped={Boolean(preview.project_id)}
+          busyTarget={busyTarget}
+          onRemoveOverride={removeOverride}
+        />
       </div>
 
       <div className="mb-6 rounded-lg bg-white shadow">
@@ -96,7 +139,16 @@ export default function WorkflowPreviewPage() {
           <h2 className="text-lg font-semibold text-gray-900">Rendered Stages & Recommendations</h2>
         </div>
         <div className="divide-y">
-          {stages.map((stage) => <StagePreview key={stage.code} stage={stage} />)}
+          {stages.map((stage) => (
+            <StagePreview
+              key={stage.code}
+              stage={stage}
+              projectScoped={Boolean(preview.project_id)}
+              busyTarget={busyTarget}
+              onHideStage={(stageCode) => createHideOverride("STAGE", stageCode, `Hide stage ${stageCode}`)}
+              onHideRecommendation={(targetCode) => createHideOverride("RECOMMENDATION", targetCode, `Hide recommendation ${targetCode}`)}
+            />
+          ))}
         </div>
       </div>
 
@@ -155,7 +207,17 @@ function WarningsPanel({ warnings, warningCounts }: { warnings: WorkflowPreviewW
   );
 }
 
-function OverridesPanel({ overrides }: { overrides: WorkflowPreviewResponse["applied_overrides"] }) {
+function OverridesPanel({
+  overrides,
+  projectScoped,
+  busyTarget,
+  onRemoveOverride,
+}: {
+  overrides: WorkflowPreviewResponse["applied_overrides"];
+  projectScoped: boolean;
+  busyTarget: string | null;
+  onRemoveOverride: (overrideId: string) => void;
+}) {
   return (
     <div className="rounded-lg bg-white p-5 shadow">
       <h2 className="mb-4 text-lg font-semibold text-gray-900">Applied Overrides</h2>
@@ -172,6 +234,16 @@ function OverridesPanel({ overrides }: { overrides: WorkflowPreviewResponse["app
               </div>
               <p className="mt-2 font-mono text-xs text-gray-500">{override.target_code}</p>
               {override.reason ? <p className="mt-1 text-gray-600">{override.reason}</p> : null}
+              {projectScoped ? (
+                <button
+                  type="button"
+                  disabled={busyTarget === `OVERRIDE:${override.id}`}
+                  onClick={() => onRemoveOverride(override.id)}
+                  className="mt-3 rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {busyTarget === `OVERRIDE:${override.id}` ? "Removing..." : "Remove override"}
+                </button>
+              ) : null}
             </div>
           ))}
         </div>
@@ -180,7 +252,19 @@ function OverridesPanel({ overrides }: { overrides: WorkflowPreviewResponse["app
   );
 }
 
-function StagePreview({ stage }: { stage: WorkflowStage }) {
+function StagePreview({
+  stage,
+  projectScoped,
+  busyTarget,
+  onHideStage,
+  onHideRecommendation,
+}: {
+  stage: WorkflowStage;
+  projectScoped: boolean;
+  busyTarget: string | null;
+  onHideStage: (stageCode: string) => void;
+  onHideRecommendation: (targetCode: string) => void;
+}) {
   const recs = stage.recommended_activities || [];
   return (
     <details open={stage.order === 1}>
@@ -191,7 +275,22 @@ function StagePreview({ stage }: { stage: WorkflowStage }) {
             <h3 className="mt-1 font-semibold text-gray-900">{labelText(stage.name)}</h3>
             <p className="mt-1 text-sm text-gray-500">{stage.duration_days} days · {recs.length} recommendations</p>
           </div>
-          <span className="text-sm text-gray-400">⌄</span>
+          <div className="flex items-center gap-3">
+            {projectScoped ? (
+              <button
+                type="button"
+                disabled={busyTarget === `STAGE:${stage.code}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onHideStage(stage.code);
+                }}
+                className="rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {busyTarget === `STAGE:${stage.code}` ? "Hiding..." : "Hide stage"}
+              </button>
+            ) : null}
+            <span className="text-sm text-gray-400">⌄</span>
+          </div>
         </div>
       </summary>
       <div className="px-5 pb-5">
@@ -204,10 +303,20 @@ function StagePreview({ stage }: { stage: WorkflowStage }) {
                   <th className="px-3 py-2 text-left font-medium">Activity</th>
                   <th className="px-3 py-2 text-left font-medium">Input</th>
                   <th className="px-3 py-2 text-left font-medium">Quantity</th>
+                  {projectScoped ? <th className="px-3 py-2 text-right font-medium">Action</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {recs.map((rec, index) => <RecommendationPreview key={`${rec.input_name}-${index}`} rec={rec} />)}
+                {recs.map((rec, index) => (
+                  <RecommendationPreview
+                    key={`${rec.input_name}-${index}`}
+                    stageCode={stage.code}
+                    rec={rec}
+                    projectScoped={projectScoped}
+                    busyTarget={busyTarget}
+                    onHideRecommendation={onHideRecommendation}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -217,7 +326,20 @@ function StagePreview({ stage }: { stage: WorkflowStage }) {
   );
 }
 
-function RecommendationPreview({ rec }: { rec: WorkflowRecommendation }) {
+function RecommendationPreview({
+  stageCode,
+  rec,
+  projectScoped,
+  busyTarget,
+  onHideRecommendation,
+}: {
+  stageCode: string;
+  rec: WorkflowRecommendation;
+  projectScoped: boolean;
+  busyTarget: string | null;
+  onHideRecommendation: (targetCode: string) => void;
+}) {
+  const targetCode = rec.input_code ? `${stageCode}|${rec.input_code}` : `${stageCode}|${rec.activity_type}|${rec.input_name}`;
   return (
     <tr>
       <td className="px-3 py-2 font-mono text-xs">+{rec.day_offset}</td>
@@ -227,6 +349,18 @@ function RecommendationPreview({ rec }: { rec: WorkflowRecommendation }) {
         <p className="font-mono text-xs text-gray-400">{rec.input_code || "No input_code"}</p>
       </td>
       <td className="px-3 py-2 text-gray-600">{rec.typical_quantity || "—"}</td>
+      {projectScoped ? (
+        <td className="px-3 py-2 text-right">
+          <button
+            type="button"
+            disabled={busyTarget === `RECOMMENDATION:${targetCode}`}
+            onClick={() => onHideRecommendation(targetCode)}
+            className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+          >
+            {busyTarget === `RECOMMENDATION:${targetCode}` ? "Hiding..." : "Hide"}
+          </button>
+        </td>
+      ) : null}
     </tr>
   );
 }

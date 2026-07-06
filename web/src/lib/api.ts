@@ -193,6 +193,17 @@ export interface AppliedWorkflowOverride {
   reason?: string | null;
 }
 
+
+export interface WorkflowOverrideCreateRequest {
+  template_version_id: string;
+  target_type: "STAGE" | "RECOMMENDATION" | string;
+  target_code: string;
+  operation: "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | string;
+  override_payload?: Record<string, unknown>;
+  priority?: number;
+  reason?: string | null;
+}
+
 export interface WorkflowPreviewResponse {
   schema_version: string;
   tenant_id: string;
@@ -321,6 +332,15 @@ export const workflowCatalogApi = {
       `/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements/${workflowTemplateId}`,
       { method: "PUT", body: data }
     ),
+  createProjectOverride: (projectId: string, data: WorkflowOverrideCreateRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-overrides`, {
+      method: "POST",
+      body: data,
+    }),
+  deleteProjectOverride: (projectId: string, overrideId: string) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-overrides/${overrideId}`, {
+      method: "DELETE",
+    }),
 };
 
 // Input catalog
