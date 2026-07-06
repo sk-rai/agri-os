@@ -149,3 +149,119 @@ export const conflictsApi = {
   resolve: (id: string, strategy: string, comment?: string) =>
     api(`/api/v1/sync/conflicts/${id}`, { method: "PATCH", body: { strategy, comment } }),
 };
+
+
+// Workflow catalog
+export interface WorkflowRecommendation {
+  day_offset: number;
+  activity_type: string;
+  input_code?: string | null;
+  input_name: string;
+  typical_quantity?: string | null;
+  typical_cost_per_acre?: number | string | null;
+  is_critical: boolean;
+  description?: Record<string, string> | null;
+}
+
+export interface WorkflowStage {
+  code: string;
+  name: Record<string, string> | string;
+  order: number;
+  day_offset?: number;
+  duration_days: number;
+  stage_type?: string | null;
+  phase?: string | null;
+  propagation_step?: boolean;
+  recommended_activities?: WorkflowRecommendation[];
+}
+
+export interface EnabledCropWorkflow {
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  version: string;
+  status: string;
+  tenant_id: string;
+  project_id?: string | null;
+  enabled: boolean;
+  enablement_source: string;
+  display_order?: number | null;
+  label: Record<string, string>;
+  crop_code: string;
+  crop_name: string;
+  season_code: string;
+  propagation_type_code?: string | null;
+  total_duration_days?: number | null;
+  metadata?: Record<string, unknown>;
+  stages?: WorkflowStage[];
+}
+
+export interface EnabledWorkflowCatalogResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id?: string | null;
+  count: number;
+  workflows: EnabledCropWorkflow[];
+}
+
+export const workflowCatalogApi = {
+  enabledCropWorkflows: (params?: { projectId?: string; cropCode?: string; season?: string; includeStages?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.projectId) query.set("project_id", params.projectId);
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.season) query.set("season", params.season);
+    if (params?.includeStages) query.set("include_stages", "true");
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<EnabledWorkflowCatalogResponse>(`/api/v1/workflow-catalog/enabled-crop-workflows${suffix}`);
+  },
+};
+
+// Input catalog
+export interface InputCategoryDto {
+  id: string;
+  code: string;
+  canonical_name: string;
+  description?: string | null;
+  aliases: Array<Record<string, string>>;
+}
+
+export interface AgriInputDto {
+  id: string;
+  code: string;
+  category_code?: string | null;
+  category_name?: string | null;
+  canonical_name: string;
+  brand_name?: string | null;
+  composition?: string | null;
+  unit: string;
+  standard_weight?: string | null;
+  applicable_crops: string[];
+  application_method?: string | null;
+  safety_instructions?: string | null;
+  aliases: Array<Record<string, string>>;
+}
+
+export interface InputCategoriesResponse {
+  schema_version: string;
+  count: number;
+  categories: InputCategoryDto[];
+}
+
+export interface InputsResponse {
+  schema_version: string;
+  count: number;
+  inputs: AgriInputDto[];
+}
+
+export const inputCatalogApi = {
+  categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
+  inputs: (params?: { category?: string; cropCode?: string; q?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.q) query.set("q", params.q);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
+  },
+  get: (code: string) => api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`),
+};

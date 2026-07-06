@@ -1,0 +1,224 @@
+﻿"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  workflowCatalogApi,
+  type EnabledCropWorkflow,
+  type WorkflowRecommendation,
+  type WorkflowStage,
+} from "@/lib/api";
+
+function labelText(value: Record<string, string> | string | undefined | null) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return value.en || Object.values(value)[0] || "";
+}
+
+function countRecommendations(workflow: EnabledCropWorkflow) {
+  return (workflow.stages || []).reduce(
+    (sum, stage) => sum + (stage.recommended_activities?.length || 0),
+    0
+  );
+}
+
+export default function WorkflowsPage() {
+  const [workflows, setWorkflows] = useState<EnabledCropWorkflow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [cropFilter, setCropFilter] = useState("");
+
+  useEffect(() => {
+    workflowCatalogApi
+      .enabledCropWorkflows({ includeStages: true })
+      .then((data) => {
+        setWorkflows(data.workflows);
+        setSelectedId(data.workflows[0]?.workflow_template_id || null);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const cropCodes = useMemo(
+    () => Array.from(new Set(workflows.map((w) => w.crop_code))).sort(),
+    [workflows]
+  );
+
+  const filtered = cropFilter
+    ? workflows.filter((w) => w.crop_code === cropFilter)
+    : workflows;
+
+  const selected = filtered.find((w) => w.workflow_template_id === selectedId) || filtered[0];
+
+  if (loading) return <div className="text-gray-500">Loading workflow catalog...</div>;
+  if (error) return <div className="text-red-500">Error: {error}</div>;
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Crop Workflows</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Read-only view of enabled crop-cycle templates, stages, recommendations, and linked input codes.
+          </p>
+        </div>
+        <select
+          value={cropFilter}
+          onChange={(e) => {
+            setCropFilter(e.target.value);
+            setSelectedId(null);
+          }}
+          className="rounded-lg border px-3 py-2 text-sm"
+        >
+          <option value="">All crops</option>
+          {cropCodes.map((code) => (
+            <option key={code} value={code}>{code}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+        <div className="space-y-3">
+          {filtered.map((workflow) => (
+            <button
+              key={workflow.workflow_template_id}
+              onClick={() => setSelectedId(workflow.workflow_template_id)}
+              className={`w-full rounded-lg border bg-white p-4 text-left shadow-sm transition ${
+                selected?.workflow_template_id === workflow.workflow_template_id
+                  ? "border-green-500 ring-2 ring-green-100"
+                  : "border-transparent hover:border-green-200"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-gray-900">{labelText(workflow.label)}</h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {workflow.crop_name} · {workflow.season_code} · {workflow.propagation_type_code || "—"}
+                  </p>
+                </div>
+                <span className="rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+                  {workflow.enablement_source === "explicit" ? "Explicit" : "Default"}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-600">
+                <Metric label="Stages" value={workflow.stages?.length || 0} />
+                <Metric label="Recs" value={countRecommendations(workflow)} />
+                <Metric label="Days" value={workflow.total_duration_days || 0} />
+              </div>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="rounded-lg bg-white p-8 text-center text-sm text-gray-400 shadow">
+              No workflows match this filter.
+            </div>
+          )}
+        </div>
+
+        {selected ? <WorkflowDetail workflow={selected} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded bg-gray-50 p-2">
+      <p className="text-[10px] uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="font-semibold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
+  return (
+    <div className="rounded-lg bg-white shadow">
+      <div className="border-b p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">{labelText(workflow.label)}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {workflow.workflow_template_code} · version {workflow.version} · {workflow.status}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge>{workflow.crop_code}</Badge>
+            <Badge>{workflow.season_code}</Badge>
+            <Badge>{workflow.propagation_type_code || "Propagation —"}</Badge>
+          </div>
+        </div>
+      </div>
+
+      <div className="divide-y">
+        {(workflow.stages || []).map((stage) => (
+          <StageRow key={stage.code} stage={stage} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700">{children}</span>;
+}
+
+function StageRow({ stage }: { stage: WorkflowStage }) {
+  const recs = stage.recommended_activities || [];
+  return (
+    <details className="group" open={stage.order === 1}>
+      <summary className="cursor-pointer list-none p-5 hover:bg-gray-50">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+              Stage {stage.order} · {stage.code}
+            </p>
+            <h3 className="mt-1 font-semibold text-gray-900">{labelText(stage.name)}</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {stage.duration_days} days · {recs.length} recommendations
+            </p>
+          </div>
+          <span className="text-sm text-gray-400 group-open:rotate-180">⌄</span>
+        </div>
+      </summary>
+
+      <div className="px-5 pb-5">
+        {recs.length === 0 ? (
+          <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No recommendations configured.</p>
+        ) : (
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Day</th>
+                  <th className="px-3 py-2 text-left font-medium">Activity</th>
+                  <th className="px-3 py-2 text-left font-medium">Input</th>
+                  <th className="px-3 py-2 text-left font-medium">Quantity</th>
+                  <th className="px-3 py-2 text-left font-medium">Critical</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {recs.map((rec, index) => <RecommendationRow key={`${rec.input_name}-${index}`} rec={rec} />)}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function RecommendationRow({ rec }: { rec: WorkflowRecommendation }) {
+  return (
+    <tr>
+      <td className="px-3 py-2 font-mono text-xs">+{rec.day_offset}</td>
+      <td className="px-3 py-2">
+        <span className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{rec.activity_type}</span>
+      </td>
+      <td className="px-3 py-2">
+        <p className="font-medium text-gray-900">{rec.input_name}</p>
+        <p className="font-mono text-xs text-gray-400">{rec.input_code || "No input_code"}</p>
+      </td>
+      <td className="px-3 py-2 text-gray-600">{rec.typical_quantity || "—"}</td>
+      <td className="px-3 py-2">{rec.is_critical ? "✅" : "—"}</td>
+    </tr>
+  );
+}
