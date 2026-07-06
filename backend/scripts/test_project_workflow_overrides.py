@@ -155,6 +155,18 @@ def main():
         check("FLOWERING" in stage_codes(deleted_payload), "FLOWERING visible again after override removal")
         check(len(deleted_payload["applied_overrides"]) == 0, "Preview has no applied overrides after delete")
 
+        history_after_delete = client.get(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides?template_version_id={version.id}",
+            headers={"X-Tenant-ID": TENANT_ID},
+        )
+        check(history_after_delete.status_code == 200, "Override history returns 200", f"Status: {history_after_delete.status_code}")
+        history_payload = history_after_delete.json()
+        check(history_payload["counts"]["inactive"] == 1, "History includes removed override")
+        removed_override = next(row for row in history_payload["overrides"] if row["id"] == override_id)
+        check(removed_override["is_active"] is False, "Removed override is inactive in history")
+        check(removed_override["payload"] == {}, "History includes override payload")
+        check(bool(removed_override["created_at"]) and bool(removed_override["updated_at"]), "History includes created/updated timestamps")
+
         base_payload = base.json()
         nursery = stage_by_code(base_payload, "NURSERY")
         nursery_rec = nursery["recommended_activities"][0]
@@ -225,6 +237,25 @@ def main():
         check(custom_rec["metadata"]["source"] == "project_override", "Added recommendation is marked as project override sourced")
         check(len(added["applied_overrides"]) == 5, "Preview reports added recommendation override")
 
+        history_with_active = client.get(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides?template_version_id={version.id}",
+            headers={"X-Tenant-ID": TENANT_ID},
+        )
+        check(history_with_active.status_code == 200, "Override history with active rows returns 200", f"Status: {history_with_active.status_code}")
+        history_active_payload = history_with_active.json()
+        check(history_active_payload["counts"]["active"] == 5, "History active count includes current overrides")
+        check(history_active_payload["counts"]["inactive"] == 1, "History inactive count keeps removed override")
+        added_history = next(row for row in history_active_payload["overrides"] if row["operation"] == "ADD_RECOMMENDATION")
+        check(added_history["payload"]["input_name"] == "Custom nursery labour", "History includes add recommendation payload")
+        check(bool(added_history["created_at"]) and bool(added_history["updated_at"]), "Active history rows include timestamps")
+
+        active_only_history = client.get(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides?template_version_id={version.id}&include_inactive=false",
+            headers={"X-Tenant-ID": TENANT_ID},
+        )
+        check(active_only_history.status_code == 200, "Active-only override history returns 200", f"Status: {active_only_history.status_code}")
+        check(active_only_history.json()["counts"]["inactive"] == 0, "Active-only history excludes removed overrides")
+
         invalid_add = client.post(
             f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides",
             headers={"X-Tenant-ID": TENANT_ID},
@@ -257,7 +288,7 @@ def main():
         db.close()
 
     print("\n" + "=" * 72)
-    print("🟢 Project workflow override editor actions validated")
+    print("🟢 Project workflow override editor and history actions validated")
     print("=" * 72)
 
 

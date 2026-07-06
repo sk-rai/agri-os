@@ -7,6 +7,7 @@ import {
   inputCatalogApi,
   workflowCatalogApi,
   type AgriInputDto,
+  type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
   type WorkflowRecommendation,
   type WorkflowStage,
@@ -37,13 +38,29 @@ export default function WorkflowPreviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyTarget, setBusyTarget] = useState<string | null>(null);
+  const [overrideHistory, setOverrideHistory] = useState<WorkflowOverrideHistoryResponse | null>(null);
+
+  const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
+    const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
+      templateVersionId,
+      includeInactive: true,
+    });
+    setOverrideHistory(history);
+  };
 
   useEffect(() => {
     if (!params.versionId) return;
     const projectId = searchParams.get("project_id") || undefined;
     workflowCatalogApi
       .preview(params.versionId, { projectId })
-      .then(setPreview)
+      .then((payload) => {
+        setPreview(payload);
+        if (payload.project_id) {
+          return loadOverrideHistory(payload.project_id, payload.workflow_template_version_id).catch((e) => {
+            setError(e instanceof Error ? e.message : "Failed to load override history");
+          });
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [params.versionId, searchParams]);
@@ -70,6 +87,7 @@ export default function WorkflowPreviewPage() {
         reason,
       });
       setPreview(updated);
+      await loadOverrideHistory(preview.project_id, preview.workflow_template_version_id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create override");
     } finally {
@@ -84,6 +102,7 @@ export default function WorkflowPreviewPage() {
     try {
       const updated = await workflowCatalogApi.deleteProjectOverride(preview.project_id, overrideId);
       setPreview(updated);
+      await loadOverrideHistory(preview.project_id, preview.workflow_template_version_id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove override");
     } finally {
@@ -152,6 +171,14 @@ export default function WorkflowPreviewPage() {
           onRemoveOverride={removeOverride}
         />
       </div>
+
+      {preview.project_id ? (
+        <OverrideHistoryPanel
+          history={overrideHistory}
+          busyTarget={busyTarget}
+          onRemoveOverride={removeOverride}
+        />
+      ) : null}
 
       <div className="mb-6 rounded-lg bg-white shadow">
         <div className="border-b p-5">
@@ -264,6 +291,86 @@ function OverridesPanel({
                 </button>
               ) : null}
             </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "?";
+  return new Date(value).toLocaleString();
+}
+
+function OverrideHistoryPanel({
+  history,
+  busyTarget,
+  onRemoveOverride,
+}: {
+  history: WorkflowOverrideHistoryResponse | null;
+  busyTarget: string | null;
+  onRemoveOverride: (overrideId: string) => void;
+}) {
+  return (
+    <div className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Override History / Audit</h2>
+          <p className="text-sm text-gray-500">Active and removed project overrides for this workflow version.</p>
+        </div>
+        {history ? (
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge>Total {history.counts.total}</Badge>
+            <Badge>Active {history.counts.active}</Badge>
+            <Badge>Removed {history.counts.inactive}</Badge>
+          </div>
+        ) : null}
+      </div>
+
+      {!history ? (
+        <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">Loading override history...</p>
+      ) : history.overrides.length === 0 ? (
+        <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">No override history for this project workflow yet.</p>
+      ) : (
+        <div className="max-h-[520px] space-y-3 overflow-auto">
+          {history.overrides.map((override) => (
+            <details key={override.id} className={`rounded border p-3 text-sm ${override.is_active ? "border-green-200 bg-green-50/40" : "border-gray-200 bg-gray-50"}`}>
+              <summary className="cursor-pointer list-none">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge>{override.is_active ? "ACTIVE" : "REMOVED"}</Badge>
+                      <Badge>{override.target_type}</Badge>
+                      <Badge>{override.operation}</Badge>
+                      <Badge>Priority {override.priority}</Badge>
+                    </div>
+                    <p className="mt-2 font-mono text-xs text-gray-600">{override.target_code}</p>
+                    {override.reason ? <p className="mt-1 text-gray-700">{override.reason}</p> : null}
+                  </div>
+                  <div className="text-xs text-gray-500 md:text-right">
+                    <p>Created: {formatDateTime(override.created_at)}</p>
+                    <p>Updated: {formatDateTime(override.updated_at)}</p>
+                    {override.is_active ? (
+                      <button
+                        type="button"
+                        disabled={busyTarget === `OVERRIDE:${override.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onRemoveOverride(override.id);
+                        }}
+                        className="mt-2 rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {busyTarget === `OVERRIDE:${override.id}` ? "Removing..." : "Remove"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </summary>
+              <pre className="mt-3 max-h-64 overflow-auto rounded bg-gray-950 p-3 text-xs text-gray-100">
+                {JSON.stringify(override.payload || {}, null, 2)}
+              </pre>
+            </details>
           ))}
         </div>
       )}

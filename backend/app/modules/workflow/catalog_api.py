@@ -93,6 +93,24 @@ def _label(template, enablement):
     return {"en": template.canonical_name, "hi": template.canonical_name}
 
 
+def _override_payload(override: WorkflowTemplateOverride) -> dict:
+    return {
+        "id": str(override.id),
+        "tenant_id": override.tenant_id,
+        "project_id": str(override.project_id) if override.project_id else None,
+        "template_version_id": str(override.template_version_id),
+        "target_type": override.target_type,
+        "target_code": override.target_code,
+        "operation": override.operation,
+        "priority": override.priority,
+        "payload": override.override_payload or {},
+        "reason": override.reason,
+        "is_active": bool(override.is_active),
+        "created_at": override.created_at.isoformat() if override.created_at else None,
+        "updated_at": override.updated_at.isoformat() if override.updated_at else None,
+    }
+
+
 @router.get("/enabled-crop-workflows")
 def list_enabled_crop_workflows(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -366,18 +384,7 @@ def preview_workflow_template_version(
         "season_code": template.season_code,
         "propagation_type_code": template.propagation_type_code,
         "total_duration_days": sum(int(stage.get("duration_days") or 0) for stage in stages),
-        "applied_overrides": [
-            {
-                "id": str(override.id),
-                "target_type": override.target_type,
-                "target_code": override.target_code,
-                "operation": override.operation,
-                "priority": override.priority,
-                "payload": override.override_payload or {},
-                "reason": override.reason,
-            }
-            for override in overrides
-        ],
+        "applied_overrides": [_override_payload(override) for override in overrides],
         "warnings": warnings,
         "android_preview": {
             "crop_code": template.crop_code,
@@ -389,6 +396,48 @@ def preview_workflow_template_version(
         },
     }
 
+
+
+@router.get("/projects/{project_id}/workflow-overrides")
+def list_project_workflow_overrides(
+    project_id: uuid.UUID,
+    template_version_id: Optional[uuid.UUID] = Query(None),
+    include_inactive: bool = Query(True),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Return project workflow override history, including archived rows by default."""
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    query = db.query(WorkflowTemplateOverride).filter(
+        WorkflowTemplateOverride.project_id == project_id,
+        WorkflowTemplateOverride.tenant_id == x_tenant_id,
+    )
+    if template_version_id:
+        query = query.filter(WorkflowTemplateOverride.template_version_id == template_version_id)
+    if not include_inactive:
+        query = query.filter(WorkflowTemplateOverride.is_active == True)
+
+    overrides = query.order_by(
+        WorkflowTemplateOverride.is_active.desc(),
+        WorkflowTemplateOverride.updated_at.desc(),
+        WorkflowTemplateOverride.created_at.desc(),
+    ).all()
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "template_version_id": str(template_version_id) if template_version_id else None,
+        "include_inactive": include_inactive,
+        "counts": {
+            "total": len(overrides),
+            "active": sum(1 for override in overrides if override.is_active),
+            "inactive": sum(1 for override in overrides if not override.is_active),
+        },
+        "overrides": [_override_payload(override) for override in overrides],
+    }
 
 
 @router.get("/projects/{project_id}/workflow-enablements")

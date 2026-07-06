@@ -185,12 +185,33 @@ export interface WorkflowPreviewWarning {
 
 export interface AppliedWorkflowOverride {
   id: string;
+  tenant_id?: string;
+  project_id?: string | null;
+  template_version_id?: string;
   target_type: string;
   target_code: string;
   operation: string;
   priority: number;
   payload: Record<string, unknown>;
   reason?: string | null;
+  is_active?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+
+export interface WorkflowOverrideHistoryResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  template_version_id?: string | null;
+  include_inactive: boolean;
+  counts: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  overrides: AppliedWorkflowOverride[];
 }
 
 
@@ -341,6 +362,13 @@ export const workflowCatalogApi = {
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-overrides/${overrideId}`, {
       method: "DELETE",
     }),
+  projectOverrideHistory: (projectId: string, params?: { templateVersionId?: string; includeInactive?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.templateVersionId) query.set("template_version_id", params.templateVersionId);
+    if (params?.includeInactive !== undefined) query.set("include_inactive", String(params.includeInactive));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<WorkflowOverrideHistoryResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-overrides${suffix}`);
+  },
 };
 
 // Input catalog
