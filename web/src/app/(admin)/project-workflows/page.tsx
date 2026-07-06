@@ -24,6 +24,7 @@ export default function ProjectWorkflowsPage() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatingWorkflowId, setUpdatingWorkflowId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { label: string; displayOrder: string }>>({});
 
   useEffect(() => {
     projectsApi
@@ -47,14 +48,31 @@ export default function ProjectWorkflowsPage() {
   }, [selectedProjectId]);
 
 
+
+  useEffect(() => {
+    if (!summary) return;
+    const nextDrafts: Record<string, { label: string; displayOrder: string }> = {};
+    summary.workflows.forEach((workflow) => {
+      nextDrafts[workflow.workflow_template_id] = {
+        label: labelText(workflow.label),
+        displayOrder: workflow.display_order != null ? String(workflow.display_order) : "",
+      };
+    });
+    setDrafts(nextDrafts);
+  }, [summary]);
+
   const updateWorkflow = async (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => {
     if (!summary) return;
     setUpdatingWorkflowId(workflow.workflow_template_id);
     setError(null);
     try {
+      const draft = drafts[workflow.workflow_template_id];
+      const displayOrder = draft?.displayOrder?.trim() ? Number(draft.displayOrder) : undefined;
+      const label = draft?.label?.trim();
       const updated = await workflowCatalogApi.updateProjectEnablement(summary.project.id, workflow.workflow_template_id, {
         enabled,
-        display_order: workflow.display_order ?? undefined,
+        display_order: Number.isFinite(displayOrder) ? displayOrder : undefined,
+        display_label: label ? { en: label, hi: label } : undefined,
       });
       setSummary(updated);
     } catch (e) {
@@ -62,6 +80,17 @@ export default function ProjectWorkflowsPage() {
     } finally {
       setUpdatingWorkflowId(null);
     }
+  };
+
+  const updateDraft = (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => {
+    setDrafts((current) => ({
+      ...current,
+      [workflowId]: {
+        label: current[workflowId]?.label || "",
+        displayOrder: current[workflowId]?.displayOrder || "",
+        ...patch,
+      },
+    }));
   };
 
   if (loadingProjects) return <div className="text-gray-500">Loading projects...</div>;
@@ -96,6 +125,8 @@ export default function ProjectWorkflowsPage() {
           summary={summary}
           updatingWorkflowId={updatingWorkflowId}
           onUpdateWorkflow={updateWorkflow}
+          drafts={drafts}
+          onUpdateDraft={updateDraft}
         />
       )}
     </div>
@@ -106,10 +137,14 @@ function ProjectWorkflowSummary({
   summary,
   updatingWorkflowId,
   onUpdateWorkflow,
+  drafts,
+  onUpdateDraft,
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   updatingWorkflowId: string | null;
   onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
+  drafts: Record<string, { label: string; displayOrder: string }>;
+  onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
 }) {
   return (
     <div>
@@ -148,6 +183,8 @@ function ProjectWorkflowSummary({
             projectId={summary.project.id}
             isUpdating={updatingWorkflowId === workflow.workflow_template_id}
             onUpdateWorkflow={onUpdateWorkflow}
+            draft={drafts[workflow.workflow_template_id] || { label: labelText(workflow.label), displayOrder: workflow.display_order != null ? String(workflow.display_order) : "" }}
+            onUpdateDraft={onUpdateDraft}
           />
         ))}
       </div>
@@ -170,11 +207,15 @@ function WorkflowVisibilityCard({
   projectId,
   isUpdating,
   onUpdateWorkflow,
+  draft,
+  onUpdateDraft,
 }: {
   workflow: ProjectWorkflowEnablementItem;
   projectId: string;
   isUpdating: boolean;
   onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
+  draft: { label: string; displayOrder: string };
+  onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
 }) {
   const statusClass: Record<string, string> = {
     ENABLED: "bg-green-50 text-green-700",
@@ -233,6 +274,38 @@ function WorkflowVisibilityCard({
         <Mini label="Display order" value={workflow.display_order ?? "—"} />
         <Mini label="Overrides" value={workflow.override_count} />
         <Mini label="Enabled" value={workflow.enabled ? "Yes" : "No"} />
+      </div>
+
+      <div className="mt-4 grid gap-3 rounded-lg border bg-gray-50 p-3 md:grid-cols-[1fr_140px_auto]">
+        <label className="text-xs font-medium text-gray-500">
+          Display label
+          <input
+            value={draft.label}
+            onChange={(event) => onUpdateDraft(workflow.workflow_template_id, { label: event.target.value })}
+            className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
+            placeholder="Label shown to Android/admin"
+          />
+        </label>
+        <label className="text-xs font-medium text-gray-500">
+          Order
+          <input
+            type="number"
+            value={draft.displayOrder}
+            onChange={(event) => onUpdateDraft(workflow.workflow_template_id, { displayOrder: event.target.value })}
+            className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
+            placeholder="0"
+          />
+        </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            disabled={isUpdating}
+            onClick={() => onUpdateWorkflow(workflow, workflow.enabled)}
+            className="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
+          >
+            {isUpdating ? "Saving..." : "Save metadata"}
+          </button>
+        </div>
       </div>
 
       {workflow.overrides.length > 0 && (
