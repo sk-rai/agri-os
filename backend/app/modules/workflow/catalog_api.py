@@ -7,9 +7,11 @@ visible for a tenant/project. Admin write APIs can build on the same tables late
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -24,6 +26,12 @@ from app.modules.workflow.template_service import (
 )
 
 router = APIRouter(prefix="/api/v1/workflow-catalog", tags=["workflow-catalog"])
+
+
+class WorkflowEnablementUpdate(BaseModel):
+    enabled: bool
+    display_order: Optional[int] = None
+    display_label: Optional[dict[str, str]] = None
 
 
 def _label(template, enablement):
@@ -100,6 +108,122 @@ def list_enabled_crop_workflows(
         "workflows": workflows,
     }
 
+
+
+def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, tenant_id: str) -> dict:
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    version_rows = (
+        db.query(WorkflowTemplate, WorkflowTemplateVersion)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+        .filter(
+            WorkflowTemplate.is_active == True,
+            WorkflowTemplateVersion.is_active == True,
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
+        )
+        .order_by(WorkflowTemplate.crop_code, WorkflowTemplate.season_code, WorkflowTemplate.canonical_name)
+        .all()
+    )
+    template_ids = [template.id for template, _ in version_rows]
+
+    if template_ids:
+        project_enablements = (
+            db.query(WorkflowTemplateEnablement)
+            .filter(
+                WorkflowTemplateEnablement.tenant_id == tenant_id,
+                WorkflowTemplateEnablement.project_id == project_id,
+                WorkflowTemplateEnablement.template_id.in_(template_ids),
+                WorkflowTemplateEnablement.is_active == True,
+            )
+            .all()
+        )
+        tenant_enablements = (
+            db.query(WorkflowTemplateEnablement)
+            .filter(
+                WorkflowTemplateEnablement.tenant_id == tenant_id,
+                WorkflowTemplateEnablement.project_id.is_(None),
+                WorkflowTemplateEnablement.template_id.in_(template_ids),
+                WorkflowTemplateEnablement.is_active == True,
+            )
+            .all()
+        )
+    else:
+        project_enablements = []
+        tenant_enablements = []
+
+    project_enablement_by_template = {row.template_id: row for row in project_enablements}
+    tenant_enablement_by_template = {row.template_id: row for row in tenant_enablements}
+    explicit_scope = bool(project_enablements) or bool(tenant_enablements)
+
+    crop_codes = sorted({template.crop_code for template, _ in version_rows})
+    crops_by_code = {
+        crop.code: crop
+        for crop in db.query(Crop).filter(Crop.code.in_(crop_codes)).all()
+    } if crop_codes else {}
+
+    workflows = []
+    for template, version in version_rows:
+        enablement = project_enablement_by_template.get(template.id) or tenant_enablement_by_template.get(template.id)
+        scope = "project" if template.id in project_enablement_by_template else "tenant" if template.id in tenant_enablement_by_template else "implicit_default"
+        enabled = bool(enablement.enabled) if enablement else (not explicit_scope and template.is_default)
+        visibility_status = "ENABLED" if enabled and enablement else "DISABLED" if enablement and not enablement.enabled else "IMPLICIT_DEFAULT" if enabled else "NOT_VISIBLE"
+        overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=tenant_id, project_id=project_id)
+        crop = crops_by_code.get(template.crop_code)
+        workflows.append({
+            "workflow_template_id": str(template.id),
+            "workflow_template_version_id": str(version.id),
+            "workflow_template_code": template.code,
+            "version": version.version_number,
+            "status": version.status,
+            "visibility_status": visibility_status,
+            "enablement_scope": scope,
+            "enabled": enabled,
+            "display_order": enablement.display_order if enablement else None,
+            "label": _label(template, enablement),
+            "crop_code": template.crop_code,
+            "crop_name": crop.canonical_name if crop else template.crop_code,
+            "season_code": template.season_code,
+            "propagation_type_code": template.propagation_type_code,
+            "total_duration_days": version.total_duration_days,
+            "override_count": len(overrides),
+            "overrides": [
+                {
+                    "id": str(override.id),
+                    "target_type": override.target_type,
+                    "target_code": override.target_code,
+                    "operation": override.operation,
+                    "priority": override.priority,
+                    "reason": override.reason,
+                }
+                for override in overrides
+            ],
+        })
+
+    workflows.sort(key=lambda item: (not item["enabled"], item["display_order"] if item["display_order"] is not None else 1000, item["crop_code"], item["season_code"]))
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": tenant_id,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+            "crop_scope": project.crop_scope or [],
+            "start_date": project.start_date.isoformat() if project.start_date else None,
+            "end_date": project.end_date.isoformat() if project.end_date else None,
+        },
+        "explicit_scope": explicit_scope,
+        "counts": {
+            "total": len(workflows),
+            "enabled": sum(1 for item in workflows if item["enabled"]),
+            "disabled": sum(1 for item in workflows if item["visibility_status"] == "DISABLED"),
+            "implicit_default": sum(1 for item in workflows if item["visibility_status"] == "IMPLICIT_DEFAULT"),
+            "not_visible": sum(1 for item in workflows if item["visibility_status"] == "NOT_VISIBLE"),
+        },
+        "workflows": workflows,
+    }
 
 
 def _stage_name(stage: dict) -> str:
@@ -220,117 +344,64 @@ def get_project_workflow_enablements(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    """Return read-only workflow visibility status for a project.
+    """Return read-only workflow visibility status for a project."""
+    return _project_workflow_enablement_summary(db, project_id, x_tenant_id)
 
-    This is an admin-oriented view: it includes visible workflows, explicitly
-    disabled workflows, implicit defaults, and override counts.
+
+@router.put("/projects/{project_id}/workflow-enablements/{workflow_template_id}")
+def upsert_project_workflow_enablement(
+    project_id: uuid.UUID,
+    workflow_template_id: uuid.UUID,
+    body: WorkflowEnablementUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Create/update a project-level workflow enablement row.
+
+    This is the first safe admin write: it controls project visibility only and
+    does not edit workflow template content.
     """
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
 
-    version_rows = (
-        db.query(WorkflowTemplate, WorkflowTemplateVersion)
-        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+    template = (
+        db.query(WorkflowTemplate)
         .filter(
+            WorkflowTemplate.id == workflow_template_id,
             WorkflowTemplate.is_active == True,
-            WorkflowTemplateVersion.is_active == True,
-            WorkflowTemplateVersion.status == "PUBLISHED",
             WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
         )
-        .order_by(WorkflowTemplate.crop_code, WorkflowTemplate.season_code, WorkflowTemplate.canonical_name)
-        .all()
+        .first()
     )
-    template_ids = [template.id for template, _ in version_rows]
-    version_ids = [version.id for _, version in version_rows]
+    if not template:
+        raise HTTPException(404, "Workflow template not found")
 
-    project_enablements = (
+    enablement = (
         db.query(WorkflowTemplateEnablement)
         .filter(
             WorkflowTemplateEnablement.tenant_id == x_tenant_id,
             WorkflowTemplateEnablement.project_id == project_id,
-            WorkflowTemplateEnablement.template_id.in_(template_ids) if template_ids else False,
-            WorkflowTemplateEnablement.is_active == True,
+            WorkflowTemplateEnablement.template_id == workflow_template_id,
         )
-        .all()
+        .first()
     )
-    tenant_enablements = (
-        db.query(WorkflowTemplateEnablement)
-        .filter(
-            WorkflowTemplateEnablement.tenant_id == x_tenant_id,
-            WorkflowTemplateEnablement.project_id.is_(None),
-            WorkflowTemplateEnablement.template_id.in_(template_ids) if template_ids else False,
-            WorkflowTemplateEnablement.is_active == True,
+    if not enablement:
+        enablement = WorkflowTemplateEnablement(
+            id=uuid.uuid4(),
+            tenant_id=x_tenant_id,
+            project_id=project_id,
+            template_id=workflow_template_id,
+            created_at=datetime.now(timezone.utc),
         )
-        .all()
-    )
-    project_enablement_by_template = {row.template_id: row for row in project_enablements}
-    tenant_enablement_by_template = {row.template_id: row for row in tenant_enablements}
-    explicit_scope = bool(project_enablements) or bool(tenant_enablements)
+        db.add(enablement)
 
-    crop_codes = sorted({template.crop_code for template, _ in version_rows})
-    crops_by_code = {
-        crop.code: crop
-        for crop in db.query(Crop).filter(Crop.code.in_(crop_codes)).all()
-    } if crop_codes else {}
+    enablement.enabled = body.enabled
+    enablement.display_order = body.display_order if body.display_order is not None else (enablement.display_order or 0)
+    if body.display_label is not None:
+        enablement.display_label = body.display_label
+    enablement.is_active = True
+    enablement.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return _project_workflow_enablement_summary(db, project_id, x_tenant_id)
 
-    workflows = []
-    for template, version in version_rows:
-        enablement = project_enablement_by_template.get(template.id) or tenant_enablement_by_template.get(template.id)
-        scope = "project" if template.id in project_enablement_by_template else "tenant" if template.id in tenant_enablement_by_template else "implicit_default"
-        enabled = bool(enablement.enabled) if enablement else (not explicit_scope and template.is_default)
-        visibility_status = "ENABLED" if enabled and enablement else "DISABLED" if enablement and not enablement.enabled else "IMPLICIT_DEFAULT" if enabled else "NOT_VISIBLE"
-        overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=x_tenant_id, project_id=project_id)
-        crop = crops_by_code.get(template.crop_code)
-        workflows.append({
-            "workflow_template_id": str(template.id),
-            "workflow_template_version_id": str(version.id),
-            "workflow_template_code": template.code,
-            "version": version.version_number,
-            "status": version.status,
-            "visibility_status": visibility_status,
-            "enablement_scope": scope,
-            "enabled": enabled,
-            "display_order": enablement.display_order if enablement else None,
-            "label": _label(template, enablement),
-            "crop_code": template.crop_code,
-            "crop_name": crop.canonical_name if crop else template.crop_code,
-            "season_code": template.season_code,
-            "propagation_type_code": template.propagation_type_code,
-            "total_duration_days": version.total_duration_days,
-            "override_count": len(overrides),
-            "overrides": [
-                {
-                    "id": str(override.id),
-                    "target_type": override.target_type,
-                    "target_code": override.target_code,
-                    "operation": override.operation,
-                    "priority": override.priority,
-                    "reason": override.reason,
-                }
-                for override in overrides
-            ],
-        })
-
-    workflows.sort(key=lambda item: (not item["enabled"], item["display_order"] if item["display_order"] is not None else 1000, item["crop_code"], item["season_code"]))
-    return {
-        "schema_version": "1.0.0",
-        "tenant_id": x_tenant_id,
-        "project": {
-            "id": str(project.id),
-            "name": project.name,
-            "status": project.status,
-            "crop_scope": project.crop_scope or [],
-            "start_date": project.start_date.isoformat() if project.start_date else None,
-            "end_date": project.end_date.isoformat() if project.end_date else None,
-        },
-        "explicit_scope": explicit_scope,
-        "counts": {
-            "total": len(workflows),
-            "enabled": sum(1 for item in workflows if item["enabled"]),
-            "disabled": sum(1 for item in workflows if item["visibility_status"] == "DISABLED"),
-            "implicit_default": sum(1 for item in workflows if item["visibility_status"] == "IMPLICIT_DEFAULT"),
-            "not_visible": sum(1 for item in workflows if item["visibility_status"] == "NOT_VISIBLE"),
-        },
-        "workflows": workflows,
-    }

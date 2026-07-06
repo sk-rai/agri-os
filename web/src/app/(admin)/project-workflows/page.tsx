@@ -23,6 +23,7 @@ export default function ProjectWorkflowsPage() {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updatingWorkflowId, setUpdatingWorkflowId] = useState<string | null>(null);
 
   useEffect(() => {
     projectsApi
@@ -44,6 +45,24 @@ export default function ProjectWorkflowsPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoadingSummary(false));
   }, [selectedProjectId]);
+
+
+  const updateWorkflow = async (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => {
+    if (!summary) return;
+    setUpdatingWorkflowId(workflow.workflow_template_id);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.updateProjectEnablement(summary.project.id, workflow.workflow_template_id, {
+        enabled,
+        display_order: workflow.display_order ?? undefined,
+      });
+      setSummary(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update workflow enablement");
+    } finally {
+      setUpdatingWorkflowId(null);
+    }
+  };
 
   if (loadingProjects) return <div className="text-gray-500">Loading projects...</div>;
   if (error) return <div className="text-red-500">Error: {error}</div>;
@@ -73,13 +92,25 @@ export default function ProjectWorkflowsPage() {
       ) : loadingSummary || !summary ? (
         <div className="text-gray-500">Loading workflow visibility...</div>
       ) : (
-        <ProjectWorkflowSummary summary={summary} />
+        <ProjectWorkflowSummary
+          summary={summary}
+          updatingWorkflowId={updatingWorkflowId}
+          onUpdateWorkflow={updateWorkflow}
+        />
       )}
     </div>
   );
 }
 
-function ProjectWorkflowSummary({ summary }: { summary: ProjectWorkflowEnablementsResponse }) {
+function ProjectWorkflowSummary({
+  summary,
+  updatingWorkflowId,
+  onUpdateWorkflow,
+}: {
+  summary: ProjectWorkflowEnablementsResponse;
+  updatingWorkflowId: string | null;
+  onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
+}) {
   return (
     <div>
       <div className="mb-6 rounded-lg bg-white p-5 shadow">
@@ -111,7 +142,13 @@ function ProjectWorkflowSummary({ summary }: { summary: ProjectWorkflowEnablemen
 
       <div className="grid gap-4">
         {summary.workflows.map((workflow) => (
-          <WorkflowVisibilityCard key={workflow.workflow_template_version_id} workflow={workflow} projectId={summary.project.id} />
+          <WorkflowVisibilityCard
+            key={workflow.workflow_template_version_id}
+            workflow={workflow}
+            projectId={summary.project.id}
+            isUpdating={updatingWorkflowId === workflow.workflow_template_id}
+            onUpdateWorkflow={onUpdateWorkflow}
+          />
         ))}
       </div>
     </div>
@@ -128,7 +165,17 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
   );
 }
 
-function WorkflowVisibilityCard({ workflow, projectId }: { workflow: ProjectWorkflowEnablementItem; projectId: string }) {
+function WorkflowVisibilityCard({
+  workflow,
+  projectId,
+  isUpdating,
+  onUpdateWorkflow,
+}: {
+  workflow: ProjectWorkflowEnablementItem;
+  projectId: string;
+  isUpdating: boolean;
+  onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
+}) {
   const statusClass: Record<string, string> = {
     ENABLED: "bg-green-50 text-green-700",
     DISABLED: "bg-red-50 text-red-700",
@@ -153,6 +200,25 @@ function WorkflowVisibilityCard({ workflow, projectId }: { workflow: ProjectWork
           <p className="mt-2 font-mono text-xs text-gray-400">{workflow.workflow_template_code} · v{workflow.version}</p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
+          {workflow.enabled ? (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() => onUpdateWorkflow(workflow, false)}
+              className="rounded-lg border border-red-200 px-3 py-2 font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isUpdating ? "Updating..." : "Disable"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() => onUpdateWorkflow(workflow, true)}
+              className="rounded-lg border border-green-200 px-3 py-2 font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isUpdating ? "Updating..." : "Enable"}
+            </button>
+          )}
           <Link
             href={`/workflows/preview/${workflow.workflow_template_version_id}?project_id=${projectId}`}
             className={`rounded-lg px-3 py-2 font-medium ${workflow.enabled ? "bg-green-600 text-white hover:bg-green-700" : "pointer-events-none bg-gray-100 text-gray-400"}`}

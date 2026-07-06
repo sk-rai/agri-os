@@ -312,6 +312,15 @@ export const workflowCatalogApi = {
   },
   projectEnablements: (projectId: string) =>
     api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
+  updateProjectEnablement: (
+    projectId: string,
+    workflowTemplateId: string,
+    data: { enabled: boolean; display_order?: number | null; display_label?: Record<string, string> | null }
+  ) =>
+    api<ProjectWorkflowEnablementsResponse>(
+      `/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements/${workflowTemplateId}`,
+      { method: "PUT", body: data }
+    ),
 };
 
 // Input catalog

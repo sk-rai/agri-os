@@ -1,4 +1,4 @@
-﻿"""Regression for project workflow enablement summary endpoint."""
+"""Regression for project workflow enablement summary endpoint."""
 
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -109,6 +109,26 @@ def main():
         check(by_crop["SUGARCANE"]["visibility_status"] == "DISABLED", "Sugarcane is disabled")
         check(payload["counts"]["enabled"] >= 1, "Enabled count is populated")
         check(payload["counts"]["disabled"] >= 1, "Disabled count is populated")
+
+        disable_response = client.put(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements/{rice.id}",
+            headers={"X-Tenant-ID": TENANT_ID},
+            json={"enabled": False, "display_order": 5},
+        )
+        check(disable_response.status_code == 200, "Disable workflow action returns 200", f"Status: {disable_response.status_code}")
+        disabled_by_crop = {item["crop_code"]: item for item in disable_response.json()["workflows"]}
+        check(disabled_by_crop["RICE"]["visibility_status"] == "DISABLED", "Rice becomes disabled after action")
+
+        enable_response = client.put(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements/{rice.id}",
+            headers={"X-Tenant-ID": TENANT_ID},
+            json={"enabled": True, "display_order": 3, "display_label": {"en": "Project Rice"}},
+        )
+        check(enable_response.status_code == 200, "Enable workflow action returns 200", f"Status: {enable_response.status_code}")
+        enabled_by_crop = {item["crop_code"]: item for item in enable_response.json()["workflows"]}
+        check(enabled_by_crop["RICE"]["visibility_status"] == "ENABLED", "Rice becomes enabled after action")
+        check(enabled_by_crop["RICE"]["display_order"] == 3, "Display order is updated")
+        check(enabled_by_crop["RICE"]["label"]["en"] == "Project Rice", "Display label is updated")
     finally:
         cleanup(db, project_id)
         db.close()
