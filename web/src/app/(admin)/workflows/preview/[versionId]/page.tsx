@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  inputCatalogApi,
   workflowCatalogApi,
+  type AgriInputDto,
   type WorkflowPreviewResponse,
   type WorkflowRecommendation,
   type WorkflowStage,
@@ -18,6 +20,14 @@ function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
   if (typeof value === "string") return value;
   return value.en || Object.values(value)[0] || "";
+}
+
+function activityTypeFromCategory(categoryCode?: string | null) {
+  const category = (categoryCode || "").toUpperCase();
+  if (["SEED", "FERTILIZER", "ORGANIC_MANURE", "FUNGICIDE", "HERBICIDE", "PESTICIDE", "IRRIGATION", "LABOR", "MACHINERY"].includes(category)) {
+    return category;
+  }
+  return "OTHER";
 }
 
 export default function WorkflowPreviewPage() {
@@ -152,6 +162,7 @@ export default function WorkflowPreviewPage() {
             <StagePreview
               key={stage.code}
               stage={stage}
+              cropCode={preview.crop_code}
               projectScoped={Boolean(preview.project_id)}
               busyTarget={busyTarget}
               onCreateOverride={createOverride}
@@ -262,11 +273,13 @@ function OverridesPanel({
 
 function StagePreview({
   stage,
+  cropCode,
   projectScoped,
   busyTarget,
   onCreateOverride,
 }: {
   stage: WorkflowStage;
+  cropCode: string;
   projectScoped: boolean;
   busyTarget: string | null;
   onCreateOverride: (
@@ -287,13 +300,52 @@ function StagePreview({
   const [newRecQuantity, setNewRecQuantity] = useState("1 labour-day/acre");
   const [newRecCost, setNewRecCost] = useState("");
   const [newRecCritical, setNewRecCritical] = useState(false);
+  const [inputSearch, setInputSearch] = useState("labour");
+  const [inputCategory, setInputCategory] = useState("");
+  const [inputResults, setInputResults] = useState<AgriInputDto[]>([]);
+  const [inputLoading, setInputLoading] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
 
   useEffect(() => {
     setStageName(labelText(stage.name));
     setDurationDays(String(stage.duration_days));
   }, [stage.name, stage.duration_days]);
 
+  useEffect(() => {
+    if (!projectScoped) return;
+    let cancelled = false;
+    setInputLoading(true);
+    setInputError(null);
+    inputCatalogApi
+      .inputs({
+        cropCode,
+        category: inputCategory || undefined,
+        q: inputSearch.trim() || undefined,
+      })
+      .then((response) => {
+        if (!cancelled) setInputResults(response.inputs.slice(0, 8));
+      })
+      .catch((e) => {
+        if (!cancelled) setInputError(e instanceof Error ? e.message : "Failed to search inputs");
+      })
+      .finally(() => {
+        if (!cancelled) setInputLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cropCode, inputCategory, inputSearch, projectScoped]);
+
   const stageBusy = busyTarget === `STAGE:${stage.code}`;
+
+  const selectCatalogInput = (input: AgriInputDto) => {
+    setNewRecInputCode(input.code);
+    setNewRecInputName(input.canonical_name);
+    setNewRecActivityType(activityTypeFromCategory(input.category_code));
+    if (!newRecQuantity.trim() && input.unit) {
+      setNewRecQuantity(`1 ${input.unit}/acre`);
+    }
+  };
 
   const addCustomRecommendation = () => {
     const payload: Record<string, unknown> = {
@@ -379,6 +431,59 @@ function StagePreview({
         {projectScoped ? (
           <details className="mb-4 rounded-lg border border-dashed bg-white p-3">
             <summary className="cursor-pointer text-sm font-semibold text-gray-800">Add custom recommendation</summary>
+            <div className="mt-3 rounded-lg bg-gray-50 p-3">
+              <div className="grid gap-3 md:grid-cols-[160px_1fr]">
+                <label className="text-xs font-medium text-gray-500">
+                  Catalog category
+                  <select
+                    value={inputCategory}
+                    onChange={(event) => setInputCategory(event.target.value)}
+                    className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                  >
+                    <option value="">All categories</option>
+                    <option value="SEED">Seed</option>
+                    <option value="FERTILIZER">Fertilizer</option>
+                    <option value="ORGANIC_MANURE">Organic manure</option>
+                    <option value="FUNGICIDE">Fungicide</option>
+                    <option value="HERBICIDE">Herbicide</option>
+                    <option value="PESTICIDE">Pesticide</option>
+                    <option value="LABOR">Labor</option>
+                    <option value="MACHINERY">Machinery</option>
+                    <option value="IRRIGATION">Irrigation</option>
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-gray-500">
+                  Search input catalog
+                  <input
+                    value={inputSearch}
+                    onChange={(event) => setInputSearch(event.target.value)}
+                    placeholder="Search seed, fertilizer, labour, pesticide..."
+                    className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 max-h-44 overflow-auto rounded border bg-white">
+                {inputLoading ? <p className="p-3 text-xs text-gray-500">Searching input catalog...</p> : null}
+                {inputError ? <p className="p-3 text-xs text-red-600">{inputError}</p> : null}
+                {!inputLoading && !inputError && inputResults.length === 0 ? <p className="p-3 text-xs text-gray-500">No catalog matches. Use the manual fields below.</p> : null}
+                {inputResults.map((input) => (
+                  <button
+                    key={input.id}
+                    type="button"
+                    onClick={() => selectCatalogInput(input)}
+                    className="flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-xs hover:bg-green-50 last:border-b-0"
+                  >
+                    <span>
+                      <span className="font-semibold text-gray-900">{input.canonical_name}</span>
+                      <span className="ml-2 font-mono text-gray-400">{input.code}</span>
+                      <span className="ml-2 text-gray-400">{input.category_name || input.category_code || "Uncategorized"}</span>
+                    </span>
+                    <span className="rounded border border-green-200 px-2 py-0.5 font-medium text-green-700">Use</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">Selecting a catalog input fills code/name/activity type. Manual entry remains available for local inputs not yet catalogued.</p>
+            </div>
             <div className="mt-3 grid gap-3 md:grid-cols-[90px_120px_150px_1fr_160px_120px_auto]">
               <label className="text-xs font-medium text-gray-500">
                 Day
