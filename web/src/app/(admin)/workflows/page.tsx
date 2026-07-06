@@ -1,5 +1,6 @@
-﻿"use client";
+"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   workflowCatalogApi,
@@ -140,10 +141,16 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
               {workflow.workflow_template_code} · version {workflow.version} · {workflow.status}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <Badge>{workflow.crop_code}</Badge>
             <Badge>{workflow.season_code}</Badge>
             <Badge>{workflow.propagation_type_code || "Propagation —"}</Badge>
+            <Link
+              href={`/workflows/preview/${workflow.workflow_template_version_id}`}
+              className="rounded-full bg-green-600 px-3 py-1 font-medium text-white hover:bg-green-700"
+            >
+              Preview JSON
+            </Link>
           </div>
         </div>
       </div>

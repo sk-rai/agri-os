@@ -175,6 +175,53 @@ export interface WorkflowStage {
   recommended_activities?: WorkflowRecommendation[];
 }
 
+
+export interface WorkflowPreviewWarning {
+  level: "INFO" | "WARN" | "ERROR" | string;
+  code: string;
+  message: string;
+  target?: string | null;
+}
+
+export interface AppliedWorkflowOverride {
+  id: string;
+  target_type: string;
+  target_code: string;
+  operation: string;
+  priority: number;
+  payload: Record<string, unknown>;
+  reason?: string | null;
+}
+
+export interface WorkflowPreviewResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id?: string | null;
+  preview_source: string;
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  version: string;
+  status: string;
+  enablement_source: string;
+  label: Record<string, string>;
+  crop_code: string;
+  crop_name: string;
+  season_code: string;
+  propagation_type_code?: string | null;
+  total_duration_days: number;
+  applied_overrides: AppliedWorkflowOverride[];
+  warnings: WorkflowPreviewWarning[];
+  android_preview: {
+    crop_code: string;
+    crop_name: string;
+    season_code: string;
+    total_duration_days: number;
+    propagation_method?: string | null;
+    stages: WorkflowStage[];
+  };
+}
+
 export interface EnabledCropWorkflow {
   workflow_template_id: string;
   workflow_template_version_id: string;
@@ -213,6 +260,12 @@ export const workflowCatalogApi = {
     if (params?.includeStages) query.set("include_stages", "true");
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<EnabledWorkflowCatalogResponse>(`/api/v1/workflow-catalog/enabled-crop-workflows${suffix}`);
+  },
+  preview: (versionId: string, params?: { projectId?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.projectId) query.set("project_id", params.projectId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/workflow-preview/${versionId}${suffix}`);
   },
 };
 
