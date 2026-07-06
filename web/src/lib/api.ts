@@ -222,6 +222,49 @@ export interface WorkflowPreviewResponse {
   };
 }
 
+
+export interface ProjectWorkflowEnablementItem {
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  version: string;
+  status: string;
+  visibility_status: "ENABLED" | "DISABLED" | "IMPLICIT_DEFAULT" | "NOT_VISIBLE" | string;
+  enablement_scope: "project" | "tenant" | "implicit_default" | string;
+  enabled: boolean;
+  display_order?: number | null;
+  label: Record<string, string>;
+  crop_code: string;
+  crop_name: string;
+  season_code: string;
+  propagation_type_code?: string | null;
+  total_duration_days?: number | null;
+  override_count: number;
+  overrides: AppliedWorkflowOverride[];
+}
+
+export interface ProjectWorkflowEnablementsResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: {
+    id: string;
+    name: string;
+    status: string;
+    crop_scope: string[];
+    start_date?: string | null;
+    end_date?: string | null;
+  };
+  explicit_scope: boolean;
+  counts: {
+    total: number;
+    enabled: number;
+    disabled: number;
+    implicit_default: number;
+    not_visible: number;
+  };
+  workflows: ProjectWorkflowEnablementItem[];
+}
+
 export interface EnabledCropWorkflow {
   workflow_template_id: string;
   workflow_template_version_id: string;
@@ -267,6 +310,8 @@ export const workflowCatalogApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/workflow-preview/${versionId}${suffix}`);
   },
+  projectEnablements: (projectId: string) =>
+    api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
 };
 
 // Input catalog

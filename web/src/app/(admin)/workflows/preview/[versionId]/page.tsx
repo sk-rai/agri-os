@@ -1,7 +1,7 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   workflowCatalogApi,
@@ -19,18 +19,20 @@ function labelText(value: Record<string, string> | string | undefined | null) {
 
 export default function WorkflowPreviewPage() {
   const params = useParams<{ versionId: string }>();
+  const searchParams = useSearchParams();
   const [preview, setPreview] = useState<WorkflowPreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.versionId) return;
+    const projectId = searchParams.get("project_id") || undefined;
     workflowCatalogApi
-      .preview(params.versionId)
+      .preview(params.versionId, { projectId })
       .then(setPreview)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [params.versionId]);
+  }, [params.versionId, searchParams]);
 
   if (loading) return <div className="text-gray-500">Loading workflow preview...</div>;
   if (error) return <div className="text-red-500">Error: {error}</div>;
@@ -58,6 +60,7 @@ export default function WorkflowPreviewPage() {
           <Badge>{preview.season_code}</Badge>
           <Badge>{preview.propagation_type_code || "Propagation —"}</Badge>
           <Badge>{preview.enablement_source}</Badge>
+          {preview.project_id ? <Badge>Project scoped preview</Badge> : null}
         </div>
       </div>
 
