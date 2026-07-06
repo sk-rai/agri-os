@@ -201,6 +201,44 @@ def main():
         check(recommendation_by_target(quantity_changed, rec_target)["typical_quantity"] == "custom quantity", "Recommendation quantity change appears in preview")
         check(len(quantity_changed["applied_overrides"]) == 4, "Preview reports all non-hide applied overrides")
 
+        added = create_override(client, project_id, version.id, {
+            "target_type": "STAGE",
+            "target_code": "NURSERY",
+            "operation": "ADD_RECOMMENDATION",
+            "override_payload": {
+                "day_offset": 6,
+                "activity_type": "LABOR",
+                "input_code": "LABOR_GENERAL",
+                "input_name": "Custom nursery labour",
+                "typical_quantity": "2 labour-days/acre",
+                "typical_cost_per_acre": 900,
+                "is_critical": False,
+                "description": {"en": "Client-specific nursery labour line item"},
+            },
+            "priority": 60,
+            "reason": "Regression add custom recommendation",
+        })
+        custom_rec = recommendation_by_target(added, "NURSERY|LABOR_GENERAL")
+        check(custom_rec["input_name"] == "Custom nursery labour", "Added recommendation appears in preview")
+        check(custom_rec["day_offset"] == 6, "Added recommendation keeps day offset")
+        check(custom_rec["typical_quantity"] == "2 labour-days/acre", "Added recommendation keeps quantity")
+        check(custom_rec["metadata"]["source"] == "project_override", "Added recommendation is marked as project override sourced")
+        check(len(added["applied_overrides"]) == 5, "Preview reports added recommendation override")
+
+        invalid_add = client.post(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides",
+            headers={"X-Tenant-ID": TENANT_ID},
+            json={
+                "template_version_id": str(version.id),
+                "target_type": "RECOMMENDATION",
+                "target_code": rec_target,
+                "operation": "ADD_RECOMMENDATION",
+                "override_payload": {"day_offset": 3, "activity_type": "LABOR", "input_name": "Bad add"},
+                "priority": 65,
+            },
+        )
+        check(invalid_add.status_code == 400, "ADD_RECOMMENDATION rejects recommendation target", f"Status: {invalid_add.status_code}")
+
         invalid = client.post(
             f"/api/v1/workflow-catalog/projects/{project_id}/workflow-overrides",
             headers={"X-Tenant-ID": TENANT_ID},
@@ -210,7 +248,7 @@ def main():
                 "target_code": "NURSERY",
                 "operation": "CHANGE_OFFSET",
                 "override_payload": {"day_offset": 3},
-                "priority": 60,
+                "priority": 70,
             },
         )
         check(invalid.status_code == 400, "Invalid operation/target combination is rejected", f"Status: {invalid.status_code}")

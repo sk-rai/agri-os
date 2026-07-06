@@ -48,7 +48,18 @@ def _validate_override_payload(target_type: str, operation: str, payload: dict) 
     """Reject incomplete project override payloads before preview rendering."""
     if operation == "HIDE":
         return
-    if operation == "RENAME":
+    if operation == "ADD_RECOMMENDATION":
+        if target_type != "STAGE":
+            raise HTTPException(400, "ADD_RECOMMENDATION can only target STAGE")
+        try:
+            int(payload.get("day_offset"))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "ADD_RECOMMENDATION requires integer day_offset")
+        if not payload.get("activity_type"):
+            raise HTTPException(400, "ADD_RECOMMENDATION requires activity_type")
+        if not payload.get("input_name"):
+            raise HTTPException(400, "ADD_RECOMMENDATION requires input_name")
+    elif operation == "RENAME":
         if target_type == "STAGE" and not (payload.get("name") or payload.get("label")):
             raise HTTPException(400, "RENAME stage override requires name or label")
         if target_type == "RECOMMENDATION" and not (payload.get("input_name") or payload.get("name")):
@@ -484,7 +495,7 @@ def create_project_workflow_override(
     operation = body.operation.upper()
     if target_type not in ("STAGE", "RECOMMENDATION"):
         raise HTTPException(400, "target_type must be STAGE or RECOMMENDATION")
-    if operation not in ("HIDE", "RENAME", "CHANGE_DURATION", "CHANGE_OFFSET", "CHANGE_QUANTITY"):
+    if operation not in ("HIDE", "RENAME", "CHANGE_DURATION", "CHANGE_OFFSET", "CHANGE_QUANTITY", "ADD_RECOMMENDATION"):
         raise HTTPException(400, "Unsupported override operation")
     _validate_override_payload(target_type, operation, body.override_payload or {})
 

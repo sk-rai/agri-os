@@ -173,7 +173,7 @@ class WorkflowTemplateOverride(Base, UUIDPrimaryKey, AuditMixin):
     """Tenant/project override applied to a published workflow version.
 
     MVP operations are intentionally small and renderer-safe:
-    HIDE, RENAME, CHANGE_DURATION, CHANGE_OFFSET, CHANGE_QUANTITY.
+    HIDE, RENAME, CHANGE_DURATION, CHANGE_OFFSET, CHANGE_QUANTITY, ADD_RECOMMENDATION.
     """
 
     __tablename__ = "workflow_template_overrides"
@@ -185,7 +185,7 @@ class WorkflowTemplateOverride(Base, UUIDPrimaryKey, AuditMixin):
     # STAGE, RECOMMENDATION
     target_code = Column(String(220), nullable=False)
     operation = Column(String(40), nullable=False)
-    # HIDE, RENAME, CHANGE_DURATION, CHANGE_OFFSET, CHANGE_QUANTITY
+    # HIDE, RENAME, CHANGE_DURATION, CHANGE_OFFSET, CHANGE_QUANTITY, ADD_RECOMMENDATION
     override_payload = Column(JSONB, nullable=False, default=dict)
     priority = Column(Integer, nullable=False, default=100)
     reason = Column(Text)
@@ -199,7 +199,7 @@ class WorkflowTemplateOverride(Base, UUIDPrimaryKey, AuditMixin):
             name="ck_workflow_template_override_target_type",
         ),
         CheckConstraint(
-            "operation IN ('HIDE', 'RENAME', 'CHANGE_DURATION', 'CHANGE_OFFSET', 'CHANGE_QUANTITY')",
+            "operation IN ('HIDE', 'RENAME', 'CHANGE_DURATION', 'CHANGE_OFFSET', 'CHANGE_QUANTITY', 'ADD_RECOMMENDATION')",
             name="ck_workflow_template_override_operation",
         ),
     )

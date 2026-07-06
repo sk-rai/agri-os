@@ -220,6 +220,27 @@ def apply_workflow_overrides(stages: list[dict], overrides: list[WorkflowTemplat
                     stage["name"] = payload.get("name") or payload.get("label") or stage.get("name")
                 elif operation == "CHANGE_DURATION":
                     stage["duration_days"] = int(payload.get("duration_days", stage.get("duration_days") or 0))
+                elif operation == "ADD_RECOMMENDATION":
+                    new_rec = {
+                        "day_offset": int(payload.get("day_offset", 0)),
+                        "activity_type": str(payload.get("activity_type") or "OTHER").upper(),
+                        "input_code": payload.get("input_code"),
+                        "input_name": payload.get("input_name"),
+                        "typical_quantity": payload.get("typical_quantity"),
+                        "typical_cost_per_acre": _cost(payload.get("typical_cost_per_acre")),
+                        "is_critical": bool(payload.get("is_critical", False)),
+                        "description": payload.get("description") or {},
+                        "metadata": {
+                            **(payload.get("metadata") or {}),
+                            "source": "project_override",
+                            "override_id": str(override.id),
+                        },
+                    }
+                    stage.setdefault("recommended_activities", []).append(new_rec)
+                    stage["recommended_activities"] = sorted(
+                        stage.get("recommended_activities", []),
+                        key=lambda rec: (int(rec.get("day_offset") or 0), str(rec.get("input_name") or "")),
+                    )
 
         if target_type == "RECOMMENDATION":
             for stage in result:

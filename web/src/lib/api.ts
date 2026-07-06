@@ -198,7 +198,7 @@ export interface WorkflowOverrideCreateRequest {
   template_version_id: string;
   target_type: "STAGE" | "RECOMMENDATION" | string;
   target_code: string;
-  operation: "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | string;
+  operation: "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION" | string;
   override_payload?: Record<string, unknown>;
   priority?: number;
   reason?: string | null;

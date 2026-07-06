@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 
 type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
-type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY";
+type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION";
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -280,6 +280,13 @@ function StagePreview({
   const recs = stage.recommended_activities || [];
   const [stageName, setStageName] = useState(labelText(stage.name));
   const [durationDays, setDurationDays] = useState(String(stage.duration_days));
+  const [newRecDayOffset, setNewRecDayOffset] = useState("0");
+  const [newRecActivityType, setNewRecActivityType] = useState("LABOR");
+  const [newRecInputCode, setNewRecInputCode] = useState("LABOR_GENERAL");
+  const [newRecInputName, setNewRecInputName] = useState("Custom labour activity");
+  const [newRecQuantity, setNewRecQuantity] = useState("1 labour-day/acre");
+  const [newRecCost, setNewRecCost] = useState("");
+  const [newRecCritical, setNewRecCritical] = useState(false);
 
   useEffect(() => {
     setStageName(labelText(stage.name));
@@ -287,6 +294,20 @@ function StagePreview({
   }, [stage.name, stage.duration_days]);
 
   const stageBusy = busyTarget === `STAGE:${stage.code}`;
+
+  const addCustomRecommendation = () => {
+    const payload: Record<string, unknown> = {
+      day_offset: Number(newRecDayOffset),
+      activity_type: newRecActivityType.trim().toUpperCase(),
+      input_code: newRecInputCode.trim() || null,
+      input_name: newRecInputName.trim(),
+      typical_quantity: newRecQuantity.trim() || null,
+      is_critical: newRecCritical,
+      description: { en: `Custom ${newRecActivityType.trim().toLowerCase()} recommendation for ${stage.code}` },
+    };
+    if (newRecCost.trim()) payload.typical_cost_per_acre = Number(newRecCost);
+    onCreateOverride("STAGE", stage.code, "ADD_RECOMMENDATION", payload, `Add recommendation to ${stage.code}`);
+  };
 
   return (
     <details open={stage.order === 1}>
@@ -353,6 +374,82 @@ function StagePreview({
               Save duration
             </button>
           </div>
+        ) : null}
+
+        {projectScoped ? (
+          <details className="mb-4 rounded-lg border border-dashed bg-white p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-800">Add custom recommendation</summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-[90px_120px_150px_1fr_160px_120px_auto]">
+              <label className="text-xs font-medium text-gray-500">
+                Day
+                <input
+                  type="number"
+                  value={newRecDayOffset}
+                  onChange={(event) => setNewRecDayOffset(event.target.value)}
+                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                />
+              </label>
+              <label className="text-xs font-medium text-gray-500">
+                Activity
+                <input
+                  value={newRecActivityType}
+                  onChange={(event) => setNewRecActivityType(event.target.value)}
+                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                />
+              </label>
+              <label className="text-xs font-medium text-gray-500">
+                Input code
+                <input
+                  value={newRecInputCode}
+                  onChange={(event) => setNewRecInputCode(event.target.value)}
+                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                />
+              </label>
+              <label className="text-xs font-medium text-gray-500">
+                Input name
+                <input
+                  value={newRecInputName}
+                  onChange={(event) => setNewRecInputName(event.target.value)}
+                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                />
+              </label>
+              <label className="text-xs font-medium text-gray-500">
+                Quantity
+                <input
+                  value={newRecQuantity}
+                  onChange={(event) => setNewRecQuantity(event.target.value)}
+                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                />
+              </label>
+              <label className="text-xs font-medium text-gray-500">
+                Cost/acre
+                <input
+                  type="number"
+                  value={newRecCost}
+                  onChange={(event) => setNewRecCost(event.target.value)}
+                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                />
+              </label>
+              <div className="flex items-end gap-3">
+                <label className="flex items-center gap-1 pb-1 text-xs font-medium text-gray-500">
+                  <input
+                    type="checkbox"
+                    checked={newRecCritical}
+                    onChange={(event) => setNewRecCritical(event.target.checked)}
+                  />
+                  Critical
+                </label>
+                <button
+                  type="button"
+                  disabled={stageBusy || newRecDayOffset === "" || !newRecActivityType.trim() || !newRecInputName.trim()}
+                  onClick={addCustomRecommendation}
+                  className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </details>
         ) : null}
 
         {recs.length === 0 ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No recommendations.</p> : (
