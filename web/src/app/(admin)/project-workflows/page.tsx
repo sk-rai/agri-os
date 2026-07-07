@@ -146,6 +146,9 @@ function ProjectWorkflowSummary({
   drafts: Record<string, { label: string; displayOrder: string }>;
   onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
 }) {
+  const lifecycle = summary.safe_edit_lifecycle;
+  const canEdit = lifecycle.can_edit_project_workflows;
+
   return (
     <div>
       <div className="mb-6 rounded-lg bg-white p-5 shadow">
@@ -167,6 +170,34 @@ function ProjectWorkflowSummary({
         </div>
       </div>
 
+      <div className={`mb-6 rounded-lg border p-4 ${canEdit ? "border-green-100 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className={`text-sm font-semibold ${canEdit ? "text-green-800" : "text-amber-900"}`}>
+              {canEdit ? "Workflow configuration editable" : "Workflow configuration locked"}
+            </p>
+            <p className={`mt-1 text-sm ${canEdit ? "text-green-700" : "text-amber-800"}`}>
+              {canEdit
+                ? "This project has no enrolled field data yet. Enablement and override changes are still allowed."
+                : lifecycle.suggested_action || "Create a new workflow version for future cycles instead of editing this project in-place."}
+            </p>
+            {!canEdit && lifecycle.reasons.length > 0 ? (
+              <ul className="mt-2 list-disc pl-5 text-sm text-amber-800">
+                {lifecycle.reasons.map((reason) => (
+                  <li key={reason.code}>{reason.message}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-center text-xs md:min-w-[360px]">
+            <Mini label="Farmers" value={lifecycle.counts.farmers} />
+            <Mini label="Parcels" value={lifecycle.counts.parcels} />
+            <Mini label="Cycles" value={lifecycle.counts.crop_cycles} />
+            <Mini label="Active" value={lifecycle.counts.active_crop_cycles} />
+          </div>
+        </div>
+      </div>
+
       <div className="mb-6 grid gap-4 md:grid-cols-5">
         <Stat label="Total" value={summary.counts.total} />
         <Stat label="Enabled" value={summary.counts.enabled} tone="ok" />
@@ -185,6 +216,7 @@ function ProjectWorkflowSummary({
             onUpdateWorkflow={onUpdateWorkflow}
             draft={drafts[workflow.workflow_template_id] || { label: labelText(workflow.label), displayOrder: workflow.display_order != null ? String(workflow.display_order) : "" }}
             onUpdateDraft={onUpdateDraft}
+            canEdit={canEdit}
           />
         ))}
       </div>
@@ -209,6 +241,7 @@ function WorkflowVisibilityCard({
   onUpdateWorkflow,
   draft,
   onUpdateDraft,
+  canEdit,
 }: {
   workflow: ProjectWorkflowEnablementItem;
   projectId: string;
@@ -216,6 +249,7 @@ function WorkflowVisibilityCard({
   onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
   draft: { label: string; displayOrder: string };
   onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
+  canEdit: boolean;
 }) {
   const statusClass: Record<string, string> = {
     ENABLED: "bg-green-50 text-green-700",
@@ -244,7 +278,7 @@ function WorkflowVisibilityCard({
           {workflow.enabled ? (
             <button
               type="button"
-              disabled={isUpdating}
+              disabled={isUpdating || !canEdit}
               onClick={() => onUpdateWorkflow(workflow, false)}
               className="rounded-lg border border-red-200 px-3 py-2 font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
             >
@@ -253,7 +287,7 @@ function WorkflowVisibilityCard({
           ) : (
             <button
               type="button"
-              disabled={isUpdating}
+              disabled={isUpdating || !canEdit}
               onClick={() => onUpdateWorkflow(workflow, true)}
               className="rounded-lg border border-green-200 px-3 py-2 font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
             >
@@ -273,6 +307,7 @@ function WorkflowVisibilityCard({
         <Mini label="Duration" value={`${workflow.total_duration_days || 0} days`} />
         <Mini label="Display order" value={workflow.display_order ?? "—"} />
         <Mini label="Overrides" value={workflow.override_count} />
+        <Mini label="Cycles" value={workflow.usage_count ?? 0} />
         <Mini label="Enabled" value={workflow.enabled ? "Yes" : "No"} />
       </div>
 
@@ -281,6 +316,7 @@ function WorkflowVisibilityCard({
           Display label
           <input
             value={draft.label}
+            disabled={!canEdit}
             onChange={(event) => onUpdateDraft(workflow.workflow_template_id, { label: event.target.value })}
             className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
             placeholder="Label shown to Android/admin"
@@ -291,6 +327,7 @@ function WorkflowVisibilityCard({
           <input
             type="number"
             value={draft.displayOrder}
+            disabled={!canEdit}
             onChange={(event) => onUpdateDraft(workflow.workflow_template_id, { displayOrder: event.target.value })}
             className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
             placeholder="0"
@@ -299,7 +336,7 @@ function WorkflowVisibilityCard({
         <div className="flex items-end">
           <button
             type="button"
-            disabled={isUpdating}
+            disabled={isUpdating || !canEdit}
             onClick={() => onUpdateWorkflow(workflow, workflow.enabled)}
             className="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
           >

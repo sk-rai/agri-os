@@ -17,9 +17,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.modules.farmer.models import Project
+from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.master_data.models import AgriculturalInput, Crop
 from app.modules.workflow.models import (
+    CropCycle,
     WorkflowTemplate,
     WorkflowTemplateAuditEvent,
     WorkflowTemplateEnablement,
@@ -256,6 +257,101 @@ def _override_payload(override: WorkflowTemplateOverride) -> dict:
     }
 
 
+WORKFLOW_ACTIVE_CYCLE_STATUSES = {"PLANNED", "ACTIVE", "PARTIALLY_TRACKED"}
+
+
+def _project_workflow_safe_edit_lifecycle(db: Session, project: Project, tenant_id: str) -> dict:
+    farmer_count = db.query(Farmer).filter(
+        Farmer.tenant_id == tenant_id,
+        Farmer.project_id == project.id,
+        Farmer.status != "ARCHIVED",
+    ).count()
+    parcel_count = db.query(Parcel).filter(
+        Parcel.tenant_id == tenant_id,
+        Parcel.project_id == project.id,
+        Parcel.status != "ARCHIVED",
+    ).count()
+    crop_cycle_count = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.project_id == project.id,
+        CropCycle.status != "ARCHIVED",
+    ).count()
+    active_crop_cycle_count = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.project_id == project.id,
+        CropCycle.status.in_(WORKFLOW_ACTIVE_CYCLE_STATUSES),
+    ).count()
+
+    reasons = []
+    warnings = []
+    if project.status in {"COMPLETED", "ARCHIVED"}:
+        reasons.append({
+            "code": f"PROJECT_{project.status}",
+            "message": f"Project status is {project.status}; workflow configuration edits are locked.",
+        })
+    elif project.status == "ACTIVE":
+        warnings.append({
+            "code": "PROJECT_ACTIVE",
+            "message": "Project is ACTIVE. Workflow edits are allowed only because no enrolled field data exists yet.",
+        })
+    if farmer_count > 0:
+        reasons.append({"code": "FARMERS_ENROLLED", "message": "Farmers are already enrolled in this project."})
+    if parcel_count > 0:
+        reasons.append({"code": "PARCELS_REGISTERED", "message": "Land parcels are already linked to this project."})
+    if crop_cycle_count > 0:
+        reasons.append({"code": "CROP_CYCLES_STARTED", "message": "Crop cycles already exist for this project."})
+
+    can_edit = len(reasons) == 0
+    return {
+        "schema_version": "workflow_safe_edit_lifecycle.v1",
+        "project_id": str(project.id),
+        "tenant_id": tenant_id,
+        "project_status": project.status,
+        "can_edit_project_workflows": can_edit,
+        "lock_state": "OPEN" if can_edit else "LOCKED",
+        "locked_operations": [] if can_edit else [
+            "ENABLE_WORKFLOW",
+            "DISABLE_WORKFLOW",
+            "UPDATE_WORKFLOW_METADATA",
+            "CREATE_PROJECT_OVERRIDE",
+            "DELETE_PROJECT_OVERRIDE",
+        ],
+        "allowed_operations": [
+            "ENABLE_WORKFLOW",
+            "DISABLE_WORKFLOW",
+            "UPDATE_WORKFLOW_METADATA",
+            "CREATE_PROJECT_OVERRIDE",
+            "DELETE_PROJECT_OVERRIDE",
+        ] if can_edit else [
+            "VIEW_WORKFLOWS",
+            "PREVIEW_WORKFLOWS",
+            "CREATE_NEW_DRAFT_VERSION_FOR_FUTURE_USE",
+        ],
+        "counts": {
+            "farmers": farmer_count,
+            "parcels": parcel_count,
+            "crop_cycles": crop_cycle_count,
+            "active_crop_cycles": active_crop_cycle_count,
+        },
+        "reasons": reasons,
+        "warnings": warnings,
+        "suggested_action": "Edit this project's workflow configuration before enrollment, or create a new workflow version for future cycles." if not can_edit else None,
+    }
+
+
+def _assert_project_workflow_editable(db: Session, project: Project, tenant_id: str) -> dict:
+    lifecycle = _project_workflow_safe_edit_lifecycle(db, project, tenant_id)
+    if not lifecycle["can_edit_project_workflows"]:
+        raise HTTPException(
+            409,
+            {
+                "message": "Project workflow configuration is locked because field data already exists.",
+                "safe_edit_lifecycle": lifecycle,
+            },
+        )
+    return lifecycle
+
+
 @router.get("/enabled-crop-workflows")
 def list_enabled_crop_workflows(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -374,6 +470,20 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
     tenant_enablement_by_template = {row.template_id: row for row in tenant_enablements}
     explicit_scope = bool(project_enablements) or bool(tenant_enablements)
 
+    lifecycle = _project_workflow_safe_edit_lifecycle(db, project, tenant_id)
+    project_cycles = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.project_id == project.id,
+        CropCycle.status != "ARCHIVED",
+    ).all()
+    cycle_counts_by_key = {}
+    active_cycle_counts_by_key = {}
+    for cycle in project_cycles:
+        key = (cycle.crop_code, cycle.season_code)
+        cycle_counts_by_key[key] = cycle_counts_by_key.get(key, 0) + 1
+        if cycle.status in WORKFLOW_ACTIVE_CYCLE_STATUSES:
+            active_cycle_counts_by_key[key] = active_cycle_counts_by_key.get(key, 0) + 1
+
     crop_codes = sorted({template.crop_code for template, _ in version_rows})
     crops_by_code = {
         crop.code: crop
@@ -404,6 +514,8 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
             "season_code": template.season_code,
             "propagation_type_code": template.propagation_type_code,
             "total_duration_days": version.total_duration_days,
+            "usage_count": cycle_counts_by_key.get((template.crop_code, template.season_code), 0),
+            "active_usage_count": active_cycle_counts_by_key.get((template.crop_code, template.season_code), 0),
             "override_count": len(overrides),
             "overrides": [
                 {
@@ -431,6 +543,7 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
             "end_date": project.end_date.isoformat() if project.end_date else None,
         },
         "explicit_scope": explicit_scope,
+        "safe_edit_lifecycle": lifecycle,
         "counts": {
             "total": len(workflows),
             "enabled": sum(1 for item in workflows if item["enabled"]),
@@ -1559,6 +1672,7 @@ def upsert_project_workflow_enablement(
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
+    _assert_project_workflow_editable(db, project, x_tenant_id)
 
     template = (
         db.query(WorkflowTemplate)
@@ -1617,6 +1731,7 @@ def create_project_workflow_override(
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
+    _assert_project_workflow_editable(db, project, x_tenant_id)
 
     version_row = (
         db.query(WorkflowTemplate, WorkflowTemplateVersion)
@@ -1680,6 +1795,10 @@ def delete_project_workflow_override(
     )
     if not override:
         raise HTTPException(404, "Workflow override not found")
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    _assert_project_workflow_editable(db, project, x_tenant_id)
 
     version_id = override.template_version_id
     override.is_active = False

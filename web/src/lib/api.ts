@@ -378,6 +378,26 @@ export interface WorkflowPreviewResponse {
 }
 
 
+export interface WorkflowSafeEditLifecycle {
+  schema_version: string;
+  project_id: string;
+  tenant_id: string;
+  project_status: string;
+  can_edit_project_workflows: boolean;
+  lock_state: "OPEN" | "LOCKED" | string;
+  locked_operations: string[];
+  allowed_operations: string[];
+  counts: {
+    farmers: number;
+    parcels: number;
+    crop_cycles: number;
+    active_crop_cycles: number;
+  };
+  reasons: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+  suggested_action?: string | null;
+}
+
 export interface ProjectWorkflowEnablementItem {
   workflow_template_id: string;
   workflow_template_version_id: string;
@@ -394,6 +414,8 @@ export interface ProjectWorkflowEnablementItem {
   season_code: string;
   propagation_type_code?: string | null;
   total_duration_days?: number | null;
+  usage_count?: number;
+  active_usage_count?: number;
   override_count: number;
   overrides: AppliedWorkflowOverride[];
 }
@@ -410,6 +432,7 @@ export interface ProjectWorkflowEnablementsResponse {
     end_date?: string | null;
   };
   explicit_scope: boolean;
+  safe_edit_lifecycle: WorkflowSafeEditLifecycle;
   counts: {
     total: number;
     enabled: number;

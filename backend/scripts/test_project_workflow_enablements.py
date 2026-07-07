@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
-from app.modules.farmer.models import Project, Tenant
+from app.modules.farmer.models import Farmer, Project, Tenant
 from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateEnablement
 
 GREEN = "\033[92m"
@@ -41,6 +41,7 @@ def ensure_tenant(db):
 
 
 def cleanup(db, project_id):
+    db.query(Farmer).filter(Farmer.project_id == project_id).delete(synchronize_session=False)
     db.query(WorkflowTemplateEnablement).filter(WorkflowTemplateEnablement.project_id == project_id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
     db.commit()
@@ -129,6 +130,41 @@ def main():
         check(enabled_by_crop["RICE"]["visibility_status"] == "ENABLED", "Rice becomes enabled after action")
         check(enabled_by_crop["RICE"]["display_order"] == 3, "Display order is updated")
         check(enabled_by_crop["RICE"]["label"]["en"] == "Project Rice", "Display label is updated")
+
+        open_lifecycle = enable_response.json()["safe_edit_lifecycle"]
+        check(open_lifecycle["can_edit_project_workflows"] is True, "Empty active project workflow config remains editable")
+        check(open_lifecycle["lock_state"] == "OPEN", "Empty active project workflow lifecycle is OPEN")
+
+        db.add(Farmer(
+            id=uuid.uuid4(),
+            tenant_id=TENANT_ID,
+            project_id=project_id,
+            mobile_number="+919999999992",
+            village_name_manual="Workflow Policy Village",
+            display_name="Workflow Policy Farmer",
+            status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.commit()
+
+        locked_summary = client.get(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements",
+            headers={"X-Tenant-ID": TENANT_ID},
+        )
+        check(locked_summary.status_code == 200, "Locked project workflow summary still returns 200", f"Status: {locked_summary.status_code}")
+        locked_lifecycle = locked_summary.json()["safe_edit_lifecycle"]
+        check(locked_lifecycle["can_edit_project_workflows"] is False, "Project workflow config locks after farmer enrollment")
+        check(locked_lifecycle["counts"]["farmers"] == 1, "Workflow lifecycle counts enrolled farmers")
+        check(any(reason["code"] == "FARMERS_ENROLLED" for reason in locked_lifecycle["reasons"]), "Workflow lifecycle reports farmer enrollment lock reason")
+
+        locked_update = client.put(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements/{rice.id}",
+            headers={"X-Tenant-ID": TENANT_ID},
+            json={"enabled": False},
+        )
+        check(locked_update.status_code == 409, "Workflow enablement update is blocked after enrollment", f"Status: {locked_update.status_code}")
+        check(locked_update.json()["detail"]["safe_edit_lifecycle"]["lock_state"] == "LOCKED", "Blocked response includes lifecycle detail")
     finally:
         cleanup(db, project_id)
         db.close()
