@@ -297,6 +297,32 @@ export interface WorkflowTemplateVersionsResponse {
   versions: WorkflowTemplateVersionHistoryItem[];
 }
 
+export interface WorkflowAuditEvent {
+  id: string;
+  tenant_id: string;
+  workflow_template_id: string;
+  workflow_template_version_id?: string | null;
+  actor_id?: string | null;
+  action: string;
+  target_type: string;
+  target_id?: string | null;
+  target_code?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export interface WorkflowAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  workflow_template_id: string;
+  workflow_template_code: string;
+  count: number;
+  events: WorkflowAuditEvent[];
+}
+
 export interface WorkflowDraftStageUpdateRequest {
   stage_name?: Record<string, string>;
   duration_days?: number;
@@ -441,6 +467,15 @@ export const workflowCatalogApi = {
   },
   templateVersions: (templateId: string) =>
     api<WorkflowTemplateVersionsResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions`),
+  templateAudit: (templateId: string, params?: { versionId?: string; action?: string; actorId?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.versionId) query.set("version_id", params.versionId);
+    if (params?.action) query.set("action", params.action);
+    if (params?.actorId) query.set("actor_id", params.actorId);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<WorkflowAuditResponse>(`/api/v1/workflow-catalog/templates/${templateId}/audit${suffix}`);
+  },
   cloneDraftVersion: (templateId: string, versionId: string, data?: { version_number?: string }) =>
     api<WorkflowDraftCloneResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions/${versionId}/clone-draft`, {
       method: "POST",

@@ -11,6 +11,7 @@ from app.main import app
 from app.core.database import SessionLocal
 from app.modules.workflow.models import (
     WorkflowTemplate,
+    WorkflowTemplateAuditEvent,
     WorkflowTemplateRecommendation,
     WorkflowTemplateStage,
     WorkflowTemplateVersion,
@@ -34,6 +35,9 @@ def check(condition, label, detail=None):
 def cleanup_draft(db, draft_version_id):
     if not draft_version_id:
         return
+    db.query(WorkflowTemplateAuditEvent).filter(
+        WorkflowTemplateAuditEvent.template_version_id == draft_version_id
+    ).delete(synchronize_session=False)
     stage_ids = [
         row.id
         for row in db.query(WorkflowTemplateStage.id)
@@ -324,6 +328,28 @@ def main():
         check(restored_preview.status_code == 200, "Restored draft preview returns 200", f"Status: {restored_preview.status_code}")
         restored_public_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{restored_draft_id}", headers=headers)
         check(restored_public_preview.status_code == 404, "Restored draft is not Android-preview visible", f"Status: {restored_public_preview.status_code}")
+
+        audit = client.get(f"/api/v1/workflow-catalog/templates/{rice.id}/audit", headers=headers)
+        check(audit.status_code == 200, "Workflow audit trail returns 200", f"Status: {audit.status_code}")
+        audit_payload = audit.json()
+        check(audit_payload["workflow_template_id"] == str(rice.id), "Audit response references workflow template")
+        audit_actions = [event["action"] for event in audit_payload["events"]]
+        for action in [
+            "CLONE_DRAFT",
+            "UPDATE_STAGE",
+            "UPDATE_RECOMMENDATION",
+            "CREATE_RECOMMENDATION",
+            "DELETE_RECOMMENDATION",
+            "VALIDATE_DRAFT",
+            "PUBLISH_DRAFT",
+            "RESTORE_DRAFT",
+        ]:
+            check(action in audit_actions, f"Audit trail records {action}")
+        update_stage_event = next(event for event in audit_payload["events"] if event["action"] == "UPDATE_STAGE" and event["workflow_template_version_id"] == draft_version_id)
+        check(update_stage_event["before"]["stage_code"] == "NURSERY", "Stage audit captures before snapshot")
+        check(update_stage_event["after"]["duration_days"] == 19, "Stage audit captures after snapshot")
+        publish_event = next(event for event in audit_payload["events"] if event["action"] == "PUBLISH_DRAFT" and event["workflow_template_version_id"] == draft_version_id)
+        check(publish_event["metadata"]["validation_counts"]["stages"] > 0, "Publish audit stores validation counts")
     finally:
         if source_version_id:
             source = db.query(WorkflowTemplateVersion).filter(WorkflowTemplateVersion.id == source_version_id).first()

@@ -205,6 +205,33 @@ class WorkflowTemplateOverride(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class WorkflowTemplateAuditEvent(Base, UUIDPrimaryKey):
+    """Immutable audit event for workflow template editing and publishing."""
+
+    __tablename__ = "workflow_template_audit_events"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, default="default")
+    template_id = Column(UUID(as_uuid=True), ForeignKey("workflow_templates.id"), nullable=False)
+    template_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_template_versions.id"))
+    actor_id = Column(UUID(as_uuid=True))
+    action = Column(String(60), nullable=False)
+    target_type = Column(String(40), nullable=False)
+    target_id = Column(String(120))
+    target_code = Column(String(220))
+    before = Column(JSONB)
+    after = Column(JSONB)
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_workflow_template_audit_template", "template_id", "created_at"),
+        Index("idx_workflow_template_audit_version", "template_version_id", "created_at"),
+        Index("idx_workflow_template_audit_action", "action"),
+        Index("idx_workflow_template_audit_actor", "actor_id"),
+    )
+
+
 class CropCycle(Base, UUIDPrimaryKey, AuditMixin):
     """One growing season of one crop on one parcel.
 

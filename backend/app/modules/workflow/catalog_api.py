@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -20,6 +21,7 @@ from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, Crop
 from app.modules.workflow.models import (
     WorkflowTemplate,
+    WorkflowTemplateAuditEvent,
     WorkflowTemplateEnablement,
     WorkflowTemplateOverride,
     WorkflowTemplateRecommendation,
@@ -35,6 +37,95 @@ from app.modules.workflow.template_service import (
 )
 
 router = APIRouter(prefix="/api/v1/workflow-catalog", tags=["workflow-catalog"])
+
+
+def _actor_uuid(x_actor_id: Optional[str]):
+    if not x_actor_id:
+        return None
+    try:
+        return uuid.UUID(str(x_actor_id))
+    except ValueError:
+        raise HTTPException(400, "X-Actor-ID must be a UUID when supplied")
+
+
+def _ensure_workflow_audit_table(db: Session) -> None:
+    """Create workflow audit table in migration-light MVP environments."""
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS workflow_template_audit_events (
+            id UUID PRIMARY KEY,
+            tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(id),
+            template_id UUID NOT NULL REFERENCES workflow_templates(id),
+            template_version_id UUID REFERENCES workflow_template_versions(id),
+            actor_id UUID,
+            action VARCHAR(60) NOT NULL,
+            target_type VARCHAR(40) NOT NULL,
+            target_id VARCHAR(120),
+            target_code VARCHAR(220),
+            before JSONB,
+            after JSONB,
+            reason TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_template ON workflow_template_audit_events(template_id, created_at)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_version ON workflow_template_audit_events(template_version_id, created_at)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_action ON workflow_template_audit_events(action)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_actor ON workflow_template_audit_events(actor_id)"))
+
+
+def _record_workflow_audit_event(
+    db: Session,
+    *,
+    tenant_id: str,
+    template_id,
+    template_version_id=None,
+    actor_id=None,
+    action: str,
+    target_type: str,
+    target_id: Optional[str] = None,
+    target_code: Optional[str] = None,
+    before: Optional[dict] = None,
+    after: Optional[dict] = None,
+    reason: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> None:
+    _ensure_workflow_audit_table(db)
+    db.add(WorkflowTemplateAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        template_id=template_id,
+        template_version_id=template_version_id,
+        actor_id=actor_id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        target_code=target_code,
+        before=before,
+        after=after,
+        reason=reason,
+        metadata_=metadata or {},
+        created_at=datetime.now(timezone.utc),
+    ))
+
+
+def _audit_payload(event: WorkflowTemplateAuditEvent) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "workflow_template_id": str(event.template_id),
+        "workflow_template_version_id": str(event.template_version_id) if event.template_version_id else None,
+        "actor_id": str(event.actor_id) if event.actor_id else None,
+        "action": event.action,
+        "target_type": event.target_type,
+        "target_id": event.target_id,
+        "target_code": event.target_code,
+        "before": event.before,
+        "after": event.after,
+        "reason": event.reason,
+        "metadata": event.metadata_ or {},
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
 
 
 class WorkflowEnablementUpdate(BaseModel):
@@ -625,10 +716,23 @@ def validate_draft_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Return non-mutating validation report for a DRAFT workflow version."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
     _, report = _draft_validation(db, version.id)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id),
+        action="VALIDATE_DRAFT",
+        target_type="VERSION",
+        target_id=str(version.id),
+        after={"can_publish": report["can_publish"], "counts": report["counts"]},
+    )
+    db.commit()
     return {
         **report,
         "tenant_id": x_tenant_id,
@@ -647,9 +751,10 @@ def update_draft_workflow_stage(
     body: WorkflowDraftStageUpdate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Edit a stage inside a DRAFT workflow version and return updated draft preview."""
-    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
     stage = (
         db.query(WorkflowTemplateStage)
         .filter(
@@ -662,6 +767,7 @@ def update_draft_workflow_stage(
     if not stage:
         raise HTTPException(404, "Draft workflow stage not found")
 
+    before = _stage_audit_snapshot(stage)
     changes = body.dict(exclude_unset=True)
     if not changes:
         raise HTTPException(400, "No stage changes supplied")
@@ -702,6 +808,20 @@ def update_draft_workflow_stage(
         .all()
     )
     version.updated_at = now
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id),
+        action="UPDATE_STAGE",
+        target_type="STAGE",
+        target_id=str(stage.id),
+        target_code=stage.stage_code,
+        before=before,
+        after=_stage_audit_snapshot(stage),
+        metadata={"changed_fields": sorted(changes.keys())},
+    )
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
@@ -736,6 +856,38 @@ def _get_draft_recommendation(db: Session, version_id, recommendation_id: uuid.U
     if not rec:
         raise HTTPException(404, "Draft workflow recommendation not found")
     return rec
+
+
+def _stage_audit_snapshot(stage: WorkflowTemplateStage) -> dict:
+    return {
+        "stage_code": stage.stage_code,
+        "stage_name": deepcopy(stage.stage_name or {}),
+        "stage_order": stage.stage_order,
+        "duration_days": stage.duration_days,
+        "stage_type": stage.stage_type,
+        "phase": stage.phase,
+        "description": deepcopy(stage.description),
+        "farmer_actions": deepcopy(stage.farmer_actions or []),
+        "typical_inputs": deepcopy(stage.typical_inputs or []),
+        "key_observations": deepcopy(stage.key_observations or []),
+        "icon": stage.icon,
+        "color": stage.color,
+    }
+
+
+def _recommendation_audit_snapshot(rec: WorkflowTemplateRecommendation) -> dict:
+    return {
+        "sort_order": rec.sort_order,
+        "day_offset": rec.day_offset,
+        "activity_type": rec.activity_type,
+        "input_code": rec.input_code,
+        "input_name": rec.input_name,
+        "typical_quantity": rec.typical_quantity,
+        "typical_cost_per_acre": str(rec.typical_cost_per_acre) if rec.typical_cost_per_acre is not None else None,
+        "is_critical": bool(rec.is_critical),
+        "description": deepcopy(rec.description),
+        "is_active": bool(rec.is_active),
+    }
 
 
 def _apply_recommendation_changes(rec: WorkflowTemplateRecommendation, changes: dict) -> None:
@@ -779,9 +931,10 @@ def create_draft_workflow_recommendation(
     body: WorkflowDraftRecommendationCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Add a recommendation to a stage inside a DRAFT workflow version."""
-    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
     stage = _get_draft_stage(db, version.id, stage_code)
     activity_type = (body.activity_type or "").strip().upper()
     input_name = (body.input_name or "").strip()
@@ -803,7 +956,7 @@ def create_draft_workflow_recommendation(
     )
     sort_order = body.sort_order if body.sort_order is not None else ((max_sort_order[0] if max_sort_order else 0) + 1)
     now = datetime.now(timezone.utc)
-    db.add(WorkflowTemplateRecommendation(
+    new_rec = WorkflowTemplateRecommendation(
         id=uuid.uuid4(),
         template_stage_id=stage.id,
         sort_order=sort_order,
@@ -818,8 +971,22 @@ def create_draft_workflow_recommendation(
         metadata_={"source": "draft_admin"},
         created_at=now,
         updated_at=now,
-    ))
+    )
+    db.add(new_rec)
     version.updated_at = now
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id),
+        action="CREATE_RECOMMENDATION",
+        target_type="RECOMMENDATION",
+        target_id=str(new_rec.id),
+        target_code=f"{stage.stage_code}|{new_rec.input_code or new_rec.input_name}",
+        after=_recommendation_audit_snapshot(new_rec),
+        metadata={"stage_code": stage.stage_code},
+    )
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
@@ -831,10 +998,12 @@ def update_draft_workflow_recommendation(
     body: WorkflowDraftRecommendationUpdate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Edit a recommendation inside a DRAFT workflow version."""
-    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
     rec = _get_draft_recommendation(db, version.id, recommendation_id)
+    before = _recommendation_audit_snapshot(rec)
     changes = body.dict(exclude_unset=True)
     if not changes:
         raise HTTPException(400, "No recommendation changes supplied")
@@ -842,6 +1011,20 @@ def update_draft_workflow_recommendation(
     now = datetime.now(timezone.utc)
     rec.updated_at = now
     version.updated_at = now
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id),
+        action="UPDATE_RECOMMENDATION",
+        target_type="RECOMMENDATION",
+        target_id=str(rec.id),
+        target_code=rec.input_code or rec.input_name,
+        before=before,
+        after=_recommendation_audit_snapshot(rec),
+        metadata={"changed_fields": sorted(changes.keys())},
+    )
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
@@ -852,14 +1035,29 @@ def delete_draft_workflow_recommendation(
     recommendation_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Soft-delete a recommendation from a DRAFT workflow version."""
-    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
     rec = _get_draft_recommendation(db, version.id, recommendation_id)
+    before = _recommendation_audit_snapshot(rec)
     now = datetime.now(timezone.utc)
     rec.is_active = False
     rec.updated_at = now
     version.updated_at = now
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id),
+        action="DELETE_RECOMMENDATION",
+        target_type="RECOMMENDATION",
+        target_id=str(rec.id),
+        target_code=rec.input_code or rec.input_name,
+        before=before,
+        after=_recommendation_audit_snapshot(rec),
+    )
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
@@ -895,12 +1093,8 @@ def publish_draft_workflow_template_version(
             previous.effective_to = now.date()
             previous.updated_at = now
 
-    published_by = None
-    if x_actor_id:
-        try:
-            published_by = uuid.UUID(str(x_actor_id))
-        except ValueError:
-            raise HTTPException(400, "X-Actor-ID must be a UUID when supplied")
+    published_by = _actor_uuid(x_actor_id)
+    before = {"status": version.status, "published_at": version.published_at.isoformat() if version.published_at else None}
 
     version.status = "PUBLISHED"
     version.published_at = now
@@ -911,6 +1105,19 @@ def publish_draft_workflow_template_version(
     metadata["published_from_draft"] = True
     metadata["published_at"] = now.isoformat()
     version.metadata_ = metadata
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=published_by,
+        action="PUBLISH_DRAFT",
+        target_type="VERSION",
+        target_id=str(version.id),
+        before=before,
+        after={"status": "PUBLISHED", "published_at": now.isoformat(), "archive_previous": body.archive_previous},
+        metadata={"validation_counts": validation["counts"]},
+    )
     db.commit()
     db.refresh(version)
     payload = _render_published_version_preview(db, template, version, x_tenant_id)
@@ -971,6 +1178,10 @@ def _copy_workflow_version_to_draft(
     template: WorkflowTemplate,
     source_version: WorkflowTemplateVersion,
     requested_version_number: Optional[str],
+    *,
+    tenant_id: str,
+    actor_id=None,
+    action: str = "CLONE_DRAFT",
 ) -> dict:
     now = datetime.now(timezone.utc)
     draft_version_id = uuid.uuid4()
@@ -1069,6 +1280,19 @@ def _copy_workflow_version_to_draft(
                 updated_at=now,
             ))
 
+    _record_workflow_audit_event(
+        db,
+        tenant_id=tenant_id,
+        template_id=template.id,
+        template_version_id=draft_version_id,
+        actor_id=actor_id,
+        action=action,
+        target_type="VERSION",
+        target_id=str(draft_version_id),
+        before={"source_version_id": str(source_version.id), "source_status": source_version.status},
+        after={"draft_version_id": str(draft_version_id), "version": draft_version_number, "status": "DRAFT"},
+        metadata={"stage_count": len(source_stages), "recommendation_count": len(source_recommendations)},
+    )
     db.commit()
     return {
         "schema_version": "1.0.0",
@@ -1178,6 +1402,49 @@ def list_workflow_template_versions(
     }
 
 
+@router.get("/templates/{template_id}/audit")
+def list_workflow_template_audit_events(
+    template_id: uuid.UUID,
+    version_id: Optional[uuid.UUID] = Query(None),
+    action: Optional[str] = Query(None),
+    actor_id: Optional[uuid.UUID] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Return workflow template audit trail for admin governance."""
+    template = db.query(WorkflowTemplate).filter(
+        WorkflowTemplate.id == template_id,
+        WorkflowTemplate.is_active == True,
+        WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+    ).first()
+    if not template:
+        raise HTTPException(404, "Workflow template not found")
+
+    _ensure_workflow_audit_table(db)
+    db.commit()
+    query = db.query(WorkflowTemplateAuditEvent).filter(
+        WorkflowTemplateAuditEvent.tenant_id == x_tenant_id,
+        WorkflowTemplateAuditEvent.template_id == template.id,
+    )
+    if version_id:
+        query = query.filter(WorkflowTemplateAuditEvent.template_version_id == version_id)
+    if action:
+        query = query.filter(WorkflowTemplateAuditEvent.action == action.upper())
+    if actor_id:
+        query = query.filter(WorkflowTemplateAuditEvent.actor_id == actor_id)
+
+    events = query.order_by(WorkflowTemplateAuditEvent.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": x_tenant_id,
+        "workflow_template_id": str(template.id),
+        "workflow_template_code": template.code,
+        "count": len(events),
+        "events": [_audit_payload(event) for event in events],
+    }
+
+
 @router.post("/templates/{template_id}/versions/{version_id}/restore-draft")
 def restore_workflow_template_version_to_draft(
     template_id: uuid.UUID,
@@ -1185,6 +1452,7 @@ def restore_workflow_template_version_to_draft(
     body: WorkflowDraftCloneRequest = WorkflowDraftCloneRequest(),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Restore a published/archived workflow version into a new editable draft."""
     template, source_version = _version_row_for_template(
@@ -1195,7 +1463,9 @@ def restore_workflow_template_version_to_draft(
         {"PUBLISHED", "ARCHIVED"},
         "Published or archived workflow template version not found",
     )
-    return _copy_workflow_version_to_draft(db, template, source_version, body.version_number)
+    return _copy_workflow_version_to_draft(
+        db, template, source_version, body.version_number, tenant_id=x_tenant_id, actor_id=_actor_uuid(x_actor_id), action="RESTORE_DRAFT"
+    )
 
 
 @router.post("/templates/{template_id}/versions/{version_id}/clone-draft")
@@ -1205,6 +1475,7 @@ def clone_workflow_template_version_to_draft(
     body: WorkflowDraftCloneRequest = WorkflowDraftCloneRequest(),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Clone a published workflow version into an editable draft version."""
     template, source_version = _version_row_for_template(
@@ -1215,7 +1486,9 @@ def clone_workflow_template_version_to_draft(
         {"PUBLISHED"},
         "Published workflow template version not found",
     )
-    return _copy_workflow_version_to_draft(db, template, source_version, body.version_number)
+    return _copy_workflow_version_to_draft(
+        db, template, source_version, body.version_number, tenant_id=x_tenant_id, actor_id=_actor_uuid(x_actor_id), action="CLONE_DRAFT"
+    )
 
 
 @router.get("/projects/{project_id}/workflow-overrides")

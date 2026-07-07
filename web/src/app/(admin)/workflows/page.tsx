@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   workflowCatalogApi,
   type EnabledCropWorkflow,
+  type WorkflowAuditResponse,
   type WorkflowRecommendation,
   type WorkflowStage,
   type WorkflowTemplateVersionsResponse,
@@ -137,6 +138,9 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
   const [versionError, setVersionError] = useState<string | null>(null);
   const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+  const [audit, setAudit] = useState<WorkflowAuditResponse | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const loadVersions = () => {
     setVersionLoading(true);
@@ -148,10 +152,22 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
       .finally(() => setVersionLoading(false));
   };
 
+  const loadAudit = () => {
+    setAuditLoading(true);
+    setAuditError(null);
+    workflowCatalogApi
+      .templateAudit(workflow.workflow_template_id, { limit: 100 })
+      .then(setAudit)
+      .catch((e) => setAuditError(e instanceof Error ? e.message : "Failed to load workflow audit trail"))
+      .finally(() => setAuditLoading(false));
+  };
+
   useEffect(() => {
     setVersions(null);
+    setAudit(null);
     setRestoreMessage(null);
     loadVersions();
+    loadAudit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.workflow_template_id]);
 
@@ -163,6 +179,7 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
       const draft = await workflowCatalogApi.restoreDraftVersion(workflow.workflow_template_id, versionId);
       setRestoreMessage(`Draft ${draft.version} created from selected version.`);
       await workflowCatalogApi.templateVersions(workflow.workflow_template_id).then(setVersions);
+      await workflowCatalogApi.templateAudit(workflow.workflow_template_id, { limit: 100 }).then(setAudit);
     } catch (e) {
       setVersionError(e instanceof Error ? e.message : "Failed to restore draft");
     } finally {
@@ -264,6 +281,53 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
           </div>
         ) : !versionLoading ? (
           <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No version history found.</p>
+        ) : null}
+      </div>
+
+      <div className="rounded-lg bg-white p-5 shadow">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Audit Trail</h3>
+            <p className="text-sm text-gray-500">Latest workflow edit, validation, restore, and publish events.</p>
+          </div>
+          <button
+            type="button"
+            disabled={auditLoading}
+            onClick={loadAudit}
+            className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+          >
+            {auditLoading ? "Refreshing..." : "Refresh audit"}
+          </button>
+        </div>
+        {auditError ? <div className="mb-3 rounded bg-red-50 p-3 text-sm text-red-700">{auditError}</div> : null}
+        {auditLoading ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">Loading audit trail...</p> : null}
+        {audit && audit.events.length > 0 ? (
+          <div className="max-h-[520px] space-y-3 overflow-auto">
+            {audit.events.map((event) => (
+              <details key={event.id} className="rounded border p-3 text-sm">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <Badge>{event.action}</Badge>
+                        <Badge>{event.target_type}</Badge>
+                        {event.actor_id ? <Badge>Actor {event.actor_id.slice(0, 8)}</Badge> : null}
+                      </div>
+                      <p className="mt-2 font-mono text-xs text-gray-500">{event.workflow_template_version_id || "No version"}</p>
+                      {event.target_code ? <p className="mt-1 text-xs text-gray-600">Target: {event.target_code}</p> : null}
+                    </div>
+                    <p className="text-xs text-gray-500">{event.created_at ? new Date(event.created_at).toLocaleString() : "?"}</p>
+                  </div>
+                </summary>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <pre className="max-h-64 overflow-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{JSON.stringify(event.before || {}, null, 2)}</pre>
+                  <pre className="max-h-64 overflow-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{JSON.stringify(event.after || {}, null, 2)}</pre>
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : !auditLoading ? (
+          <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No audit events recorded yet.</p>
         ) : null}
       </div>
     </div>
