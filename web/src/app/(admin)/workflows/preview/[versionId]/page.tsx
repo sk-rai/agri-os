@@ -7,6 +7,7 @@ import {
   inputCatalogApi,
   workflowCatalogApi,
   type AgriInputDto,
+  type WorkflowDraftRecommendationRequest,
   type WorkflowDraftStageUpdateRequest,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
@@ -133,6 +134,48 @@ export default function WorkflowPreviewPage() {
     }
   };
 
+  const createDraftRecommendation = async (stageCode: string, data: WorkflowDraftRecommendationRequest) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_STAGE:${stageCode}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.createDraftRecommendation(preview.workflow_template_version_id, stageCode, data);
+      setPreview(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add draft recommendation");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
+  const updateDraftRecommendation = async (recommendationId: string, data: WorkflowDraftRecommendationRequest) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_REC:${recommendationId}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.updateDraftRecommendation(preview.workflow_template_version_id, recommendationId, data);
+      setPreview(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update draft recommendation");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
+  const deleteDraftRecommendation = async (recommendationId: string) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_REC:${recommendationId}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.deleteDraftRecommendation(preview.workflow_template_version_id, recommendationId);
+      setPreview(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete draft recommendation");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
   const removeOverride = async (overrideId: string) => {
     if (!preview?.project_id) return;
     setBusyTarget(`OVERRIDE:${overrideId}`);
@@ -247,6 +290,9 @@ export default function WorkflowPreviewPage() {
               busyTarget={busyTarget}
               onCreateOverride={createOverride}
               onUpdateDraftStage={updateDraftStage}
+              onCreateDraftRecommendation={createDraftRecommendation}
+              onUpdateDraftRecommendation={updateDraftRecommendation}
+              onDeleteDraftRecommendation={deleteDraftRecommendation}
             />
           ))}
         </div>
@@ -440,6 +486,9 @@ function StagePreview({
   busyTarget,
   onCreateOverride,
   onUpdateDraftStage,
+  onCreateDraftRecommendation,
+  onUpdateDraftRecommendation,
+  onDeleteDraftRecommendation,
 }: {
   stage: WorkflowStage;
   cropCode: string;
@@ -454,6 +503,9 @@ function StagePreview({
     reason: string,
   ) => void;
   onUpdateDraftStage: (stageCode: string, data: WorkflowDraftStageUpdateRequest) => void;
+  onCreateDraftRecommendation: (stageCode: string, data: WorkflowDraftRecommendationRequest) => void;
+  onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
+  onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
   const recs = stage.recommended_activities || [];
   const [stageName, setStageName] = useState(labelText(stage.name));
@@ -477,7 +529,7 @@ function StagePreview({
   }, [stage.name, stage.duration_days]);
 
   useEffect(() => {
-    if (!projectScoped) return;
+    if (!projectScoped && !draftEditable) return;
     let cancelled = false;
     setInputLoading(true);
     setInputError(null);
@@ -499,7 +551,7 @@ function StagePreview({
     return () => {
       cancelled = true;
     };
-  }, [cropCode, inputCategory, inputSearch, projectScoped]);
+  }, [cropCode, inputCategory, inputSearch, projectScoped, draftEditable]);
 
   const stageBusy = busyTarget === `STAGE:${stage.code}`;
   const draftStageBusy = busyTarget === `DRAFT_STAGE:${stage.code}`;
@@ -524,7 +576,11 @@ function StagePreview({
       description: { en: `Custom ${newRecActivityType.trim().toLowerCase()} recommendation for ${stage.code}` },
     };
     if (newRecCost.trim()) payload.typical_cost_per_acre = Number(newRecCost);
-    onCreateOverride("STAGE", stage.code, "ADD_RECOMMENDATION", payload, `Add recommendation to ${stage.code}`);
+    if (draftEditable) {
+      onCreateDraftRecommendation(stage.code, payload);
+    } else {
+      onCreateOverride("STAGE", stage.code, "ADD_RECOMMENDATION", payload, `Add recommendation to ${stage.code}`);
+    }
   };
 
   return (
@@ -608,7 +664,7 @@ function StagePreview({
           </div>
         ) : null}
 
-        {projectScoped ? (
+        {projectScoped || draftEditable ? (
           <details className="mb-4 rounded-lg border border-dashed bg-white p-3">
             <summary className="cursor-pointer text-sm font-semibold text-gray-800">Add custom recommendation</summary>
             <div className="mt-3 rounded-lg bg-gray-50 p-3">
@@ -726,7 +782,7 @@ function StagePreview({
                 </label>
                 <button
                   type="button"
-                  disabled={stageBusy || newRecDayOffset === "" || !newRecActivityType.trim() || !newRecInputName.trim()}
+                  disabled={(stageBusy || draftStageBusy) || newRecDayOffset === "" || !newRecActivityType.trim() || !newRecInputName.trim()}
                   onClick={addCustomRecommendation}
                   className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
                 >
@@ -746,7 +802,7 @@ function StagePreview({
                   <th className="px-3 py-2 text-left font-medium">Activity</th>
                   <th className="px-3 py-2 text-left font-medium">Input</th>
                   <th className="px-3 py-2 text-left font-medium">Quantity</th>
-                  {projectScoped ? <th className="px-3 py-2 text-right font-medium">Override editor</th> : null}
+                  {projectScoped || draftEditable ? <th className="px-3 py-2 text-right font-medium">Editor</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -756,8 +812,11 @@ function StagePreview({
                     stageCode={stage.code}
                     rec={rec}
                     projectScoped={projectScoped}
+                    draftEditable={draftEditable}
                     busyTarget={busyTarget}
                     onCreateOverride={onCreateOverride}
+                    onUpdateDraftRecommendation={onUpdateDraftRecommendation}
+                    onDeleteDraftRecommendation={onDeleteDraftRecommendation}
                   />
                 ))}
               </tbody>
@@ -773,12 +832,16 @@ function RecommendationPreview({
   stageCode,
   rec,
   projectScoped,
+  draftEditable,
   busyTarget,
   onCreateOverride,
+  onUpdateDraftRecommendation,
+  onDeleteDraftRecommendation,
 }: {
   stageCode: string;
   rec: WorkflowRecommendation;
   projectScoped: boolean;
+  draftEditable: boolean;
   busyTarget: string | null;
   onCreateOverride: (
     targetType: WorkflowTargetType,
@@ -787,11 +850,14 @@ function RecommendationPreview({
     overridePayload: Record<string, unknown>,
     reason: string,
   ) => void;
+  onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
+  onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
   const targetCode = rec.input_code ? `${stageCode}|${rec.input_code}` : `${stageCode}|${rec.activity_type}|${rec.input_name}`;
   const [inputName, setInputName] = useState(rec.input_name || "");
   const [dayOffset, setDayOffset] = useState(String(rec.day_offset ?? 0));
   const [quantity, setQuantity] = useState(rec.typical_quantity || "");
+  const recommendationId = typeof rec.metadata?.recommendation_id === "string" ? rec.metadata.recommendation_id : null;
 
   useEffect(() => {
     setInputName(rec.input_name || "");
@@ -800,6 +866,7 @@ function RecommendationPreview({
   }, [rec.input_name, rec.day_offset, rec.typical_quantity]);
 
   const recBusy = busyTarget === `RECOMMENDATION:${targetCode}`;
+  const draftRecBusy = recommendationId ? busyTarget === `DRAFT_REC:${recommendationId}` : false;
 
   return (
     <tr>
@@ -810,7 +877,7 @@ function RecommendationPreview({
         <p className="font-mono text-xs text-gray-400">{rec.input_code || "No input_code"}</p>
       </td>
       <td className="px-3 py-2 text-gray-600">{rec.typical_quantity || "?"}</td>
-      {projectScoped ? (
+      {projectScoped || draftEditable ? (
         <td className="min-w-[360px] px-3 py-2 text-right">
           <div className="grid gap-2 text-left">
             <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -820,14 +887,16 @@ function RecommendationPreview({
                 className="rounded border px-2 py-1 text-xs text-gray-900"
                 aria-label="Recommendation label"
               />
-              <button
-                type="button"
-                disabled={recBusy || !inputName.trim()}
-                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "RENAME", { input_name: inputName.trim() }, `Rename recommendation ${targetCode}`)}
-                className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
-              >
-                Rename
-              </button>
+              {projectScoped ? (
+                <button
+                  type="button"
+                  disabled={recBusy || !inputName.trim()}
+                  onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "RENAME", { input_name: inputName.trim() }, `Rename recommendation ${targetCode}`)}
+                  className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  Rename
+                </button>
+              ) : null}
             </div>
             <div className="grid grid-cols-[80px_1fr_auto_auto_auto] gap-2">
               <input
@@ -843,30 +912,54 @@ function RecommendationPreview({
                 className="rounded border px-2 py-1 text-xs text-gray-900"
                 aria-label="Typical quantity"
               />
-              <button
-                type="button"
-                disabled={recBusy || dayOffset === ""}
-                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "CHANGE_OFFSET", { day_offset: Number(dayOffset) }, `Change offset for ${targetCode}`)}
-                className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
-              >
-                Offset
-              </button>
-              <button
-                type="button"
-                disabled={recBusy || !quantity.trim()}
-                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "CHANGE_QUANTITY", { typical_quantity: quantity.trim() }, `Change quantity for ${targetCode}`)}
-                className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
-              >
-                Quantity
-              </button>
-              <button
-                type="button"
-                disabled={recBusy}
-                onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "HIDE", {}, `Hide recommendation ${targetCode}`)}
-                className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
-              >
-                {recBusy ? "Saving..." : "Hide"}
-              </button>
+              {projectScoped ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={recBusy || dayOffset === ""}
+                    onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "CHANGE_OFFSET", { day_offset: Number(dayOffset) }, `Change offset for ${targetCode}`)}
+                    className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    Offset
+                  </button>
+                  <button
+                    type="button"
+                    disabled={recBusy || !quantity.trim()}
+                    onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "CHANGE_QUANTITY", { typical_quantity: quantity.trim() }, `Change quantity for ${targetCode}`)}
+                    className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    Quantity
+                  </button>
+                  <button
+                    type="button"
+                    disabled={recBusy}
+                    onClick={() => onCreateOverride("RECOMMENDATION", targetCode, "HIDE", {}, `Hide recommendation ${targetCode}`)}
+                    className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {recBusy ? "Saving..." : "Hide"}
+                  </button>
+                </>
+              ) : null}
+              {draftEditable ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={!recommendationId || draftRecBusy || !inputName.trim() || dayOffset === ""}
+                    onClick={() => recommendationId && onUpdateDraftRecommendation(recommendationId, { input_name: inputName.trim(), day_offset: Number(dayOffset), typical_quantity: quantity.trim() || null })}
+                    className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {draftRecBusy ? "Saving..." : "Save draft"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!recommendationId || draftRecBusy}
+                    onClick={() => recommendationId && onDeleteDraftRecommendation(recommendationId)}
+                    className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {draftRecBusy ? "Saving..." : "Delete"}
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         </td>

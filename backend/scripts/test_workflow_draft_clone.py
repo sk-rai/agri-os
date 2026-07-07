@@ -172,6 +172,80 @@ def main():
             json={"duration_days": -1},
         )
         check(patch_negative.status_code == 400, "Draft stage rejects negative duration", f"Status: {patch_negative.status_code}")
+
+        nursery_recs = patched_nursery.get("recommended_activities", [])
+        check(len(nursery_recs) > 0, "Draft nursery has recommendations to edit")
+        editable_rec = nursery_recs[0]
+        editable_rec_id = editable_rec["metadata"]["recommendation_id"]
+
+        patch_rec = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/{editable_rec_id}",
+            headers=headers,
+            json={
+                "input_name": "Edited FYM/Compost Draft",
+                "day_offset": 3,
+                "typical_quantity": "4 quintal/acre",
+                "typical_cost_per_acre": 750,
+                "is_critical": False,
+                "description": {"en": "Edited draft recommendation description"},
+            },
+        )
+        check(patch_rec.status_code == 200, "Draft recommendation patch returns 200", f"Status: {patch_rec.status_code}")
+        patched_rec_payload = patch_rec.json()
+        patched_rec_nursery = next(stage for stage in patched_rec_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        edited_rec = next(rec for rec in patched_rec_nursery["recommended_activities"] if rec["metadata"]["recommendation_id"] == editable_rec_id)
+        check(edited_rec["input_name"] == "Edited FYM/Compost Draft", "Draft recommendation name is updated")
+        check(edited_rec["day_offset"] == 3, "Draft recommendation offset is updated")
+        check(edited_rec["typical_quantity"] == "4 quintal/acre", "Draft recommendation quantity is updated")
+        check(edited_rec["typical_cost_per_acre"] == 750, "Draft recommendation cost is updated")
+        check(edited_rec["description"]["en"] == "Edited draft recommendation description", "Draft recommendation description is updated")
+
+        patch_rec_published = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/recommendations/{editable_rec_id}",
+            headers=headers,
+            json={"input_name": "Should not update"},
+        )
+        check(patch_rec_published.status_code == 404, "Published version cannot be edited through draft recommendation API", f"Status: {patch_rec_published.status_code}")
+
+        patch_rec_empty_name = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/{editable_rec_id}",
+            headers=headers,
+            json={"input_name": ""},
+        )
+        check(patch_rec_empty_name.status_code == 400, "Draft recommendation rejects empty input name", f"Status: {patch_rec_empty_name.status_code}")
+
+        add_rec = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY/recommendations",
+            headers=headers,
+            json={
+                "day_offset": 5,
+                "activity_type": "LABOR",
+                "input_code": "LABOR_GENERAL",
+                "input_name": "Draft custom labour",
+                "typical_quantity": "1 labour-day/acre",
+                "is_critical": False,
+                "description": {"en": "Draft-only labour recommendation"},
+            },
+        )
+        check(add_rec.status_code == 200, "Draft recommendation create returns 200", f"Status: {add_rec.status_code}")
+        add_rec_payload = add_rec.json()
+        add_rec_nursery = next(stage for stage in add_rec_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        added_rec = next(rec for rec in add_rec_nursery["recommended_activities"] if rec["input_name"] == "Draft custom labour")
+        added_rec_id = added_rec["metadata"]["recommendation_id"]
+        check(added_rec["input_code"] == "LABOR_GENERAL", "Created draft recommendation keeps input code")
+        check(added_rec["day_offset"] == 5, "Created draft recommendation keeps day offset")
+
+        delete_rec = client.delete(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/{added_rec_id}",
+            headers=headers,
+        )
+        check(delete_rec.status_code == 200, "Draft recommendation delete returns 200", f"Status: {delete_rec.status_code}")
+        delete_rec_payload = delete_rec.json()
+        delete_rec_nursery = next(stage for stage in delete_rec_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        check(
+            all(rec["metadata"]["recommendation_id"] != added_rec_id for rec in delete_rec_nursery["recommended_activities"]),
+            "Deleted draft recommendation is removed from preview",
+        )
     finally:
         cleanup_draft(db, draft_version_id)
         db.close()

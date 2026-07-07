@@ -70,6 +70,30 @@ class WorkflowDraftStageUpdate(BaseModel):
     stage_type: Optional[str] = None
 
 
+class WorkflowDraftRecommendationUpdate(BaseModel):
+    day_offset: Optional[int] = None
+    activity_type: Optional[str] = None
+    input_code: Optional[str] = None
+    input_name: Optional[str] = None
+    typical_quantity: Optional[str] = None
+    typical_cost_per_acre: Optional[float] = None
+    is_critical: Optional[bool] = None
+    description: Optional[dict[str, str]] = None
+    sort_order: Optional[int] = None
+
+
+class WorkflowDraftRecommendationCreate(BaseModel):
+    day_offset: int = 0
+    activity_type: str
+    input_code: Optional[str] = None
+    input_name: str
+    typical_quantity: Optional[str] = None
+    typical_cost_per_acre: Optional[float] = None
+    is_critical: bool = False
+    description: Optional[dict[str, str]] = None
+    sort_order: Optional[int] = None
+
+
 def _validate_override_payload(target_type: str, operation: str, payload: dict) -> None:
     """Reject incomplete project override payloads before preview rendering."""
     if operation == "HIDE":
@@ -471,10 +495,45 @@ def _get_draft_template_version(db: Session, workflow_template_version_id: uuid.
     return row
 
 
+def _draft_stage_definitions(db: Session, version_id) -> list[dict]:
+    """Render draft stages and attach admin-only row IDs for editing recommendations."""
+    stages = workflow_version_to_stage_definitions(db, version_id)
+    stage_rows = (
+        db.query(WorkflowTemplateStage)
+        .filter(WorkflowTemplateStage.template_version_id == version_id, WorkflowTemplateStage.is_active == True)
+        .order_by(WorkflowTemplateStage.stage_order)
+        .all()
+    )
+    stage_rows_by_code = {stage.stage_code: stage for stage in stage_rows}
+    for stage in stages:
+        stage_row = stage_rows_by_code.get(stage.get("code"))
+        if not stage_row:
+            continue
+        rec_rows = (
+            db.query(WorkflowTemplateRecommendation)
+            .filter(
+                WorkflowTemplateRecommendation.template_stage_id == stage_row.id,
+                WorkflowTemplateRecommendation.is_active == True,
+            )
+            .order_by(
+                WorkflowTemplateRecommendation.sort_order,
+                WorkflowTemplateRecommendation.day_offset,
+            )
+            .all()
+        )
+        for rec, rec_row in zip(stage.get("recommended_activities", []) or [], rec_rows):
+            metadata = dict(rec.get("metadata") or {})
+            metadata["recommendation_id"] = str(rec_row.id)
+            metadata["template_stage_id"] = str(stage_row.id)
+            metadata["source"] = metadata.get("source") or "workflow_template_draft"
+            rec["metadata"] = metadata
+    return stages
+
+
 def _render_draft_preview(db: Session, workflow_template_version_id: uuid.UUID, tenant_id: str) -> dict:
     template, version = _get_draft_template_version(db, workflow_template_version_id, tenant_id)
     crop = db.query(Crop).filter(Crop.code == template.crop_code).first()
-    stages = workflow_version_to_stage_definitions(db, version.id)
+    stages = _draft_stage_definitions(db, version.id)
     known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
     warnings = _preview_warnings(stages, known_input_codes)
     return _workflow_preview_payload(
@@ -571,6 +630,163 @@ def update_draft_workflow_stage(
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
+
+def _get_draft_stage(db: Session, version_id, stage_code: str) -> WorkflowTemplateStage:
+    stage = (
+        db.query(WorkflowTemplateStage)
+        .filter(
+            WorkflowTemplateStage.template_version_id == version_id,
+            WorkflowTemplateStage.stage_code == stage_code,
+            WorkflowTemplateStage.is_active == True,
+        )
+        .first()
+    )
+    if not stage:
+        raise HTTPException(404, "Draft workflow stage not found")
+    return stage
+
+
+def _get_draft_recommendation(db: Session, version_id, recommendation_id: uuid.UUID) -> WorkflowTemplateRecommendation:
+    rec = (
+        db.query(WorkflowTemplateRecommendation)
+        .join(WorkflowTemplateStage, WorkflowTemplateStage.id == WorkflowTemplateRecommendation.template_stage_id)
+        .filter(
+            WorkflowTemplateStage.template_version_id == version_id,
+            WorkflowTemplateStage.is_active == True,
+            WorkflowTemplateRecommendation.id == recommendation_id,
+            WorkflowTemplateRecommendation.is_active == True,
+        )
+        .first()
+    )
+    if not rec:
+        raise HTTPException(404, "Draft workflow recommendation not found")
+    return rec
+
+
+def _apply_recommendation_changes(rec: WorkflowTemplateRecommendation, changes: dict) -> None:
+    if "day_offset" in changes:
+        if changes["day_offset"] is None:
+            raise HTTPException(400, "day_offset cannot be null")
+        rec.day_offset = int(changes["day_offset"])
+    if "sort_order" in changes:
+        if changes["sort_order"] is None:
+            raise HTTPException(400, "sort_order cannot be null")
+        sort_order = int(changes["sort_order"])
+        if sort_order < 0:
+            raise HTTPException(400, "sort_order cannot be negative")
+        rec.sort_order = sort_order
+    if "activity_type" in changes:
+        activity_type = (changes["activity_type"] or "").strip().upper()
+        if not activity_type:
+            raise HTTPException(400, "activity_type cannot be empty")
+        rec.activity_type = activity_type
+    if "input_name" in changes:
+        input_name = (changes["input_name"] or "").strip()
+        if not input_name:
+            raise HTTPException(400, "input_name cannot be empty")
+        rec.input_name = input_name
+    if "input_code" in changes:
+        rec.input_code = (changes["input_code"] or None)
+    if "typical_quantity" in changes:
+        rec.typical_quantity = changes["typical_quantity"] or None
+    if "typical_cost_per_acre" in changes:
+        rec.typical_cost_per_acre = changes["typical_cost_per_acre"]
+    if "is_critical" in changes:
+        rec.is_critical = bool(changes["is_critical"])
+    if "description" in changes:
+        rec.description = changes["description"] or None
+
+
+@router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/recommendations")
+def create_draft_workflow_recommendation(
+    workflow_template_version_id: uuid.UUID,
+    stage_code: str,
+    body: WorkflowDraftRecommendationCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Add a recommendation to a stage inside a DRAFT workflow version."""
+    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    stage = _get_draft_stage(db, version.id, stage_code)
+    activity_type = (body.activity_type or "").strip().upper()
+    input_name = (body.input_name or "").strip()
+    if not activity_type:
+        raise HTTPException(400, "activity_type cannot be empty")
+    if not input_name:
+        raise HTTPException(400, "input_name cannot be empty")
+    if body.sort_order is not None and body.sort_order < 0:
+        raise HTTPException(400, "sort_order cannot be negative")
+
+    max_sort_order = (
+        db.query(WorkflowTemplateRecommendation.sort_order)
+        .filter(
+            WorkflowTemplateRecommendation.template_stage_id == stage.id,
+            WorkflowTemplateRecommendation.is_active == True,
+        )
+        .order_by(WorkflowTemplateRecommendation.sort_order.desc())
+        .first()
+    )
+    sort_order = body.sort_order if body.sort_order is not None else ((max_sort_order[0] if max_sort_order else 0) + 1)
+    now = datetime.now(timezone.utc)
+    db.add(WorkflowTemplateRecommendation(
+        id=uuid.uuid4(),
+        template_stage_id=stage.id,
+        sort_order=sort_order,
+        day_offset=int(body.day_offset or 0),
+        activity_type=activity_type,
+        input_code=body.input_code or None,
+        input_name=input_name,
+        typical_quantity=body.typical_quantity or None,
+        typical_cost_per_acre=body.typical_cost_per_acre,
+        is_critical=bool(body.is_critical),
+        description=body.description or None,
+        metadata_={"source": "draft_admin"},
+        created_at=now,
+        updated_at=now,
+    ))
+    version.updated_at = now
+    db.commit()
+    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+
+
+@router.patch("/drafts/{workflow_template_version_id}/recommendations/{recommendation_id}")
+def update_draft_workflow_recommendation(
+    workflow_template_version_id: uuid.UUID,
+    recommendation_id: uuid.UUID,
+    body: WorkflowDraftRecommendationUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Edit a recommendation inside a DRAFT workflow version."""
+    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    rec = _get_draft_recommendation(db, version.id, recommendation_id)
+    changes = body.dict(exclude_unset=True)
+    if not changes:
+        raise HTTPException(400, "No recommendation changes supplied")
+    _apply_recommendation_changes(rec, changes)
+    now = datetime.now(timezone.utc)
+    rec.updated_at = now
+    version.updated_at = now
+    db.commit()
+    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+
+
+@router.delete("/drafts/{workflow_template_version_id}/recommendations/{recommendation_id}")
+def delete_draft_workflow_recommendation(
+    workflow_template_version_id: uuid.UUID,
+    recommendation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Soft-delete a recommendation from a DRAFT workflow version."""
+    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    rec = _get_draft_recommendation(db, version.id, recommendation_id)
+    now = datetime.now(timezone.utc)
+    rec.is_active = False
+    rec.updated_at = now
+    version.updated_at = now
+    db.commit()
+    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
 
 def _next_draft_version_number(db: Session, template_id: uuid.UUID, source_version: str, requested: Optional[str]) -> str:

@@ -161,6 +161,7 @@ export interface WorkflowRecommendation {
   typical_cost_per_acre?: number | string | null;
   is_critical: boolean;
   description?: Record<string, string> | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface WorkflowStage {
@@ -247,6 +248,18 @@ export interface WorkflowDraftStageUpdateRequest {
   color?: string | null;
   phase?: string | null;
   stage_type?: string | null;
+}
+
+export interface WorkflowDraftRecommendationRequest {
+  day_offset?: number;
+  activity_type?: string;
+  input_code?: string | null;
+  input_name?: string;
+  typical_quantity?: string | null;
+  typical_cost_per_acre?: number | null;
+  is_critical?: boolean;
+  description?: Record<string, string> | null;
+  sort_order?: number;
 }
 
 export interface WorkflowPreviewResponse {
@@ -377,6 +390,20 @@ export const workflowCatalogApi = {
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}`, {
       method: "PATCH",
       body: data,
+    }),
+  createDraftRecommendation: (versionId: string, stageCode: string, data: WorkflowDraftRecommendationRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}/recommendations`, {
+      method: "POST",
+      body: data,
+    }),
+  updateDraftRecommendation: (versionId: string, recommendationId: string, data: WorkflowDraftRecommendationRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/recommendations/${recommendationId}`, {
+      method: "PATCH",
+      body: data,
+    }),
+  deleteDraftRecommendation: (versionId: string, recommendationId: string) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/recommendations/${recommendationId}`, {
+      method: "DELETE",
     }),
   projectEnablements: (projectId: string) =>
     api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
