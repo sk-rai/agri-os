@@ -236,6 +236,19 @@ export interface WorkflowDraftCloneResponse {
   recommendation_count: number;
 }
 
+export interface WorkflowDraftStageUpdateRequest {
+  stage_name?: Record<string, string>;
+  duration_days?: number;
+  description?: Record<string, string>;
+  farmer_actions?: string[];
+  typical_inputs?: string[];
+  key_observations?: string[];
+  icon?: string | null;
+  color?: string | null;
+  phase?: string | null;
+  stage_type?: string | null;
+}
+
 export interface WorkflowPreviewResponse {
   schema_version: string;
   tenant_id: string;
@@ -360,6 +373,11 @@ export const workflowCatalogApi = {
     }),
   draftPreview: (versionId: string) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
+  updateDraftStage: (versionId: string, stageCode: string, data: WorkflowDraftStageUpdateRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}`, {
+      method: "PATCH",
+      body: data,
+    }),
   projectEnablements: (projectId: string) =>
     api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
   updateProjectEnablement: (

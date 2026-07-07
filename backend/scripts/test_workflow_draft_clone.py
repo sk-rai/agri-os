@@ -134,6 +134,44 @@ def main():
             for stage in draft_preview_payload["android_preview"]["stages"]
         )
         check(draft_preview_rec_count == source_recommendation_count, "Admin draft preview renders copied recommendations")
+
+        patch_stage = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY",
+            headers=headers,
+            json={
+                "stage_name": {"en": "Custom Nursery Draft", "hi": "Custom Nursery Draft"},
+                "duration_days": 19,
+                "description": {"en": "Draft-stage edited nursery description"},
+                "farmer_actions": ["BED_PREPARATION", "SEED_TREATMENT"],
+                "key_observations": ["GERMINATION_RATE"],
+            },
+        )
+        check(patch_stage.status_code == 200, "Draft stage patch returns 200", f"Status: {patch_stage.status_code}")
+        patched_payload = patch_stage.json()
+        patched_nursery = next(stage for stage in patched_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        check(patched_nursery["name"]["en"] == "Custom Nursery Draft", "Draft stage name is updated")
+        check(patched_nursery["duration_days"] == 19, "Draft stage duration is updated")
+        check(patched_nursery["description"]["en"] == "Draft-stage edited nursery description", "Draft stage description is updated")
+        check(patched_nursery["farmer_actions"] == ["BED_PREPARATION", "SEED_TREATMENT"], "Draft stage farmer actions are updated")
+        check(patched_payload["status"] == "DRAFT", "Patch response remains draft preview")
+
+        db.expire_all()
+        draft_after_patch = db.query(WorkflowTemplateVersion).filter(WorkflowTemplateVersion.id == draft_version_id).first()
+        check(draft_after_patch.total_duration_days == patched_payload["total_duration_days"], "Draft total duration is recalculated")
+
+        patch_published = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/stages/NURSERY",
+            headers=headers,
+            json={"duration_days": 99},
+        )
+        check(patch_published.status_code == 404, "Published version cannot be edited through draft stage API", f"Status: {patch_published.status_code}")
+
+        patch_negative = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY",
+            headers=headers,
+            json={"duration_days": -1},
+        )
+        check(patch_negative.status_code == 400, "Draft stage rejects negative duration", f"Status: {patch_negative.status_code}")
     finally:
         cleanup_draft(db, draft_version_id)
         db.close()

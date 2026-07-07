@@ -57,6 +57,19 @@ class WorkflowDraftCloneRequest(BaseModel):
     version_number: Optional[str] = None
 
 
+class WorkflowDraftStageUpdate(BaseModel):
+    stage_name: Optional[dict[str, str]] = None
+    duration_days: Optional[int] = None
+    description: Optional[dict[str, str]] = None
+    farmer_actions: Optional[list[str]] = None
+    typical_inputs: Optional[list[str]] = None
+    key_observations: Optional[list[str]] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    phase: Optional[str] = None
+    stage_type: Optional[str] = None
+
+
 def _validate_override_payload(target_type: str, operation: str, payload: dict) -> None:
     """Reject incomplete project override payloads before preview rendering."""
     if operation == "HIDE":
@@ -440,17 +453,7 @@ def preview_workflow_template_version(
     )
 
 
-@router.get("/draft-preview/{workflow_template_version_id}")
-def preview_draft_workflow_template_version(
-    workflow_template_version_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-):
-    """Admin-only preview for DRAFT workflow versions.
-
-    Android/public preview remains /workflow-preview and continues to serve only
-    published, enabled workflow versions.
-    """
+def _get_draft_template_version(db: Session, workflow_template_version_id: uuid.UUID, tenant_id: str):
     row = (
         db.query(WorkflowTemplate, WorkflowTemplateVersion)
         .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
@@ -459,14 +462,17 @@ def preview_draft_workflow_template_version(
             WorkflowTemplateVersion.status == "DRAFT",
             WorkflowTemplateVersion.is_active == True,
             WorkflowTemplate.is_active == True,
-            WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+            WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
         )
         .first()
     )
     if not row:
         raise HTTPException(404, "Draft workflow template version not found")
+    return row
 
-    template, version = row
+
+def _render_draft_preview(db: Session, workflow_template_version_id: uuid.UUID, tenant_id: str) -> dict:
+    template, version = _get_draft_template_version(db, workflow_template_version_id, tenant_id)
     crop = db.query(Crop).filter(Crop.code == template.crop_code).first()
     stages = workflow_version_to_stage_definitions(db, version.id)
     known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
@@ -478,12 +484,92 @@ def preview_draft_workflow_template_version(
         stages=stages,
         overrides=[],
         warnings=warnings,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=None,
         preview_source="workflow_template_draft",
         enablement_source="draft_admin_preview",
         enablement=None,
     )
+
+
+@router.get("/draft-preview/{workflow_template_version_id}")
+def preview_draft_workflow_template_version(
+    workflow_template_version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Admin-only preview for DRAFT workflow versions.
+
+    Android/public preview remains /workflow-preview and continues to serve only
+    published, enabled workflow versions.
+    """
+    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+
+
+@router.patch("/drafts/{workflow_template_version_id}/stages/{stage_code}")
+def update_draft_workflow_stage(
+    workflow_template_version_id: uuid.UUID,
+    stage_code: str,
+    body: WorkflowDraftStageUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Edit a stage inside a DRAFT workflow version and return updated draft preview."""
+    _, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    stage = (
+        db.query(WorkflowTemplateStage)
+        .filter(
+            WorkflowTemplateStage.template_version_id == version.id,
+            WorkflowTemplateStage.stage_code == stage_code,
+            WorkflowTemplateStage.is_active == True,
+        )
+        .first()
+    )
+    if not stage:
+        raise HTTPException(404, "Draft workflow stage not found")
+
+    changes = body.dict(exclude_unset=True)
+    if not changes:
+        raise HTTPException(400, "No stage changes supplied")
+    if "duration_days" in changes:
+        if changes["duration_days"] is None:
+            raise HTTPException(400, "duration_days cannot be null")
+        duration_days = int(changes["duration_days"])
+        if duration_days < 0:
+            raise HTTPException(400, "duration_days cannot be negative")
+        stage.duration_days = duration_days
+    if "stage_name" in changes:
+        if not changes["stage_name"]:
+            raise HTTPException(400, "stage_name cannot be empty")
+        stage.stage_name = changes["stage_name"]
+    if "description" in changes:
+        stage.description = changes["description"]
+    if "farmer_actions" in changes:
+        stage.farmer_actions = changes["farmer_actions"] or []
+    if "typical_inputs" in changes:
+        stage.typical_inputs = changes["typical_inputs"] or []
+    if "key_observations" in changes:
+        stage.key_observations = changes["key_observations"] or []
+    if "icon" in changes:
+        stage.icon = changes["icon"]
+    if "color" in changes:
+        stage.color = changes["color"]
+    if "phase" in changes:
+        stage.phase = changes["phase"]
+    if "stage_type" in changes:
+        stage.stage_type = changes["stage_type"]
+
+    now = datetime.now(timezone.utc)
+    stage.updated_at = now
+    version.total_duration_days = sum(
+        int(row.duration_days or 0)
+        for row in db.query(WorkflowTemplateStage)
+        .filter(WorkflowTemplateStage.template_version_id == version.id, WorkflowTemplateStage.is_active == True)
+        .all()
+    )
+    version.updated_at = now
+    db.commit()
+    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
 
 

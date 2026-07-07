@@ -7,6 +7,7 @@ import {
   inputCatalogApi,
   workflowCatalogApi,
   type AgriInputDto,
+  type WorkflowDraftStageUpdateRequest,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
   type WorkflowRecommendation,
@@ -115,6 +116,20 @@ export default function WorkflowPreviewPage() {
       setError(e instanceof Error ? e.message : "Failed to clone draft version");
     } finally {
       setDraftCloning(false);
+    }
+  };
+
+  const updateDraftStage = async (stageCode: string, data: WorkflowDraftStageUpdateRequest) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_STAGE:${stageCode}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.updateDraftStage(preview.workflow_template_version_id, stageCode, data);
+      setPreview(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update draft stage");
+    } finally {
+      setBusyTarget(null);
     }
   };
 
@@ -228,8 +243,10 @@ export default function WorkflowPreviewPage() {
               stage={stage}
               cropCode={preview.crop_code}
               projectScoped={Boolean(preview.project_id)}
+              draftEditable={preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft"}
               busyTarget={busyTarget}
               onCreateOverride={createOverride}
+              onUpdateDraftStage={updateDraftStage}
             />
           ))}
         </div>
@@ -419,12 +436,15 @@ function StagePreview({
   stage,
   cropCode,
   projectScoped,
+  draftEditable,
   busyTarget,
   onCreateOverride,
+  onUpdateDraftStage,
 }: {
   stage: WorkflowStage;
   cropCode: string;
   projectScoped: boolean;
+  draftEditable: boolean;
   busyTarget: string | null;
   onCreateOverride: (
     targetType: WorkflowTargetType,
@@ -433,6 +453,7 @@ function StagePreview({
     overridePayload: Record<string, unknown>,
     reason: string,
   ) => void;
+  onUpdateDraftStage: (stageCode: string, data: WorkflowDraftStageUpdateRequest) => void;
 }) {
   const recs = stage.recommended_activities || [];
   const [stageName, setStageName] = useState(labelText(stage.name));
@@ -481,6 +502,7 @@ function StagePreview({
   }, [cropCode, inputCategory, inputSearch, projectScoped]);
 
   const stageBusy = busyTarget === `STAGE:${stage.code}`;
+  const draftStageBusy = busyTarget === `DRAFT_STAGE:${stage.code}`;
 
   const selectCatalogInput = (input: AgriInputDto) => {
     setNewRecInputCode(input.code);
@@ -533,8 +555,8 @@ function StagePreview({
         </div>
       </summary>
       <div className="px-5 pb-5">
-        {projectScoped ? (
-          <div className="mb-4 grid gap-3 rounded-lg border border-dashed bg-gray-50 p-3 md:grid-cols-[1fr_140px_auto_auto]">
+        {projectScoped || draftEditable ? (
+          <div className={`mb-4 grid gap-3 rounded-lg border border-dashed bg-gray-50 p-3 ${projectScoped ? "md:grid-cols-[1fr_140px_auto_auto]" : "md:grid-cols-[1fr_140px_auto]"}`}>
             <label className="text-xs font-medium text-gray-500">
               Stage label
               <input
@@ -553,22 +575,36 @@ function StagePreview({
                 className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
               />
             </label>
-            <button
-              type="button"
-              disabled={stageBusy || !stageName.trim()}
-              onClick={() => onCreateOverride("STAGE", stage.code, "RENAME", { name: { en: stageName.trim(), hi: stageName.trim() } }, `Rename stage ${stage.code}`)}
-              className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
-            >
-              Rename stage
-            </button>
-            <button
-              type="button"
-              disabled={stageBusy || durationDays === ""}
-              onClick={() => onCreateOverride("STAGE", stage.code, "CHANGE_DURATION", { duration_days: Number(durationDays) }, `Change duration for ${stage.code}`)}
-              className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
-            >
-              Save duration
-            </button>
+            {projectScoped ? (
+              <>
+                <button
+                  type="button"
+                  disabled={stageBusy || !stageName.trim()}
+                  onClick={() => onCreateOverride("STAGE", stage.code, "RENAME", { name: { en: stageName.trim(), hi: stageName.trim() } }, `Rename stage ${stage.code}`)}
+                  className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  Rename stage
+                </button>
+                <button
+                  type="button"
+                  disabled={stageBusy || durationDays === ""}
+                  onClick={() => onCreateOverride("STAGE", stage.code, "CHANGE_DURATION", { duration_days: Number(durationDays) }, `Change duration for ${stage.code}`)}
+                  className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  Save duration
+                </button>
+              </>
+            ) : null}
+            {draftEditable ? (
+              <button
+                type="button"
+                disabled={draftStageBusy || !stageName.trim() || durationDays === ""}
+                onClick={() => onUpdateDraftStage(stage.code, { stage_name: { en: stageName.trim(), hi: stageName.trim() }, duration_days: Number(durationDays) })}
+                className="self-end rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {draftStageBusy ? "Saving draft..." : "Save draft stage"}
+              </button>
+            ) : null}
           </div>
         ) : null}
 
