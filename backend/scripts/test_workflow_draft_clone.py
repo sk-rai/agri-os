@@ -58,6 +58,7 @@ def main():
 
     db = SessionLocal()
     draft_version_id = None
+    restored_draft_id = None
     source_version_id = None
     source_effective_to = None
     try:
@@ -289,6 +290,32 @@ def main():
             json={"duration_days": 20},
         )
         check(draft_edit_after_publish.status_code == 404, "Published draft cannot be edited through draft APIs", f"Status: {draft_edit_after_publish.status_code}")
+
+        versions = client.get(f"/api/v1/workflow-catalog/templates/{rice.id}/versions", headers=headers)
+        check(versions.status_code == 200, "Workflow version history returns 200", f"Status: {versions.status_code}")
+        versions_payload = versions.json()
+        check(versions_payload["current_published_version_id"] == draft_version_id, "Version history marks newly published version active")
+        statuses_by_id = {item["workflow_template_version_id"]: item["status"] for item in versions_payload["versions"]}
+        check(statuses_by_id[draft_version_id] == "PUBLISHED", "Version history includes published draft")
+        check(statuses_by_id[str(source_version.id)] == "ARCHIVED", "Version history includes archived source")
+        active_rows = [item for item in versions_payload["versions"] if item["is_current_published"]]
+        check(len(active_rows) == 1 and active_rows[0]["workflow_template_version_id"] == draft_version_id, "Exactly one version is Android active")
+
+        restore = client.post(
+            f"/api/v1/workflow-catalog/templates/{rice.id}/versions/{source_version.id}/restore-draft",
+            headers=headers,
+            json={"version_number": f"{source_version.version_number}-codex-restore-test"},
+        )
+        check(restore.status_code == 200, "Restore archived version to draft returns 200", f"Status: {restore.status_code}")
+        restore_payload = restore.json()
+        restored_draft_id = restore_payload["draft_version_id"]
+        check(restore_payload["source_version_id"] == str(source_version.id), "Restore response references archived source")
+        check(restore_payload["status"] == "DRAFT", "Restore creates a DRAFT")
+
+        restored_preview = client.get(f"/api/v1/workflow-catalog/draft-preview/{restored_draft_id}", headers=headers)
+        check(restored_preview.status_code == 200, "Restored draft preview returns 200", f"Status: {restored_preview.status_code}")
+        restored_public_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{restored_draft_id}", headers=headers)
+        check(restored_public_preview.status_code == 404, "Restored draft is not Android-preview visible", f"Status: {restored_public_preview.status_code}")
     finally:
         if source_version_id:
             source = db.query(WorkflowTemplateVersion).filter(WorkflowTemplateVersion.id == source_version_id).first()
@@ -296,6 +323,7 @@ def main():
                 source.status = "PUBLISHED"
                 source.effective_to = source_effective_to
                 db.commit()
+        cleanup_draft(db, restored_draft_id)
         cleanup_draft(db, draft_version_id)
         db.close()
 

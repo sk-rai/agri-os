@@ -237,6 +237,45 @@ export interface WorkflowDraftCloneResponse {
   recommendation_count: number;
 }
 
+export interface WorkflowTemplateVersionHistoryItem {
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  version: string;
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED" | string;
+  is_current_published: boolean;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  published_at?: string | null;
+  published_by?: string | null;
+  total_duration_days?: number | null;
+  stage_count: number;
+  recommendation_count: number;
+  schema_version: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface WorkflowTemplateVersionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  workflow_template_id: string;
+  workflow_template_code: string;
+  label: Record<string, string>;
+  crop_code: string;
+  season_code: string;
+  propagation_type_code?: string | null;
+  current_published_version_id?: string | null;
+  counts: {
+    total: number;
+    draft: number;
+    published: number;
+    archived: number;
+  };
+  versions: WorkflowTemplateVersionHistoryItem[];
+}
+
 export interface WorkflowDraftStageUpdateRequest {
   stage_name?: Record<string, string>;
   duration_days?: number;
@@ -379,8 +418,15 @@ export const workflowCatalogApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/workflow-preview/${versionId}${suffix}`);
   },
+  templateVersions: (templateId: string) =>
+    api<WorkflowTemplateVersionsResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions`),
   cloneDraftVersion: (templateId: string, versionId: string, data?: { version_number?: string }) =>
     api<WorkflowDraftCloneResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions/${versionId}/clone-draft`, {
+      method: "POST",
+      body: data || {},
+    }),
+  restoreDraftVersion: (templateId: string, versionId: string, data?: { version_number?: string }) =>
+    api<WorkflowDraftCloneResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions/${versionId}/restore-draft`, {
       method: "POST",
       body: data || {},
     }),

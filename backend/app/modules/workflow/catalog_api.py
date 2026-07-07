@@ -897,15 +897,14 @@ def _next_draft_version_number(db: Session, template_id: uuid.UUID, source_versi
     return f"{base}-{suffix}"
 
 
-@router.post("/templates/{template_id}/versions/{version_id}/clone-draft")
-def clone_workflow_template_version_to_draft(
+def _version_row_for_template(
+    db: Session,
     template_id: uuid.UUID,
     version_id: uuid.UUID,
-    body: WorkflowDraftCloneRequest = WorkflowDraftCloneRequest(),
-    db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    tenant_id: str,
+    allowed_statuses: set[str],
+    not_found_message: str,
 ):
-    """Clone a published workflow version into an editable draft version."""
     row = (
         db.query(WorkflowTemplate, WorkflowTemplateVersion)
         .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
@@ -915,18 +914,25 @@ def clone_workflow_template_version_to_draft(
             WorkflowTemplateVersion.template_id == template_id,
             WorkflowTemplate.is_active == True,
             WorkflowTemplateVersion.is_active == True,
-            WorkflowTemplateVersion.status == "PUBLISHED",
-            WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+            WorkflowTemplateVersion.status.in_(allowed_statuses),
+            WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
         )
         .first()
     )
     if not row:
-        raise HTTPException(404, "Published workflow template version not found")
+        raise HTTPException(404, not_found_message)
+    return row
 
-    template, source_version = row
+
+def _copy_workflow_version_to_draft(
+    db: Session,
+    template: WorkflowTemplate,
+    source_version: WorkflowTemplateVersion,
+    requested_version_number: Optional[str],
+) -> dict:
     now = datetime.now(timezone.utc)
     draft_version_id = uuid.uuid4()
-    draft_version_number = _next_draft_version_number(db, template.id, source_version.version_number, body.version_number)
+    draft_version_number = _next_draft_version_number(db, template.id, source_version.version_number, requested_version_number)
     draft_metadata = deepcopy(source_version.metadata_ or {})
     draft_metadata.update({
         "source_version_id": str(source_version.id),
@@ -1032,6 +1038,142 @@ def clone_workflow_template_version_to_draft(
         "stage_count": len(source_stages),
         "recommendation_count": len(source_recommendations),
     }
+
+
+def _workflow_version_summary(
+    db: Session,
+    template: WorkflowTemplate,
+    version: WorkflowTemplateVersion,
+    current_published_version_id,
+) -> dict:
+    stage_count = db.query(WorkflowTemplateStage).filter(
+        WorkflowTemplateStage.template_version_id == version.id,
+        WorkflowTemplateStage.is_active == True,
+    ).count()
+    stage_ids = [
+        row.id
+        for row in db.query(WorkflowTemplateStage.id)
+        .filter(WorkflowTemplateStage.template_version_id == version.id, WorkflowTemplateStage.is_active == True)
+        .all()
+    ]
+    recommendation_count = 0
+    if stage_ids:
+        recommendation_count = db.query(WorkflowTemplateRecommendation).filter(
+            WorkflowTemplateRecommendation.template_stage_id.in_(stage_ids),
+            WorkflowTemplateRecommendation.is_active == True,
+        ).count()
+    return {
+        "workflow_template_id": str(template.id),
+        "workflow_template_version_id": str(version.id),
+        "workflow_template_code": template.code,
+        "version": version.version_number,
+        "status": version.status,
+        "is_current_published": bool(current_published_version_id and version.id == current_published_version_id),
+        "effective_from": version.effective_from.isoformat() if version.effective_from else None,
+        "effective_to": version.effective_to.isoformat() if version.effective_to else None,
+        "published_at": version.published_at.isoformat() if version.published_at else None,
+        "published_by": str(version.published_by) if version.published_by else None,
+        "total_duration_days": version.total_duration_days,
+        "stage_count": stage_count,
+        "recommendation_count": recommendation_count,
+        "schema_version": version.schema_version,
+        "metadata": version.metadata_ or {},
+        "created_at": version.created_at.isoformat() if version.created_at else None,
+        "updated_at": version.updated_at.isoformat() if version.updated_at else None,
+    }
+
+
+@router.get("/templates/{template_id}/versions")
+def list_workflow_template_versions(
+    template_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Return version history for a workflow template, including DRAFT/PUBLISHED/ARCHIVED rows."""
+    template = db.query(WorkflowTemplate).filter(
+        WorkflowTemplate.id == template_id,
+        WorkflowTemplate.is_active == True,
+        WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+    ).first()
+    if not template:
+        raise HTTPException(404, "Workflow template not found")
+
+    versions = db.query(WorkflowTemplateVersion).filter(
+        WorkflowTemplateVersion.template_id == template.id,
+        WorkflowTemplateVersion.is_active == True,
+    ).order_by(
+        WorkflowTemplateVersion.published_at.desc().nullslast(),
+        WorkflowTemplateVersion.created_at.desc(),
+    ).all()
+    current_published = (
+        db.query(WorkflowTemplateVersion)
+        .filter(
+            WorkflowTemplateVersion.template_id == template.id,
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplateVersion.is_active == True,
+        )
+        .order_by(WorkflowTemplateVersion.published_at.desc().nullslast(), WorkflowTemplateVersion.created_at.desc())
+        .first()
+    )
+    items = [_workflow_version_summary(db, template, version, current_published.id if current_published else None) for version in versions]
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": x_tenant_id,
+        "workflow_template_id": str(template.id),
+        "workflow_template_code": template.code,
+        "label": {"en": template.canonical_name, "hi": template.canonical_name},
+        "crop_code": template.crop_code,
+        "season_code": template.season_code,
+        "propagation_type_code": template.propagation_type_code,
+        "current_published_version_id": str(current_published.id) if current_published else None,
+        "counts": {
+            "total": len(items),
+            "draft": sum(1 for item in items if item["status"] == "DRAFT"),
+            "published": sum(1 for item in items if item["status"] == "PUBLISHED"),
+            "archived": sum(1 for item in items if item["status"] == "ARCHIVED"),
+        },
+        "versions": items,
+    }
+
+
+@router.post("/templates/{template_id}/versions/{version_id}/restore-draft")
+def restore_workflow_template_version_to_draft(
+    template_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: WorkflowDraftCloneRequest = WorkflowDraftCloneRequest(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Restore a published/archived workflow version into a new editable draft."""
+    template, source_version = _version_row_for_template(
+        db,
+        template_id,
+        version_id,
+        x_tenant_id,
+        {"PUBLISHED", "ARCHIVED"},
+        "Published or archived workflow template version not found",
+    )
+    return _copy_workflow_version_to_draft(db, template, source_version, body.version_number)
+
+
+@router.post("/templates/{template_id}/versions/{version_id}/clone-draft")
+def clone_workflow_template_version_to_draft(
+    template_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: WorkflowDraftCloneRequest = WorkflowDraftCloneRequest(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Clone a published workflow version into an editable draft version."""
+    template, source_version = _version_row_for_template(
+        db,
+        template_id,
+        version_id,
+        x_tenant_id,
+        {"PUBLISHED"},
+        "Published workflow template version not found",
+    )
+    return _copy_workflow_version_to_draft(db, template, source_version, body.version_number)
 
 
 @router.get("/projects/{project_id}/workflow-overrides")

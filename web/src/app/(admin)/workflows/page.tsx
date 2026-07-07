@@ -7,6 +7,7 @@ import {
   type EnabledCropWorkflow,
   type WorkflowRecommendation,
   type WorkflowStage,
+  type WorkflowTemplateVersionsResponse,
 } from "@/lib/api";
 
 function labelText(value: Record<string, string> | string | undefined | null) {
@@ -131,34 +132,139 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
+  const [versions, setVersions] = useState<WorkflowTemplateVersionsResponse | null>(null);
+  const [versionLoading, setVersionLoading] = useState(false);
+  const [versionError, setVersionError] = useState<string | null>(null);
+  const [busyVersionId, setBusyVersionId] = useState<string | null>(null);
+  const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+
+  const loadVersions = () => {
+    setVersionLoading(true);
+    setVersionError(null);
+    workflowCatalogApi
+      .templateVersions(workflow.workflow_template_id)
+      .then(setVersions)
+      .catch((e) => setVersionError(e instanceof Error ? e.message : "Failed to load workflow versions"))
+      .finally(() => setVersionLoading(false));
+  };
+
+  useEffect(() => {
+    setVersions(null);
+    setRestoreMessage(null);
+    loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflow.workflow_template_id]);
+
+  const restoreDraft = async (versionId: string) => {
+    setBusyVersionId(versionId);
+    setVersionError(null);
+    setRestoreMessage(null);
+    try {
+      const draft = await workflowCatalogApi.restoreDraftVersion(workflow.workflow_template_id, versionId);
+      setRestoreMessage(`Draft ${draft.version} created from selected version.`);
+      await workflowCatalogApi.templateVersions(workflow.workflow_template_id).then(setVersions);
+    } catch (e) {
+      setVersionError(e instanceof Error ? e.message : "Failed to restore draft");
+    } finally {
+      setBusyVersionId(null);
+    }
+  };
+
   return (
-    <div className="rounded-lg bg-white shadow">
-      <div className="border-b p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{labelText(workflow.label)}</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {workflow.workflow_template_code} · version {workflow.version} · {workflow.status}
-            </p>
+    <div className="space-y-6">
+      <div className="rounded-lg bg-white shadow">
+        <div className="border-b p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{labelText(workflow.label)}</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {workflow.workflow_template_code} ? version {workflow.version} ? {workflow.status}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge>{workflow.crop_code}</Badge>
+              <Badge>{workflow.season_code}</Badge>
+              <Badge>{workflow.propagation_type_code || "Propagation ?"}</Badge>
+              <Link
+                href={`/workflows/preview/${workflow.workflow_template_version_id}`}
+                className="rounded-full bg-green-600 px-3 py-1 font-medium text-white hover:bg-green-700"
+              >
+                Preview JSON
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge>{workflow.crop_code}</Badge>
-            <Badge>{workflow.season_code}</Badge>
-            <Badge>{workflow.propagation_type_code || "Propagation —"}</Badge>
-            <Link
-              href={`/workflows/preview/${workflow.workflow_template_version_id}`}
-              className="rounded-full bg-green-600 px-3 py-1 font-medium text-white hover:bg-green-700"
-            >
-              Preview JSON
-            </Link>
-          </div>
+        </div>
+
+        <div className="divide-y">
+          {(workflow.stages || []).map((stage) => (
+            <StageRow key={stage.code} stage={stage} />
+          ))}
         </div>
       </div>
 
-      <div className="divide-y">
-        {(workflow.stages || []).map((stage) => (
-          <StageRow key={stage.code} stage={stage} />
-        ))}
+      <div className="rounded-lg bg-white p-5 shadow">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Version History</h3>
+            <p className="text-sm text-gray-500">Published, archived, and draft workflow versions for this template.</p>
+          </div>
+          {versions ? (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge>Total {versions.counts.total}</Badge>
+              <Badge>Draft {versions.counts.draft}</Badge>
+              <Badge>Published {versions.counts.published}</Badge>
+              <Badge>Archived {versions.counts.archived}</Badge>
+            </div>
+          ) : null}
+        </div>
+
+        {restoreMessage ? <div className="mb-3 rounded bg-green-50 p-3 text-sm text-green-700">{restoreMessage}</div> : null}
+        {versionError ? <div className="mb-3 rounded bg-red-50 p-3 text-sm text-red-700">{versionError}</div> : null}
+        {versionLoading ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">Loading version history...</p> : null}
+
+        {versions && versions.versions.length > 0 ? (
+          <div className="space-y-3">
+            {versions.versions.map((version) => (
+              <div key={version.workflow_template_version_id} className="rounded border p-3 text-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge>{version.status}</Badge>
+                      {version.is_current_published ? <Badge>Android active</Badge> : null}
+                      <Badge>{version.stage_count} stages</Badge>
+                      <Badge>{version.recommendation_count} recs</Badge>
+                    </div>
+                    <p className="mt-2 font-mono text-xs text-gray-500">{version.workflow_template_version_id}</p>
+                    <p className="mt-1 font-semibold text-gray-900">Version {version.version}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Published: {version.published_at ? new Date(version.published_at).toLocaleString() : "?"} ? Updated: {version.updated_at ? new Date(version.updated_at).toLocaleString() : "?"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2 text-xs">
+                    <Link
+                      href={`/workflows/preview/${version.workflow_template_version_id}${version.status === "DRAFT" ? "?draft=true" : ""}`}
+                      className="rounded border border-green-200 px-3 py-1.5 font-medium text-green-700 hover:bg-green-50"
+                    >
+                      Preview
+                    </Link>
+                    {version.status === "PUBLISHED" || version.status === "ARCHIVED" ? (
+                      <button
+                        type="button"
+                        disabled={busyVersionId === version.workflow_template_version_id}
+                        onClick={() => restoreDraft(version.workflow_template_version_id)}
+                        className="rounded border border-blue-200 px-3 py-1.5 font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {busyVersionId === version.workflow_template_version_id ? "Restoring..." : "Restore as draft"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : !versionLoading ? (
+          <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No version history found.</p>
+        ) : null}
       </div>
     </div>
   );
