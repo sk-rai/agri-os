@@ -57,6 +57,10 @@ class WorkflowDraftCloneRequest(BaseModel):
     version_number: Optional[str] = None
 
 
+class WorkflowDraftPublishRequest(BaseModel):
+    archive_previous: bool = True
+
+
 class WorkflowDraftStageUpdate(BaseModel):
     stage_name: Optional[dict[str, str]] = None
     duration_days: Optional[int] = None
@@ -530,12 +534,15 @@ def _draft_stage_definitions(db: Session, version_id) -> list[dict]:
     return stages
 
 
+def _known_input_codes(db: Session) -> set[str]:
+    return {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
+
+
 def _render_draft_preview(db: Session, workflow_template_version_id: uuid.UUID, tenant_id: str) -> dict:
     template, version = _get_draft_template_version(db, workflow_template_version_id, tenant_id)
     crop = db.query(Crop).filter(Crop.code == template.crop_code).first()
     stages = _draft_stage_definitions(db, version.id)
-    known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
-    warnings = _preview_warnings(stages, known_input_codes)
+    warnings = _preview_warnings(stages, _known_input_codes(db))
     return _workflow_preview_payload(
         template=template,
         version=version,
@@ -549,6 +556,35 @@ def _render_draft_preview(db: Session, workflow_template_version_id: uuid.UUID, 
         enablement_source="draft_admin_preview",
         enablement=None,
     )
+
+
+def _render_published_version_preview(db: Session, template: WorkflowTemplate, version: WorkflowTemplateVersion, tenant_id: str) -> dict:
+    crop = db.query(Crop).filter(Crop.code == template.crop_code).first()
+    stages = workflow_version_to_stage_definitions(db, version.id)
+    warnings = _preview_warnings(stages, _known_input_codes(db))
+    return _workflow_preview_payload(
+        template=template,
+        version=version,
+        crop=crop,
+        stages=stages,
+        overrides=[],
+        warnings=warnings,
+        tenant_id=tenant_id,
+        project_id=None,
+        preview_source="workflow_template_published",
+        enablement_source="draft_publish",
+        enablement=None,
+    )
+
+
+def _validate_draft_for_publish(db: Session, version_id) -> tuple[list[dict], list[dict]]:
+    stages = workflow_version_to_stage_definitions(db, version_id)
+    warnings = _preview_warnings(stages, _known_input_codes(db))
+    if not stages:
+        warnings.append({"level": "ERROR", "code": "DRAFT_WITHOUT_STAGES", "message": "Draft workflow must have at least one stage", "target": str(version_id)})
+    if any(warning.get("level") == "ERROR" for warning in warnings):
+        raise HTTPException(400, {"message": "Draft workflow has blocking validation errors", "warnings": warnings})
+    return stages, warnings
 
 
 @router.get("/draft-preview/{workflow_template_version_id}")
@@ -787,6 +823,58 @@ def delete_draft_workflow_recommendation(
     version.updated_at = now
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+
+
+@router.post("/drafts/{workflow_template_version_id}/publish")
+def publish_draft_workflow_template_version(
+    workflow_template_version_id: uuid.UUID,
+    body: WorkflowDraftPublishRequest = WorkflowDraftPublishRequest(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    """Publish a validated DRAFT workflow version and make it Android-visible."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    stages, warnings = _validate_draft_for_publish(db, version.id)
+    now = datetime.now(timezone.utc)
+
+    if body.archive_previous:
+        previous_versions = (
+            db.query(WorkflowTemplateVersion)
+            .filter(
+                WorkflowTemplateVersion.template_id == template.id,
+                WorkflowTemplateVersion.id != version.id,
+                WorkflowTemplateVersion.status == "PUBLISHED",
+                WorkflowTemplateVersion.is_active == True,
+            )
+            .all()
+        )
+        for previous in previous_versions:
+            previous.status = "ARCHIVED"
+            previous.effective_to = now.date()
+            previous.updated_at = now
+
+    published_by = None
+    if x_actor_id:
+        try:
+            published_by = uuid.UUID(str(x_actor_id))
+        except ValueError:
+            raise HTTPException(400, "X-Actor-ID must be a UUID when supplied")
+
+    version.status = "PUBLISHED"
+    version.published_at = now
+    version.published_by = published_by
+    version.total_duration_days = sum(int(stage.get("duration_days") or 0) for stage in stages)
+    version.updated_at = now
+    metadata = dict(version.metadata_ or {})
+    metadata["published_from_draft"] = True
+    metadata["published_at"] = now.isoformat()
+    version.metadata_ = metadata
+    db.commit()
+    db.refresh(version)
+    payload = _render_published_version_preview(db, template, version, x_tenant_id)
+    payload["warnings"] = warnings
+    return payload
 
 
 def _next_draft_version_number(db: Session, template_id: uuid.UUID, source_version: str, requested: Optional[str]) -> str:

@@ -323,12 +323,17 @@ def list_enabled_workflow_versions(
         WorkflowTemplate.crop_code,
         WorkflowTemplate.season_code,
         WorkflowTemplate.is_default.desc(),
+        WorkflowTemplate.id,
         WorkflowTemplateVersion.published_at.desc().nullslast(),
+        WorkflowTemplateVersion.created_at.desc(),
     ).all()
 
     visible = []
+    seen_template_ids = set()
     explicit_scope = bool(enablements)
     for template, version in rows:
+        if template.id in seen_template_ids:
+            continue
         enablement = enablement_by_template.get(template.id)
         if explicit_scope:
             if not enablement or not enablement.enabled:
@@ -336,6 +341,7 @@ def list_enabled_workflow_versions(
         elif not template.is_default:
             continue
         visible.append((template, version, enablement))
+        seen_template_ids.add(template.id)
 
     return sorted(
         visible,

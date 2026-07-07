@@ -386,6 +386,11 @@ export const workflowCatalogApi = {
     }),
   draftPreview: (versionId: string) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
+  publishDraftVersion: (versionId: string, data?: { archive_previous?: boolean }) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/publish`, {
+      method: "POST",
+      body: data || {},
+    }),
   updateDraftStage: (versionId: string, stageCode: string, data: WorkflowDraftStageUpdateRequest) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}`, {
       method: "PATCH",

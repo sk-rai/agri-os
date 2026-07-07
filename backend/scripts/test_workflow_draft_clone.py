@@ -58,6 +58,8 @@ def main():
 
     db = SessionLocal()
     draft_version_id = None
+    source_version_id = None
+    source_effective_to = None
     try:
         rice = db.query(WorkflowTemplate).filter(WorkflowTemplate.code == "WF_RICE_KHARIF_DEFAULT").first()
         check(rice is not None, "Rice workflow template exists")
@@ -67,6 +69,8 @@ def main():
             WorkflowTemplateVersion.is_active == True,
         ).first()
         check(source_version is not None, "Published source version exists")
+        source_version_id = source_version.id
+        source_effective_to = source_version.effective_to
 
         source_stages = db.query(WorkflowTemplateStage).filter(
             WorkflowTemplateStage.template_version_id == source_version.id,
@@ -246,7 +250,52 @@ def main():
             all(rec["metadata"]["recommendation_id"] != added_rec_id for rec in delete_rec_nursery["recommended_activities"]),
             "Deleted draft recommendation is removed from preview",
         )
+
+        publish = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/publish",
+            headers=headers,
+            json={"archive_previous": True},
+        )
+        check(publish.status_code == 200, "Draft publish returns 200", f"Status: {publish.status_code}")
+        publish_payload = publish.json()
+        check(publish_payload["status"] == "PUBLISHED", "Publish response marks version as PUBLISHED")
+        check(publish_payload["workflow_template_version_id"] == draft_version_id, "Publish response references draft version")
+        check(publish_payload["preview_source"] == "workflow_template_published", "Publish response is published preview")
+
+        db.expire_all()
+        published_draft = db.query(WorkflowTemplateVersion).filter(WorkflowTemplateVersion.id == draft_version_id).first()
+        archived_source = db.query(WorkflowTemplateVersion).filter(WorkflowTemplateVersion.id == source_version.id).first()
+        check(published_draft.status == "PUBLISHED", "Draft row becomes PUBLISHED in database")
+        check(published_draft.published_at is not None, "Published draft stores published_at")
+        check(archived_source.status == "ARCHIVED", "Previous published version is archived")
+
+        catalog_after_publish = client.get("/api/v1/workflow-catalog/enabled-crop-workflows", headers=headers)
+        check(catalog_after_publish.status_code == 200, "Published catalog after publish returns 200", f"Status: {catalog_after_publish.status_code}")
+        rice_versions_after_publish = [
+            item["workflow_template_version_id"]
+            for item in catalog_after_publish.json()["workflows"]
+            if item["workflow_template_id"] == str(rice.id)
+        ]
+        check(rice_versions_after_publish == [draft_version_id], "Android catalog serves the newly published version once")
+
+        old_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{source_version.id}", headers=headers)
+        check(old_preview.status_code == 404, "Archived source version is no longer Android-preview visible", f"Status: {old_preview.status_code}")
+        new_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{draft_version_id}", headers=headers)
+        check(new_preview.status_code == 200, "Newly published draft is Android-preview visible", f"Status: {new_preview.status_code}")
+
+        draft_edit_after_publish = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY",
+            headers=headers,
+            json={"duration_days": 20},
+        )
+        check(draft_edit_after_publish.status_code == 404, "Published draft cannot be edited through draft APIs", f"Status: {draft_edit_after_publish.status_code}")
     finally:
+        if source_version_id:
+            source = db.query(WorkflowTemplateVersion).filter(WorkflowTemplateVersion.id == source_version_id).first()
+            if source:
+                source.status = "PUBLISHED"
+                source.effective_to = source_effective_to
+                db.commit()
         cleanup_draft(db, draft_version_id)
         db.close()
 

@@ -44,6 +44,8 @@ export default function WorkflowPreviewPage() {
   const [draftCloneMessage, setDraftCloneMessage] = useState<string | null>(null);
   const [draftCloneId, setDraftCloneId] = useState<string | null>(null);
   const [draftCloning, setDraftCloning] = useState(false);
+  const [draftPublishing, setDraftPublishing] = useState(false);
+  const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
     const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
@@ -117,6 +119,22 @@ export default function WorkflowPreviewPage() {
       setError(e instanceof Error ? e.message : "Failed to clone draft version");
     } finally {
       setDraftCloning(false);
+    }
+  };
+
+  const publishDraft = async () => {
+    if (!preview) return;
+    setDraftPublishing(true);
+    setPublishMessage(null);
+    setError(null);
+    try {
+      const published = await workflowCatalogApi.publishDraftVersion(preview.workflow_template_version_id, { archive_previous: true });
+      setPreview(published);
+      setPublishMessage(`Published ${published.workflow_template_code} version ${published.version}. Android catalog will now serve this version.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to publish draft version");
+    } finally {
+      setDraftPublishing(false);
     }
   };
 
@@ -241,18 +259,31 @@ export default function WorkflowPreviewPage() {
                 {draftCloneId ? <Link className="mt-2 inline-block font-medium underline" href={`/workflows/preview/${draftCloneId}?draft=true`}>Open draft preview</Link> : null}
               </div>
             ) : null}
+            {publishMessage ? (
+              <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">{publishMessage}</div>
+            ) : null}
           </div>
           <div className="text-right text-xs text-gray-500">
             <p>Template: <span className="font-mono">{preview.workflow_template_id}</span></p>
             <p>Version: <span className="font-mono">{preview.workflow_template_version_id}</span></p>
-            <button
-              type="button"
-              disabled={draftCloning || preview.status !== "PUBLISHED"}
-              onClick={cloneDraft}
-              className="mt-3 rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
-            >
-              {draftCloning ? "Cloning draft..." : "Clone draft"}
-            </button>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={draftCloning || preview.status !== "PUBLISHED"}
+                onClick={cloneDraft}
+                className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {draftCloning ? "Cloning draft..." : "Clone draft"}
+              </button>
+              <button
+                type="button"
+                disabled={draftPublishing || preview.status !== "DRAFT" || preview.preview_source !== "workflow_template_draft"}
+                onClick={publishDraft}
+                className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {draftPublishing ? "Publishing..." : "Publish draft"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
