@@ -532,6 +532,73 @@ def list_tenants(
 
 # --- Project Endpoints ---
 
+def _project_edit_policy(db: Session, project: Project, tenant_id: str) -> dict:
+    from app.modules.workflow.models import CropCycle
+
+    farmer_count = db.query(Farmer).filter(
+        Farmer.tenant_id == tenant_id,
+        Farmer.project_id == project.id,
+        Farmer.status != "ARCHIVED",
+    ).count()
+    parcel_count = db.query(Parcel).filter(
+        Parcel.tenant_id == tenant_id,
+        Parcel.project_id == project.id,
+        Parcel.status != "ARCHIVED",
+    ).count()
+    crop_cycle_count = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.project_id == project.id,
+        CropCycle.status != "ARCHIVED",
+    ).count()
+
+    locked_reasons = []
+    if project.status in {"ACTIVE", "COMPLETED", "ARCHIVED"}:
+        locked_reasons.append({
+            "code": f"PROJECT_{project.status}",
+            "message": f"Project status is {project.status}; core configuration edits are locked.",
+        })
+    if farmer_count > 0:
+        locked_reasons.append({"code": "FARMERS_ENROLLED", "message": "Farmers are already enrolled in this project."})
+    if parcel_count > 0:
+        locked_reasons.append({"code": "PARCELS_REGISTERED", "message": "Land parcels are already linked to this project."})
+    if crop_cycle_count > 0:
+        locked_reasons.append({"code": "CROP_CYCLES_STARTED", "message": "Crop cycles already exist for this project."})
+
+    can_edit_core_config = len(locked_reasons) == 0
+    return {
+        "schema_version": "project_edit_policy.v1",
+        "project_id": str(project.id),
+        "tenant_id": tenant_id,
+        "project_status": project.status,
+        "can_edit_core_config": can_edit_core_config,
+        "lock_state": "OPEN" if can_edit_core_config else "LOCKED",
+        "locked_fields": [] if can_edit_core_config else [
+            "start_date",
+            "end_date",
+            "geography_scope",
+            "crop_scope",
+            "workflow_enablements",
+            "workflow_template_assignments",
+        ],
+        "allowed_changes": ["name", "description"] if not can_edit_core_config else [
+            "name",
+            "description",
+            "start_date",
+            "end_date",
+            "geography_scope",
+            "crop_scope",
+            "workflow_enablements",
+            "workflow_template_assignments",
+        ],
+        "counts": {
+            "farmers": farmer_count,
+            "parcels": parcel_count,
+            "crop_cycles": crop_cycle_count,
+        },
+        "reasons": locked_reasons,
+    }
+
+
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
 def create_project(
     body: ProjectCreate,
@@ -572,6 +639,19 @@ def list_projects(
     if status:
         query = query.filter(Project.status == status)
     return query.order_by(Project.start_date.desc()).all()
+
+
+@router.get("/projects/{project_id}/edit-policy")
+def get_project_edit_policy(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return whether core project configuration can still be edited safely."""
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    return _project_edit_policy(db, project, x_tenant_id)
 
 
 @router.post("/projects/{project_id}/roles", status_code=201)

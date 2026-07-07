@@ -40,6 +40,7 @@ export default function WorkflowPreviewPage() {
   const [busyTarget, setBusyTarget] = useState<string | null>(null);
   const [overrideHistory, setOverrideHistory] = useState<WorkflowOverrideHistoryResponse | null>(null);
   const [draftCloneMessage, setDraftCloneMessage] = useState<string | null>(null);
+  const [draftCloneId, setDraftCloneId] = useState<string | null>(null);
   const [draftCloning, setDraftCloning] = useState(false);
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
@@ -53,8 +54,11 @@ export default function WorkflowPreviewPage() {
   useEffect(() => {
     if (!params.versionId) return;
     const projectId = searchParams.get("project_id") || undefined;
-    workflowCatalogApi
-      .preview(params.versionId, { projectId })
+    const isDraftPreview = searchParams.get("draft") === "true";
+    const request = isDraftPreview
+      ? workflowCatalogApi.draftPreview(params.versionId)
+      : workflowCatalogApi.preview(params.versionId, { projectId });
+    request
       .then((payload) => {
         setPreview(payload);
         if (payload.project_id) {
@@ -101,9 +105,11 @@ export default function WorkflowPreviewPage() {
     if (!preview) return;
     setDraftCloning(true);
     setDraftCloneMessage(null);
+    setDraftCloneId(null);
     setError(null);
     try {
       const draft = await workflowCatalogApi.cloneDraftVersion(preview.workflow_template_id, preview.workflow_template_version_id);
+      setDraftCloneId(draft.draft_version_id);
       setDraftCloneMessage(`Draft ${draft.version} created with ${draft.stage_count} stages and ${draft.recommendation_count} recommendations. ID: ${draft.draft_version_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to clone draft version");
@@ -171,7 +177,12 @@ export default function WorkflowPreviewPage() {
             <p className="mt-1 text-sm text-gray-500">
               {preview.workflow_template_code} · version {preview.version} · {preview.status}
             </p>
-            {draftCloneMessage ? <p className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">{draftCloneMessage}</p> : null}
+            {draftCloneMessage ? (
+              <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">
+                <p>{draftCloneMessage}</p>
+                {draftCloneId ? <Link className="mt-2 inline-block font-medium underline" href={`/workflows/preview/${draftCloneId}?draft=true`}>Open draft preview</Link> : null}
+              </div>
+            ) : null}
           </div>
           <div className="text-right text-xs text-gray-500">
             <p>Template: <span className="font-mono">{preview.workflow_template_id}</span></p>

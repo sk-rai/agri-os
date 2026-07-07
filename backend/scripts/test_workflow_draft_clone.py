@@ -121,6 +121,19 @@ def main():
 
         draft_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{draft_version_id}", headers=headers)
         check(draft_preview.status_code == 404, "Published preview endpoint does not serve draft versions", f"Status: {draft_preview.status_code}")
+
+        admin_draft_preview = client.get(f"/api/v1/workflow-catalog/draft-preview/{draft_version_id}", headers=headers)
+        check(admin_draft_preview.status_code == 200, "Admin draft preview endpoint returns 200", f"Status: {admin_draft_preview.status_code}")
+        draft_preview_payload = admin_draft_preview.json()
+        check(draft_preview_payload["status"] == "DRAFT", "Admin draft preview reports DRAFT status")
+        check(draft_preview_payload["preview_source"] == "workflow_template_draft", "Admin draft preview source is explicit")
+        check(draft_preview_payload["enablement_source"] == "draft_admin_preview", "Admin draft preview is not Android enablement sourced")
+        check(len(draft_preview_payload["android_preview"]["stages"]) == len(source_stages), "Admin draft preview renders copied stages")
+        draft_preview_rec_count = sum(
+            len(stage.get("recommended_activities", []))
+            for stage in draft_preview_payload["android_preview"]["stages"]
+        )
+        check(draft_preview_rec_count == source_recommendation_count, "Admin draft preview renders copied recommendations")
     finally:
         cleanup_draft(db, draft_version_id)
         db.close()

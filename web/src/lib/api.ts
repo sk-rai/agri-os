@@ -358,6 +358,8 @@ export const workflowCatalogApi = {
       method: "POST",
       body: data || {},
     }),
+  draftPreview: (versionId: string) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
   projectEnablements: (projectId: string) =>
     api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
   updateProjectEnablement: (

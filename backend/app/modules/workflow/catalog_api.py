@@ -30,6 +30,7 @@ from app.modules.workflow.template_service import (
     list_enabled_workflow_versions,
     workflow_template_metadata,
     scoped_overrides,
+    workflow_version_to_stage_definitions,
     workflow_version_to_stage_definitions_for_scope,
 )
 
@@ -350,6 +351,51 @@ def _preview_warnings(stages: list[dict], known_input_codes: set[str]) -> list[d
     return warnings
 
 
+def _workflow_preview_payload(
+    *,
+    template: WorkflowTemplate,
+    version: WorkflowTemplateVersion,
+    crop: Optional[Crop],
+    stages: list[dict],
+    overrides: list[WorkflowTemplateOverride],
+    warnings: list[dict],
+    tenant_id: str,
+    project_id=None,
+    preview_source: str = "workflow_template",
+    enablement_source: str = "implicit_default",
+    enablement=None,
+) -> dict:
+    total_duration_days = sum(int(stage.get("duration_days") or 0) for stage in stages)
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": tenant_id,
+        "project_id": str(project_id) if project_id else None,
+        "preview_source": preview_source,
+        "workflow_template_id": str(template.id),
+        "workflow_template_version_id": str(version.id),
+        "workflow_template_code": template.code,
+        "version": version.version_number,
+        "status": version.status,
+        "enablement_source": enablement_source,
+        "label": _label(template, enablement),
+        "crop_code": template.crop_code,
+        "crop_name": crop.canonical_name if crop else template.crop_code,
+        "season_code": template.season_code,
+        "propagation_type_code": template.propagation_type_code,
+        "total_duration_days": total_duration_days,
+        "applied_overrides": [_override_payload(override) for override in overrides],
+        "warnings": warnings,
+        "android_preview": {
+            "crop_code": template.crop_code,
+            "crop_name": crop.canonical_name if crop else template.crop_code,
+            "season_code": template.season_code,
+            "total_duration_days": total_duration_days,
+            "propagation_method": template.propagation_type_code,
+            "stages": stages,
+        },
+    }
+
+
 @router.get("/workflow-preview/{workflow_template_version_id}")
 def preview_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
@@ -379,34 +425,65 @@ def preview_workflow_template_version(
     known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
     warnings = _preview_warnings(stages, known_input_codes)
 
-    return {
-        "schema_version": "1.0.0",
-        "tenant_id": x_tenant_id,
-        "project_id": str(project_id) if project_id else None,
-        "preview_source": "workflow_template",
-        "workflow_template_id": str(template.id),
-        "workflow_template_version_id": str(version.id),
-        "workflow_template_code": template.code,
-        "version": version.version_number,
-        "status": version.status,
-        "enablement_source": "explicit" if enablement else "implicit_default",
-        "label": _label(template, enablement),
-        "crop_code": template.crop_code,
-        "crop_name": crop.canonical_name if crop else template.crop_code,
-        "season_code": template.season_code,
-        "propagation_type_code": template.propagation_type_code,
-        "total_duration_days": sum(int(stage.get("duration_days") or 0) for stage in stages),
-        "applied_overrides": [_override_payload(override) for override in overrides],
-        "warnings": warnings,
-        "android_preview": {
-            "crop_code": template.crop_code,
-            "crop_name": crop.canonical_name if crop else template.crop_code,
-            "season_code": template.season_code,
-            "total_duration_days": sum(int(stage.get("duration_days") or 0) for stage in stages),
-            "propagation_method": template.propagation_type_code,
-            "stages": stages,
-        },
-    }
+    return _workflow_preview_payload(
+        template=template,
+        version=version,
+        crop=crop,
+        stages=stages,
+        overrides=overrides,
+        warnings=warnings,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        preview_source="workflow_template",
+        enablement_source="explicit" if enablement else "implicit_default",
+        enablement=enablement,
+    )
+
+
+@router.get("/draft-preview/{workflow_template_version_id}")
+def preview_draft_workflow_template_version(
+    workflow_template_version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Admin-only preview for DRAFT workflow versions.
+
+    Android/public preview remains /workflow-preview and continues to serve only
+    published, enabled workflow versions.
+    """
+    row = (
+        db.query(WorkflowTemplate, WorkflowTemplateVersion)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+        .filter(
+            WorkflowTemplateVersion.id == workflow_template_version_id,
+            WorkflowTemplateVersion.status == "DRAFT",
+            WorkflowTemplateVersion.is_active == True,
+            WorkflowTemplate.is_active == True,
+            WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Draft workflow template version not found")
+
+    template, version = row
+    crop = db.query(Crop).filter(Crop.code == template.crop_code).first()
+    stages = workflow_version_to_stage_definitions(db, version.id)
+    known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
+    warnings = _preview_warnings(stages, known_input_codes)
+    return _workflow_preview_payload(
+        template=template,
+        version=version,
+        crop=crop,
+        stages=stages,
+        overrides=[],
+        warnings=warnings,
+        tenant_id=x_tenant_id,
+        project_id=None,
+        preview_source="workflow_template_draft",
+        enablement_source="draft_admin_preview",
+        enablement=None,
+    )
 
 
 
