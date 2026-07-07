@@ -7,6 +7,7 @@ visible for a tenant/project. Admin write APIs can build on the same tables late
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -17,7 +18,14 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, Crop
-from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateEnablement, WorkflowTemplateOverride, WorkflowTemplateVersion
+from app.modules.workflow.models import (
+    WorkflowTemplate,
+    WorkflowTemplateEnablement,
+    WorkflowTemplateOverride,
+    WorkflowTemplateRecommendation,
+    WorkflowTemplateStage,
+    WorkflowTemplateVersion,
+)
 from app.modules.workflow.template_service import (
     list_enabled_workflow_versions,
     workflow_template_metadata,
@@ -42,6 +50,10 @@ class WorkflowOverrideCreate(BaseModel):
     override_payload: dict = {}
     priority: int = 100
     reason: Optional[str] = None
+
+
+class WorkflowDraftCloneRequest(BaseModel):
+    version_number: Optional[str] = None
 
 
 def _validate_override_payload(target_type: str, operation: str, payload: dict) -> None:
@@ -396,6 +408,163 @@ def preview_workflow_template_version(
         },
     }
 
+
+
+def _next_draft_version_number(db: Session, template_id: uuid.UUID, source_version: str, requested: Optional[str]) -> str:
+    if requested:
+        candidate = requested
+    else:
+        candidate = f"{source_version}-draft"
+    existing = {
+        row.version_number
+        for row in db.query(WorkflowTemplateVersion.version_number)
+        .filter(WorkflowTemplateVersion.template_id == template_id)
+        .all()
+    }
+    if candidate not in existing:
+        return candidate
+    base = candidate
+    suffix = 2
+    while f"{base}-{suffix}" in existing:
+        suffix += 1
+    return f"{base}-{suffix}"
+
+
+@router.post("/templates/{template_id}/versions/{version_id}/clone-draft")
+def clone_workflow_template_version_to_draft(
+    template_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: WorkflowDraftCloneRequest = WorkflowDraftCloneRequest(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Clone a published workflow version into an editable draft version."""
+    row = (
+        db.query(WorkflowTemplate, WorkflowTemplateVersion)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+        .filter(
+            WorkflowTemplate.id == template_id,
+            WorkflowTemplateVersion.id == version_id,
+            WorkflowTemplateVersion.template_id == template_id,
+            WorkflowTemplate.is_active == True,
+            WorkflowTemplateVersion.is_active == True,
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Published workflow template version not found")
+
+    template, source_version = row
+    now = datetime.now(timezone.utc)
+    draft_version_id = uuid.uuid4()
+    draft_version_number = _next_draft_version_number(db, template.id, source_version.version_number, body.version_number)
+    draft_metadata = deepcopy(source_version.metadata_ or {})
+    draft_metadata.update({
+        "source_version_id": str(source_version.id),
+        "source_version_number": source_version.version_number,
+        "cloned_from_status": source_version.status,
+    })
+    draft_version = WorkflowTemplateVersion(
+        id=draft_version_id,
+        template_id=template.id,
+        version_number=draft_version_number,
+        status="DRAFT",
+        effective_from=source_version.effective_from,
+        effective_to=source_version.effective_to,
+        total_duration_days=source_version.total_duration_days,
+        schema_version=source_version.schema_version,
+        metadata_=draft_metadata,
+        published_at=None,
+        published_by=None,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(draft_version)
+    db.flush()
+
+    source_stages = (
+        db.query(WorkflowTemplateStage)
+        .filter(
+            WorkflowTemplateStage.template_version_id == source_version.id,
+            WorkflowTemplateStage.is_active == True,
+        )
+        .order_by(WorkflowTemplateStage.stage_order)
+        .all()
+    )
+    stage_id_map = {}
+    for stage in source_stages:
+        new_stage_id = uuid.uuid4()
+        stage_id_map[stage.id] = new_stage_id
+        db.add(WorkflowTemplateStage(
+            id=new_stage_id,
+            template_version_id=draft_version_id,
+            stage_code=stage.stage_code,
+            stage_name=deepcopy(stage.stage_name or {}),
+            stage_order=stage.stage_order,
+            duration_days=stage.duration_days,
+            stage_type=stage.stage_type,
+            phase=stage.phase,
+            bbch_range=deepcopy(stage.bbch_range),
+            propagation_step=stage.propagation_step,
+            description=deepcopy(stage.description),
+            farmer_actions=deepcopy(stage.farmer_actions or []),
+            typical_inputs=deepcopy(stage.typical_inputs or []),
+            key_observations=deepcopy(stage.key_observations or []),
+            icon=stage.icon,
+            color=stage.color,
+            metadata_=deepcopy(stage.metadata_ or {}),
+            created_at=now,
+            updated_at=now,
+        ))
+
+    db.flush()
+
+    source_recommendations = []
+    if source_stages:
+        source_recommendations = (
+            db.query(WorkflowTemplateRecommendation)
+            .filter(
+                WorkflowTemplateRecommendation.template_stage_id.in_([stage.id for stage in source_stages]),
+                WorkflowTemplateRecommendation.is_active == True,
+            )
+            .order_by(
+                WorkflowTemplateRecommendation.template_stage_id,
+                WorkflowTemplateRecommendation.sort_order,
+                WorkflowTemplateRecommendation.day_offset,
+            )
+            .all()
+        )
+        for rec in source_recommendations:
+            db.add(WorkflowTemplateRecommendation(
+                id=uuid.uuid4(),
+                template_stage_id=stage_id_map[rec.template_stage_id],
+                sort_order=rec.sort_order,
+                day_offset=rec.day_offset,
+                activity_type=rec.activity_type,
+                input_code=rec.input_code,
+                input_name=rec.input_name,
+                typical_quantity=rec.typical_quantity,
+                typical_cost_per_acre=rec.typical_cost_per_acre,
+                is_critical=rec.is_critical,
+                description=deepcopy(rec.description),
+                metadata_=deepcopy(rec.metadata_ or {}),
+                created_at=now,
+                updated_at=now,
+            ))
+
+    db.commit()
+    return {
+        "schema_version": "1.0.0",
+        "workflow_template_id": str(template.id),
+        "source_version_id": str(source_version.id),
+        "draft_version_id": str(draft_version_id),
+        "version": draft_version_number,
+        "status": "DRAFT",
+        "stage_count": len(source_stages),
+        "recommendation_count": len(source_recommendations),
+    }
 
 
 @router.get("/projects/{project_id}/workflow-overrides")

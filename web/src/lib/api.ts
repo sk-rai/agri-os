@@ -225,6 +225,17 @@ export interface WorkflowOverrideCreateRequest {
   reason?: string | null;
 }
 
+export interface WorkflowDraftCloneResponse {
+  schema_version: string;
+  workflow_template_id: string;
+  source_version_id: string;
+  draft_version_id: string;
+  version: string;
+  status: "DRAFT" | string;
+  stage_count: number;
+  recommendation_count: number;
+}
+
 export interface WorkflowPreviewResponse {
   schema_version: string;
   tenant_id: string;
@@ -342,6 +353,11 @@ export const workflowCatalogApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/workflow-preview/${versionId}${suffix}`);
   },
+  cloneDraftVersion: (templateId: string, versionId: string, data?: { version_number?: string }) =>
+    api<WorkflowDraftCloneResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions/${versionId}/clone-draft`, {
+      method: "POST",
+      body: data || {},
+    }),
   projectEnablements: (projectId: string) =>
     api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
   updateProjectEnablement: (

@@ -39,6 +39,8 @@ export default function WorkflowPreviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyTarget, setBusyTarget] = useState<string | null>(null);
   const [overrideHistory, setOverrideHistory] = useState<WorkflowOverrideHistoryResponse | null>(null);
+  const [draftCloneMessage, setDraftCloneMessage] = useState<string | null>(null);
+  const [draftCloning, setDraftCloning] = useState(false);
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
     const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
@@ -92,6 +94,21 @@ export default function WorkflowPreviewPage() {
       setError(e instanceof Error ? e.message : "Failed to create override");
     } finally {
       setBusyTarget(null);
+    }
+  };
+
+  const cloneDraft = async () => {
+    if (!preview) return;
+    setDraftCloning(true);
+    setDraftCloneMessage(null);
+    setError(null);
+    try {
+      const draft = await workflowCatalogApi.cloneDraftVersion(preview.workflow_template_id, preview.workflow_template_version_id);
+      setDraftCloneMessage(`Draft ${draft.version} created with ${draft.stage_count} stages and ${draft.recommendation_count} recommendations. ID: ${draft.draft_version_id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clone draft version");
+    } finally {
+      setDraftCloning(false);
     }
   };
 
@@ -154,10 +171,19 @@ export default function WorkflowPreviewPage() {
             <p className="mt-1 text-sm text-gray-500">
               {preview.workflow_template_code} · version {preview.version} · {preview.status}
             </p>
+            {draftCloneMessage ? <p className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">{draftCloneMessage}</p> : null}
           </div>
           <div className="text-right text-xs text-gray-500">
             <p>Template: <span className="font-mono">{preview.workflow_template_id}</span></p>
             <p>Version: <span className="font-mono">{preview.workflow_template_version_id}</span></p>
+            <button
+              type="button"
+              disabled={draftCloning || preview.status !== "PUBLISHED"}
+              onClick={cloneDraft}
+              className="mt-3 rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              {draftCloning ? "Cloning draft..." : "Clone draft"}
+            </button>
           </div>
         </div>
       </div>
