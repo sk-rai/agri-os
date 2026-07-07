@@ -184,6 +184,27 @@ export interface WorkflowPreviewWarning {
   target?: string | null;
 }
 
+export interface WorkflowDraftValidationResponse {
+  schema_version: string;
+  tenant_id: string;
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  version: string;
+  status: string;
+  can_publish: boolean;
+  counts: {
+    total: number;
+    errors: number;
+    warnings: number;
+    info: number;
+    stages: number;
+    recommendations: number;
+  };
+  issues: WorkflowPreviewWarning[];
+  issues_by_level: Record<string, WorkflowPreviewWarning[]>;
+}
+
 export interface AppliedWorkflowOverride {
   id: string;
   tenant_id?: string;
@@ -432,6 +453,8 @@ export const workflowCatalogApi = {
     }),
   draftPreview: (versionId: string) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
+  validateDraftVersion: (versionId: string) =>
+    api<WorkflowDraftValidationResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/validation`),
   publishDraftVersion: (versionId: string, data?: { archive_previous?: boolean }) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/publish`, {
       method: "POST",

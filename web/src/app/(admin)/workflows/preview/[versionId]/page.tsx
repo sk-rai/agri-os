@@ -9,6 +9,7 @@ import {
   type AgriInputDto,
   type WorkflowDraftRecommendationRequest,
   type WorkflowDraftStageUpdateRequest,
+  type WorkflowDraftValidationResponse,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
   type WorkflowRecommendation,
@@ -46,6 +47,8 @@ export default function WorkflowPreviewPage() {
   const [draftCloning, setDraftCloning] = useState(false);
   const [draftPublishing, setDraftPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
+  const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
+  const [draftValidating, setDraftValidating] = useState(false);
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
     const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
@@ -105,6 +108,22 @@ export default function WorkflowPreviewPage() {
     }
   };
 
+  const validateDraft = async () => {
+    if (!preview) return null;
+    setDraftValidating(true);
+    setError(null);
+    try {
+      const validation = await workflowCatalogApi.validateDraftVersion(preview.workflow_template_version_id);
+      setDraftValidation(validation);
+      return validation;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to validate draft version");
+      return null;
+    } finally {
+      setDraftValidating(false);
+    }
+  };
+
   const cloneDraft = async () => {
     if (!preview) return;
     setDraftCloning(true);
@@ -128,8 +147,15 @@ export default function WorkflowPreviewPage() {
     setPublishMessage(null);
     setError(null);
     try {
+      const validation = await workflowCatalogApi.validateDraftVersion(preview.workflow_template_version_id);
+      setDraftValidation(validation);
+      if (!validation.can_publish) {
+        setError("Draft has blocking validation errors. Fix ERROR items before publishing.");
+        return;
+      }
       const published = await workflowCatalogApi.publishDraftVersion(preview.workflow_template_version_id, { archive_previous: true });
       setPreview(published);
+      setDraftValidation(null);
       setPublishMessage(`Published ${published.workflow_template_code} version ${published.version}. Android catalog will now serve this version.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to publish draft version");
@@ -145,6 +171,7 @@ export default function WorkflowPreviewPage() {
     try {
       const updated = await workflowCatalogApi.updateDraftStage(preview.workflow_template_version_id, stageCode, data);
       setPreview(updated);
+      setDraftValidation(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update draft stage");
     } finally {
@@ -159,6 +186,7 @@ export default function WorkflowPreviewPage() {
     try {
       const updated = await workflowCatalogApi.createDraftRecommendation(preview.workflow_template_version_id, stageCode, data);
       setPreview(updated);
+      setDraftValidation(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add draft recommendation");
     } finally {
@@ -173,6 +201,7 @@ export default function WorkflowPreviewPage() {
     try {
       const updated = await workflowCatalogApi.updateDraftRecommendation(preview.workflow_template_version_id, recommendationId, data);
       setPreview(updated);
+      setDraftValidation(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update draft recommendation");
     } finally {
@@ -187,6 +216,7 @@ export default function WorkflowPreviewPage() {
     try {
       const updated = await workflowCatalogApi.deleteDraftRecommendation(preview.workflow_template_version_id, recommendationId);
       setPreview(updated);
+      setDraftValidation(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete draft recommendation");
     } finally {
@@ -213,6 +243,8 @@ export default function WorkflowPreviewPage() {
   if (error) return <div className="text-red-500">Error: {error}</div>;
   if (!preview) return null;
 
+  const isDraftPreview = preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft";
+  const publishBlocked = Boolean(draftValidation && !draftValidation.can_publish);
   const stages = preview.android_preview.stages || [];
   const recommendations = stages.flatMap((stage) => stage.recommended_activities || []);
   const warningCounts = preview.warnings.reduce<Record<string, number>>((acc, warning) => {
@@ -277,9 +309,18 @@ export default function WorkflowPreviewPage() {
               </button>
               <button
                 type="button"
-                disabled={draftPublishing || preview.status !== "DRAFT" || preview.preview_source !== "workflow_template_draft"}
+                disabled={draftValidating || !isDraftPreview}
+                onClick={validateDraft}
+                className="rounded border border-yellow-200 px-3 py-1.5 text-xs font-medium text-yellow-700 hover:bg-yellow-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                {draftValidating ? "Validating..." : "Validate draft"}
+              </button>
+              <button
+                type="button"
+                disabled={draftPublishing || draftValidating || !isDraftPreview || publishBlocked}
                 onClick={publishDraft}
                 className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                title={publishBlocked ? "Fix blocking validation errors before publishing" : undefined}
               >
                 {draftPublishing ? "Publishing..." : "Publish draft"}
               </button>
@@ -287,6 +328,10 @@ export default function WorkflowPreviewPage() {
           </div>
         </div>
       </div>
+
+      {isDraftPreview ? (
+        <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
+      ) : null}
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
         <WarningsPanel warnings={preview.warnings} warningCounts={warningCounts} />
@@ -349,6 +394,92 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
     <div className={`rounded-lg p-4 shadow ${toneClass}`}>
       <p className="text-xs uppercase tracking-wide opacity-70">{label}</p>
       <p className="mt-1 text-3xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function DraftValidationPanel({
+  validation,
+  validating,
+  onValidate,
+}: {
+  validation: WorkflowDraftValidationResponse | null;
+  validating: boolean;
+  onValidate: () => void;
+}) {
+  const errors = validation?.issues_by_level.ERROR || [];
+  const warnings = validation?.issues_by_level.WARN || [];
+  const info = validation?.issues_by_level.INFO || [];
+  return (
+    <div className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Draft Validation</h2>
+          <p className="text-sm text-gray-500">Run before publishing. ERROR items block publish; warnings are advisory.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {validation ? (
+            <>
+              <Badge>Errors {validation.counts.errors}</Badge>
+              <Badge>Warnings {validation.counts.warnings}</Badge>
+              <Badge>Info {validation.counts.info}</Badge>
+              <Badge>{validation.can_publish ? "Publish ready" : "Publish blocked"}</Badge>
+            </>
+          ) : null}
+          <button
+            type="button"
+            disabled={validating}
+            onClick={onValidate}
+            className="rounded border border-yellow-200 px-3 py-1.5 font-medium text-yellow-700 hover:bg-yellow-50 disabled:cursor-wait disabled:opacity-60"
+          >
+            {validating ? "Validating..." : validation ? "Revalidate" : "Validate now"}
+          </button>
+        </div>
+      </div>
+
+      {!validation ? (
+        <p className="rounded bg-yellow-50 p-3 text-sm text-yellow-700">Draft has not been validated since the last edit.</p>
+      ) : validation.issues.length === 0 ? (
+        <p className="rounded bg-green-50 p-3 text-sm text-green-700">No validation issues. Draft can be published.</p>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-3">
+          <ValidationIssueGroup title="Blocking errors" tone="error" issues={errors} />
+          <ValidationIssueGroup title="Warnings" tone="warn" issues={warnings} />
+          <ValidationIssueGroup title="Info" tone="info" issues={info} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ValidationIssueGroup({
+  title,
+  tone,
+  issues,
+}: {
+  title: string;
+  tone: "error" | "warn" | "info";
+  issues: WorkflowPreviewWarning[];
+}) {
+  const toneClass = tone === "error" ? "border-red-200 bg-red-50" : tone === "warn" ? "border-yellow-200 bg-yellow-50" : "border-blue-200 bg-blue-50";
+  return (
+    <div className={`rounded border p-3 ${toneClass}`}>
+      <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      {issues.length === 0 ? (
+        <p className="mt-2 text-xs text-gray-500">None</p>
+      ) : (
+        <div className="mt-2 max-h-56 space-y-2 overflow-auto">
+          {issues.map((issue, index) => (
+            <div key={`${issue.code}-${issue.target || index}`} className="rounded bg-white/70 p-2 text-xs">
+              <div className="flex flex-wrap gap-2">
+                <span className="font-mono text-gray-500">{issue.code}</span>
+                {issue.target ? <span className="font-mono text-gray-400">{issue.target}</span> : null}
+              </div>
+              <p className="mt-1 text-gray-800">{issue.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

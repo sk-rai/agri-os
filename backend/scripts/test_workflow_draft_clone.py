@@ -252,6 +252,14 @@ def main():
             "Deleted draft recommendation is removed from preview",
         )
 
+        validation = client.get(f"/api/v1/workflow-catalog/drafts/{draft_version_id}/validation", headers=headers)
+        check(validation.status_code == 200, "Draft validation report returns 200", f"Status: {validation.status_code}")
+        validation_payload = validation.json()
+        check(validation_payload["workflow_template_version_id"] == draft_version_id, "Validation report references draft version")
+        check(validation_payload["can_publish"] is True, "Validation report allows publishable draft")
+        check("ERROR" in validation_payload["issues_by_level"], "Validation report groups errors")
+        check(validation_payload["counts"]["stages"] == len(delete_rec_payload["android_preview"]["stages"]), "Validation report includes stage count")
+
         publish = client.post(
             f"/api/v1/workflow-catalog/drafts/{draft_version_id}/publish",
             headers=headers,

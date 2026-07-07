@@ -577,14 +577,33 @@ def _render_published_version_preview(db: Session, template: WorkflowTemplate, v
     )
 
 
-def _validate_draft_for_publish(db: Session, version_id) -> tuple[list[dict], list[dict]]:
+def _draft_validation(db: Session, version_id) -> tuple[list[dict], dict]:
     stages = workflow_version_to_stage_definitions(db, version_id)
-    warnings = _preview_warnings(stages, _known_input_codes(db))
+    issues = _preview_warnings(stages, _known_input_codes(db))
     if not stages:
-        warnings.append({"level": "ERROR", "code": "DRAFT_WITHOUT_STAGES", "message": "Draft workflow must have at least one stage", "target": str(version_id)})
-    if any(warning.get("level") == "ERROR" for warning in warnings):
-        raise HTTPException(400, {"message": "Draft workflow has blocking validation errors", "warnings": warnings})
-    return stages, warnings
+        issues.append({"level": "ERROR", "code": "DRAFT_WITHOUT_STAGES", "message": "Draft workflow must have at least one stage", "target": str(version_id)})
+
+    issues_by_level = {"ERROR": [], "WARN": [], "INFO": []}
+    for issue in issues:
+        level = str(issue.get("level") or "INFO").upper()
+        issues_by_level.setdefault(level, []).append(issue)
+
+    recommendation_count = sum(len(stage.get("recommended_activities", []) or []) for stage in stages)
+    report = {
+        "schema_version": "1.0.0",
+        "can_publish": len(issues_by_level.get("ERROR", [])) == 0,
+        "counts": {
+            "total": len(issues),
+            "errors": len(issues_by_level.get("ERROR", [])),
+            "warnings": len(issues_by_level.get("WARN", [])),
+            "info": len(issues_by_level.get("INFO", [])),
+            "stages": len(stages),
+            "recommendations": recommendation_count,
+        },
+        "issues": issues,
+        "issues_by_level": issues_by_level,
+    }
+    return stages, report
 
 
 @router.get("/draft-preview/{workflow_template_version_id}")
@@ -599,6 +618,26 @@ def preview_draft_workflow_template_version(
     published, enabled workflow versions.
     """
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+
+
+@router.get("/drafts/{workflow_template_version_id}/validation")
+def validate_draft_workflow_template_version(
+    workflow_template_version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Return non-mutating validation report for a DRAFT workflow version."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    _, report = _draft_validation(db, version.id)
+    return {
+        **report,
+        "tenant_id": x_tenant_id,
+        "workflow_template_id": str(template.id),
+        "workflow_template_version_id": str(version.id),
+        "workflow_template_code": template.code,
+        "version": version.version_number,
+        "status": version.status,
+    }
 
 
 @router.patch("/drafts/{workflow_template_version_id}/stages/{stage_code}")
@@ -835,7 +874,9 @@ def publish_draft_workflow_template_version(
 ):
     """Publish a validated DRAFT workflow version and make it Android-visible."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
-    stages, warnings = _validate_draft_for_publish(db, version.id)
+    stages, validation = _draft_validation(db, version.id)
+    if not validation["can_publish"]:
+        raise HTTPException(400, {"message": "Draft workflow has blocking validation errors", "validation": validation})
     now = datetime.now(timezone.utc)
 
     if body.archive_previous:
@@ -873,7 +914,8 @@ def publish_draft_workflow_template_version(
     db.commit()
     db.refresh(version)
     payload = _render_published_version_preview(db, template, version, x_tenant_id)
-    payload["warnings"] = warnings
+    payload["warnings"] = validation["issues"]
+    payload["validation"] = validation
     return payload
 
 
