@@ -272,6 +272,11 @@ export interface WorkflowTemplateVersionHistoryItem {
   total_duration_days?: number | null;
   stage_count: number;
   recommendation_count: number;
+  pinned_cycle_count?: number;
+  active_pinned_cycle_count?: number;
+  usage_count?: number;
+  active_usage_count?: number;
+  is_read_only_for_existing_cycles?: boolean;
   schema_version: string;
   metadata?: Record<string, unknown>;
   created_at?: string | null;

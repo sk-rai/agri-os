@@ -255,6 +255,10 @@ class CropCycle(Base, UUIDPrimaryKey, AuditMixin):
         ForeignKey("crop_lifecycle_templates.id"),
         nullable=False,
     )
+    workflow_template_version_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_template_versions.id"),
+    )
 
     # Dates
     planned_sowing_date = Column(Date)
@@ -283,6 +287,7 @@ class CropCycle(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_crop_cycle_parcel", "parcel_id"),
         Index("idx_crop_cycle_status", "status"),
         Index("idx_crop_cycle_season", "season_code"),
+        Index("idx_crop_cycle_workflow_version", "workflow_template_version_id"),
         CheckConstraint(
             "status IN ('PLANNED', 'ACTIVE', 'PARTIALLY_TRACKED', 'COMPLETED', 'ABANDONED', 'ARCHIVED')",
             name="ck_crop_cycle_status",

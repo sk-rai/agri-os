@@ -250,6 +250,9 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
                       {version.is_current_published ? <Badge>Android active</Badge> : null}
                       <Badge>{version.stage_count} stages</Badge>
                       <Badge>{version.recommendation_count} recs</Badge>
+                      <Badge>{version.pinned_cycle_count ?? version.usage_count ?? 0} pinned cycles</Badge>
+                      <Badge>{version.active_pinned_cycle_count ?? version.active_usage_count ?? 0} active pinned</Badge>
+                      {version.is_read_only_for_existing_cycles ? <Badge>Existing cycles read-only</Badge> : null}
                     </div>
                     <p className="mt-2 font-mono text-xs text-gray-500">{version.workflow_template_version_id}</p>
                     <p className="mt-1 font-semibold text-gray-900">Version {version.version}</p>

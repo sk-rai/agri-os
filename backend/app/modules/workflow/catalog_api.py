@@ -49,6 +49,19 @@ def _actor_uuid(x_actor_id: Optional[str]):
         raise HTTPException(400, "X-Actor-ID must be a UUID when supplied")
 
 
+def _ensure_crop_cycle_workflow_version_column(db: Session) -> None:
+    """Ensure workflow version pinning exists for catalog usage reporting."""
+    db.execute(text(
+        "ALTER TABLE crop_cycles "
+        "ADD COLUMN IF NOT EXISTS workflow_template_version_id UUID "
+        "REFERENCES workflow_template_versions(id)"
+    ))
+    db.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_crop_cycle_workflow_version "
+        "ON crop_cycles(workflow_template_version_id)"
+    ))
+
+
 def _ensure_workflow_audit_table(db: Session) -> None:
     """Create workflow audit table in migration-light MVP environments."""
     db.execute(text("""
@@ -1441,6 +1454,14 @@ def _workflow_version_summary(
             WorkflowTemplateRecommendation.template_stage_id.in_(stage_ids),
             WorkflowTemplateRecommendation.is_active == True,
         ).count()
+    pinned_cycle_count = db.query(CropCycle).filter(
+        CropCycle.workflow_template_version_id == version.id,
+        CropCycle.status != "ARCHIVED",
+    ).count()
+    active_pinned_cycle_count = db.query(CropCycle).filter(
+        CropCycle.workflow_template_version_id == version.id,
+        CropCycle.status.in_(WORKFLOW_ACTIVE_CYCLE_STATUSES),
+    ).count()
     return {
         "workflow_template_id": str(template.id),
         "workflow_template_version_id": str(version.id),
@@ -1455,6 +1476,11 @@ def _workflow_version_summary(
         "total_duration_days": version.total_duration_days,
         "stage_count": stage_count,
         "recommendation_count": recommendation_count,
+        "pinned_cycle_count": pinned_cycle_count,
+        "active_pinned_cycle_count": active_pinned_cycle_count,
+        "usage_count": pinned_cycle_count,
+        "active_usage_count": active_pinned_cycle_count,
+        "is_read_only_for_existing_cycles": pinned_cycle_count > 0,
         "schema_version": version.schema_version,
         "metadata": version.metadata_ or {},
         "created_at": version.created_at.isoformat() if version.created_at else None,
@@ -1469,6 +1495,7 @@ def list_workflow_template_versions(
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
     """Return version history for a workflow template, including DRAFT/PUBLISHED/ARCHIVED rows."""
+    _ensure_crop_cycle_workflow_version_column(db)
     template = db.query(WorkflowTemplate).filter(
         WorkflowTemplate.id == template_id,
         WorkflowTemplate.is_active == True,

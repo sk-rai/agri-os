@@ -14,6 +14,7 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
@@ -30,6 +31,19 @@ from app.modules.farmer.models import Parcel
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
+
+
+def _ensure_crop_cycle_workflow_version_column(db: Session) -> None:
+    """Add workflow version pinning column in migration-light MVP environments."""
+    db.execute(text(
+        "ALTER TABLE crop_cycles "
+        "ADD COLUMN IF NOT EXISTS workflow_template_version_id UUID "
+        "REFERENCES workflow_template_versions(id)"
+    ))
+    db.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_crop_cycle_workflow_version "
+        "ON crop_cycles(workflow_template_version_id)"
+    ))
 
 
 # --- Schemas ---
@@ -95,6 +109,9 @@ class CropCycleResponse(BaseModel):
     season_code: str
     planned_sowing_date: Optional[date] = None
     expected_harvest_date: Optional[date] = None  # Calculated from template
+    workflow_template_version_id: Optional[uuid.UUID] = None
+    workflow_template_version: Optional[str] = None
+    workflow_template_pinning_status: str = "LEGACY_UNPINNED"
     inferred_current_stage: Optional[str] = None  # If sowing_date is in past
     stages: list[dict]
     events_published: list[str] = []
@@ -232,6 +249,8 @@ def build_crop_cycle_response(
         "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
         "expected_harvest_date": expected_harvest.isoformat(),
         "actual_harvest_date": cycle.actual_harvest_date.isoformat() if cycle.actual_harvest_date else None,
+        "workflow_template_version_id": str(cycle.workflow_template_version_id) if cycle.workflow_template_version_id else None,
+        "workflow_template_pinning_status": "PINNED" if cycle.workflow_template_version_id else "LEGACY_UNPINNED",
         "inferred_current_stage": inferred_stage,
         "total_input_cost": str(cycle.total_input_cost) if cycle.total_input_cost else "0",
         "stages": stage_schedule,
@@ -253,6 +272,8 @@ def create_crop_cycle(
     Loads stages from crop_lifecycle_templates (never hardcoded).
     Auto-derives farmer_id from X-Actor-ID and lifecycle_template_id from crop_code+season.
     """
+    _ensure_crop_cycle_workflow_version_column(db)
+
     # Auto-derive farmer_id from actor (parcel owner or self-enrollment)
     farmer_id = body.farmer_id
     if not farmer_id:
@@ -393,6 +414,17 @@ def create_crop_cycle(
             },
         )
 
+    # Resolve workflow version before creating the cycle, so the cycle is pinned
+    # to the exact version used for stage/recommendation rendering.
+    workflow_pair = find_published_workflow_template(
+        db,
+        crop_code=resolved_crop_code,
+        season_code=requested_season_code,
+        tenant_id=x_tenant_id,
+        lifecycle_template_id=template.id,
+    )
+    pinned_workflow_version = workflow_pair[1] if workflow_pair else None
+
     # Create crop cycle
     cycle_id = uuid.uuid4()
     cycle = CropCycle(
@@ -405,6 +437,7 @@ def create_crop_cycle(
         variety_code=body.variety_code,
         season_code=requested_season_code,
         lifecycle_template_id=template_id,
+        workflow_template_version_id=pinned_workflow_version.id if pinned_workflow_version else None,
         planned_sowing_date=requested_sowing_date,
         status="PLANNED",
         created_at=datetime.now(timezone.utc),
@@ -412,20 +445,12 @@ def create_crop_cycle(
     )
     db.add(cycle)
 
-    # Auto-instantiate stages from published versioned workflow template when available.
+    # Auto-instantiate stages from the pinned workflow version when available.
     # Fall back to the legacy JSONB lifecycle template to preserve existing crops.
-    workflow_pair = find_published_workflow_template(
-        db,
-        crop_code=resolved_crop_code,
-        season_code=requested_season_code,
-        tenant_id=x_tenant_id,
-        lifecycle_template_id=template.id,
-    )
-    if workflow_pair:
-        _, workflow_version = workflow_pair
+    if pinned_workflow_version:
         stages_data = workflow_version_to_stage_definitions_for_scope(
             db,
-            workflow_version.id,
+            pinned_workflow_version.id,
             tenant_id=x_tenant_id,
             project_id=body.project_id,
         )
@@ -468,6 +493,8 @@ def create_crop_cycle(
             "crop_code": resolved_crop_code,
             "season_code": requested_season_code,
             "template_id": str(template_id),
+            "workflow_template_version_id": str(pinned_workflow_version.id) if pinned_workflow_version else None,
+            "workflow_template_pinning_status": "PINNED" if pinned_workflow_version else "LEGACY_UNPINNED",
             "stages_count": len(stages_data),
         },
         metadata={"device_id": "api"},
@@ -523,6 +550,8 @@ def create_crop_cycle(
         season_code=requested_season_code,
         planned_sowing_date=sowing,
         expected_harvest_date=expected_harvest,
+        workflow_template_version_id=pinned_workflow_version.id if pinned_workflow_version else None,
+        workflow_template_pinning_status="PINNED" if pinned_workflow_version else "LEGACY_UNPINNED",
         inferred_current_stage=inferred_stage,
         stages=stage_schedule,
         events_published=["crop_cycle_created.v1"],
@@ -540,6 +569,7 @@ def list_crop_cycles(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """List crop cycles for Android Home/parcel filtering."""
+    _ensure_crop_cycle_workflow_version_column(db)
     query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id)
     if farmer_id:
         query = query.filter(CropCycle.farmer_id == farmer_id)
@@ -587,6 +617,7 @@ def list_eligible_parcels(
     """
     target_year = season_year or date.today().year
     season_filter = season.upper() if season else None
+    _ensure_crop_cycle_workflow_version_column(db)
 
     parcels = (
         db.query(Parcel)
@@ -753,6 +784,7 @@ def get_recommended_activities(
     and logged activities for this cycle. Templates remain reference data; this
     endpoint is the Android-facing source for dated recommendations.
     """
+    _ensure_crop_cycle_workflow_version_column(db)
     cycle = (
         db.query(CropCycle)
         .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
@@ -826,23 +858,33 @@ def get_recommended_activities(
         logged_by_key.setdefault(key, []).append(activity)
 
     recommendations = []
-    workflow_pair = find_published_workflow_template(
-        db,
-        crop_code=cycle.crop_code,
-        season_code=cycle.season_code,
-        tenant_id=x_tenant_id,
-        lifecycle_template_id=template.id,
-    )
-    if workflow_pair:
-        _, workflow_version = workflow_pair
+    template_stages = None
+    if cycle.workflow_template_version_id:
         template_stages = workflow_version_to_stage_definitions_for_scope(
             db,
-            workflow_version.id,
+            cycle.workflow_template_version_id,
             tenant_id=x_tenant_id,
             project_id=cycle.project_id,
         )
-    else:
-        template_stages = template.stages or []
+
+    if template_stages is None:
+        workflow_pair = find_published_workflow_template(
+            db,
+            crop_code=cycle.crop_code,
+            season_code=cycle.season_code,
+            tenant_id=x_tenant_id,
+            lifecycle_template_id=template.id,
+        )
+        if workflow_pair:
+            _, workflow_version = workflow_pair
+            template_stages = workflow_version_to_stage_definitions_for_scope(
+                db,
+                workflow_version.id,
+                tenant_id=x_tenant_id,
+                project_id=cycle.project_id,
+            )
+        else:
+            template_stages = template.stages or []
     for stage_def in template_stages:
         stage_code = stage_def.get("code")
         if not stage_code or stage_code not in stage_schedule:
@@ -891,6 +933,8 @@ def get_recommended_activities(
         "season_code": cycle.season_code,
         "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
         "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
+        "workflow_template_version_id": str(cycle.workflow_template_version_id) if cycle.workflow_template_version_id else None,
+        "workflow_template_pinning_status": "PINNED" if cycle.workflow_template_version_id else "LEGACY_UNPINNED",
         "recommendations": recommendations,
     }
 
@@ -902,6 +946,7 @@ def get_crop_cycle(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Get a crop cycle with its stages and current status."""
+    _ensure_crop_cycle_workflow_version_column(db)
     cycle = (
         db.query(CropCycle)
         .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
@@ -938,6 +983,7 @@ def advance_stage(
     Updates crop_cycle.status based on aggregate stage states.
     Publishes crop_stage_completed.v1 event on COMPLETE.
     """
+    _ensure_crop_cycle_workflow_version_column(db)
     # Load stage instance
     stage = (
         db.query(CropStageInstance)
@@ -1134,6 +1180,7 @@ def complete_crop_cycle(
     This is a backend escape hatch for Android/product flows where the user
     finishes harvest and wants the cycle moved to history/read-only.
     """
+    _ensure_crop_cycle_workflow_version_column(db)
     cycle = (
         db.query(CropCycle)
         .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
@@ -1205,6 +1252,7 @@ def log_activity(
     If no stage is active, activity is still accepted (linked to cycle only).
     Append-only for conflict resolution.
     """
+    _ensure_crop_cycle_workflow_version_column(db)
     # Verify cycle exists and belongs to tenant
     cycle = (
         db.query(CropCycle)
