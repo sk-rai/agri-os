@@ -22,6 +22,7 @@ from app.core.database import get_db
 from app.modules.workflow.models import CropCycle, CropStageInstance, CropActivity
 from app.modules.workflow.template_service import (
     find_published_workflow_template,
+    list_enabled_workflow_versions,
     workflow_template_metadata,
     workflow_version_to_stage_definitions,
     workflow_version_to_stage_definitions_for_scope,
@@ -44,6 +45,56 @@ def _ensure_crop_cycle_workflow_version_column(db: Session) -> None:
         "CREATE INDEX IF NOT EXISTS idx_crop_cycle_workflow_version "
         "ON crop_cycles(workflow_template_version_id)"
     ))
+
+
+def _assert_project_workflow_allows_cycle(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id: Optional[uuid.UUID],
+    crop_code: str,
+    season_code: str,
+    pinned_workflow_version_id: Optional[uuid.UUID],
+) -> None:
+    """Ensure crop-cycle creation obeys the same project catalog rules Android sees."""
+    if not project_id:
+        return
+
+    rows = list_enabled_workflow_versions(
+        db,
+        tenant_id=tenant_id,
+        project_id=project_id,
+        crop_code=crop_code,
+        season_code=season_code,
+    )
+    if not rows:
+        raise HTTPException(
+            409,
+            {
+                "error": "WORKFLOW_NOT_ASSIGNED_TO_PROJECT",
+                "assignment_rule": "WORKFLOW_NOT_ASSIGNED_TO_PROJECT",
+                "message": "No Android-visible workflow is assigned to this project for the requested crop/season.",
+                "project_id": str(project_id),
+                "crop_code": crop_code.upper(),
+                "season_code": season_code.upper(),
+            },
+        )
+
+    _, version, _ = rows[0]
+    if pinned_workflow_version_id and version.id != pinned_workflow_version_id:
+        raise HTTPException(
+            409,
+            {
+                "error": "WORKFLOW_VERSION_NOT_ASSIGNED_TO_PROJECT",
+                "assignment_rule": "WORKFLOW_VERSION_NOT_ASSIGNED_TO_PROJECT",
+                "message": "Requested crop cycle would pin a workflow version different from the project-visible catalog version.",
+                "project_id": str(project_id),
+                "crop_code": crop_code.upper(),
+                "season_code": season_code.upper(),
+                "requested_workflow_template_version_id": str(pinned_workflow_version_id),
+                "assigned_workflow_template_version_id": str(version.id),
+            },
+        )
 
 
 # --- Schemas ---
@@ -424,6 +475,14 @@ def create_crop_cycle(
         lifecycle_template_id=template.id,
     )
     pinned_workflow_version = workflow_pair[1] if workflow_pair else None
+    _assert_project_workflow_allows_cycle(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=body.project_id,
+        crop_code=resolved_crop_code,
+        season_code=requested_season_code,
+        pinned_workflow_version_id=pinned_workflow_version.id if pinned_workflow_version else None,
+    )
 
     # Create crop cycle
     cycle_id = uuid.uuid4()
