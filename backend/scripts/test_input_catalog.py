@@ -76,7 +76,36 @@ def main():
     check(urea["canonical_name"] == "Urea", "Input detail returns canonical name")
     check("RICE" in urea["applicable_crops"], "Input detail includes applicable crop")
 
-    print("\n[3] Project-aware input filter")
+    print("\n[3] Input catalog admin update API")
+    update_payload = {
+        "canonical_name": "Urea",
+        "brand_name": "Regression Test Brand",
+        "composition": urea.get("composition"),
+        "unit": urea.get("unit"),
+        "standard_weight": urea.get("standard_weight"),
+        "applicable_crops": urea.get("applicable_crops", []),
+        "application_method": urea.get("application_method"),
+        "safety_instructions": urea.get("safety_instructions"),
+        "aliases": urea.get("aliases", []),
+    }
+    update_response = client.put("/api/v1/input-catalog/inputs/UREA_46_N", json=update_payload)
+    check(update_response.status_code == 200, "Input catalog update returns 200", f"Status: {update_response.status_code}")
+    check(update_response.json()["brand_name"] == "Regression Test Brand", "Input catalog update saves editable metadata")
+    restore_payload = {
+        "canonical_name": urea.get("canonical_name"),
+        "brand_name": urea.get("brand_name"),
+        "composition": urea.get("composition"),
+        "unit": urea.get("unit"),
+        "standard_weight": urea.get("standard_weight"),
+        "applicable_crops": urea.get("applicable_crops", []),
+        "application_method": urea.get("application_method"),
+        "safety_instructions": urea.get("safety_instructions"),
+        "aliases": urea.get("aliases", []),
+    }
+    restore_response = client.put("/api/v1/input-catalog/inputs/UREA_46_N", json=restore_payload)
+    check(restore_response.status_code == 200, "Input catalog test restore returns 200", f"Status: {restore_response.status_code}")
+
+    print("\n[4] Project-aware input filter")
     db = SessionLocal()
     project_id = uuid.uuid4()
     try:
@@ -148,7 +177,7 @@ def main():
         cleanup_project(db, project_id)
         db.close()
 
-    print("\n[4] Workflow recommendation mapping")
+    print("\n[5] Workflow recommendation mapping")
     db = SessionLocal()
     try:
         total = db.query(WorkflowTemplateRecommendation).count()

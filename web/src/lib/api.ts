@@ -716,6 +716,18 @@ export interface InputsResponse {
   inputs: AgriInputDto[];
 }
 
+export interface AgriInputUpdateRequest {
+  canonical_name?: string;
+  brand_name?: string | null;
+  composition?: string | null;
+  unit?: string;
+  standard_weight?: string | null;
+  applicable_crops?: string[];
+  application_method?: string | null;
+  safety_instructions?: string | null;
+  aliases?: Array<Record<string, string>>;
+}
+
 export interface ProjectInputAssignmentDto extends AgriInputDto {
   visible: boolean;
   assignment_rule: "ANDROID_VISIBLE" | "DISABLED_BY_PROJECT" | "BLOCKED_BY_CROP_SCOPE" | "NOT_ASSIGNED" | "IMPLICIT_CROP_SCOPE" | string;
@@ -786,6 +798,11 @@ export const inputCatalogApi = {
     return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
   },
   get: (code: string) => api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`),
+  update: (code: string, data: AgriInputUpdateRequest) =>
+    api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`, {
+      method: "PUT",
+      body: data,
+    }),
   projectAssignments: (projectId: string, params?: { category?: string; cropCode?: string; q?: string }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);

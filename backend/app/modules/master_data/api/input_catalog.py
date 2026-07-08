@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -32,6 +33,42 @@ class ProjectInputAssignmentUpdate(BaseModel):
     reason: Optional[str] = None
     metadata: Optional[dict] = None
 
+
+class AgriculturalInputUpdate(BaseModel):
+    canonical_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    brand_name: Optional[str] = Field(None, max_length=200)
+    composition: Optional[str] = Field(None, max_length=200)
+    unit: Optional[str] = Field(None, min_length=1, max_length=20)
+    standard_weight: Optional[str] = None
+    applicable_crops: Optional[list[str]] = None
+    application_method: Optional[str] = None
+    safety_instructions: Optional[str] = None
+    aliases: Optional[list[dict[str, str]]] = None
+
+    @field_validator("applicable_crops")
+    @classmethod
+    def normalize_crops(cls, value):
+        if value is None:
+            return None
+        return sorted({crop.strip().upper() for crop in value if crop and crop.strip()})
+
+    @field_validator("unit")
+    @classmethod
+    def normalize_unit(cls, value):
+        return value.strip() if value else value
+
+    @field_validator("standard_weight")
+    @classmethod
+    def validate_standard_weight(cls, value):
+        if value in (None, ""):
+            return None
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            raise ValueError("standard_weight must be numeric")
+        if parsed < 0:
+            raise ValueError("standard_weight must be non-negative")
+        return str(parsed)
 
 
 def _actor_uuid(value: Optional[str]):
@@ -380,6 +417,33 @@ def upsert_project_input_assignment(
     )
     db.commit()
     return get_project_input_assignments(project_id=project_id, category=None, crop_code=None, q=None, db=db, x_tenant_id=x_tenant_id)
+
+
+def _apply_input_update(item: AgriculturalInput, body: AgriculturalInputUpdate) -> None:
+    data = body.model_dump(exclude_unset=True)
+    for field in ["canonical_name", "brand_name", "composition", "unit", "application_method", "safety_instructions", "aliases"]:
+        if field in data:
+            setattr(item, field, data[field])
+    if "standard_weight" in data:
+        item.standard_weight = Decimal(data["standard_weight"]) if data["standard_weight"] is not None else None
+    if "applicable_crops" in data:
+        item.applicable_crops = data["applicable_crops"] or []
+    item.updated_at = datetime.now(timezone.utc)
+
+
+@router.put("/inputs/{input_code}")
+def update_input(input_code: str, body: AgriculturalInputUpdate, db: Session = Depends(get_db)):
+    item = (
+        db.query(AgriculturalInput)
+        .filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True)
+        .first()
+    )
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    _apply_input_update(item, body)
+    db.commit()
+    db.refresh(item)
+    return input_payload(item)
 
 
 @router.get("/inputs/{input_code}")
