@@ -205,6 +205,35 @@ export interface WorkflowDraftValidationResponse {
   issues_by_level: Record<string, WorkflowPreviewWarning[]>;
 }
 
+export interface WorkflowPublishImpactVersion {
+  workflow_template_version_id: string;
+  version: string;
+  status: string;
+  action: string;
+  pinned_cycle_count: number;
+  active_pinned_cycle_count: number;
+  is_safe_to_archive: boolean;
+  retention_policy: string;
+  message: string;
+}
+
+export interface WorkflowPublishImpactResponse {
+  schema_version: string;
+  workflow_template_id: string;
+  draft_version_id: string;
+  draft_version: string;
+  archive_previous: boolean;
+  impacted_published_versions: WorkflowPublishImpactVersion[];
+  counts: {
+    published_versions_impacted: number;
+    pinned_cycles_impacted: number;
+    active_pinned_cycles_impacted: number;
+  };
+  can_publish: boolean;
+  blocking_reasons: string[];
+  safety_message: string;
+}
+
 export interface AppliedWorkflowOverride {
   id: string;
   tenant_id?: string;
@@ -418,6 +447,7 @@ export interface WorkflowPreviewResponse {
   total_duration_days: number;
   applied_overrides: AppliedWorkflowOverride[];
   warnings: WorkflowPreviewWarning[];
+  publish_impact?: WorkflowPublishImpactResponse;
   android_preview: {
     crop_code: string;
     crop_name: string;
@@ -578,6 +608,12 @@ export const workflowCatalogApi = {
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
   validateDraftVersion: (versionId: string) =>
     api<WorkflowDraftValidationResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/validation`),
+  draftPublishImpact: (versionId: string, params?: { archivePrevious?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.archivePrevious !== undefined) query.set("archive_previous", String(params.archivePrevious));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<WorkflowPublishImpactResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/publish-impact${suffix}`);
+  },
   publishDraftVersion: (versionId: string, data?: { archive_previous?: boolean }) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/publish`, {
       method: "POST",

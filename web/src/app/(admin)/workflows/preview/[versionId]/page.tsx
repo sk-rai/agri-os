@@ -12,6 +12,7 @@ import {
   type WorkflowDraftValidationResponse,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
+  type WorkflowPublishImpactResponse,
   type WorkflowRecommendation,
   type WorkflowStage,
   type WorkflowPreviewWarning,
@@ -49,6 +50,7 @@ export default function WorkflowPreviewPage() {
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
   const [draftValidating, setDraftValidating] = useState(false);
+  const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
     const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
@@ -68,6 +70,14 @@ export default function WorkflowPreviewPage() {
     request
       .then((payload) => {
         setPreview(payload);
+        if (isDraftPreview) {
+          workflowCatalogApi
+            .draftPublishImpact(payload.workflow_template_version_id, { archivePrevious: true })
+            .then(setPublishImpact)
+            .catch(() => setPublishImpact(null));
+        } else {
+          setPublishImpact(null);
+        }
         if (payload.project_id) {
           return loadOverrideHistory(payload.project_id, payload.workflow_template_version_id).catch((e) => {
             setError(e instanceof Error ? e.message : "Failed to load override history");
@@ -148,7 +158,9 @@ export default function WorkflowPreviewPage() {
     setError(null);
     try {
       const validation = await workflowCatalogApi.validateDraftVersion(preview.workflow_template_version_id);
+      const impact = await workflowCatalogApi.draftPublishImpact(preview.workflow_template_version_id, { archivePrevious: true });
       setDraftValidation(validation);
+      setPublishImpact(impact);
       if (!validation.can_publish) {
         setError("Draft has blocking validation errors. Fix ERROR items before publishing.");
         return;
@@ -156,6 +168,7 @@ export default function WorkflowPreviewPage() {
       const published = await workflowCatalogApi.publishDraftVersion(preview.workflow_template_version_id, { archive_previous: true });
       setPreview(published);
       setDraftValidation(null);
+      setPublishImpact(published.publish_impact || impact);
       setPublishMessage(`Published ${published.workflow_template_code} version ${published.version}. Android catalog will now serve this version.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to publish draft version");
@@ -330,7 +343,10 @@ export default function WorkflowPreviewPage() {
       </div>
 
       {isDraftPreview ? (
-        <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
+        <div className="space-y-4">
+          <PublishImpactPanel impact={publishImpact} />
+          <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
+        </div>
       ) : null}
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -394,6 +410,50 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
     <div className={`rounded-lg p-4 shadow ${toneClass}`}>
       <p className="text-xs uppercase tracking-wide opacity-70">{label}</p>
       <p className="mt-1 text-3xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+
+function PublishImpactPanel({ impact }: { impact: WorkflowPublishImpactResponse | null }) {
+  if (!impact) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="text-lg font-semibold text-gray-900">Publish Impact</h2>
+        <p className="mt-1 text-sm text-gray-500">Loading impacted workflow version and pinned-cycle counts...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-amber-950">Publish Impact</h2>
+          <p className="mt-1 text-sm text-amber-800">{impact.safety_message}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge>{impact.counts.published_versions_impacted} previous versions</Badge>
+          <Badge>{impact.counts.pinned_cycles_impacted} pinned cycles</Badge>
+          <Badge>{impact.counts.active_pinned_cycles_impacted} active pinned</Badge>
+        </div>
+      </div>
+      {impact.impacted_published_versions.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {impact.impacted_published_versions.map((item) => (
+            <div key={item.workflow_template_version_id} className="rounded border border-amber-200 bg-white p-3 text-xs text-amber-900">
+              <div className="flex flex-wrap gap-2">
+                <Badge>Version {item.version}</Badge>
+                <Badge>{item.action}</Badge>
+                <Badge>{item.pinned_cycle_count} pinned</Badge>
+                <Badge>{item.active_pinned_cycle_count} active</Badge>
+              </div>
+              <p className="mt-2">{item.message}</p>
+              <p className="mt-1 font-mono text-amber-700">{item.workflow_template_version_id}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

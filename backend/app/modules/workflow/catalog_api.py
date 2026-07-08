@@ -694,6 +694,80 @@ def _preview_warnings(stages: list[dict], known_input_codes: set[str]) -> list[d
     return warnings
 
 
+def _workflow_version_usage_counts(db: Session, version_id) -> dict:
+    _ensure_crop_cycle_workflow_version_column(db)
+    pinned_cycle_count = db.query(CropCycle).filter(
+        CropCycle.workflow_template_version_id == version_id,
+        CropCycle.status != "ARCHIVED",
+    ).count()
+    active_pinned_cycle_count = db.query(CropCycle).filter(
+        CropCycle.workflow_template_version_id == version_id,
+        CropCycle.status.in_(WORKFLOW_ACTIVE_CYCLE_STATUSES),
+    ).count()
+    return {
+        "pinned_cycle_count": pinned_cycle_count,
+        "active_pinned_cycle_count": active_pinned_cycle_count,
+    }
+
+
+def _workflow_version_impact_row(db: Session, version: WorkflowTemplateVersion, action: str) -> dict:
+    usage = _workflow_version_usage_counts(db, version.id)
+    return {
+        "workflow_template_version_id": str(version.id),
+        "version": version.version_number,
+        "status": version.status,
+        "action": action,
+        "pinned_cycle_count": usage["pinned_cycle_count"],
+        "active_pinned_cycle_count": usage["active_pinned_cycle_count"],
+        "is_safe_to_archive": True,
+        "retention_policy": "ARCHIVED_VERSIONS_REMAIN_RENDERABLE_FOR_PINNED_CYCLES",
+        "message": (
+            "Version has pinned crop cycles; archive only removes it from new Android catalog selection."
+            if usage["pinned_cycle_count"] > 0
+            else "No pinned crop cycles use this version."
+        ),
+    }
+
+
+def _draft_publish_impact(db: Session, template: WorkflowTemplate, draft_version: WorkflowTemplateVersion, archive_previous: bool) -> dict:
+    previous_versions = (
+        db.query(WorkflowTemplateVersion)
+        .filter(
+            WorkflowTemplateVersion.template_id == template.id,
+            WorkflowTemplateVersion.id != draft_version.id,
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplateVersion.is_active == True,
+        )
+        .all()
+    )
+    previous_rows = [
+        _workflow_version_impact_row(db, previous, "ARCHIVE_FOR_NEW_CATALOG" if archive_previous else "KEEP_PUBLISHED")
+        for previous in previous_versions
+    ]
+    impacted_pinned_cycle_count = sum(row["pinned_cycle_count"] for row in previous_rows)
+    active_impacted_pinned_cycle_count = sum(row["active_pinned_cycle_count"] for row in previous_rows)
+    return {
+        "schema_version": "workflow_publish_impact.v1",
+        "workflow_template_id": str(template.id),
+        "draft_version_id": str(draft_version.id),
+        "draft_version": draft_version.version_number,
+        "archive_previous": archive_previous,
+        "impacted_published_versions": previous_rows,
+        "counts": {
+            "published_versions_impacted": len(previous_rows),
+            "pinned_cycles_impacted": impacted_pinned_cycle_count,
+            "active_pinned_cycles_impacted": active_impacted_pinned_cycle_count,
+        },
+        "can_publish": True,
+        "blocking_reasons": [],
+        "safety_message": (
+            "Pinned cycles will remain renderable from their archived workflow versions."
+            if impacted_pinned_cycle_count > 0 and archive_previous
+            else "No pinned cycles are affected by archiving previous versions."
+        ),
+    }
+
+
 def _workflow_preview_payload(
     *,
     template: WorkflowTemplate,
@@ -753,10 +827,26 @@ def preview_workflow_template_version(
     """
     rows = list_enabled_workflow_versions(db, tenant_id=x_tenant_id, project_id=project_id)
     selected = next((row for row in rows if str(row[1].id) == str(workflow_template_version_id)), None)
-    if not selected:
-        raise HTTPException(404, "Workflow template version is not visible for this tenant/project")
+    if selected:
+        template, version, enablement = selected
+    else:
+        row = (
+            db.query(WorkflowTemplate, WorkflowTemplateVersion)
+            .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+            .filter(
+                WorkflowTemplateVersion.id == workflow_template_version_id,
+                WorkflowTemplateVersion.status.in_(["PUBLISHED", "ARCHIVED"]),
+                WorkflowTemplateVersion.is_active == True,
+                WorkflowTemplate.is_active == True,
+                WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+            )
+            .first()
+        )
+        if not row:
+            raise HTTPException(404, "Workflow template version is not visible for this tenant/project")
+        template, version = row
+        enablement = None
 
-    template, version, enablement = selected
     crop = db.query(Crop).filter(Crop.code == template.crop_code).first()
     stages = workflow_version_to_stage_definitions_for_scope(
         db,
@@ -1273,6 +1363,18 @@ def delete_draft_workflow_recommendation(
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
 
 
+@router.get("/drafts/{workflow_template_version_id}/publish-impact")
+def get_draft_publish_impact(
+    workflow_template_version_id: uuid.UUID,
+    archive_previous: bool = Query(True),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Preview which existing published versions/cycles would be affected by publishing this draft."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    return _draft_publish_impact(db, template, version, archive_previous)
+
+
 @router.post("/drafts/{workflow_template_version_id}/publish")
 def publish_draft_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
@@ -1287,6 +1389,7 @@ def publish_draft_workflow_template_version(
     if not validation["can_publish"]:
         raise HTTPException(400, {"message": "Draft workflow has blocking validation errors", "validation": validation})
     now = datetime.now(timezone.utc)
+    publish_impact = _draft_publish_impact(db, template, version, body.archive_previous)
 
     if body.archive_previous:
         previous_versions = (
@@ -1299,10 +1402,19 @@ def publish_draft_workflow_template_version(
             )
             .all()
         )
+        impact_by_version = {row["workflow_template_version_id"]: row for row in publish_impact["impacted_published_versions"]}
         for previous in previous_versions:
+            impact = impact_by_version.get(str(previous.id), {})
             previous.status = "ARCHIVED"
             previous.effective_to = now.date()
             previous.updated_at = now
+            previous_metadata = dict(previous.metadata_ or {})
+            previous_metadata["archived_by_publish"] = True
+            previous_metadata["archived_at"] = now.isoformat()
+            previous_metadata["archived_for_new_catalog_only"] = True
+            previous_metadata["pinned_cycle_count_at_archive"] = impact.get("pinned_cycle_count", 0)
+            previous_metadata["active_pinned_cycle_count_at_archive"] = impact.get("active_pinned_cycle_count", 0)
+            previous.metadata_ = previous_metadata
 
     published_by = _actor_uuid(x_actor_id)
     before = {"status": version.status, "published_at": version.published_at.isoformat() if version.published_at else None}
@@ -1326,14 +1438,20 @@ def publish_draft_workflow_template_version(
         target_type="VERSION",
         target_id=str(version.id),
         before=before,
-        after={"status": "PUBLISHED", "published_at": now.isoformat(), "archive_previous": body.archive_previous},
-        metadata={"validation_counts": validation["counts"]},
+        after={
+            "status": "PUBLISHED",
+            "published_at": now.isoformat(),
+            "archive_previous": body.archive_previous,
+            "publish_impact": publish_impact,
+        },
+        metadata={"validation_counts": validation["counts"], "publish_impact": publish_impact},
     )
     db.commit()
     db.refresh(version)
     payload = _render_published_version_preview(db, template, version, x_tenant_id)
     payload["warnings"] = validation["issues"]
     payload["validation"] = validation
+    payload["publish_impact"] = publish_impact
     return payload
 
 
@@ -1539,14 +1657,9 @@ def _workflow_version_summary(
             WorkflowTemplateRecommendation.template_stage_id.in_(stage_ids),
             WorkflowTemplateRecommendation.is_active == True,
         ).count()
-    pinned_cycle_count = db.query(CropCycle).filter(
-        CropCycle.workflow_template_version_id == version.id,
-        CropCycle.status != "ARCHIVED",
-    ).count()
-    active_pinned_cycle_count = db.query(CropCycle).filter(
-        CropCycle.workflow_template_version_id == version.id,
-        CropCycle.status.in_(WORKFLOW_ACTIVE_CYCLE_STATUSES),
-    ).count()
+    usage = _workflow_version_usage_counts(db, version.id)
+    pinned_cycle_count = usage["pinned_cycle_count"]
+    active_pinned_cycle_count = usage["active_pinned_cycle_count"]
     return {
         "workflow_template_id": str(template.id),
         "workflow_template_version_id": str(version.id),
