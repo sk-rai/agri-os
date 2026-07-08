@@ -13,7 +13,7 @@ from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
 from app.modules.master_data.input_assignment_service import ensure_agricultural_input_audit_table, ensure_project_input_assignment_audit_table, ensure_project_input_assignment_table
-from app.modules.master_data.models import AgriculturalInputAuditEvent, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
+from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.workflow.models import WorkflowTemplateRecommendation
 
 GREEN = "\033[92m"
@@ -76,7 +76,46 @@ def main():
     check(urea["canonical_name"] == "Urea", "Input detail returns canonical name")
     check("RICE" in urea["applicable_crops"], "Input detail includes applicable crop")
 
-    print("\n[3] Input catalog admin update API")
+    print("\n[3] Input catalog admin create/update API")
+    temp_code = "REGRESSION_TEST_INPUT"
+    db = SessionLocal()
+    try:
+        ensure_agricultural_input_audit_table(db)
+        db.query(AgriculturalInputAuditEvent).filter(AgriculturalInputAuditEvent.input_code == temp_code).delete(synchronize_session=False)
+        db.query(AgriculturalInput).filter(AgriculturalInput.code == temp_code).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+    create_response = client.post("/api/v1/input-catalog/inputs", json={
+        "code": temp_code,
+        "category_code": "FERTILIZER",
+        "canonical_name": "Regression Test Input",
+        "unit": "kg",
+        "composition": "Test composition",
+        "standard_weight": "1",
+        "applicable_crops": ["RICE"],
+        "change_reason": "Regression test input create",
+    })
+    check(create_response.status_code == 200, "Input catalog create returns 200", f"Status: {create_response.status_code}")
+    check(create_response.json()["code"] == temp_code, "Input catalog create returns created code")
+    duplicate_response = client.post("/api/v1/input-catalog/inputs", json={
+        "code": temp_code,
+        "category_code": "FERTILIZER",
+        "canonical_name": "Duplicate",
+        "unit": "kg",
+    })
+    check(duplicate_response.status_code == 409, "Input catalog create rejects duplicate code", f"Status: {duplicate_response.status_code}")
+    create_audit = client.get(f"/api/v1/input-catalog/inputs/{temp_code}/audit")
+    check(create_audit.status_code == 200, "Created input audit returns 200", f"Status: {create_audit.status_code}")
+    check(any(event["action"] == "CREATE_INPUT" for event in create_audit.json()["events"]), "Created input audit records CREATE_INPUT")
+    db = SessionLocal()
+    try:
+        db.query(AgriculturalInputAuditEvent).filter(AgriculturalInputAuditEvent.input_code == temp_code).delete(synchronize_session=False)
+        db.query(AgriculturalInput).filter(AgriculturalInput.code == temp_code).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
     update_payload = {
         "canonical_name": "Urea",
         "brand_name": "Regression Test Brand",

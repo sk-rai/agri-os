@@ -729,6 +729,13 @@ export interface AgriInputUpdateRequest {
   change_reason?: string | null;
 }
 
+export interface AgriInputCreateRequest extends AgriInputUpdateRequest {
+  code: string;
+  category_code: string;
+  canonical_name: string;
+  unit: string;
+}
+
 export interface AgriInputAuditEvent {
   id: string;
   tenant_id: string;
@@ -821,6 +828,11 @@ export const inputCatalogApi = {
     return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
   },
   get: (code: string) => api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`),
+  create: (data: AgriInputCreateRequest) =>
+    api<AgriInputDto>("/api/v1/input-catalog/inputs", {
+      method: "POST",
+      body: data,
+    }),
   update: (code: string, data: AgriInputUpdateRequest) =>
     api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`, {
       method: "PUT",

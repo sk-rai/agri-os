@@ -73,6 +73,18 @@ class AgriculturalInputUpdate(BaseModel):
         return str(parsed)
 
 
+
+class AgriculturalInputCreate(AgriculturalInputUpdate):
+    code: str = Field(..., min_length=2, max_length=50)
+    category_code: str = Field(..., min_length=2, max_length=30)
+    canonical_name: str = Field(..., min_length=1, max_length=200)
+    unit: str = Field(..., min_length=1, max_length=20)
+
+    @field_validator("code", "category_code")
+    @classmethod
+    def normalize_code(cls, value):
+        return value.strip().upper().replace(" ", "_")
+
 def _actor_uuid(value: Optional[str]):
     if not value:
         return None
@@ -235,6 +247,53 @@ def list_input_categories(db: Session = Depends(get_db)):
         "count": len(categories),
         "categories": [category_payload(category) for category in categories],
     }
+
+
+@router.post("/inputs")
+def create_input(
+    body: AgriculturalInputCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    existing = db.query(AgriculturalInput).filter(AgriculturalInput.code == body.code).first()
+    if existing:
+        raise HTTPException(409, f"Input '{body.code}' already exists")
+    category = db.query(InputCategory).filter(
+        InputCategory.code == body.category_code,
+        InputCategory.is_active == True,
+    ).first()
+    if not category:
+        raise HTTPException(404, f"Input category '{body.category_code}' not found")
+    item = AgriculturalInput(
+        id=uuid.uuid4(),
+        code=body.code,
+        category_id=category.id,
+        canonical_name=body.canonical_name.strip(),
+        unit=body.unit.strip(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    _apply_input_update(item, body)
+    item.is_active = True
+    db.add(item)
+    db.flush()
+    db.refresh(item)
+    after = input_payload(item)
+    _record_input_audit(
+        db,
+        tenant_id=x_tenant_id,
+        item=item,
+        actor_id=_actor_uuid(x_actor_id),
+        action="CREATE_INPUT",
+        before=None,
+        after=after,
+        reason=body.change_reason,
+        metadata={"source": "admin_api"},
+    )
+    db.commit()
+    db.refresh(item)
+    return input_payload(item)
 
 
 @router.get("/inputs")

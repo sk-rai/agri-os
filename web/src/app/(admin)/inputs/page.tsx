@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   inputCatalogApi,
   type AgriInputAuditEvent,
+  type AgriInputCreateRequest,
   type AgriInputDto,
   type AgriInputUpdateRequest,
   type InputCategoryDto,
@@ -20,6 +21,33 @@ type InputDraft = {
   safety_instructions: string;
   aliases: string;
 };
+
+type NewInputDraft = InputDraft & {
+  code: string;
+  category_code: string;
+  change_reason: string;
+};
+
+const EMPTY_INPUT_DRAFT: InputDraft = {
+  canonical_name: "",
+  brand_name: "",
+  composition: "",
+  unit: "",
+  standard_weight: "",
+  applicable_crops: "",
+  application_method: "",
+  safety_instructions: "",
+  aliases: "[]",
+};
+
+function emptyNewInputDraft(categoryCode = ""): NewInputDraft {
+  return {
+    ...EMPTY_INPUT_DRAFT,
+    code: "",
+    category_code: categoryCode,
+    change_reason: "Created from admin input catalog",
+  };
+}
 
 function toDraft(item: AgriInputDto): InputDraft {
   return {
@@ -78,6 +106,9 @@ export default function InputsPage() {
   const [draft, setDraft] = useState<InputDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newDraft, setNewDraft] = useState<NewInputDraft>(() => emptyNewInputDraft());
   const [auditEvents, setAuditEvents] = useState<AgriInputAuditEvent[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [changeReason, setChangeReason] = useState("");
@@ -147,6 +178,44 @@ export default function InputsPage() {
     setDraft((current) => current ? { ...current, ...patch } : current);
   };
 
+  const updateNewDraft = (patch: Partial<NewInputDraft>) => {
+    setNewDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const createInput = async () => {
+    setCreating(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const payload: AgriInputCreateRequest = {
+        code: newDraft.code.trim().toUpperCase().replace(/\s+/g, "_"),
+        category_code: newDraft.category_code.trim().toUpperCase(),
+        canonical_name: newDraft.canonical_name.trim(),
+        brand_name: newDraft.brand_name.trim() || null,
+        composition: newDraft.composition.trim() || null,
+        unit: newDraft.unit.trim(),
+        standard_weight: newDraft.standard_weight.trim() || null,
+        applicable_crops: parseCsv(newDraft.applicable_crops),
+        application_method: newDraft.application_method.trim() || null,
+        safety_instructions: newDraft.safety_instructions.trim() || null,
+        aliases: parseAliases(newDraft.aliases),
+        change_reason: newDraft.change_reason.trim() || "Created from admin input catalog",
+      };
+      const created = await inputCatalogApi.create(payload);
+      setInputs((current) => [created, ...current.filter((item) => item.code !== created.code)]);
+      setSelected(created);
+      setShowCreate(false);
+      setNewDraft(emptyNewInputDraft(category || created.category_code || ""));
+      const audit = await inputCatalogApi.inputAudit(created.code, { limit: 10 });
+      setAuditEvents(audit.events);
+      setNotice(`Input ${created.code} created.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create input");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const saveSelected = async () => {
     if (!selected || !draft) return;
     setSaving(true);
@@ -183,12 +252,32 @@ export default function InputsPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Input Catalog</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Admin master data for canonical seeds, fertilizers, crop protection, labor, machinery, and irrigation inputs.
-        </p>
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Input Catalog</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Admin master data for canonical seeds, fertilizers, crop protection, labor, machinery, and irrigation inputs.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setShowCreate((value) => !value); setNewDraft(emptyNewInputDraft(category)); }}
+          className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+        >
+          {showCreate ? "Close new input" : "New input"}
+        </button>
       </div>
+
+      {showCreate ? (
+        <NewInputPanel
+          categories={categories}
+          draft={newDraft}
+          creating={creating}
+          onDraft={updateNewDraft}
+          onCreate={createInput}
+          onCancel={() => setShowCreate(false)}
+        />
+      ) : null}
 
       <div className="mb-6 grid gap-3 rounded-lg bg-white p-4 shadow md:grid-cols-[1fr_220px_180px_auto]">
         <input
@@ -303,6 +392,83 @@ export default function InputsPage() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function NewInputPanel({
+  categories,
+  draft,
+  creating,
+  onDraft,
+  onCreate,
+  onCancel,
+}: {
+  categories: InputCategoryDto[];
+  draft: NewInputDraft;
+  creating: boolean;
+  onDraft: (patch: Partial<NewInputDraft>) => void;
+  onCreate: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Create new input</h2>
+        <p className="mt-1 text-xs text-gray-500">Use stable uppercase codes because workflow recommendations and project assignments can reference them later.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <TextField label="Code" hint="e.g. ZINC_SULPHATE_21" value={draft.code} onChange={(value) => onDraft({ code: value })} />
+        <label className="block text-xs font-medium text-gray-500">
+          Category
+          <select
+            value={draft.category_code}
+            onChange={(event) => onDraft({ category_code: event.target.value })}
+            className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal text-gray-900"
+          >
+            <option value="">Select category</option>
+            {categories.map((cat) => (
+              <option key={cat.code} value={cat.code}>{cat.canonical_name}</option>
+            ))}
+          </select>
+        </label>
+        <TextField label="Canonical name" value={draft.canonical_name} onChange={(value) => onDraft({ canonical_name: value })} />
+        <TextField label="Unit" hint="kg, litre, packet" value={draft.unit} onChange={(value) => onDraft({ unit: value })} />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <TextField label="Brand name" value={draft.brand_name} onChange={(value) => onDraft({ brand_name: value })} />
+        <TextField label="Composition" value={draft.composition} onChange={(value) => onDraft({ composition: value })} />
+        <TextField label="Standard weight" value={draft.standard_weight} onChange={(value) => onDraft({ standard_weight: value })} />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <TextField label="Applicable crops" hint="Comma-separated crop codes" value={draft.applicable_crops} onChange={(value) => onDraft({ applicable_crops: value })} />
+        <TextField label="Change reason" value={draft.change_reason} onChange={(value) => onDraft({ change_reason: value })} />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <TextArea label="Application method" value={draft.application_method} onChange={(value) => onDraft({ application_method: value })} />
+        <TextArea label="Safety instructions" value={draft.safety_instructions} onChange={(value) => onDraft({ safety_instructions: value })} />
+      </div>
+      <div className="mt-3">
+        <TextArea label="Aliases JSON" hint='Example: [{"name":"local name","language":"hi"}]' value={draft.aliases} onChange={(value) => onDraft({ aliases: value })} rows={4} />
+      </div>
+      <div className="mt-5 flex gap-2">
+        <button
+          type="button"
+          disabled={creating}
+          onClick={onCreate}
+          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
+        >
+          {creating ? "Creating..." : "Create input"}
+        </button>
+        <button
+          type="button"
+          disabled={creating}
+          onClick={onCancel}
+          className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
