@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.farmer.models import Project
-from app.modules.master_data.models import AgriculturalInput, InputCategory, ProjectInputAssignment
+from app.modules.master_data.models import AgriculturalInput, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.master_data.input_assignment_service import (
     assignment_map,
     ensure_project_input_assignment_table,
+    ensure_project_input_assignment_audit_table,
     explicit_allowlist_mode,
     input_assignment_decision,
     project_crop_scope,
@@ -31,6 +32,83 @@ class ProjectInputAssignmentUpdate(BaseModel):
     reason: Optional[str] = None
     metadata: Optional[dict] = None
 
+
+
+def _actor_uuid(value: Optional[str]):
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _assignment_snapshot(assignment: Optional[ProjectInputAssignment]) -> Optional[dict]:
+    if not assignment:
+        return None
+    return {
+        "id": str(assignment.id),
+        "tenant_id": assignment.tenant_id,
+        "project_id": str(assignment.project_id),
+        "input_id": str(assignment.input_id),
+        "input_code": assignment.input_code,
+        "enabled": assignment.enabled,
+        "display_order": assignment.display_order,
+        "reason": assignment.reason,
+        "effective_from": assignment.effective_from.isoformat() if assignment.effective_from else None,
+        "effective_to": assignment.effective_to.isoformat() if assignment.effective_to else None,
+        "metadata": assignment.metadata_ or {},
+        "is_active": assignment.is_active,
+    }
+
+
+def _audit_payload(event: ProjectInputAssignmentAuditEvent) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "project_id": str(event.project_id),
+        "input_code": event.input_code,
+        "assignment_id": str(event.assignment_id) if event.assignment_id else None,
+        "actor_id": str(event.actor_id) if event.actor_id else None,
+        "action": event.action,
+        "before": event.before_payload,
+        "after": event.after_payload,
+        "reason": event.reason,
+        "metadata": event.metadata_ or {},
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
+
+
+def _record_input_assignment_audit(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id: uuid.UUID,
+    input_code: str,
+    assignment_id: uuid.UUID,
+    actor_id,
+    action: str,
+    before: Optional[dict],
+    after: Optional[dict],
+    reason: Optional[str],
+    metadata: Optional[dict] = None,
+) -> None:
+    ensure_project_input_assignment_audit_table(db)
+    db.add(ProjectInputAssignmentAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        project_id=project_id,
+        input_code=input_code,
+        assignment_id=assignment_id,
+        actor_id=actor_id,
+        action=action,
+        before_payload=before,
+        after_payload=after,
+        reason=reason,
+        metadata_=metadata or {},
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    ))
 
 def category_payload(category: InputCategory) -> dict:
     return {
@@ -208,6 +286,36 @@ def get_project_input_assignments(
     }
 
 
+@router.get("/projects/{project_id}/input-assignments/audit")
+def get_project_input_assignment_audit(
+    project_id: uuid.UUID,
+    input_code: Optional[str] = Query(None),
+    action: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    ensure_project_input_assignment_audit_table(db)
+    project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
+    query = db.query(ProjectInputAssignmentAuditEvent).filter(
+        ProjectInputAssignmentAuditEvent.tenant_id == x_tenant_id,
+        ProjectInputAssignmentAuditEvent.project_id == project_id,
+        ProjectInputAssignmentAuditEvent.is_active == True,
+    )
+    if input_code:
+        query = query.filter(ProjectInputAssignmentAuditEvent.input_code == input_code.upper())
+    if action:
+        query = query.filter(ProjectInputAssignmentAuditEvent.action == action.upper())
+    events = query.order_by(ProjectInputAssignmentAuditEvent.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "count": len(events),
+        "events": [_audit_payload(event) for event in events],
+    }
+
+
 @router.put("/projects/{project_id}/input-assignments/{input_code}")
 def upsert_project_input_assignment(
     project_id: uuid.UUID,
@@ -215,6 +323,7 @@ def upsert_project_input_assignment(
     body: ProjectInputAssignmentUpdate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     ensure_project_input_assignment_table(db)
     project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
@@ -230,6 +339,7 @@ def upsert_project_input_assignment(
         ProjectInputAssignment.project_id == project_id,
         ProjectInputAssignment.input_code == item.code,
     ).first()
+    before = _assignment_snapshot(assignment)
     if not assignment:
         assignment = ProjectInputAssignment(
             id=uuid.uuid4(),
@@ -248,6 +358,26 @@ def upsert_project_input_assignment(
         assignment.metadata_ = body.metadata
     assignment.is_active = True
     assignment.updated_at = datetime.now(timezone.utc)
+    after = _assignment_snapshot(assignment)
+    if before is None:
+        action = "CREATE_INPUT_ASSIGNMENT"
+    elif before.get("enabled") != body.enabled:
+        action = "ENABLE_INPUT" if body.enabled else "DISABLE_INPUT"
+    else:
+        action = "UPDATE_INPUT_ASSIGNMENT"
+    _record_input_assignment_audit(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        input_code=item.code,
+        assignment_id=assignment.id,
+        actor_id=_actor_uuid(x_actor_id),
+        action=action,
+        before=before,
+        after=after,
+        reason=body.reason,
+        metadata={"source": "admin_api"},
+    )
     db.commit()
     return get_project_input_assignments(project_id=project_id, category=None, crop_code=None, q=None, db=db, x_tenant_id=x_tenant_id)
 

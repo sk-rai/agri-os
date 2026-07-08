@@ -111,3 +111,24 @@ class ProjectInputAssignment(Base, UUIDPrimaryKey, AuditMixin):
         UniqueConstraint("tenant_id", "project_id", "input_code", name="uq_project_input_assignment"),
         Index("idx_project_input_assignment_project", "project_id", "enabled"),
     )
+
+class ProjectInputAssignmentAuditEvent(Base, UUIDPrimaryKey, AuditMixin):
+    """Audit event for project input assignment changes."""
+
+    __tablename__ = "project_input_assignment_audit_events"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    input_code = Column(String(50), nullable=False, index=True)
+    assignment_id = Column(UUID(as_uuid=True), ForeignKey("project_input_assignments.id"))
+    actor_id = Column(UUID(as_uuid=True))
+    action = Column(String(50), nullable=False)
+    before_payload = Column(JSONB)
+    after_payload = Column(JSONB)
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_project_input_assignment_audit_project", "project_id", "created_at"),
+        Index("idx_project_input_assignment_audit_input", "project_id", "input_code"),
+    )

@@ -40,6 +40,33 @@ def ensure_project_input_assignment_table(db: Session) -> None:
     db.commit()
 
 
+
+def ensure_project_input_assignment_audit_table(db: Session) -> None:
+    """Create project input assignment audit table in migration-light MVP environments."""
+    ensure_project_input_assignment_table(db)
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS project_input_assignment_audit_events (
+            id UUID PRIMARY KEY,
+            tenant_id VARCHAR(50) NOT NULL,
+            project_id UUID NOT NULL REFERENCES projects(id),
+            input_code VARCHAR(50) NOT NULL,
+            assignment_id UUID REFERENCES project_input_assignments(id),
+            actor_id UUID,
+            action VARCHAR(50) NOT NULL,
+            before_payload JSONB,
+            after_payload JSONB,
+            reason TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ,
+            version VARCHAR(20) DEFAULT 'v1.0',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE
+        )
+    """))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_audit_project ON project_input_assignment_audit_events(project_id, created_at)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_audit_input ON project_input_assignment_audit_events(project_id, input_code)"))
+    db.commit()
+
 def project_crop_scope(db: Session, *, project_id: Optional[uuid.UUID], tenant_id: str) -> set[str] | None:
     if not project_id:
         return None

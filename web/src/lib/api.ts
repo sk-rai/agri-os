@@ -751,6 +751,29 @@ export interface ProjectInputAssignmentUpdateRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface ProjectInputAssignmentAuditEvent {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  input_code: string;
+  assignment_id?: string | null;
+  actor_id?: string | null;
+  action: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export interface ProjectInputAssignmentAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  count: number;
+  events: ProjectInputAssignmentAuditEvent[];
+}
+
 export const inputCatalogApi = {
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
   inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string }) => {
@@ -776,4 +799,12 @@ export const inputCatalogApi = {
       method: "PUT",
       body: data,
     }),
+  projectAssignmentAudit: (projectId: string, params?: { inputCode?: string; action?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.inputCode) query.set("input_code", params.inputCode);
+    if (params?.action) query.set("action", params.action);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<ProjectInputAssignmentAuditResponse>(`/api/v1/input-catalog/projects/${projectId}/input-assignments/audit${suffix}`);
+  },
 };

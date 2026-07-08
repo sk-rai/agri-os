@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
-from app.modules.master_data.input_assignment_service import ensure_project_input_assignment_table
-from app.modules.master_data.models import ProjectInputAssignment
+from app.modules.master_data.input_assignment_service import ensure_project_input_assignment_audit_table, ensure_project_input_assignment_table
+from app.modules.master_data.models import ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.workflow.models import WorkflowTemplateRecommendation
 
 GREEN = "\033[92m"
@@ -33,7 +33,8 @@ def ensure_default_tenant(db):
 
 
 def cleanup_project(db, project_id):
-    ensure_project_input_assignment_table(db)
+    ensure_project_input_assignment_audit_table(db)
+    db.query(ProjectInputAssignmentAuditEvent).filter(ProjectInputAssignmentAuditEvent.project_id == project_id).delete(synchronize_session=False)
     db.query(ProjectInputAssignment).filter(ProjectInputAssignment.project_id == project_id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
     db.commit()
@@ -131,6 +132,18 @@ def main():
         check(disable_urea.status_code == 200, "Project input disablement returns 200", f"Status: {disable_urea.status_code}")
         disabled_row = next(row for row in disable_urea.json()["inputs"] if row["code"] == "UREA_46_N")
         check(disabled_row["assignment_rule"] == "DISABLED_BY_PROJECT", "Disabled input reports DISABLED_BY_PROJECT")
+
+        audit = client.get(f"/api/v1/input-catalog/projects/{project_id}/input-assignments/audit")
+        check(audit.status_code == 200, "Project input assignment audit returns 200", f"Status: {audit.status_code}")
+        audit_payload = audit.json()
+        check(audit_payload["count"] >= 2, "Project input audit records enable/disable events", audit_payload)
+        audit_actions = {event["action"] for event in audit_payload["events"]}
+        check("CREATE_INPUT_ASSIGNMENT" in audit_actions or "ENABLE_INPUT" in audit_actions, "Audit includes create/enable action")
+        check("DISABLE_INPUT" in audit_actions, "Audit includes disable action")
+        urea_audit = client.get(f"/api/v1/input-catalog/projects/{project_id}/input-assignments/audit?input_code=UREA_46_N")
+        check(urea_audit.status_code == 200, "Input-specific audit returns 200", f"Status: {urea_audit.status_code}")
+        check(all(event["input_code"] == "UREA_46_N" for event in urea_audit.json()["events"]), "Input-specific audit is filtered")
+        check(any(event.get("before") is not None and event.get("after") is not None for event in urea_audit.json()["events"]), "Audit includes before/after payloads")
     finally:
         cleanup_project(db, project_id)
         db.close()
