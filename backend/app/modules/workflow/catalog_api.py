@@ -497,6 +497,8 @@ def list_enabled_crop_workflows(
             "crop_code": template.crop_code,
             "crop_name": crop.canonical_name if crop else template.crop_code,
             "season_code": template.season_code,
+            "catalog_selection_key": f"{template.crop_code}:{template.season_code}",
+            "catalog_selection_policy": "LATEST_PUBLISHED_PER_CROP_SEASON",
             "propagation_type_code": template.propagation_type_code,
             "total_duration_days": version.total_duration_days,
             "metadata": metadata,

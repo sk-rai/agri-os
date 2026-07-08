@@ -443,6 +443,8 @@ export interface WorkflowPreviewResponse {
   crop_code: string;
   crop_name: string;
   season_code: string;
+  catalog_selection_key?: string;
+  catalog_selection_policy?: string;
   propagation_type_code?: string | null;
   total_duration_days: number;
   applied_overrides: AppliedWorkflowOverride[];

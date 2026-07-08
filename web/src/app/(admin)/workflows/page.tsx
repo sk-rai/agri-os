@@ -289,6 +289,8 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
                     <div className="flex flex-wrap gap-2 text-xs">
                       <Badge>{version.status}</Badge>
                       {version.is_current_published ? <Badge>Android active</Badge> : null}
+                      {version.status === "PUBLISHED" && !version.is_current_published ? <Badge>Superseded</Badge> : null}
+                      {version.status === "ARCHIVED" ? <Badge>Historical</Badge> : null}
                       <Badge>{version.stage_count} stages</Badge>
                       <Badge>{version.recommendation_count} recs</Badge>
                       <Badge>{version.pinned_cycle_count ?? version.usage_count ?? 0} pinned cycles</Badge>

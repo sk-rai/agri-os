@@ -280,6 +280,28 @@ def workflow_version_to_stage_definitions_for_scope(
     return stages
 
 
+def _is_newer_workflow_catalog_row(
+    candidate: tuple[WorkflowTemplate, WorkflowTemplateVersion, Optional[WorkflowTemplateEnablement]],
+    existing: tuple[WorkflowTemplate, WorkflowTemplateVersion, Optional[WorkflowTemplateEnablement]],
+) -> bool:
+    """Pick the Android-visible version when a crop/season slot has multiple candidates."""
+    candidate_template, candidate_version, _ = candidate
+    existing_template, existing_version, _ = existing
+    candidate_key = (
+        str(candidate_version.published_at or ""),
+        str(candidate_version.created_at or ""),
+        bool(candidate_template.is_default),
+        str(candidate_version.id),
+    )
+    existing_key = (
+        str(existing_version.published_at or ""),
+        str(existing_version.created_at or ""),
+        bool(existing_template.is_default),
+        str(existing_version.id),
+    )
+    return candidate_key > existing_key
+
+
 def list_enabled_workflow_versions(
     db: Session,
     *,
@@ -288,10 +310,15 @@ def list_enabled_workflow_versions(
     crop_code: Optional[str] = None,
     season_code: Optional[str] = None,
 ) -> list[tuple[WorkflowTemplate, WorkflowTemplateVersion, Optional[WorkflowTemplateEnablement]]]:
-    """List published workflow versions visible to a tenant/project.
+    """List the single Android-visible published workflow per crop/season for a tenant/project.
 
     No enablement rows => implicit default catalog. Any rows at the requested
     scope => explicit allow-list where enabled=false rows are hidden.
+
+    If multiple published workflow versions/templates claim the same crop/season
+    catalog slot, Android should receive only the newest published candidate.
+    Older published or archived versions remain accessible through admin history
+    and explicit preview-by-version APIs.
     """
     base_enablement_query = db.query(WorkflowTemplateEnablement).filter(
         WorkflowTemplateEnablement.tenant_id == tenant_id,
@@ -328,7 +355,7 @@ def list_enabled_workflow_versions(
         WorkflowTemplateVersion.created_at.desc(),
     ).all()
 
-    visible = []
+    visible_candidates = []
     seen_template_ids = set()
     explicit_scope = bool(enablements)
     for template, version in rows:
@@ -340,9 +367,18 @@ def list_enabled_workflow_versions(
                 continue
         elif not template.is_default:
             continue
-        visible.append((template, version, enablement))
+        visible_candidates.append((template, version, enablement))
         seen_template_ids.add(template.id)
 
+    visible_by_catalog_key = {}
+    for row in visible_candidates:
+        template, _, _ = row
+        catalog_key = (template.crop_code, template.season_code)
+        existing = visible_by_catalog_key.get(catalog_key)
+        if not existing or _is_newer_workflow_catalog_row(row, existing):
+            visible_by_catalog_key[catalog_key] = row
+
+    visible = list(visible_by_catalog_key.values())
     return sorted(
         visible,
         key=lambda row: (
