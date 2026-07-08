@@ -28,6 +28,35 @@ function statusClass(rule: string) {
   }
 }
 
+const AUDIT_ACTIONS = [
+  "CREATE_INPUT_ASSIGNMENT",
+  "ENABLE_INPUT",
+  "DISABLE_INPUT",
+  "UPDATE_INPUT_ASSIGNMENT",
+];
+
+function formatAuditAction(action: string) {
+  return action
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function valueLabel(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function diffRows(before?: Record<string, unknown> | null, after?: Record<string, unknown> | null) {
+  const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  return Array.from(keys)
+    .filter((key) => JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key]))
+    .map((key) => ({ key, before: before?.[key], after: after?.[key] }));
+}
+
 export default function ProjectInputsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<InputCategoryDto[]>([]);
@@ -42,6 +71,8 @@ export default function ProjectInputsPage() {
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [auditEvents, setAuditEvents] = useState<ProjectInputAssignmentAuditEvent[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [auditInputCode, setAuditInputCode] = useState("");
+  const [auditAction, setAuditAction] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { reason: string; displayOrder: string }>>({});
 
   useEffect(() => {
@@ -82,16 +113,19 @@ export default function ProjectInputsPage() {
     setDrafts(next);
   }, [summary]);
 
-
   useEffect(() => {
     if (!selectedProjectId) return;
     setLoadingAudit(true);
     inputCatalogApi
-      .projectAssignmentAudit(selectedProjectId, { limit: 12 })
+      .projectAssignmentAudit(selectedProjectId, {
+        inputCode: auditInputCode || undefined,
+        action: auditAction || undefined,
+        limit: 25,
+      })
       .then((payload) => setAuditEvents(payload.events))
       .catch(() => setAuditEvents([]))
       .finally(() => setLoadingAudit(false));
-  }, [selectedProjectId, summary]);
+  }, [selectedProjectId, summary, auditInputCode, auditAction]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId),
@@ -129,7 +163,11 @@ export default function ProjectInputsPage() {
         reason: draft.reason.trim() || undefined,
       });
       setSummary(updated);
-      const audit = await inputCatalogApi.projectAssignmentAudit(selectedProjectId, { limit: 12 });
+      const audit = await inputCatalogApi.projectAssignmentAudit(selectedProjectId, {
+        inputCode: auditInputCode || undefined,
+        action: auditAction || undefined,
+        limit: 25,
+      });
       setAuditEvents(audit.events);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update input assignment");
@@ -240,7 +278,15 @@ export default function ProjectInputsPage() {
                   <div className="rounded-lg bg-white p-10 text-center text-gray-400 shadow">No inputs match this filter.</div>
                 ) : null}
               </div>
-              <AuditPanel events={auditEvents} loading={loadingAudit} />
+              <AuditPanel
+                events={auditEvents}
+                loading={loadingAudit}
+                summary={summary}
+                inputCode={auditInputCode}
+                action={auditAction}
+                onInputCodeChange={setAuditInputCode}
+                onActionChange={setAuditAction}
+              />
             </>
           )}
         </>
@@ -339,40 +385,148 @@ function InputAssignmentCard({
 }
 
 
-function AuditPanel({ events, loading }: { events: ProjectInputAssignmentAuditEvent[]; loading: boolean }) {
+function AuditPanel({
+  events,
+  loading,
+  summary,
+  inputCode,
+  action,
+  onInputCodeChange,
+  onActionChange,
+}: {
+  events: ProjectInputAssignmentAuditEvent[];
+  loading: boolean;
+  summary: ProjectInputAssignmentsResponse;
+  inputCode: string;
+  action: string;
+  onInputCodeChange: (value: string) => void;
+  onActionChange: (value: string) => void;
+}) {
+  const inputOptions = useMemo(() => {
+    const items = summary.inputs.map((item) => ({ code: item.code, label: item.canonical_name }));
+    const eventCodes = new Set(events.map((event) => event.input_code));
+    eventCodes.forEach((code) => {
+      if (!items.some((item) => item.code === code)) items.push({ code, label: code });
+    });
+    return items.sort((a, b) => a.code.localeCompare(b.code));
+  }, [events, summary.inputs]);
+
   return (
     <div className="mt-6 rounded-lg bg-white p-5 shadow">
-      <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Recent input assignment audit</h2>
-          <p className="text-sm text-gray-500">Latest enable, disable, and metadata changes for this project.</p>
+          <h2 className="text-lg font-semibold text-gray-900">Input assignment audit</h2>
+          <p className="text-sm text-gray-500">Filter change history and inspect exactly what changed.</p>
         </div>
-        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">{events.length} events</span>
+        <span className="w-fit rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">{events.length} events</span>
       </div>
+
+      <div className="mb-4 grid gap-3 rounded-lg border bg-gray-50 p-3 md:grid-cols-[1fr_220px_auto]">
+        <label className="text-xs font-medium text-gray-500">
+          Input
+          <select
+            value={inputCode}
+            onChange={(event) => onInputCodeChange(event.target.value)}
+            className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
+          >
+            <option value="">All inputs</option>
+            {inputOptions.map((item) => (
+              <option key={item.code} value={item.code}>{item.code} - {item.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs font-medium text-gray-500">
+          Action
+          <select
+            value={action}
+            onChange={(event) => onActionChange(event.target.value)}
+            className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
+          >
+            <option value="">All actions</option>
+            {AUDIT_ACTIONS.map((item) => (
+              <option key={item} value={item}>{formatAuditAction(item)}</option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={() => { onInputCodeChange(""); onActionChange(""); }}
+            className="w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white"
+          >
+            Clear audit filters
+          </button>
+        </div>
+      </div>
+
       {loading ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">Loading audit trail...</p> : null}
       {!loading && events.length === 0 ? (
-        <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No input assignment changes recorded yet.</p>
+        <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No input assignment changes match this filter.</p>
       ) : null}
       {!loading && events.length > 0 ? (
-        <div className="max-h-96 space-y-2 overflow-auto">
+        <div className="max-h-[32rem] space-y-3 overflow-auto pr-1">
           {events.map((event) => (
-            <div key={event.id} className="rounded border p-3 text-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700">{event.action}</span>
-                <span className="font-mono text-gray-600">{event.input_code}</span>
-                {event.created_at ? <span className="text-gray-400">{new Date(event.created_at).toLocaleString()}</span> : null}
-              </div>
-              {event.reason ? <p className="mt-2 text-gray-600">{event.reason}</p> : null}
-              <details className="mt-2">
-                <summary className="cursor-pointer text-gray-500">Payload</summary>
-                <pre className="mt-2 overflow-auto rounded bg-gray-50 p-2 text-[11px] text-gray-600">
-                  {JSON.stringify({ before: event.before, after: event.after }, null, 2)}
-                </pre>
-              </details>
-            </div>
+            <AuditEventCard key={event.id} event={event} />
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function AuditEventCard({ event }: { event: ProjectInputAssignmentAuditEvent }) {
+  const rows = diffRows(event.before, event.after);
+  const actor = event.actor_id || "System / unknown actor";
+
+  return (
+    <div className="rounded border p-3 text-xs">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700">{formatAuditAction(event.action)}</span>
+          <span className="font-mono text-gray-700">{event.input_code}</span>
+          {event.created_at ? <span className="text-gray-400">{new Date(event.created_at).toLocaleString()}</span> : null}
+        </div>
+        <span className="rounded bg-gray-50 px-2 py-1 font-mono text-[11px] text-gray-500">Actor: {actor}</span>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <div className="rounded bg-gray-50 p-2">
+          <p className="font-medium text-gray-500">Reason</p>
+          <p className="mt-1 text-gray-700">{event.reason || "No reason captured"}</p>
+        </div>
+        <div className="rounded bg-gray-50 p-2">
+          <p className="font-medium text-gray-500">Source</p>
+          <p className="mt-1 text-gray-700">{valueLabel(event.metadata?.source)}</p>
+        </div>
+      </div>
+
+      <details className="mt-3">
+        <summary className="cursor-pointer font-medium text-gray-600">View field-level changes</summary>
+        {rows.length > 0 ? (
+          <div className="mt-2 overflow-auto rounded border">
+            <table className="min-w-full text-left text-[11px]">
+              <thead className="bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="px-2 py-1 font-medium">Field</th>
+                  <th className="px-2 py-1 font-medium">Before</th>
+                  <th className="px-2 py-1 font-medium">After</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((row) => (
+                  <tr key={row.key}>
+                    <td className="px-2 py-1 font-mono text-gray-600">{row.key}</td>
+                    <td className="max-w-xs px-2 py-1 text-gray-500">{valueLabel(row.before)}</td>
+                    <td className="max-w-xs px-2 py-1 text-gray-800">{valueLabel(row.after)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-2 rounded bg-gray-50 p-2 text-gray-400">No field-level differences available for this event.</p>
+        )}
+      </details>
     </div>
   );
 }
