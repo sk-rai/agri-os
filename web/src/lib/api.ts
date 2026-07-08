@@ -716,15 +716,64 @@ export interface InputsResponse {
   inputs: AgriInputDto[];
 }
 
+export interface ProjectInputAssignmentDto extends AgriInputDto {
+  visible: boolean;
+  assignment_rule: "ANDROID_VISIBLE" | "DISABLED_BY_PROJECT" | "BLOCKED_BY_CROP_SCOPE" | "NOT_ASSIGNED" | "IMPLICIT_CROP_SCOPE" | string;
+  assignment_reason?: string;
+  crop_scope_allowed?: boolean;
+  assignment_scope?: string;
+  configured_enabled?: boolean | null;
+  display_order?: number | null;
+  reason?: string | null;
+}
+
+export interface ProjectInputAssignmentsResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  project_crop_scope?: string[] | null;
+  explicit_assignment_scope: boolean;
+  counts: {
+    total: number;
+    android_visible: number;
+    disabled_by_project: number;
+    not_assigned: number;
+    blocked_by_crop_scope: number;
+    implicit_crop_scope: number;
+  };
+  inputs: ProjectInputAssignmentDto[];
+}
+
+export interface ProjectInputAssignmentUpdateRequest {
+  enabled: boolean;
+  display_order?: number | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export const inputCatalogApi = {
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
   inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);
     if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.projectId) query.set("project_id", params.projectId);
     if (params?.q) query.set("q", params.q);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
   },
   get: (code: string) => api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`),
+  projectAssignments: (projectId: string, params?: { category?: string; cropCode?: string; q?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.q) query.set("q", params.q);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<ProjectInputAssignmentsResponse>(`/api/v1/input-catalog/projects/${projectId}/input-assignments${suffix}`);
+  },
+  updateProjectAssignment: (projectId: string, inputCode: string, data: ProjectInputAssignmentUpdateRequest) =>
+    api<ProjectInputAssignmentsResponse>(`/api/v1/input-catalog/projects/${projectId}/input-assignments/${inputCode}`, {
+      method: "PUT",
+      body: data,
+    }),
 };

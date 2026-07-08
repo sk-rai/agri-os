@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
+from app.modules.master_data.input_assignment_service import ensure_project_input_assignment_table
+from app.modules.master_data.models import ProjectInputAssignment
 from app.modules.workflow.models import WorkflowTemplateRecommendation
 
 GREEN = "\033[92m"
@@ -31,6 +33,8 @@ def ensure_default_tenant(db):
 
 
 def cleanup_project(db, project_id):
+    ensure_project_input_assignment_table(db)
+    db.query(ProjectInputAssignment).filter(ProjectInputAssignment.project_id == project_id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
     db.commit()
 
@@ -92,12 +96,41 @@ def main():
         check(project_inputs.status_code == 200, "Project-scoped input catalog returns 200", f"Status: {project_inputs.status_code}")
         project_payload = project_inputs.json()
         project_codes = {item["code"] for item in project_payload["inputs"]}
-        check(project_payload["filter_policy"] == "PROJECT_CROP_SCOPE", "Project input catalog reports crop-scope policy")
+        check(project_payload["filter_policy"] == "PROJECT_ASSIGNMENT", "Project input catalog reports assignment policy")
         check("UREA_46_N" in project_codes, "Project Rice input catalog includes Urea")
         check("HEALTHY_CANE_SETTS" not in project_codes, "Project Rice input catalog excludes Sugarcane cane setts")
         blocked_crop = client.get(f"/api/v1/input-catalog/inputs?project_id={project_id}&crop_code=SUGARCANE")
         check(blocked_crop.status_code == 200, "Out-of-scope crop input filter returns 200", f"Status: {blocked_crop.status_code}")
         check(blocked_crop.json()["count"] == 0, "Out-of-scope crop input filter returns no inputs")
+
+        assignments = client.get(f"/api/v1/input-catalog/projects/{project_id}/input-assignments")
+        check(assignments.status_code == 200, "Project input assignment summary returns 200", f"Status: {assignments.status_code}")
+        check(assignments.json()["counts"]["implicit_crop_scope"] > 0, "Summary reports implicit crop-scope visible inputs")
+
+        enable_urea = client.put(
+            f"/api/v1/input-catalog/projects/{project_id}/input-assignments/UREA_46_N",
+            json={"enabled": True, "display_order": 1, "reason": "Preferred project fertilizer"},
+        )
+        check(enable_urea.status_code == 200, "Project input enablement returns 200", f"Status: {enable_urea.status_code}")
+        enable_payload = enable_urea.json()
+        check(enable_payload["explicit_assignment_scope"] is True, "Enabled assignment activates explicit input allow-list")
+        urea_row = next(row for row in enable_payload["inputs"] if row["code"] == "UREA_46_N")
+        dap_row = next(row for row in enable_payload["inputs"] if row["code"] == "DAP_18_46_0")
+        check(urea_row["assignment_rule"] == "ANDROID_VISIBLE", "Enabled input is Android-visible")
+        check(dap_row["assignment_rule"] == "NOT_ASSIGNED", "Unassigned input hidden in explicit allow-list mode")
+
+        explicit_inputs = client.get(f"/api/v1/input-catalog/inputs?project_id={project_id}&crop_code=RICE")
+        explicit_codes = {item["code"] for item in explicit_inputs.json()["inputs"]}
+        check("UREA_46_N" in explicit_codes, "Explicit project input catalog includes enabled Urea")
+        check("DAP_18_46_0" not in explicit_codes, "Explicit project input catalog excludes unassigned DAP")
+
+        disable_urea = client.put(
+            f"/api/v1/input-catalog/projects/{project_id}/input-assignments/UREA_46_N",
+            json={"enabled": False, "display_order": 1, "reason": "Temporarily blocked"},
+        )
+        check(disable_urea.status_code == 200, "Project input disablement returns 200", f"Status: {disable_urea.status_code}")
+        disabled_row = next(row for row in disable_urea.json()["inputs"] if row["code"] == "UREA_46_N")
+        check(disabled_row["assignment_rule"] == "DISABLED_BY_PROJECT", "Disabled input reports DISABLED_BY_PROJECT")
     finally:
         cleanup_project(db, project_id)
         db.close()

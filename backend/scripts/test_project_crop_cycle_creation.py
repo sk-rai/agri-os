@@ -202,7 +202,7 @@ def main():
             },
         )
         check(blocked_input.status_code == 409, "Catalog input outside cycle crop/project scope is rejected", f"Status: {blocked_input.status_code}")
-        check(blocked_input.json()["detail"]["assignment_rule"] == "INPUT_NOT_ALLOWED_FOR_PROJECT_CROP", "Blocked input returns assignment rule")
+        check(blocked_input.json()["detail"]["assignment_rule"] in {"BLOCKED_BY_CROP_SCOPE", "DISABLED_BY_PROJECT", "NOT_ASSIGNED"}, "Blocked input returns assignment rule")
 
         custom_input = client.post(
             f"/api/v1/crop-cycles/{rice_cycle_id}/activities",

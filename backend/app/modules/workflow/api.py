@@ -27,8 +27,12 @@ from app.modules.workflow.template_service import (
     workflow_version_to_stage_definitions,
     workflow_version_to_stage_definitions_for_scope,
 )
-from app.modules.master_data.models import AgriculturalInput, Crop, CropLifecycleTemplate
-from app.modules.farmer.models import Parcel, Project
+from app.modules.master_data.models import Crop, CropLifecycleTemplate
+from app.modules.master_data.input_assignment_service import (
+    allowed_input_codes_for_project_crop,
+    assert_catalog_input_allowed_for_project_crop,
+)
+from app.modules.farmer.models import Parcel
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
@@ -93,54 +97,6 @@ def _assert_project_workflow_allows_cycle(
                 "season_code": season_code.upper(),
                 "requested_workflow_template_version_id": str(pinned_workflow_version_id),
                 "assigned_workflow_template_version_id": str(version.id),
-            },
-        )
-
-
-def _project_crop_scope(db: Session, *, tenant_id: str, project_id: Optional[uuid.UUID]) -> set[str] | None:
-    if not project_id:
-        return None
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
-    if not project:
-        raise HTTPException(404, "Project not found")
-    return {str(code).upper() for code in (project.crop_scope or [])} or None
-
-
-def _input_allowed_for_crop(item: AgriculturalInput, crop_code: str, project_crop_scope: set[str] | None = None) -> bool:
-    crop = crop_code.upper()
-    if project_crop_scope is not None and crop not in project_crop_scope:
-        return False
-    applicable = {str(code).upper() for code in (item.applicable_crops or [])}
-    return not applicable or crop in applicable
-
-
-def _allowed_input_codes_for_cycle(db: Session, cycle: CropCycle, tenant_id: str) -> set[str]:
-    project_crop_scope = _project_crop_scope(db, tenant_id=tenant_id, project_id=cycle.project_id)
-    rows = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True).all()
-    return {item.code for item in rows if _input_allowed_for_crop(item, cycle.crop_code, project_crop_scope)}
-
-
-def _assert_catalog_input_allowed_for_cycle(db: Session, cycle: CropCycle, tenant_id: str, input_code: Optional[str]) -> None:
-    if not input_code:
-        return
-    item = db.query(AgriculturalInput).filter(
-        AgriculturalInput.code == input_code.upper(),
-        AgriculturalInput.is_active == True,
-    ).first()
-    if not item:
-        return
-    project_crop_scope = _project_crop_scope(db, tenant_id=tenant_id, project_id=cycle.project_id)
-    if not _input_allowed_for_crop(item, cycle.crop_code, project_crop_scope):
-        raise HTTPException(
-            409,
-            {
-                "error": "INPUT_NOT_ALLOWED_FOR_PROJECT_CROP",
-                "assignment_rule": "INPUT_NOT_ALLOWED_FOR_PROJECT_CROP",
-                "message": "Catalog input is not allowed for this crop cycle/project crop scope.",
-                "input_code": input_code.upper(),
-                "crop_code": cycle.crop_code,
-                "project_id": str(cycle.project_id) if cycle.project_id else None,
-                "project_crop_scope": sorted(project_crop_scope) if project_crop_scope is not None else None,
             },
         )
 
@@ -965,7 +921,7 @@ def get_recommended_activities(
         logged_by_key.setdefault(key, []).append(activity)
 
     recommendations = []
-    allowed_input_codes = _allowed_input_codes_for_cycle(db, cycle, x_tenant_id)
+    allowed_input_codes = allowed_input_codes_for_project_crop(db, tenant_id=x_tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code)
     suppressed_recommendation_count = 0
     template_stages = None
     if cycle.workflow_template_version_id:
@@ -1380,7 +1336,7 @@ def log_activity(
         raise HTTPException(404, "Crop cycle not found")
     if cycle.status == "COMPLETED":
         raise HTTPException(409, "Completed crop cycles are read-only")
-    _assert_catalog_input_allowed_for_cycle(db, cycle, x_tenant_id, body.input_code)
+    assert_catalog_input_allowed_for_project_crop(db, tenant_id=x_tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code, input_code=body.input_code)
 
     # Find currently active stage (if any)
     active_stage = (

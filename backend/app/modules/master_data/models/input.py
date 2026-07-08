@@ -5,12 +5,16 @@ Canonical naming per Semantic Registry v1: input_category, agricultural_input.
 """
 
 from sqlalchemy import (
+    Boolean,
     Column,
-    String,
-    Text,
+    Date,
+    DECIMAL,
     ForeignKey,
     Index,
-    DECIMAL,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
@@ -83,4 +87,27 @@ class AgriculturalInput(Base, UUIDPrimaryKey, AuditMixin):
             postgresql_using="gin",
             postgresql_ops={"canonical_name": "gin_trgm_ops"},
         ),
+    )
+
+class ProjectInputAssignment(Base, UUIDPrimaryKey, AuditMixin):
+    """Project-level allow/block rule for an agricultural input."""
+
+    __tablename__ = "project_input_assignments"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    input_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_inputs.id"), nullable=False, index=True)
+    input_code = Column(String(50), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    display_order = Column(Integer, nullable=False, default=1000)
+    reason = Column(Text)
+    effective_from = Column(Date)
+    effective_to = Column(Date)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    input = relationship("AgriculturalInput")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "project_id", "input_code", name="uq_project_input_assignment"),
+        Index("idx_project_input_assignment_project", "project_id", "enabled"),
     )
