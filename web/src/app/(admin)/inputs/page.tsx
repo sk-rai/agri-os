@@ -116,6 +116,7 @@ export default function InputsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [cropCode, setCropCode] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -128,7 +129,12 @@ export default function InputsPage() {
   useEffect(() => {
     setLoading(true);
     inputCatalogApi
-      .inputs({ category: category || undefined, cropCode: cropCode || undefined, q: query || undefined })
+      .inputs({
+        category: category || undefined,
+        cropCode: cropCode || undefined,
+        q: query || undefined,
+        includeInactive: showArchived,
+      })
       .then((data) => {
         setInputs(data.inputs);
         setSelected((current) => {
@@ -138,7 +144,7 @@ export default function InputsPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [category, cropCode, query]);
+  }, [category, cropCode, query, showArchived]);
 
   useEffect(() => {
     setDraft(selected ? toDraft(selected) : null);
@@ -216,6 +222,49 @@ export default function InputsPage() {
     }
   };
 
+  const archiveSelected = async () => {
+    if (!selected) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await inputCatalogApi.archive(selected.code, changeReason.trim() || "Archived from admin input catalog");
+      setInputs((current) => showArchived
+        ? current.map((item) => item.code === updated.code ? updated : item)
+        : current.filter((item) => item.code !== updated.code)
+      );
+      setSelected((current) => showArchived ? updated : inputs.find((item) => item.code !== current?.code) || null);
+      setChangeReason("");
+      const audit = await inputCatalogApi.inputAudit(updated.code, { limit: 10 });
+      setAuditEvents(audit.events);
+      setNotice(`Input ${updated.code} archived.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to archive input");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restoreSelected = async () => {
+    if (!selected) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await inputCatalogApi.restore(selected.code, changeReason.trim() || "Restored from admin input catalog");
+      setInputs((current) => current.map((item) => item.code === updated.code ? updated : item));
+      setSelected(updated);
+      setChangeReason("");
+      const audit = await inputCatalogApi.inputAudit(updated.code, { limit: 10 });
+      setAuditEvents(audit.events);
+      setNotice(`Input ${updated.code} restored.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to restore input");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveSelected = async () => {
     if (!selected || !draft) return;
     setSaving(true);
@@ -279,7 +328,7 @@ export default function InputsPage() {
         />
       ) : null}
 
-      <div className="mb-6 grid gap-3 rounded-lg bg-white p-4 shadow md:grid-cols-[1fr_220px_180px_auto]">
+      <div className="mb-6 grid gap-3 rounded-lg bg-white p-4 shadow md:grid-cols-[1fr_220px_180px_auto_auto]">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -298,9 +347,17 @@ export default function InputsPage() {
             <option key={crop} value={crop}>{crop}</option>
           ))}
         </select>
+        <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+          />
+          Show archived
+        </label>
         <button
           type="button"
-          onClick={() => { setQuery(""); setCategory(""); setCropCode(""); }}
+          onClick={() => { setQuery(""); setCategory(""); setCropCode(""); setShowArchived(false); }}
           className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           Clear
@@ -339,6 +396,7 @@ export default function InputsPage() {
                   <th className="px-4 py-3 text-left font-medium">Composition</th>
                   <th className="px-4 py-3 text-left font-medium">Unit</th>
                   <th className="px-4 py-3 text-left font-medium">Crops</th>
+                  <th className="px-4 py-3 text-left font-medium">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -367,11 +425,16 @@ export default function InputsPage() {
                         )) : <span className="text-gray-400">-</span>}
                       </div>
                     </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded px-2 py-1 text-xs font-medium ${item.is_active === false ? "bg-gray-100 text-gray-500" : "bg-green-50 text-green-700"}`}>
+                        {item.is_active === false ? "Archived" : "Active"}
+                      </span>
+                    </td>
                   </tr>
                 ))}
                 {inputs.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400">No inputs match this filter.</td>
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400">No inputs match this filter.</td>
                   </tr>
                 )}
               </tbody>
@@ -388,6 +451,8 @@ export default function InputsPage() {
             loadingAudit={loadingAudit}
             onChangeReason={setChangeReason}
             onSave={saveSelected}
+            onArchive={archiveSelected}
+            onRestore={restoreSelected}
             onReset={() => setDraft(selected ? toDraft(selected) : null)}
           />
         </div>
@@ -483,6 +548,8 @@ function InputEditor({
   onDraft,
   onChangeReason,
   onSave,
+  onArchive,
+  onRestore,
   onReset,
 }: {
   item: AgriInputDto | null;
@@ -494,6 +561,8 @@ function InputEditor({
   onDraft: (patch: Partial<InputDraft>) => void;
   onChangeReason: (value: string) => void;
   onSave: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
   onReset: () => void;
 }) {
   if (!item || !draft) {
@@ -503,7 +572,12 @@ function InputEditor({
   return (
     <div className="rounded-lg bg-white p-5 shadow">
       <div className="mb-4">
-        <p className="font-mono text-xs text-gray-400">{item.code}</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-mono text-xs text-gray-400">{item.code}</p>
+          <span className={`rounded px-2 py-1 text-xs font-medium ${item.is_active === false ? "bg-gray-100 text-gray-500" : "bg-green-50 text-green-700"}`}>
+            {item.is_active === false ? "Archived" : "Active"}
+          </span>
+        </div>
         <h2 className="text-lg font-semibold text-gray-900">Edit input metadata</h2>
         <p className="mt-1 text-xs text-gray-500">Code and category are locked because workflow recommendations may already reference them.</p>
       </div>
@@ -540,6 +614,25 @@ function InputEditor({
         >
           Reset
         </button>
+        {item.is_active === false ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onRestore}
+            className="rounded-lg border border-green-200 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-60"
+          >
+            Restore
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onArchive}
+            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+          >
+            Archive
+          </button>
+        )}
       </div>
 
       <InputAuditPanel events={auditEvents} loading={loadingAudit} />

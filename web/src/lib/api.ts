@@ -683,6 +683,7 @@ export interface InputCategoryDto {
   canonical_name: string;
   description?: string | null;
   aliases: Array<Record<string, string>>;
+  is_active?: boolean;
 }
 
 export interface AgriInputDto {
@@ -699,6 +700,7 @@ export interface AgriInputDto {
   application_method?: string | null;
   safety_instructions?: string | null;
   aliases: Array<Record<string, string>>;
+  is_active?: boolean;
 }
 
 export interface InputCategoriesResponse {
@@ -818,12 +820,13 @@ export interface ProjectInputAssignmentAuditResponse {
 
 export const inputCatalogApi = {
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
-  inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string }) => {
+  inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string; includeInactive?: boolean }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);
     if (params?.cropCode) query.set("crop_code", params.cropCode);
     if (params?.projectId) query.set("project_id", params.projectId);
     if (params?.q) query.set("q", params.q);
+    if (params?.includeInactive) query.set("include_inactive", "true");
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
   },
@@ -837,6 +840,16 @@ export const inputCatalogApi = {
     api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`, {
       method: "PUT",
       body: data,
+    }),
+  archive: (code: string, reason?: string | null) =>
+    api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}/archive`, {
+      method: "POST",
+      body: { reason: reason || null },
+    }),
+  restore: (code: string, reason?: string | null) =>
+    api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}/restore`, {
+      method: "POST",
+      body: { reason: reason || null },
     }),
   inputAudit: (code: string, params?: { action?: string; limit?: number }) => {
     const query = new URLSearchParams();

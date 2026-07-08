@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
+from app.modules.workflow.models import WorkflowTemplateRecommendation
 from app.modules.master_data.input_assignment_service import (
     assignment_map,
     ensure_project_input_assignment_table,
@@ -33,6 +34,10 @@ class ProjectInputAssignmentUpdate(BaseModel):
     display_order: Optional[int] = None
     reason: Optional[str] = None
     metadata: Optional[dict] = None
+
+
+class InputArchiveRequest(BaseModel):
+    reason: Optional[str] = None
 
 
 class AgriculturalInputUpdate(BaseModel):
@@ -231,6 +236,7 @@ def input_payload(item: AgriculturalInput) -> dict:
         "application_method": item.application_method,
         "safety_instructions": item.safety_instructions,
         "aliases": item.aliases or [],
+        "is_active": item.is_active,
     }
 
 
@@ -302,10 +308,13 @@ def list_inputs(
     crop_code: Optional[str] = Query(None),
     project_id: Optional[uuid.UUID] = Query(None),
     q: Optional[str] = Query(None, description="Case-insensitive search over code/name/composition"),
+    include_inactive: bool = Query(False),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    query = db.query(AgriculturalInput).join(InputCategory).filter(AgriculturalInput.is_active == True)
+    query = db.query(AgriculturalInput).join(InputCategory)
+    if not include_inactive:
+        query = query.filter(AgriculturalInput.is_active == True)
     if category:
         query = query.filter(InputCategory.code == category.upper())
     project_scope = project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
@@ -535,6 +544,109 @@ def _apply_input_update(item: AgriculturalInput, body: AgriculturalInputUpdate) 
     if "applicable_crops" in data:
         item.applicable_crops = data["applicable_crops"] or []
     item.updated_at = datetime.now(timezone.utc)
+
+
+def _input_reference_summary(db: Session, input_code: str) -> dict:
+    code = input_code.upper()
+    workflow_count = db.query(WorkflowTemplateRecommendation).filter(
+        WorkflowTemplateRecommendation.input_code == code,
+        WorkflowTemplateRecommendation.is_active == True,
+    ).count()
+    assignment_count = db.query(ProjectInputAssignment).filter(
+        ProjectInputAssignment.input_code == code,
+        ProjectInputAssignment.is_active == True,
+    ).count()
+    return {
+        "workflow_recommendations": workflow_count,
+        "project_assignments": assignment_count,
+        "total": workflow_count + assignment_count,
+    }
+
+
+@router.get("/inputs/{input_code}/references")
+def get_input_references(input_code: str, db: Session = Depends(get_db)):
+    item = (
+        db.query(AgriculturalInput)
+        .filter(AgriculturalInput.code == input_code.upper())
+        .first()
+    )
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    return {
+        "schema_version": "1.0.0",
+        "input_code": item.code,
+        "references": _input_reference_summary(db, item.code),
+    }
+
+
+@router.post("/inputs/{input_code}/archive")
+def archive_input(
+    input_code: str,
+    body: InputArchiveRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper()).first()
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    references = _input_reference_summary(db, item.code)
+    if references["total"] > 0:
+        raise HTTPException(409, {
+            "message": "Input is referenced and cannot be archived safely.",
+            "references": references,
+        })
+    before = input_payload(item)
+    item.is_active = False
+    item.updated_at = datetime.now(timezone.utc)
+    after = input_payload(item)
+    if before != after:
+        _record_input_audit(
+            db,
+            tenant_id=x_tenant_id,
+            item=item,
+            actor_id=_actor_uuid(x_actor_id),
+            action="ARCHIVE_INPUT",
+            before=before,
+            after=after,
+            reason=body.reason,
+            metadata={"source": "admin_api", "references": references},
+        )
+    db.commit()
+    db.refresh(item)
+    return input_payload(item)
+
+
+@router.post("/inputs/{input_code}/restore")
+def restore_input(
+    input_code: str,
+    body: InputArchiveRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper()).first()
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    before = input_payload(item)
+    item.is_active = True
+    item.updated_at = datetime.now(timezone.utc)
+    after = input_payload(item)
+    if before != after:
+        _record_input_audit(
+            db,
+            tenant_id=x_tenant_id,
+            item=item,
+            actor_id=_actor_uuid(x_actor_id),
+            action="RESTORE_INPUT",
+            before=before,
+            after=after,
+            reason=body.reason,
+            metadata={"source": "admin_api"},
+        )
+    db.commit()
+    db.refresh(item)
+    return input_payload(item)
 
 
 @router.get("/inputs/{input_code}/audit")
