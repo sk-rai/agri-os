@@ -67,6 +67,31 @@ def ensure_project_input_assignment_audit_table(db: Session) -> None:
     db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_audit_input ON project_input_assignment_audit_events(project_id, input_code)"))
     db.commit()
 
+def ensure_agricultural_input_audit_table(db: Session) -> None:
+    """Create master input audit table in migration-light MVP environments."""
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS agricultural_input_audit_events (
+            id UUID PRIMARY KEY,
+            tenant_id VARCHAR(50) NOT NULL,
+            input_id UUID NOT NULL REFERENCES agricultural_inputs(id),
+            input_code VARCHAR(50) NOT NULL,
+            actor_id UUID,
+            action VARCHAR(50) NOT NULL,
+            before_payload JSONB,
+            after_payload JSONB,
+            reason TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ,
+            version VARCHAR(20) DEFAULT 'v1.0',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE
+        )
+    """))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_agricultural_input_audit_input ON agricultural_input_audit_events(input_code, created_at)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS idx_agricultural_input_audit_tenant ON agricultural_input_audit_events(tenant_id, created_at)"))
+    db.commit()
+
+
 def project_crop_scope(db: Session, *, project_id: Optional[uuid.UUID], tenant_id: str) -> set[str] | None:
     if not project_id:
         return None

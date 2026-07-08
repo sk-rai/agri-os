@@ -13,11 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.farmer.models import Project
-from app.modules.master_data.models import AgriculturalInput, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
+from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.master_data.input_assignment_service import (
     assignment_map,
     ensure_project_input_assignment_table,
     ensure_project_input_assignment_audit_table,
+    ensure_agricultural_input_audit_table,
     explicit_allowlist_mode,
     input_assignment_decision,
     project_crop_scope,
@@ -44,6 +45,7 @@ class AgriculturalInputUpdate(BaseModel):
     application_method: Optional[str] = None
     safety_instructions: Optional[str] = None
     aliases: Optional[list[dict[str, str]]] = None
+    change_reason: Optional[str] = None
 
     @field_validator("applicable_crops")
     @classmethod
@@ -114,6 +116,51 @@ def _audit_payload(event: ProjectInputAssignmentAuditEvent) -> dict:
         "metadata": event.metadata_ or {},
         "created_at": event.created_at.isoformat() if event.created_at else None,
     }
+
+
+def _input_audit_payload(event: AgriculturalInputAuditEvent) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "input_id": str(event.input_id),
+        "input_code": event.input_code,
+        "actor_id": str(event.actor_id) if event.actor_id else None,
+        "action": event.action,
+        "before": event.before_payload,
+        "after": event.after_payload,
+        "reason": event.reason,
+        "metadata": event.metadata_ or {},
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
+
+
+def _record_input_audit(
+    db: Session,
+    *,
+    tenant_id: str,
+    item: AgriculturalInput,
+    actor_id,
+    action: str,
+    before: Optional[dict],
+    after: Optional[dict],
+    reason: Optional[str],
+    metadata: Optional[dict] = None,
+) -> None:
+    ensure_agricultural_input_audit_table(db)
+    db.add(AgriculturalInputAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        input_id=item.id,
+        input_code=item.code,
+        actor_id=actor_id,
+        action=action,
+        before_payload=before,
+        after_payload=after,
+        reason=reason,
+        metadata_=metadata or {},
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    ))
 
 
 def _record_input_assignment_audit(
@@ -431,8 +478,15 @@ def _apply_input_update(item: AgriculturalInput, body: AgriculturalInputUpdate) 
     item.updated_at = datetime.now(timezone.utc)
 
 
-@router.put("/inputs/{input_code}")
-def update_input(input_code: str, body: AgriculturalInputUpdate, db: Session = Depends(get_db)):
+@router.get("/inputs/{input_code}/audit")
+def get_input_audit(
+    input_code: str,
+    action: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    ensure_agricultural_input_audit_table(db)
     item = (
         db.query(AgriculturalInput)
         .filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True)
@@ -440,7 +494,53 @@ def update_input(input_code: str, body: AgriculturalInputUpdate, db: Session = D
     )
     if not item:
         raise HTTPException(404, f"Input '{input_code}' not found")
+    query = db.query(AgriculturalInputAuditEvent).filter(
+        AgriculturalInputAuditEvent.tenant_id == x_tenant_id,
+        AgriculturalInputAuditEvent.input_code == item.code,
+        AgriculturalInputAuditEvent.is_active == True,
+    )
+    if action:
+        query = query.filter(AgriculturalInputAuditEvent.action == action.upper())
+    events = query.order_by(AgriculturalInputAuditEvent.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": x_tenant_id,
+        "input_code": item.code,
+        "count": len(events),
+        "events": [_input_audit_payload(event) for event in events],
+    }
+
+
+@router.put("/inputs/{input_code}")
+def update_input(
+    input_code: str,
+    body: AgriculturalInputUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    item = (
+        db.query(AgriculturalInput)
+        .filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True)
+        .first()
+    )
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    before = input_payload(item)
     _apply_input_update(item, body)
+    after = input_payload(item)
+    if before != after:
+        _record_input_audit(
+            db,
+            tenant_id=x_tenant_id,
+            item=item,
+            actor_id=_actor_uuid(x_actor_id),
+            action="UPDATE_INPUT",
+            before=before,
+            after=after,
+            reason=body.change_reason,
+            metadata={"source": "admin_api"},
+        )
     db.commit()
     db.refresh(item)
     return input_payload(item)

@@ -726,6 +726,29 @@ export interface AgriInputUpdateRequest {
   application_method?: string | null;
   safety_instructions?: string | null;
   aliases?: Array<Record<string, string>>;
+  change_reason?: string | null;
+}
+
+export interface AgriInputAuditEvent {
+  id: string;
+  tenant_id: string;
+  input_id: string;
+  input_code: string;
+  actor_id?: string | null;
+  action: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export interface AgriInputAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  input_code: string;
+  count: number;
+  events: AgriInputAuditEvent[];
 }
 
 export interface ProjectInputAssignmentDto extends AgriInputDto {
@@ -803,6 +826,13 @@ export const inputCatalogApi = {
       method: "PUT",
       body: data,
     }),
+  inputAudit: (code: string, params?: { action?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.action) query.set("action", params.action);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<AgriInputAuditResponse>(`/api/v1/input-catalog/inputs/${code}/audit${suffix}`);
+  },
   projectAssignments: (projectId: string, params?: { category?: string; cropCode?: string; q?: string }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);

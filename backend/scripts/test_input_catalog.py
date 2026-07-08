@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
-from app.modules.master_data.input_assignment_service import ensure_project_input_assignment_audit_table, ensure_project_input_assignment_table
-from app.modules.master_data.models import ProjectInputAssignment, ProjectInputAssignmentAuditEvent
+from app.modules.master_data.input_assignment_service import ensure_agricultural_input_audit_table, ensure_project_input_assignment_audit_table, ensure_project_input_assignment_table
+from app.modules.master_data.models import AgriculturalInputAuditEvent, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.workflow.models import WorkflowTemplateRecommendation
 
 GREEN = "\033[92m"
@@ -87,10 +87,16 @@ def main():
         "application_method": urea.get("application_method"),
         "safety_instructions": urea.get("safety_instructions"),
         "aliases": urea.get("aliases", []),
+        "change_reason": "Regression test metadata edit",
     }
     update_response = client.put("/api/v1/input-catalog/inputs/UREA_46_N", json=update_payload)
     check(update_response.status_code == 200, "Input catalog update returns 200", f"Status: {update_response.status_code}")
     check(update_response.json()["brand_name"] == "Regression Test Brand", "Input catalog update saves editable metadata")
+    input_audit = client.get("/api/v1/input-catalog/inputs/UREA_46_N/audit")
+    check(input_audit.status_code == 200, "Input catalog audit returns 200", f"Status: {input_audit.status_code}")
+    audit_events = input_audit.json()["events"]
+    check(any(event["action"] == "UPDATE_INPUT" for event in audit_events), "Input catalog audit records update action")
+    check(any(event.get("reason") == "Regression test metadata edit" for event in audit_events), "Input catalog audit records change reason")
     restore_payload = {
         "canonical_name": urea.get("canonical_name"),
         "brand_name": urea.get("brand_name"),
@@ -101,9 +107,20 @@ def main():
         "application_method": urea.get("application_method"),
         "safety_instructions": urea.get("safety_instructions"),
         "aliases": urea.get("aliases", []),
+        "change_reason": "Regression test restore",
     }
     restore_response = client.put("/api/v1/input-catalog/inputs/UREA_46_N", json=restore_payload)
     check(restore_response.status_code == 200, "Input catalog test restore returns 200", f"Status: {restore_response.status_code}")
+    db = SessionLocal()
+    try:
+        ensure_agricultural_input_audit_table(db)
+        db.query(AgriculturalInputAuditEvent).filter(
+            AgriculturalInputAuditEvent.input_code == "UREA_46_N",
+            AgriculturalInputAuditEvent.reason.in_(["Regression test metadata edit", "Regression test restore"]),
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
 
     print("\n[4] Project-aware input filter")
     db = SessionLocal()

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   inputCatalogApi,
+  type AgriInputAuditEvent,
   type AgriInputDto,
   type AgriInputUpdateRequest,
   type InputCategoryDto,
@@ -48,6 +49,28 @@ function parseAliases(value: string) {
   return parsed;
 }
 
+function valueLabel(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function diffRows(before?: Record<string, unknown> | null, after?: Record<string, unknown> | null) {
+  const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  return Array.from(keys)
+    .filter((key) => JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key]))
+    .map((key) => ({ key, before: before?.[key], after: after?.[key] }));
+}
+
+function formatAction(action: string) {
+  return action
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function InputsPage() {
   const [categories, setCategories] = useState<InputCategoryDto[]>([]);
   const [inputs, setInputs] = useState<AgriInputDto[]>([]);
@@ -55,6 +78,9 @@ export default function InputsPage() {
   const [draft, setDraft] = useState<InputDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [auditEvents, setAuditEvents] = useState<AgriInputAuditEvent[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [changeReason, setChangeReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [category, setCategory] = useState("");
@@ -85,7 +111,21 @@ export default function InputsPage() {
 
   useEffect(() => {
     setDraft(selected ? toDraft(selected) : null);
+    setChangeReason("");
     setNotice(null);
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) {
+      setAuditEvents([]);
+      return;
+    }
+    setLoadingAudit(true);
+    inputCatalogApi
+      .inputAudit(selected.code, { limit: 10 })
+      .then((payload) => setAuditEvents(payload.events))
+      .catch(() => setAuditEvents([]))
+      .finally(() => setLoadingAudit(false));
   }, [selected]);
 
   const cropOptions = useMemo(() => {
@@ -123,10 +163,14 @@ export default function InputsPage() {
         application_method: draft.application_method.trim() || null,
         safety_instructions: draft.safety_instructions.trim() || null,
         aliases: parseAliases(draft.aliases),
+        change_reason: changeReason.trim() || null,
       };
       const updated = await inputCatalogApi.update(selected.code, payload);
       setInputs((current) => current.map((item) => item.code === updated.code ? updated : item));
       setSelected(updated);
+      setChangeReason("");
+      const audit = await inputCatalogApi.inputAudit(updated.code, { limit: 10 });
+      setAuditEvents(audit.events);
       setNotice("Input catalog item saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save input");
@@ -250,6 +294,10 @@ export default function InputsPage() {
             draft={draft}
             saving={saving}
             onDraft={updateDraft}
+            changeReason={changeReason}
+            auditEvents={auditEvents}
+            loadingAudit={loadingAudit}
+            onChangeReason={setChangeReason}
             onSave={saveSelected}
             onReset={() => setDraft(selected ? toDraft(selected) : null)}
           />
@@ -263,14 +311,22 @@ function InputEditor({
   item,
   draft,
   saving,
+  changeReason,
+  auditEvents,
+  loadingAudit,
   onDraft,
+  onChangeReason,
   onSave,
   onReset,
 }: {
   item: AgriInputDto | null;
   draft: InputDraft | null;
   saving: boolean;
+  changeReason: string;
+  auditEvents: AgriInputAuditEvent[];
+  loadingAudit: boolean;
   onDraft: (patch: Partial<InputDraft>) => void;
+  onChangeReason: (value: string) => void;
   onSave: () => void;
   onReset: () => void;
 }) {
@@ -298,6 +354,7 @@ function InputEditor({
         <TextArea label="Application method" value={draft.application_method} onChange={(value) => onDraft({ application_method: value })} />
         <TextArea label="Safety instructions" value={draft.safety_instructions} onChange={(value) => onDraft({ safety_instructions: value })} />
         <TextArea label="Aliases JSON" hint='Example: [{"name":"local name","language":"hi"}]' value={draft.aliases} onChange={(value) => onDraft({ aliases: value })} rows={5} />
+        <TextArea label="Change reason" hint="Shown in audit history" value={changeReason} onChange={onChangeReason} rows={2} />
       </div>
 
       <div className="mt-5 flex gap-2">
@@ -318,6 +375,65 @@ function InputEditor({
           Reset
         </button>
       </div>
+
+      <InputAuditPanel events={auditEvents} loading={loadingAudit} />
+    </div>
+  );
+}
+
+function InputAuditPanel({ events, loading }: { events: AgriInputAuditEvent[]; loading: boolean }) {
+  return (
+    <div className="mt-6 border-t pt-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Change history</h3>
+          <p className="text-xs text-gray-500">Recent master data edits for this input.</p>
+        </div>
+        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-500">{events.length}</span>
+      </div>
+      {loading ? <p className="rounded bg-gray-50 p-3 text-xs text-gray-500">Loading history...</p> : null}
+      {!loading && events.length === 0 ? <p className="rounded bg-gray-50 p-3 text-xs text-gray-400">No changes recorded yet.</p> : null}
+      {!loading && events.length > 0 ? (
+        <div className="max-h-80 space-y-3 overflow-auto pr-1">
+          {events.map((event) => {
+            const rows = diffRows(event.before, event.after);
+            return (
+              <details key={event.id} className="rounded border p-3 text-xs">
+                <summary className="cursor-pointer">
+                  <span className="font-medium text-gray-800">{formatAction(event.action)}</span>
+                  {event.created_at ? <span className="ml-2 text-gray-400">{new Date(event.created_at).toLocaleString()}</span> : null}
+                </summary>
+                <div className="mt-2 rounded bg-gray-50 p-2 text-gray-600">
+                  <p><span className="font-medium">Reason:</span> {event.reason || "No reason captured"}</p>
+                  <p><span className="font-medium">Actor:</span> {event.actor_id || "System / unknown actor"}</p>
+                </div>
+                {rows.length > 0 ? (
+                  <div className="mt-2 overflow-auto rounded border">
+                    <table className="min-w-full text-left text-[11px]">
+                      <thead className="bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="px-2 py-1 font-medium">Field</th>
+                          <th className="px-2 py-1 font-medium">Before</th>
+                          <th className="px-2 py-1 font-medium">After</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {rows.map((row) => (
+                          <tr key={row.key}>
+                            <td className="px-2 py-1 font-mono text-gray-600">{row.key}</td>
+                            <td className="max-w-xs px-2 py-1 text-gray-500">{valueLabel(row.before)}</td>
+                            <td className="max-w-xs px-2 py-1 text-gray-800">{valueLabel(row.after)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </details>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

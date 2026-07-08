@@ -89,6 +89,29 @@ class AgriculturalInput(Base, UUIDPrimaryKey, AuditMixin):
         ),
     )
 
+
+class AgriculturalInputAuditEvent(Base, UUIDPrimaryKey, AuditMixin):
+    """Audit event for master agricultural input metadata changes."""
+
+    __tablename__ = "agricultural_input_audit_events"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    input_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_inputs.id"), nullable=False, index=True)
+    input_code = Column(String(50), nullable=False, index=True)
+    actor_id = Column(UUID(as_uuid=True))
+    action = Column(String(50), nullable=False)
+    before_payload = Column(JSONB)
+    after_payload = Column(JSONB)
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    input = relationship("AgriculturalInput")
+
+    __table_args__ = (
+        Index("idx_agricultural_input_audit_input", "input_code", "created_at"),
+        Index("idx_agricultural_input_audit_tenant", "tenant_id", "created_at"),
+    )
+
 class ProjectInputAssignment(Base, UUIDPrimaryKey, AuditMixin):
     """Project-level allow/block rule for an agricultural input."""
 

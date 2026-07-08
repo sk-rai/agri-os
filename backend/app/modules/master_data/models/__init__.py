@@ -21,6 +21,7 @@ from app.modules.master_data.models.input import (
     InputCategory,
     Manufacturer,
     AgriculturalInput,
+    AgriculturalInputAuditEvent,
     ProjectInputAssignment,
     ProjectInputAssignmentAuditEvent,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "InputCategory",
     "Manufacturer",
     "AgriculturalInput",
+    "AgriculturalInputAuditEvent",
     "ProjectInputAssignment",
     "ProjectInputAssignmentAuditEvent",
 ]
