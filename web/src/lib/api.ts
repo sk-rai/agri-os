@@ -328,6 +328,52 @@ export interface WorkflowAuditResponse {
   events: WorkflowAuditEvent[];
 }
 
+export interface WorkflowLegacyCyclePinRow {
+  cycle_id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  farmer_id?: string | null;
+  parcel_id?: string | null;
+  crop_code: string;
+  season_code: string;
+  status: string;
+  planned_sowing_date?: string | null;
+  lifecycle_template_id?: string | null;
+  workflow_template_id?: string | null;
+  workflow_template_code?: string | null;
+  workflow_template_version_id?: string | null;
+  workflow_template_version?: string | null;
+  eligible_for_backfill: boolean;
+  reason: string;
+}
+
+export interface WorkflowLegacyCyclePinsResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  counts: {
+    total: number;
+    eligible: number;
+    blocked: number;
+    by_reason: Record<string, number>;
+  };
+  cycles: WorkflowLegacyCyclePinRow[];
+}
+
+export interface WorkflowLegacyCycleBackfillResponse {
+  schema_version: string;
+  tenant_id: string;
+  dry_run: boolean;
+  requested_limit: number;
+  counts: {
+    scanned: number;
+    eligible: number;
+    pinned: number;
+    blocked: number;
+  };
+  cycles: WorkflowLegacyCyclePinRow[];
+}
+
 export interface WorkflowDraftStageUpdateRequest {
   stage_name?: Record<string, string>;
   duration_days?: number;
@@ -495,6 +541,20 @@ export const workflowCatalogApi = {
   },
   templateVersions: (templateId: string) =>
     api<WorkflowTemplateVersionsResponse>(`/api/v1/workflow-catalog/templates/${templateId}/versions`),
+  legacyCyclePins: (params?: { cropCode?: string; seasonCode?: string; projectId?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.seasonCode) query.set("season_code", params.seasonCode);
+    if (params?.projectId) query.set("project_id", params.projectId);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<WorkflowLegacyCyclePinsResponse>(`/api/v1/workflow-catalog/legacy-cycle-pins${suffix}`);
+  },
+  backfillLegacyCyclePins: (data: { dry_run?: boolean; crop_code?: string; season_code?: string; project_id?: string; limit?: number; reason?: string }) =>
+    api<WorkflowLegacyCycleBackfillResponse>("/api/v1/workflow-catalog/legacy-cycle-pins/backfill", {
+      method: "POST",
+      body: data,
+    }),
   templateAudit: (templateId: string, params?: { versionId?: string; action?: string; actorId?: string; limit?: number }) => {
     const query = new URLSearchParams();
     if (params?.versionId) query.set("version_id", params.versionId);

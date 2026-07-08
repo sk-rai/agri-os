@@ -30,6 +30,7 @@ from app.modules.workflow.models import (
     WorkflowTemplateVersion,
 )
 from app.modules.workflow.template_service import (
+    find_published_workflow_template,
     list_enabled_workflow_versions,
     workflow_template_metadata,
     scoped_overrides,
@@ -201,6 +202,90 @@ class WorkflowDraftRecommendationCreate(BaseModel):
     is_critical: bool = False
     description: Optional[dict[str, str]] = None
     sort_order: Optional[int] = None
+
+
+class WorkflowLegacyCycleBackfillRequest(BaseModel):
+    dry_run: bool = True
+    project_id: Optional[uuid.UUID] = None
+    crop_code: Optional[str] = None
+    season_code: Optional[str] = None
+    limit: int = 200
+    reason: Optional[str] = None
+
+
+def _workflow_pin_candidate(db: Session, cycle: CropCycle, tenant_id: str) -> dict:
+    workflow_pair = find_published_workflow_template(
+        db,
+        crop_code=cycle.crop_code,
+        season_code=cycle.season_code,
+        tenant_id=tenant_id,
+        lifecycle_template_id=cycle.lifecycle_template_id,
+    )
+    if not workflow_pair:
+        return {
+            "cycle": cycle,
+            "eligible": False,
+            "reason": "NO_MATCHING_PUBLISHED_WORKFLOW",
+            "workflow_template": None,
+            "workflow_version": None,
+        }
+    template, version = workflow_pair
+    return {
+        "cycle": cycle,
+        "eligible": True,
+        "reason": "MATCHED_PUBLISHED_WORKFLOW",
+        "workflow_template": template,
+        "workflow_version": version,
+    }
+
+
+def _legacy_cycle_pin_row(candidate: dict) -> dict:
+    cycle = candidate["cycle"]
+    template = candidate.get("workflow_template")
+    version = candidate.get("workflow_version")
+    return {
+        "cycle_id": str(cycle.id),
+        "tenant_id": cycle.tenant_id,
+        "project_id": str(cycle.project_id) if cycle.project_id else None,
+        "farmer_id": str(cycle.farmer_id) if cycle.farmer_id else None,
+        "parcel_id": str(cycle.parcel_id) if cycle.parcel_id else None,
+        "crop_code": cycle.crop_code,
+        "season_code": cycle.season_code,
+        "status": cycle.status,
+        "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+        "lifecycle_template_id": str(cycle.lifecycle_template_id) if cycle.lifecycle_template_id else None,
+        "workflow_template_id": str(template.id) if template else None,
+        "workflow_template_code": template.code if template else None,
+        "workflow_template_version_id": str(version.id) if version else None,
+        "workflow_template_version": version.version_number if version else None,
+        "eligible_for_backfill": candidate["eligible"],
+        "reason": candidate["reason"],
+    }
+
+
+def _legacy_cycle_pin_candidates(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id=None,
+    crop_code: Optional[str] = None,
+    season_code: Optional[str] = None,
+    limit: int = 200,
+) -> list[dict]:
+    _ensure_crop_cycle_workflow_version_column(db)
+    query = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.workflow_template_version_id == None,
+        CropCycle.status != "ARCHIVED",
+    )
+    if project_id:
+        query = query.filter(CropCycle.project_id == project_id)
+    if crop_code:
+        query = query.filter(CropCycle.crop_code == crop_code.upper())
+    if season_code:
+        query = query.filter(CropCycle.season_code == season_code.upper())
+    cycles = query.order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc()).limit(max(1, min(limit, 1000))).all()
+    return [_workflow_pin_candidate(db, cycle, tenant_id) for cycle in cycles]
 
 
 def _validate_override_payload(target_type: str, operation: str, payload: dict) -> None:
@@ -1485,6 +1570,109 @@ def _workflow_version_summary(
         "metadata": version.metadata_ or {},
         "created_at": version.created_at.isoformat() if version.created_at else None,
         "updated_at": version.updated_at.isoformat() if version.updated_at else None,
+    }
+
+
+@router.get("/legacy-cycle-pins")
+def list_legacy_cycle_pin_candidates(
+    project_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Report legacy crop cycles that are not pinned to a workflow version yet."""
+    candidates = _legacy_cycle_pin_candidates(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        crop_code=crop_code,
+        season_code=season_code,
+        limit=limit,
+    )
+    rows = [_legacy_cycle_pin_row(candidate) for candidate in candidates]
+    eligible_count = sum(1 for row in rows if row["eligible_for_backfill"])
+    by_reason = {}
+    for row in rows:
+        by_reason[row["reason"]] = by_reason.get(row["reason"], 0) + 1
+    return {
+        "schema_version": "workflow_legacy_cycle_pins.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "crop_code": crop_code.upper() if crop_code else None,
+            "season_code": season_code.upper() if season_code else None,
+            "limit": limit,
+        },
+        "counts": {
+            "total": len(rows),
+            "eligible": eligible_count,
+            "blocked": len(rows) - eligible_count,
+            "by_reason": by_reason,
+        },
+        "cycles": rows,
+    }
+
+
+@router.post("/legacy-cycle-pins/backfill")
+def backfill_legacy_cycle_pins(
+    body: WorkflowLegacyCycleBackfillRequest = WorkflowLegacyCycleBackfillRequest(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    """Pin eligible legacy crop cycles to their matching published workflow version."""
+    candidates = _legacy_cycle_pin_candidates(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=body.project_id,
+        crop_code=body.crop_code,
+        season_code=body.season_code,
+        limit=body.limit,
+    )
+    rows = [_legacy_cycle_pin_row(candidate) for candidate in candidates]
+    eligible = [candidate for candidate in candidates if candidate["eligible"]]
+    pinned_by_version = {}
+    if not body.dry_run:
+        now = datetime.now(timezone.utc)
+        for candidate in eligible:
+            cycle = candidate["cycle"]
+            version = candidate["workflow_version"]
+            cycle.workflow_template_version_id = version.id
+            cycle.updated_at = now
+            key = (candidate["workflow_template"].id, version.id, candidate["workflow_template"].code, version.version_number)
+            pinned_by_version[key] = pinned_by_version.get(key, 0) + 1
+        actor_id = _actor_uuid(x_actor_id)
+        for (template_id, version_id, template_code, version_number), count in pinned_by_version.items():
+            _record_workflow_audit_event(
+                db,
+                tenant_id=x_tenant_id,
+                template_id=template_id,
+                template_version_id=version_id,
+                actor_id=actor_id,
+                action="LEGACY_CYCLE_PIN_BACKFILL",
+                target_type="CROP_CYCLE",
+                target_id=None,
+                target_code=template_code,
+                before={"workflow_template_version_id": None},
+                after={"workflow_template_version_id": str(version_id), "version": version_number, "cycle_count": count},
+                reason=body.reason or "Backfill legacy crop cycles to matching published workflow version",
+                metadata={"cycle_count": count, "dry_run": False},
+            )
+        db.commit()
+    return {
+        "schema_version": "workflow_legacy_cycle_backfill.v1",
+        "tenant_id": x_tenant_id,
+        "dry_run": body.dry_run,
+        "requested_limit": body.limit,
+        "counts": {
+            "scanned": len(rows),
+            "eligible": len(eligible),
+            "pinned": 0 if body.dry_run else len(eligible),
+            "blocked": len(rows) - len(eligible),
+        },
+        "cycles": rows,
     }
 
 

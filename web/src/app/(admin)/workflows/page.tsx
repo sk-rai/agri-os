@@ -6,6 +6,7 @@ import {
   workflowCatalogApi,
   type EnabledCropWorkflow,
   type WorkflowAuditResponse,
+  type WorkflowLegacyCyclePinsResponse,
   type WorkflowRecommendation,
   type WorkflowStage,
   type WorkflowTemplateVersionsResponse,
@@ -141,6 +142,10 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
   const [audit, setAudit] = useState<WorkflowAuditResponse | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [legacyPins, setLegacyPins] = useState<WorkflowLegacyCyclePinsResponse | null>(null);
+  const [legacyLoading, setLegacyLoading] = useState(false);
+  const [legacyError, setLegacyError] = useState<string | null>(null);
+  const [legacyMessage, setLegacyMessage] = useState<string | null>(null);
 
   const loadVersions = () => {
     setVersionLoading(true);
@@ -162,14 +167,50 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
       .finally(() => setAuditLoading(false));
   };
 
+  const loadLegacyPins = () => {
+    setLegacyLoading(true);
+    setLegacyError(null);
+    workflowCatalogApi
+      .legacyCyclePins({ cropCode: workflow.crop_code, seasonCode: workflow.season_code, limit: 50 })
+      .then(setLegacyPins)
+      .catch((e) => setLegacyError(e instanceof Error ? e.message : "Failed to load legacy cycle pin report"))
+      .finally(() => setLegacyLoading(false));
+  };
+
   useEffect(() => {
     setVersions(null);
     setAudit(null);
+    setLegacyPins(null);
     setRestoreMessage(null);
+    setLegacyMessage(null);
     loadVersions();
     loadAudit();
+    loadLegacyPins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.workflow_template_id]);
+
+  const runLegacyBackfill = async (dryRun: boolean) => {
+    setLegacyLoading(true);
+    setLegacyError(null);
+    setLegacyMessage(null);
+    try {
+      const result = await workflowCatalogApi.backfillLegacyCyclePins({
+        dry_run: dryRun,
+        crop_code: workflow.crop_code,
+        season_code: workflow.season_code,
+        limit: 50,
+        reason: "Admin workflow legacy pin backfill",
+      });
+      setLegacyMessage(dryRun ? `Dry run found ${result.counts.eligible} eligible legacy cycles.` : `Pinned ${result.counts.pinned} legacy cycles.`);
+      await workflowCatalogApi.legacyCyclePins({ cropCode: workflow.crop_code, seasonCode: workflow.season_code, limit: 50 }).then(setLegacyPins);
+      await workflowCatalogApi.templateVersions(workflow.workflow_template_id).then(setVersions);
+      await workflowCatalogApi.templateAudit(workflow.workflow_template_id, { limit: 100 }).then(setAudit);
+    } catch (e) {
+      setLegacyError(e instanceof Error ? e.message : "Failed to run legacy cycle pin backfill");
+    } finally {
+      setLegacyLoading(false);
+    }
+  };
 
   const restoreDraft = async (versionId: string) => {
     setBusyVersionId(versionId);
@@ -284,6 +325,62 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
           </div>
         ) : !versionLoading ? (
           <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No version history found.</p>
+        ) : null}
+      </div>
+
+      <div className="rounded-lg bg-white p-5 shadow">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Legacy Cycle Pinning</h3>
+            <p className="text-sm text-gray-500">Older crop cycles without a workflow version pin for this crop/season.</p>
+          </div>
+          {legacyPins ? (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge>Total {legacyPins.counts.total}</Badge>
+              <Badge>Eligible {legacyPins.counts.eligible}</Badge>
+              <Badge>Blocked {legacyPins.counts.blocked}</Badge>
+            </div>
+          ) : null}
+        </div>
+        {legacyMessage ? <div className="mb-3 rounded bg-green-50 p-3 text-sm text-green-700">{legacyMessage}</div> : null}
+        {legacyError ? <div className="mb-3 rounded bg-red-50 p-3 text-sm text-red-700">{legacyError}</div> : null}
+        {legacyLoading ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">Loading legacy pin report...</p> : null}
+        {legacyPins && legacyPins.counts.total > 0 ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <button
+                type="button"
+                disabled={legacyLoading}
+                onClick={() => runLegacyBackfill(true)}
+                className="rounded border border-gray-200 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                Dry run
+              </button>
+              <button
+                type="button"
+                disabled={legacyLoading || legacyPins.counts.eligible === 0}
+                onClick={() => runLegacyBackfill(false)}
+                className="rounded border border-amber-200 px-3 py-1.5 font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                Backfill eligible pins
+              </button>
+            </div>
+            <div className="max-h-64 space-y-2 overflow-auto">
+              {legacyPins.cycles.slice(0, 10).map((cycle) => (
+                <div key={cycle.cycle_id} className="rounded border p-3 text-xs">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge>{cycle.status}</Badge>
+                    <Badge>{cycle.eligible_for_backfill ? "Eligible" : "Blocked"}</Badge>
+                    <Badge>{cycle.reason}</Badge>
+                  </div>
+                  <p className="mt-2 font-mono text-gray-500">{cycle.cycle_id}</p>
+                  <p className="mt-1 text-gray-600">{cycle.crop_code}/{cycle.season_code} ? {cycle.workflow_template_code || "No matching workflow"} {cycle.workflow_template_version ? `v${cycle.workflow_template_version}` : ""}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : !legacyLoading ? (
+          <p className="rounded bg-gray-50 p-3 text-sm text-gray-400">No legacy unpinned cycles found for this crop/season.</p>
         ) : null}
       </div>
 
