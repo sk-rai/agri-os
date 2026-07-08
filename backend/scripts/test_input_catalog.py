@@ -1,7 +1,9 @@
-﻿"""Regression for agricultural input catalog and workflow recommendation mapping."""
+"""Regression for agricultural input catalog and workflow recommendation mapping."""
 
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -9,11 +11,28 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from app.modules.farmer.models import Project, Tenant
 from app.modules.workflow.models import WorkflowTemplateRecommendation
 
 GREEN = "\033[92m"
 RED = "\033[91m"
 RESET = "\033[0m"
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def ensure_default_tenant(db):
+    tenant = db.query(Tenant).filter(Tenant.id == "default").first()
+    if not tenant:
+        db.add(Tenant(id="default", name="Default", type="ENTERPRISE", created_at=now(), updated_at=now()))
+        db.flush()
+
+
+def cleanup_project(db, project_id):
+    db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
+    db.commit()
 
 
 def check(condition, label, detail=None):
@@ -52,7 +71,38 @@ def main():
     check(urea["canonical_name"] == "Urea", "Input detail returns canonical name")
     check("RICE" in urea["applicable_crops"], "Input detail includes applicable crop")
 
-    print("\n[3] Workflow recommendation mapping")
+    print("\n[3] Project-aware input filter")
+    db = SessionLocal()
+    project_id = uuid.uuid4()
+    try:
+        ensure_default_tenant(db)
+        db.add(Project(
+            id=project_id,
+            tenant_id="default",
+            name="Input Catalog Project Scope Test",
+            crop_scope=["RICE"],
+            start_date=date(2027, 1, 1),
+            end_date=date(2027, 12, 31),
+            status="PLANNED",
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.commit()
+        project_inputs = client.get(f"/api/v1/input-catalog/inputs?project_id={project_id}")
+        check(project_inputs.status_code == 200, "Project-scoped input catalog returns 200", f"Status: {project_inputs.status_code}")
+        project_payload = project_inputs.json()
+        project_codes = {item["code"] for item in project_payload["inputs"]}
+        check(project_payload["filter_policy"] == "PROJECT_CROP_SCOPE", "Project input catalog reports crop-scope policy")
+        check("UREA_46_N" in project_codes, "Project Rice input catalog includes Urea")
+        check("HEALTHY_CANE_SETTS" not in project_codes, "Project Rice input catalog excludes Sugarcane cane setts")
+        blocked_crop = client.get(f"/api/v1/input-catalog/inputs?project_id={project_id}&crop_code=SUGARCANE")
+        check(blocked_crop.status_code == 200, "Out-of-scope crop input filter returns 200", f"Status: {blocked_crop.status_code}")
+        check(blocked_crop.json()["count"] == 0, "Out-of-scope crop input filter returns no inputs")
+    finally:
+        cleanup_project(db, project_id)
+        db.close()
+
+    print("\n[4] Workflow recommendation mapping")
     db = SessionLocal()
     try:
         total = db.query(WorkflowTemplateRecommendation).count()

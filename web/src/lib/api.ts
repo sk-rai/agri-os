@@ -566,6 +566,7 @@ export const workflowCatalogApi = {
     const query = new URLSearchParams();
     if (params?.projectId) query.set("project_id", params.projectId);
     if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.projectId) query.set("project_id", params.projectId);
     if (params?.season) query.set("season", params.season);
     if (params?.includeStages) query.set("include_stages", "true");
     const suffix = query.toString() ? `?${query.toString()}` : "";
@@ -708,13 +709,16 @@ export interface InputCategoriesResponse {
 
 export interface InputsResponse {
   schema_version: string;
+  project_id?: string | null;
+  project_crop_scope?: string[] | null;
+  filter_policy?: string;
   count: number;
   inputs: AgriInputDto[];
 }
 
 export const inputCatalogApi = {
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
-  inputs: (params?: { category?: string; cropCode?: string; q?: string }) => {
+  inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);
     if (params?.cropCode) query.set("crop_code", params.cropCode);

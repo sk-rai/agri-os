@@ -182,6 +182,40 @@ def main():
         cycle_ids.append(rice_cycle_id)
         check(rice_payload["workflow_template_version_id"] == str(rice_version.id), "Rice cycle pins the project-visible workflow version")
 
+        recs_response = client.get(f"/api/v1/crop-cycles/{rice_cycle_id}/recommended-activities", headers={"X-Tenant-ID": TENANT_ID})
+        check(recs_response.status_code == 200, "Project Rice recommendations return 200", f"Status: {recs_response.status_code}")
+        recs_payload = recs_response.json()
+        check(recs_payload["input_filter_policy"] == "PROJECT_CROP_SCOPE", "Recommendations report project input filter policy")
+        check(
+            all(rec.get("input_assignment_rule") in {"INPUT_ALLOWED_FOR_PROJECT_CROP", "CUSTOM_OR_UNCODED_INPUT"} for rec in recs_payload["recommendations"]),
+            "Returned recommendations are project-input allowed or uncoded",
+        )
+
+        blocked_input = client.post(
+            f"/api/v1/crop-cycles/{rice_cycle_id}/activities",
+            headers=headers,
+            json={
+                "activity_type": "SEED",
+                "input_code": "HEALTHY_CANE_SETTS",
+                "input_name": "Healthy Cane Setts",
+                "activity_date": "2027-06-16",
+            },
+        )
+        check(blocked_input.status_code == 409, "Catalog input outside cycle crop/project scope is rejected", f"Status: {blocked_input.status_code}")
+        check(blocked_input.json()["detail"]["assignment_rule"] == "INPUT_NOT_ALLOWED_FOR_PROJECT_CROP", "Blocked input returns assignment rule")
+
+        custom_input = client.post(
+            f"/api/v1/crop-cycles/{rice_cycle_id}/activities",
+            headers=headers,
+            json={
+                "activity_type": "OTHER",
+                "input_name": "Local farmer-supplied item",
+                "activity_date": "2027-06-16",
+            },
+        )
+        check(custom_input.status_code == 201, "Manual uncatalogued activity input remains accepted", f"Status: {custom_input.status_code}")
+
+        db.query(CropActivity).filter(CropActivity.crop_cycle_id == rice_cycle_id).delete(synchronize_session=False)
         db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == rice_cycle_id).delete(synchronize_session=False)
         db.query(CropCycle).filter(CropCycle.id == rice_cycle_id).delete(synchronize_session=False)
         db.commit()
