@@ -487,9 +487,13 @@ export interface ProjectWorkflowEnablementItem {
   workflow_template_code: string;
   version: string;
   status: string;
-  visibility_status: "ENABLED" | "DISABLED" | "IMPLICIT_DEFAULT" | "NOT_VISIBLE" | string;
+  visibility_status: "ENABLED" | "DISABLED" | "IMPLICIT_DEFAULT" | "NOT_VISIBLE" | "CROP_SCOPE_BLOCKED" | string;
+  assignment_rule?: string;
+  assignment_reason?: string;
+  crop_scope_allowed?: boolean;
   enablement_scope: "project" | "tenant" | "implicit_default" | string;
   enabled: boolean;
+  configured_enabled?: boolean;
   display_order?: number | null;
   label: Record<string, string>;
   crop_code: string;
@@ -522,6 +526,8 @@ export interface ProjectWorkflowEnablementsResponse {
     disabled: number;
     implicit_default: number;
     not_visible: number;
+    crop_scope_blocked?: number;
+    android_visible?: number;
   };
   workflows: ProjectWorkflowEnablementItem[];
 }

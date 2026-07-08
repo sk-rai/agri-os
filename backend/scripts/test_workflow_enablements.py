@@ -94,6 +94,7 @@ def main():
             start_date=date(2026, 1, 1),
             end_date=date(2026, 12, 31),
             status="ACTIVE",
+            crop_scope=["RICE"],
             created_at=now(),
             updated_at=now(),
         )
@@ -135,6 +136,27 @@ def main():
             updated_at=now(),
         ))
         db.commit()
+
+        blocked_update = client.put(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements/{sugar_template.id}",
+            headers=headers,
+            json={"enabled": True, "display_order": 2, "display_label": {"en": "Project Sugarcane", "hi": "Project Sugarcane"}},
+        )
+        check(blocked_update.status_code == 409, "Cannot enable workflow outside project crop scope", f"Status: {blocked_update.status_code}")
+        check(blocked_update.json()["detail"]["assignment_rule"] == "BLOCKED_BY_PROJECT_CROP_SCOPE", "Blocked update returns assignment rule")
+
+        summary = client.get(
+            f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements",
+            headers=headers,
+        )
+        check(summary.status_code == 200, "Project assignment summary returns 200", f"Status: {summary.status_code}")
+        summary_payload = summary.json()
+        check(summary_payload["counts"]["android_visible"] == 1, "Project summary counts one Android-visible workflow")
+        check(summary_payload["counts"]["crop_scope_blocked"] >= 1, "Project summary reports crop-scope blocked workflows")
+        rice_assignment = next(item for item in summary_payload["workflows"] if item["crop_code"] == "RICE")
+        sugar_assignment = next(item for item in summary_payload["workflows"] if item["crop_code"] == "SUGARCANE")
+        check(rice_assignment["assignment_rule"] == "ANDROID_VISIBLE", "Rice assignment is Android-visible")
+        check(sugar_assignment["assignment_rule"] == "BLOCKED_BY_PROJECT_CROP_SCOPE", "Sugarcane assignment is blocked by project crop scope")
 
         scoped = client.get(
             f"/api/v1/workflow-catalog/enabled-crop-workflows?project_id={project_id}&include_stages=true",

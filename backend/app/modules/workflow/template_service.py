@@ -13,6 +13,7 @@ from typing import Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.modules.farmer.models import Project
 from app.modules.workflow.models import (
     WorkflowTemplate,
     WorkflowTemplateVersion,
@@ -331,6 +332,11 @@ def list_enabled_workflow_versions(
     # Project scope wins; tenant-level rows are the next explicit scope; no rows means implicit defaults.
     enablements = project_enablements or tenant_enablements
     enablement_by_template = {e.template_id: e for e in enablements}
+    project_crop_scope = None
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
+        if project and project.crop_scope:
+            project_crop_scope = {str(code).upper() for code in project.crop_scope}
 
     query = db.query(WorkflowTemplate, WorkflowTemplateVersion).join(
         WorkflowTemplateVersion,
@@ -366,6 +372,8 @@ def list_enabled_workflow_versions(
             if not enablement or not enablement.enabled:
                 continue
         elif not template.is_default:
+            continue
+        if project_crop_scope is not None and template.crop_code.upper() not in project_crop_scope:
             continue
         visible_candidates.append((template, version, enablement))
         seen_template_ids.add(template.id)

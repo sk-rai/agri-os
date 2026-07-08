@@ -569,6 +569,7 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
     project_enablement_by_template = {row.template_id: row for row in project_enablements}
     tenant_enablement_by_template = {row.template_id: row for row in tenant_enablements}
     explicit_scope = bool(project_enablements) or bool(tenant_enablements)
+    project_crop_scope = {str(code).upper() for code in (project.crop_scope or [])}
 
     lifecycle = _project_workflow_safe_edit_lifecycle(db, project, tenant_id)
     project_cycles = db.query(CropCycle).filter(
@@ -594,8 +595,29 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
     for template, version in version_rows:
         enablement = project_enablement_by_template.get(template.id) or tenant_enablement_by_template.get(template.id)
         scope = "project" if template.id in project_enablement_by_template else "tenant" if template.id in tenant_enablement_by_template else "implicit_default"
-        enabled = bool(enablement.enabled) if enablement else (not explicit_scope and template.is_default)
-        visibility_status = "ENABLED" if enabled and enablement else "DISABLED" if enablement and not enablement.enabled else "IMPLICIT_DEFAULT" if enabled else "NOT_VISIBLE"
+        crop_allowed = not project_crop_scope or template.crop_code.upper() in project_crop_scope
+        configured_enabled = bool(enablement.enabled) if enablement else (not explicit_scope and template.is_default)
+        enabled = configured_enabled and crop_allowed
+        if not crop_allowed:
+            visibility_status = "CROP_SCOPE_BLOCKED"
+            assignment_rule = "BLOCKED_BY_PROJECT_CROP_SCOPE"
+            assignment_reason = f"Project crop scope does not include {template.crop_code}."
+        elif enabled and enablement:
+            visibility_status = "ENABLED"
+            assignment_rule = "ANDROID_VISIBLE"
+            assignment_reason = f"Workflow is enabled by {scope} assignment."
+        elif enablement and not enablement.enabled:
+            visibility_status = "DISABLED"
+            assignment_rule = "DISABLED_BY_PROJECT" if scope == "project" else "DISABLED_BY_TENANT"
+            assignment_reason = f"Workflow is explicitly disabled at {scope} scope."
+        elif enabled:
+            visibility_status = "IMPLICIT_DEFAULT"
+            assignment_rule = "ANDROID_VISIBLE"
+            assignment_reason = "Workflow is visible through implicit default catalog rules."
+        else:
+            visibility_status = "NOT_VISIBLE"
+            assignment_rule = "NOT_ASSIGNED"
+            assignment_reason = "Workflow is not assigned to this project."
         overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=tenant_id, project_id=project_id)
         crop = crops_by_code.get(template.crop_code)
         workflows.append({
@@ -605,8 +627,12 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
             "version": version.version_number,
             "status": version.status,
             "visibility_status": visibility_status,
+            "assignment_rule": assignment_rule,
+            "assignment_reason": assignment_reason,
+            "crop_scope_allowed": crop_allowed,
             "enablement_scope": scope,
             "enabled": enabled,
+            "configured_enabled": configured_enabled,
             "display_order": enablement.display_order if enablement else None,
             "label": _label(template, enablement),
             "crop_code": template.crop_code,
@@ -650,6 +676,8 @@ def _project_workflow_enablement_summary(db: Session, project_id: uuid.UUID, ten
             "disabled": sum(1 for item in workflows if item["visibility_status"] == "DISABLED"),
             "implicit_default": sum(1 for item in workflows if item["visibility_status"] == "IMPLICIT_DEFAULT"),
             "not_visible": sum(1 for item in workflows if item["visibility_status"] == "NOT_VISIBLE"),
+            "crop_scope_blocked": sum(1 for item in workflows if item["visibility_status"] == "CROP_SCOPE_BLOCKED"),
+            "android_visible": sum(1 for item in workflows if item["assignment_rule"] == "ANDROID_VISIBLE"),
         },
         "workflows": workflows,
     }
@@ -2015,6 +2043,17 @@ def upsert_project_workflow_enablement(
     )
     if not template:
         raise HTTPException(404, "Workflow template not found")
+    project_crop_scope = {str(code).upper() for code in (project.crop_scope or [])}
+    if body.enabled and project_crop_scope and template.crop_code.upper() not in project_crop_scope:
+        raise HTTPException(
+            409,
+            {
+                "message": "Workflow cannot be enabled because the project crop scope does not include this crop.",
+                "assignment_rule": "BLOCKED_BY_PROJECT_CROP_SCOPE",
+                "crop_code": template.crop_code,
+                "project_crop_scope": sorted(project_crop_scope),
+            },
+        )
 
     enablement = (
         db.query(WorkflowTemplateEnablement)

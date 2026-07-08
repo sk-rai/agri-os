@@ -102,7 +102,7 @@ export default function ProjectWorkflowsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Project Workflows</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Read-only view of which crop workflows are visible to each project and what overrides apply.
+            Effective project assignment rules: what Android can see, what is disabled, and what crop scope blocks.
           </p>
         </div>
         <select
@@ -200,9 +200,9 @@ function ProjectWorkflowSummary({
 
       <div className="mb-6 grid gap-4 md:grid-cols-5">
         <Stat label="Total" value={summary.counts.total} />
-        <Stat label="Enabled" value={summary.counts.enabled} tone="ok" />
+        <Stat label="Android visible" value={summary.counts.android_visible ?? summary.counts.enabled} tone="ok" />
         <Stat label="Disabled" value={summary.counts.disabled} tone="warn" />
-        <Stat label="Implicit" value={summary.counts.implicit_default} />
+        <Stat label="Crop blocked" value={summary.counts.crop_scope_blocked ?? 0} tone="warn" />
         <Stat label="Not visible" value={summary.counts.not_visible} />
       </div>
 
@@ -256,6 +256,7 @@ function WorkflowVisibilityCard({
     DISABLED: "bg-red-50 text-red-700",
     IMPLICIT_DEFAULT: "bg-blue-50 text-blue-700",
     NOT_VISIBLE: "bg-gray-100 text-gray-600",
+    CROP_SCOPE_BLOCKED: "bg-orange-50 text-orange-700",
   };
 
   return (
@@ -308,7 +309,7 @@ function WorkflowVisibilityCard({
         <Mini label="Display order" value={workflow.display_order ?? "—"} />
         <Mini label="Overrides" value={workflow.override_count} />
         <Mini label="Cycles" value={workflow.usage_count ?? 0} />
-        <Mini label="Enabled" value={workflow.enabled ? "Yes" : "No"} />
+        <Mini label="Android visible" value={workflow.assignment_rule === "ANDROID_VISIBLE" ? "Yes" : "No"} />
       </div>
 
       <div className="mt-4 grid gap-3 rounded-lg border bg-gray-50 p-3 md:grid-cols-[1fr_140px_auto]">
