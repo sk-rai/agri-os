@@ -128,7 +128,7 @@ def allowed_input_codes_for_project_crop(
     assignments = project_input_assignments(db, tenant_id=tenant_id, project_id=project_id)
     by_code = assignment_map(assignments)
     allowlist = explicit_allowlist_mode(assignments)
-    rows = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True).all()
+    rows = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()
     return {
         item.code
         for item in rows
@@ -155,6 +155,7 @@ def assert_catalog_input_allowed_for_project_crop(
     item = db.query(AgriculturalInput).filter(
         AgriculturalInput.code == input_code.upper(),
         AgriculturalInput.is_active == True,
+        AgriculturalInput.catalog_status == "PUBLISHED",
     ).first()
     if not item:
         return

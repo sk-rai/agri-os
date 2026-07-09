@@ -74,6 +74,11 @@ class AgriculturalInput(Base, UUIDPrimaryKey, AuditMixin):
     application_method = Column(Text)
     safety_instructions = Column(Text)
     aliases = Column(JSONB, default=list)
+    catalog_status = Column(String(20), nullable=False, default="DRAFT", index=True)
+    submitted_at = Column(DateTime(timezone=True))
+    reviewed_at = Column(DateTime(timezone=True))
+    reviewed_by = Column(UUID(as_uuid=True))
+    review_reason = Column(Text)
 
     # Relationships
     category = relationship("InputCategory", back_populates="inputs")

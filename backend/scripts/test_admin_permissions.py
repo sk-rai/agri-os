@@ -132,6 +132,18 @@ def main():
             json={"reason": "Publisher regression restore"},
         )
         check(publisher_restore.status_code == 200, "Publisher can restore master input", publisher_restore.text)
+        submit_input = client.post(
+            f"/api/v1/input-catalog/inputs/{TEMP_CODE}/submit-review",
+            headers=editor_headers,
+            json={"reason": "Permission regression review"},
+        )
+        check(submit_input.status_code == 200, "Editor can submit input review", submit_input.text)
+        publish_input = client.post(
+            f"/api/v1/input-catalog/inputs/{TEMP_CODE}/publish",
+            headers=publisher_headers,
+            json={"reason": "Permission regression approval"},
+        )
+        check(publish_input.status_code == 200, "Publisher can publish reviewed input", publish_input.text)
 
         for index, project_id in enumerate(project_ids):
             db.add(Project(

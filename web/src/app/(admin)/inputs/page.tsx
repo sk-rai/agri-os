@@ -10,6 +10,7 @@ import {
   type InputCategoryDto,
   type InputCsvImportBatch,
   type InputCsvImportHistory,
+  type InputGovernanceResponse,
   type InputReferencesResponse,
 } from "@/lib/api";
 
@@ -116,6 +117,8 @@ export default function InputsPage() {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [references, setReferences] = useState<InputReferencesResponse | null>(null);
   const [loadingReferences, setLoadingReferences] = useState(false);
+  const [governance, setGovernance] = useState<InputGovernanceResponse | null>(null);
+  const [governanceBusy, setGovernanceBusy] = useState(false);
   const [changeReason, setChangeReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -146,6 +149,7 @@ export default function InputsPage() {
         cropCode: cropCode || undefined,
         q: query || undefined,
         includeInactive: showArchived,
+        includeUnpublished: true,
       })
       .then((data) => {
         setInputs(data.inputs);
@@ -168,6 +172,7 @@ export default function InputsPage() {
     if (!selected) {
       setAuditEvents([]);
       setReferences(null);
+      setGovernance(null);
       return;
     }
     setLoadingAudit(true);
@@ -177,6 +182,7 @@ export default function InputsPage() {
       .then((payload) => setAuditEvents(payload.events))
       .catch(() => setAuditEvents([]))
       .finally(() => setLoadingAudit(false));
+    inputCatalogApi.governance(selected.code).then(setGovernance).catch(() => setGovernance(null));
     inputCatalogApi
       .references(selected.code)
       .then(setReferences)
@@ -314,6 +320,27 @@ export default function InputsPage() {
     }
   };
 
+  const transitionGovernance = async (action: "submit" | "publish" | "reject") => {
+    if (!selected) return;
+    const reason = changeReason.trim() || `${action} input catalog item`;
+    setGovernanceBusy(true); setError(null); setNotice(null);
+    try {
+      const result = action === "submit"
+        ? await inputCatalogApi.submitReview(selected.code, reason)
+        : action === "publish"
+          ? await inputCatalogApi.publish(selected.code, reason)
+          : await inputCatalogApi.reject(selected.code, reason);
+      setGovernance(result);
+      setSelected(result.input);
+      setInputs((current) => current.map((item) => item.code === result.input.code ? result.input : item));
+      setChangeReason("");
+      setNotice(`Input ${result.input.code} is now ${result.input.catalog_status}.`);
+      const audit = await inputCatalogApi.inputAudit(result.input.code, { limit: 10 });
+      setAuditEvents(audit.events);
+    } catch (e) { setError(e instanceof Error ? e.message : "Lifecycle action failed"); }
+    finally { setGovernanceBusy(false); }
+  };
+
   const saveSelected = async () => {
     if (!selected || !draft) return;
     setSaving(true);
@@ -336,9 +363,13 @@ export default function InputsPage() {
       setInputs((current) => current.map((item) => item.code === updated.code ? updated : item));
       setSelected(updated);
       setChangeReason("");
-      const audit = await inputCatalogApi.inputAudit(updated.code, { limit: 10 });
+      const [audit, governanceResult] = await Promise.all([
+        inputCatalogApi.inputAudit(updated.code, { limit: 10 }),
+        inputCatalogApi.governance(updated.code),
+      ]);
       setAuditEvents(audit.events);
-      setNotice("Input catalog item saved.");
+      setGovernance(governanceResult);
+      setNotice(updated.catalog_status === "PUBLISHED" ? "Published input metadata saved." : "Input saved as DRAFT; submit it for review when ready.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save input");
     } finally {
@@ -495,7 +526,7 @@ export default function InputsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded px-2 py-1 text-xs font-medium ${item.is_active === false ? "bg-gray-100 text-gray-500" : "bg-green-50 text-green-700"}`}>
-                        {item.is_active === false ? "Archived" : "Active"}
+                        {item.is_active === false ? "Archived" : item.catalog_status}
                       </span>
                     </td>
                   </tr>
@@ -519,6 +550,9 @@ export default function InputsPage() {
             loadingAudit={loadingAudit}
             references={references}
             loadingReferences={loadingReferences}
+            governance={governance}
+            governanceBusy={governanceBusy}
+            onGovernance={transitionGovernance}
             onChangeReason={setChangeReason}
             onSave={saveSelected}
             onArchive={archiveSelected}
@@ -669,6 +703,9 @@ function InputEditor({
   loadingAudit,
   references,
   loadingReferences,
+  governance,
+  governanceBusy,
+  onGovernance,
   onDraft,
   onChangeReason,
   onSave,
@@ -684,6 +721,9 @@ function InputEditor({
   loadingAudit: boolean;
   references: InputReferencesResponse | null;
   loadingReferences: boolean;
+  governance: InputGovernanceResponse | null;
+  governanceBusy: boolean;
+  onGovernance: (action: "submit" | "publish" | "reject") => void;
   onDraft: (patch: Partial<InputDraft>) => void;
   onChangeReason: (value: string) => void;
   onSave: () => void;
@@ -701,7 +741,7 @@ function InputEditor({
         <div className="flex items-center justify-between gap-3">
           <p className="font-mono text-xs text-gray-400">{item.code}</p>
           <span className={`rounded px-2 py-1 text-xs font-medium ${item.is_active === false ? "bg-gray-100 text-gray-500" : "bg-green-50 text-green-700"}`}>
-            {item.is_active === false ? "Archived" : "Active"}
+            {item.is_active === false ? "Archived" : item.catalog_status}
           </span>
         </div>
         <h2 className="text-lg font-semibold text-gray-900">Edit input metadata</h2>
@@ -761,10 +801,23 @@ function InputEditor({
         )}
       </div>
 
+      <InputGovernancePanel governance={governance} busy={governanceBusy} onAction={onGovernance} />
       <InputUsagePanel references={references} loading={loadingReferences} />
       <InputAuditPanel events={auditEvents} loading={loadingAudit} />
     </div>
   );
+}
+
+function InputGovernancePanel({ governance, busy, onAction }: { governance: InputGovernanceResponse | null; busy: boolean; onAction: (action: "submit" | "publish" | "reject") => void }) {
+  if (!governance) return <div className="mt-6 border-t pt-4 text-xs text-gray-400">Loading governance report...</div>;
+  const { input, validation } = governance;
+  return <div className="mt-6 border-t pt-4">
+    <div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold text-gray-900">Review and publishing</h3><p className="text-xs text-gray-500">Only PUBLISHED inputs are visible to Android and workflow runtime.</p></div><span className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{input.catalog_status}</span></div>
+    <div className="mt-3 flex gap-2 text-xs"><span className="rounded bg-red-50 px-2 py-1 text-red-700">{validation.counts.errors} errors</span><span className="rounded bg-amber-50 px-2 py-1 text-amber-700">{validation.counts.warnings} warnings</span><span className="rounded bg-gray-100 px-2 py-1">{validation.counts.duplicates} duplicates</span></div>
+    {[...validation.errors, ...validation.warnings].length ? <div className="mt-2 space-y-1">{[...validation.errors, ...validation.warnings].map((finding) => <p key={`${finding.field}-${finding.code}`} className={`rounded p-2 text-xs ${validation.errors.includes(finding) ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{finding.field}: {finding.message}</p>)}</div> : <p className="mt-2 rounded bg-green-50 p-2 text-xs text-green-700">Validation is clear.</p>}
+    {validation.duplicate_candidates.length ? <details className="mt-2 text-xs"><summary className="cursor-pointer text-gray-600">Possible duplicates</summary>{validation.duplicate_candidates.map((candidate) => <p key={candidate.code} className="mt-1 rounded bg-gray-50 p-2">{candidate.code} · {candidate.canonical_name} · {candidate.catalog_status}</p>)}</details> : null}
+    <div className="mt-3 flex flex-wrap gap-2">{input.catalog_status === "DRAFT" || input.catalog_status === "REJECTED" ? <button disabled={busy || !validation.can_submit} onClick={() => onAction("submit")} className="rounded bg-blue-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Submit for review</button> : null}{input.catalog_status === "REVIEW" ? <><button disabled={busy || !validation.can_publish} onClick={() => onAction("publish")} className="rounded bg-green-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Publish</button><button disabled={busy} onClick={() => onAction("reject")} className="rounded border border-red-200 px-3 py-2 text-xs font-medium text-red-700">Reject</button></> : null}</div>
+  </div>;
 }
 
 function localizedLabel(value?: Record<string, string> | string | null) {

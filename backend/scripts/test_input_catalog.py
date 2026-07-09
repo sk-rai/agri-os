@@ -142,7 +142,7 @@ def main():
     active_search = client.get(f"/api/v1/input-catalog/inputs?q={temp_code}")
     check(active_search.status_code == 200, "Active catalog search after archive returns 200")
     check(active_search.json()["count"] == 0, "Archived input is hidden from active catalog")
-    inactive_search = client.get(f"/api/v1/input-catalog/inputs?q={temp_code}&include_inactive=true")
+    inactive_search = client.get(f"/api/v1/input-catalog/inputs?q={temp_code}&include_inactive=true&include_unpublished=true")
     check(inactive_search.status_code == 200, "Include inactive catalog search returns 200")
     check(inactive_search.json()["count"] == 1, "Archived input appears when include_inactive=true")
     restore_response = client.post(f"/api/v1/input-catalog/inputs/{temp_code}/restore", json={"reason": "Regression test restore archived input"})

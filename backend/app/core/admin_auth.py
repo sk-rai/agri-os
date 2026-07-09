@@ -85,6 +85,31 @@ def _forbidden(permission: AdminPermission, detail: str) -> HTTPException:
     )
 
 
+def optional_admin_viewer(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db),
+) -> Optional[AdminPrincipal]:
+    """Resolve an admin viewer when present without blocking normal runtime reads."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        claims = jwt.decode(authorization[7:].strip(), JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = uuid.UUID(str(claims.get("sub")))
+    except (JWTError, TypeError, ValueError):
+        return None
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        return None
+    tenant_id = x_tenant_id or str(claims.get("tenant_id") or "") or user.tenant_id
+    role = str(user.role or "").upper()
+    if not tenant_id or (user.tenant_id and user.tenant_id != tenant_id):
+        return None
+    if AdminPermission.VIEW not in ROLE_PERMISSIONS.get(role, set()):
+        return None
+    return AdminPrincipal(user_id=user.id, tenant_id=tenant_id, role=role)
+
+
 def require_admin_permission(permission: AdminPermission, *, project_scoped: bool = False):
     """Require a persisted user role and, when relevant, project membership."""
 

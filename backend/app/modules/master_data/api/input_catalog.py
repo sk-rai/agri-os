@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
-from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
+from app.core.admin_auth import AdminPermission, AdminPrincipal, optional_admin_viewer, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
@@ -41,6 +41,10 @@ class ProjectInputAssignmentUpdate(BaseModel):
 
 class InputArchiveRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class InputReviewRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
 
 
 class AgriculturalInputUpdate(BaseModel):
@@ -228,6 +232,11 @@ def input_payload(item: AgriculturalInput) -> dict:
         "application_method": item.application_method,
         "safety_instructions": item.safety_instructions,
         "aliases": item.aliases or [],
+        "catalog_status": item.catalog_status,
+        "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
+        "reviewed_at": item.reviewed_at.isoformat() if item.reviewed_at else None,
+        "reviewed_by": str(item.reviewed_by) if item.reviewed_by else None,
+        "review_reason": item.review_reason,
         "is_active": item.is_active,
     }
 
@@ -275,6 +284,7 @@ def create_input(
     )
     _apply_input_update(item, body)
     item.is_active = True
+    item.catalog_status = "DRAFT"
     db.add(item)
     db.flush()
     db.refresh(item)
@@ -302,12 +312,21 @@ def list_inputs(
     project_id: Optional[uuid.UUID] = Query(None),
     q: Optional[str] = Query(None, description="Case-insensitive search over code/name/composition"),
     include_inactive: bool = Query(False),
+    include_unpublished: bool = Query(False),
+    status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    admin_principal: Optional[AdminPrincipal] = Depends(optional_admin_viewer),
 ):
+    if (include_unpublished or status) and admin_principal is None:
+        raise HTTPException(403, "Admin VIEW permission is required for unpublished input filters")
     query = db.query(AgriculturalInput).join(InputCategory)
     if not include_inactive:
         query = query.filter(AgriculturalInput.is_active == True)
+    if status:
+        query = query.filter(AgriculturalInput.catalog_status == status.upper())
+    elif not include_unpublished:
+        query = query.filter(AgriculturalInput.catalog_status == "PUBLISHED")
     if category:
         query = query.filter(InputCategory.code == category.upper())
     project_scope = project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
@@ -386,7 +405,10 @@ def get_project_input_assignments(
     assignments_by_code = assignment_map(assignments)
     explicit_allowlist = explicit_allowlist_mode(assignments)
 
-    query = db.query(AgriculturalInput).join(InputCategory).filter(AgriculturalInput.is_active == True)
+    query = db.query(AgriculturalInput).join(InputCategory).filter(
+        AgriculturalInput.is_active == True,
+        AgriculturalInput.catalog_status == "PUBLISHED",
+    )
     if category:
         query = query.filter(InputCategory.code == category.upper())
     if crop_code:
@@ -475,6 +497,7 @@ def upsert_project_input_assignment(
     item = db.query(AgriculturalInput).filter(
         AgriculturalInput.code == input_code.upper(),
         AgriculturalInput.is_active == True,
+        AgriculturalInput.catalog_status == "PUBLISHED",
     ).first()
     if not item:
         raise HTTPException(404, f"Input '{input_code}' not found")
@@ -646,6 +669,153 @@ def get_input_references(input_code: str, db: Session = Depends(get_db)):
     }
 
 
+def _input_validation_report(db: Session, item: AgriculturalInput) -> dict:
+    errors = []
+    warnings = []
+    if not item.canonical_name or not item.canonical_name.strip():
+        errors.append({"field": "canonical_name", "code": "REQUIRED", "message": "Canonical name is required."})
+    if not item.unit or not item.unit.strip():
+        errors.append({"field": "unit", "code": "REQUIRED", "message": "Unit is required."})
+    if not item.applicable_crops:
+        errors.append({"field": "applicable_crops", "code": "CROP_SCOPE_REQUIRED", "message": "At least one applicable crop is required before publishing."})
+    if not item.composition and item.category and item.category.code in {"FERTILIZER", "FUNGICIDE", "HERBICIDE", "INSECTICIDE", "MICRONUTRIENT"}:
+        warnings.append({"field": "composition", "code": "MISSING_COMPOSITION", "message": "Composition is recommended for this input category."})
+    if not item.safety_instructions and item.category and item.category.code in {"FUNGICIDE", "HERBICIDE", "INSECTICIDE", "PESTICIDE"}:
+        warnings.append({"field": "safety_instructions", "code": "MISSING_SAFETY", "message": "Safety instructions are recommended for crop-protection inputs."})
+    def normalized(value: Optional[str]) -> str:
+        return "".join(character.lower() for character in (value or "") if character.isalnum())
+
+    item_aliases = {
+        normalized(alias.get("name") or alias.get("value"))
+        for alias in (item.aliases or []) if isinstance(alias, dict)
+    } - {""}
+    duplicates = []
+    candidates = db.query(AgriculturalInput).filter(
+        AgriculturalInput.id != item.id,
+        AgriculturalInput.is_active == True,
+        AgriculturalInput.category_id == item.category_id,
+    ).order_by(AgriculturalInput.code).all()
+    for candidate in candidates:
+        reasons = []
+        if normalized(candidate.canonical_name) == normalized(item.canonical_name):
+            reasons.append("CANONICAL_NAME")
+        if item.composition and candidate.composition and normalized(candidate.composition) == normalized(item.composition):
+            reasons.append("COMPOSITION")
+        if item.brand_name and candidate.brand_name and normalized(candidate.brand_name) == normalized(item.brand_name):
+            reasons.append("BRAND_NAME")
+        candidate_aliases = {
+            normalized(alias.get("name") or alias.get("value"))
+            for alias in (candidate.aliases or []) if isinstance(alias, dict)
+        } - {""}
+        if item_aliases & candidate_aliases:
+            reasons.append("ALIAS")
+        if reasons:
+            payload = input_payload(candidate)
+            payload["duplicate_match_reasons"] = reasons
+            duplicates.append(payload)
+        if len(duplicates) >= 20:
+            break
+    if duplicates:
+        warnings.append({"field": "canonical_name", "code": "POSSIBLE_DUPLICATE", "message": f"{len(duplicates)} possible duplicate(s) found in the same category."})
+    return {
+        "can_submit": len(errors) == 0,
+        "can_publish": len(errors) == 0,
+        "counts": {"errors": len(errors), "warnings": len(warnings), "duplicates": len(duplicates)},
+        "errors": errors,
+        "warnings": warnings,
+        "duplicate_candidates": duplicates,
+    }
+
+
+@router.get("/inputs/{input_code}/governance")
+def get_input_governance(
+    input_code: str,
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper()).first()
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    return {"schema_version": "input_governance.v1", "input": input_payload(item), "validation": _input_validation_report(db, item)}
+
+
+@router.post("/inputs/{input_code}/submit-review")
+def submit_input_review(
+    input_code: str,
+    body: InputReviewRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True).first()
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    report = _input_validation_report(db, item)
+    if not report["can_submit"]:
+        raise HTTPException(409, {"message": "Input has blocking validation errors.", "validation": report})
+    if item.catalog_status not in {"DRAFT", "REJECTED"}:
+        raise HTTPException(409, f"Input status is {item.catalog_status}")
+    before = input_payload(item)
+    item.catalog_status = "REVIEW"
+    item.submitted_at = datetime.now(timezone.utc)
+    item.review_reason = body.reason
+    after = input_payload(item)
+    _record_input_audit(db, tenant_id=x_tenant_id, item=item, actor_id=principal.user_id, action="SUBMIT_INPUT_REVIEW", before=before, after=after, reason=body.reason, metadata={"validation": report["counts"]})
+    db.commit()
+    return {"input": input_payload(item), "validation": report}
+
+
+@router.post("/inputs/{input_code}/publish")
+def publish_input(
+    input_code: str,
+    body: InputReviewRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
+):
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True).first()
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    report = _input_validation_report(db, item)
+    if not report["can_publish"]:
+        raise HTTPException(409, {"message": "Input has blocking validation errors.", "validation": report})
+    if item.catalog_status != "REVIEW":
+        raise HTTPException(409, "Only inputs in REVIEW can be published")
+    before = input_payload(item)
+    item.catalog_status = "PUBLISHED"
+    item.reviewed_at = datetime.now(timezone.utc)
+    item.reviewed_by = principal.user_id
+    item.review_reason = body.reason
+    after = input_payload(item)
+    _record_input_audit(db, tenant_id=x_tenant_id, item=item, actor_id=principal.user_id, action="PUBLISH_INPUT", before=before, after=after, reason=body.reason, metadata={"validation": report["counts"]})
+    db.commit()
+    return {"input": input_payload(item), "validation": report}
+
+
+@router.post("/inputs/{input_code}/reject")
+def reject_input(
+    input_code: str,
+    body: InputReviewRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
+):
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True).first()
+    if not item:
+        raise HTTPException(404, f"Input '{input_code}' not found")
+    if item.catalog_status != "REVIEW":
+        raise HTTPException(409, "Only inputs in REVIEW can be rejected")
+    before = input_payload(item)
+    item.catalog_status = "REJECTED"
+    item.reviewed_at = datetime.now(timezone.utc)
+    item.reviewed_by = principal.user_id
+    item.review_reason = body.reason
+    after = input_payload(item)
+    _record_input_audit(db, tenant_id=x_tenant_id, item=item, actor_id=principal.user_id, action="REJECT_INPUT", before=before, after=after, reason=body.reason)
+    db.commit()
+    return {"input": input_payload(item), "validation": _input_validation_report(db, item)}
+
+
 @router.post("/inputs/{input_code}/archive")
 def archive_input(
     input_code: str,
@@ -768,6 +938,12 @@ def update_input(
         raise HTTPException(404, f"Input '{input_code}' not found")
     before = input_payload(item)
     _apply_input_update(item, body)
+    if item.catalog_status != "PUBLISHED":
+        item.catalog_status = "DRAFT"
+        item.submitted_at = None
+        item.reviewed_at = None
+        item.reviewed_by = None
+        item.review_reason = None
     after = input_payload(item)
     if before != after:
         _record_input_audit(
@@ -790,7 +966,11 @@ def update_input(
 def get_input(input_code: str, db: Session = Depends(get_db)):
     item = (
         db.query(AgriculturalInput)
-        .filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True)
+        .filter(
+            AgriculturalInput.code == input_code.upper(),
+            AgriculturalInput.is_active == True,
+            AgriculturalInput.catalog_status == "PUBLISHED",
+        )
         .first()
     )
     if not item:

@@ -854,7 +854,7 @@ def preview_workflow_template_version(
         project_id=project_id,
     )
     overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=x_tenant_id, project_id=project_id)
-    known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
+    known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()}
     warnings = _preview_warnings(stages, known_input_codes)
 
     return _workflow_preview_payload(
@@ -926,7 +926,7 @@ def _draft_stage_definitions(db: Session, version_id) -> list[dict]:
 
 
 def _known_input_codes(db: Session) -> set[str]:
-    return {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True).all()}
+    return {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()}
 
 
 def _render_draft_preview(db: Session, workflow_template_version_id: uuid.UUID, tenant_id: str) -> dict:
@@ -980,7 +980,7 @@ def _draft_validation(db: Session, version_id) -> tuple[list[dict], dict]:
     if template:
         catalog_crop_scopes = {
             item.code: {str(crop).upper() for crop in (item.applicable_crops or [])}
-            for item in db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True).all()
+            for item in db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()
         }
         for stage in stages:
             for index, recommendation in enumerate(stage.get("recommended_activities", []) or [], start=1):

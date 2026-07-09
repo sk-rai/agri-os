@@ -732,7 +732,31 @@ export interface AgriInputDto {
   application_method?: string | null;
   safety_instructions?: string | null;
   aliases: Array<Record<string, string>>;
+  catalog_status: "DRAFT" | "REVIEW" | "PUBLISHED" | "REJECTED" | string;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  review_reason?: string | null;
   is_active?: boolean;
+}
+
+export interface InputValidationFinding {
+  field: string;
+  code: string;
+  message: string;
+}
+
+export interface InputGovernanceResponse {
+  schema_version?: string;
+  input: AgriInputDto;
+  validation: {
+    can_submit: boolean;
+    can_publish: boolean;
+    counts: { errors: number; warnings: number; duplicates: number };
+    errors: InputValidationFinding[];
+    warnings: InputValidationFinding[];
+    duplicate_candidates: AgriInputDto[];
+  };
 }
 
 export interface InputCategoriesResponse {
@@ -939,17 +963,23 @@ export const inputCatalogApi = {
   applyCsv: (batchId: string, reason: string) => api<InputCsvImportBatch>(`/api/v1/input-catalog/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
   csvImportHistory: () => api<InputCsvImportHistory>("/api/v1/input-catalog/csv/imports"),
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
-  inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string; includeInactive?: boolean }) => {
+  inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string; includeInactive?: boolean; includeUnpublished?: boolean; status?: string }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);
     if (params?.cropCode) query.set("crop_code", params.cropCode);
     if (params?.projectId) query.set("project_id", params.projectId);
     if (params?.q) query.set("q", params.q);
     if (params?.includeInactive) query.set("include_inactive", "true");
+    if (params?.includeUnpublished) query.set("include_unpublished", "true");
+    if (params?.status) query.set("status", params.status);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
   },
   get: (code: string) => api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`),
+  governance: (code: string) => api<InputGovernanceResponse>(`/api/v1/input-catalog/inputs/${code}/governance`),
+  submitReview: (code: string, reason: string) => api<InputGovernanceResponse>(`/api/v1/input-catalog/inputs/${code}/submit-review`, { method: "POST", body: { reason } }),
+  publish: (code: string, reason: string) => api<InputGovernanceResponse>(`/api/v1/input-catalog/inputs/${code}/publish`, { method: "POST", body: { reason } }),
+  reject: (code: string, reason: string) => api<InputGovernanceResponse>(`/api/v1/input-catalog/inputs/${code}/reject`, { method: "POST", body: { reason } }),
   create: (data: AgriInputCreateRequest) =>
     api<AgriInputDto>("/api/v1/input-catalog/inputs", {
       method: "POST",

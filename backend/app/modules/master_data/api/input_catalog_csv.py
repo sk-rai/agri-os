@@ -217,7 +217,10 @@ def export_input_catalog_csv(
 ):
     query = db.query(AgriculturalInput).join(InputCategory)
     if not include_inactive:
-        query = query.filter(AgriculturalInput.is_active == True)
+        query = query.filter(
+            AgriculturalInput.is_active == True,
+            AgriculturalInput.catalog_status == "PUBLISHED",
+        )
     items = query.order_by(InputCategory.code, AgriculturalInput.code).all()
     date_stamp = datetime.now(timezone.utc).date().isoformat()
     return _csv_response(_write_csv([_export_row(item) for item in items]), f"agri-os-input-catalog-{date_stamp}.csv")
@@ -364,6 +367,12 @@ def apply_input_catalog_csv(
         item.application_method = row["application_method"]
         item.safety_instructions = row["safety_instructions"]
         item.aliases = row["aliases"]
+        if before is None or item.catalog_status != "PUBLISHED":
+            item.catalog_status = "DRAFT"
+            item.submitted_at = None
+            item.reviewed_at = None
+            item.reviewed_by = None
+            item.review_reason = None
         item.updated_at = now
         db.flush()
         after = input_payload(item)
