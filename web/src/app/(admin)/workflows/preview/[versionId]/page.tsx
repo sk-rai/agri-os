@@ -377,6 +377,7 @@ export default function WorkflowPreviewPage() {
               key={stage.code}
               stage={stage}
               cropCode={preview.crop_code}
+              projectId={preview.project_id || undefined}
               projectScoped={Boolean(preview.project_id)}
               draftEditable={preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft"}
               busyTarget={busyTarget}
@@ -703,6 +704,7 @@ function OverrideHistoryPanel({
 function StagePreview({
   stage,
   cropCode,
+  projectId,
   projectScoped,
   draftEditable,
   busyTarget,
@@ -714,6 +716,7 @@ function StagePreview({
 }: {
   stage: WorkflowStage;
   cropCode: string;
+  projectId?: string;
   projectScoped: boolean;
   draftEditable: boolean;
   busyTarget: string | null;
@@ -734,11 +737,13 @@ function StagePreview({
   const [durationDays, setDurationDays] = useState(String(stage.duration_days));
   const [newRecDayOffset, setNewRecDayOffset] = useState("0");
   const [newRecActivityType, setNewRecActivityType] = useState("LABOR");
-  const [newRecInputCode, setNewRecInputCode] = useState("LABOR_GENERAL");
+  const [newRecInputCode, setNewRecInputCode] = useState("");
   const [newRecInputName, setNewRecInputName] = useState("Custom labour activity");
   const [newRecQuantity, setNewRecQuantity] = useState("1 labour-day/acre");
   const [newRecCost, setNewRecCost] = useState("");
   const [newRecCritical, setNewRecCritical] = useState(false);
+  const [inputSource, setInputSource] = useState<"CATALOG" | "CUSTOM">("CUSTOM");
+  const [selectedCatalogInput, setSelectedCatalogInput] = useState<AgriInputDto | null>(null);
   const [inputSearch, setInputSearch] = useState("labour");
   const [inputCategory, setInputCategory] = useState("");
   const [inputResults, setInputResults] = useState<AgriInputDto[]>([]);
@@ -758,6 +763,7 @@ function StagePreview({
     inputCatalogApi
       .inputs({
         cropCode,
+        projectId,
         category: inputCategory || undefined,
         q: inputSearch.trim() || undefined,
       })
@@ -773,12 +779,14 @@ function StagePreview({
     return () => {
       cancelled = true;
     };
-  }, [cropCode, inputCategory, inputSearch, projectScoped, draftEditable]);
+  }, [cropCode, projectId, inputCategory, inputSearch, projectScoped, draftEditable]);
 
   const stageBusy = busyTarget === `STAGE:${stage.code}`;
   const draftStageBusy = busyTarget === `DRAFT_STAGE:${stage.code}`;
 
   const selectCatalogInput = (input: AgriInputDto) => {
+    setInputSource("CATALOG");
+    setSelectedCatalogInput(input);
     setNewRecInputCode(input.code);
     setNewRecInputName(input.canonical_name);
     setNewRecActivityType(activityTypeFromCategory(input.category_code));
@@ -791,6 +799,7 @@ function StagePreview({
     const payload: Record<string, unknown> = {
       day_offset: Number(newRecDayOffset),
       activity_type: newRecActivityType.trim().toUpperCase(),
+      input_source: inputSource,
       input_code: newRecInputCode.trim() || null,
       input_name: newRecInputName.trim(),
       typical_quantity: newRecQuantity.trim() || null,
@@ -890,6 +899,10 @@ function StagePreview({
           <details className="mb-4 rounded-lg border border-dashed bg-white p-3">
             <summary className="cursor-pointer text-sm font-semibold text-gray-800">Add custom recommendation</summary>
             <div className="mt-3 rounded-lg bg-gray-50 p-3">
+              <div className="mb-3 flex gap-2">
+                <button type="button" onClick={() => setInputSource("CATALOG")} className={`rounded px-3 py-1.5 text-xs font-medium ${inputSource === "CATALOG" ? "bg-green-700 text-white" : "border bg-white text-gray-700"}`}>Catalog input</button>
+                <button type="button" onClick={() => { setInputSource("CUSTOM"); setSelectedCatalogInput(null); setNewRecInputCode(""); }} className={`rounded px-3 py-1.5 text-xs font-medium ${inputSource === "CUSTOM" ? "bg-amber-600 text-white" : "border bg-white text-gray-700"}`}>Custom / unlisted input</button>
+              </div>
               <div className="grid gap-3 md:grid-cols-[160px_1fr]">
                 <label className="text-xs font-medium text-gray-500">
                   Catalog category
@@ -935,12 +948,20 @@ function StagePreview({
                       <span className="font-semibold text-gray-900">{input.canonical_name}</span>
                       <span className="ml-2 font-mono text-gray-400">{input.code}</span>
                       <span className="ml-2 text-gray-400">{input.category_name || input.category_code || "Uncategorized"}</span>
+                      <span className="mt-1 block text-gray-400">{[input.composition, input.unit, input.applicable_crops.join(", ")].filter(Boolean).join(" / ")}</span>
                     </span>
                     <span className="rounded border border-green-200 px-2 py-0.5 font-medium text-green-700">Use</span>
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-gray-500">Selecting a catalog input fills code/name/activity type. Manual entry remains available for local inputs not yet catalogued.</p>
+              {inputSource === "CATALOG" ? (
+                <p className="mt-2 text-xs text-gray-500">Select an eligible catalog item. Crop and project assignment filters are applied automatically.</p>
+              ) : (
+                <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-700">Enter the local input name below. The backend will generate a stable CUSTOM_* code for Android and audit.</p>
+              )}
+              {selectedCatalogInput && inputSource === "CATALOG" ? (
+                <div className="mt-2 rounded border border-green-200 bg-green-50 p-2 text-xs text-green-800">Selected: {selectedCatalogInput.canonical_name} / {selectedCatalogInput.composition || "No composition"} / Unit {selectedCatalogInput.unit}</div>
+              ) : null}
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-[90px_120px_150px_1fr_160px_120px_auto]">
               <label className="text-xs font-medium text-gray-500">
@@ -964,8 +985,9 @@ function StagePreview({
                 Input code
                 <input
                   value={newRecInputCode}
-                  onChange={(event) => setNewRecInputCode(event.target.value)}
-                  className="mt-1 w-full rounded border px-2 py-1 text-sm text-gray-900"
+                  readOnly
+                  placeholder={inputSource === "CUSTOM" ? "Generated by backend" : "Select catalog item"}
+                  className="mt-1 w-full rounded border bg-gray-50 px-2 py-1 text-sm text-gray-900"
                 />
               </label>
               <label className="text-xs font-medium text-gray-500">
@@ -1004,7 +1026,7 @@ function StagePreview({
                 </label>
                 <button
                   type="button"
-                  disabled={(stageBusy || draftStageBusy) || newRecDayOffset === "" || !newRecActivityType.trim() || !newRecInputName.trim()}
+                  disabled={(stageBusy || draftStageBusy) || newRecDayOffset === "" || !newRecActivityType.trim() || !newRecInputName.trim() || (inputSource === "CATALOG" && !selectedCatalogInput)}
                   onClick={addCustomRecommendation}
                   className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
                 >

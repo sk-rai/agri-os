@@ -7,6 +7,7 @@ visible for a tenant/project. Admin write APIs can build on the same tables late
 from __future__ import annotations
 
 import uuid
+import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Optional
@@ -19,6 +20,7 @@ from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_p
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.master_data.models import AgriculturalInput, Crop
+from app.modules.master_data.input_assignment_service import assert_catalog_input_allowed_for_project_crop
 from app.modules.workflow.models import (
     CropCycle,
     WorkflowTemplate,
@@ -142,6 +144,7 @@ class WorkflowDraftStageUpdate(BaseModel):
 
 class WorkflowDraftRecommendationUpdate(BaseModel):
     day_offset: Optional[int] = None
+    input_source: Optional[str] = None
     activity_type: Optional[str] = None
     input_code: Optional[str] = None
     input_name: Optional[str] = None
@@ -154,6 +157,7 @@ class WorkflowDraftRecommendationUpdate(BaseModel):
 
 class WorkflowDraftRecommendationCreate(BaseModel):
     day_offset: int = 0
+    input_source: Optional[str] = None
     activity_type: str
     input_code: Optional[str] = None
     input_name: str
@@ -670,10 +674,17 @@ def _preview_warnings(stages: list[dict], known_input_codes: set[str]) -> list[d
         for idx, rec in enumerate(stage.get("recommended_activities", []) or [], start=1):
             target = f"{code}:recommendation:{idx}"
             input_code = rec.get("input_code")
-            if not input_code:
-                warnings.append({"level": "WARN", "code": "RECOMMENDATION_WITHOUT_INPUT_CODE", "message": f"{rec.get('input_name') or 'Recommendation'} has no input_code", "target": target})
+            metadata = rec.get("metadata") or {}
+            input_source = str(metadata.get("input_source") or "").upper()
+            if input_source == "CUSTOM":
+                if not input_code or not str(input_code).startswith("CUSTOM_"):
+                    warnings.append({"level": "ERROR", "code": "INVALID_CUSTOM_INPUT_CODE", "message": "Custom recommendations require a stable CUSTOM_* input code", "target": target})
+                else:
+                    warnings.append({"level": "INFO", "code": "CUSTOM_INPUT", "message": f"{rec.get('input_name') or input_code} is an approved custom input", "target": target})
+            elif not input_code:
+                warnings.append({"level": "ERROR", "code": "RECOMMENDATION_WITHOUT_INPUT_CODE", "message": f"{rec.get('input_name') or 'Recommendation'} has no stable input_code", "target": target})
             elif input_code not in known_input_codes:
-                warnings.append({"level": "WARN", "code": "UNKNOWN_INPUT_CODE", "message": f"Input code {input_code} is not in input catalog", "target": target})
+                warnings.append({"level": "ERROR", "code": "UNKNOWN_INPUT_CODE", "message": f"Input code {input_code} is not in input catalog and is not marked CUSTOM", "target": target})
             if not rec.get("input_name"):
                 warnings.append({"level": "ERROR", "code": "RECOMMENDATION_WITHOUT_INPUT_NAME", "message": "Recommendation has no input_name fallback", "target": target})
             if rec.get("typical_quantity") in (None, ""):
@@ -960,6 +971,28 @@ def _render_published_version_preview(db: Session, template: WorkflowTemplate, v
 def _draft_validation(db: Session, version_id) -> tuple[list[dict], dict]:
     stages = workflow_version_to_stage_definitions(db, version_id)
     issues = _preview_warnings(stages, _known_input_codes(db))
+    template = (
+        db.query(WorkflowTemplate)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+        .filter(WorkflowTemplateVersion.id == version_id)
+        .first()
+    )
+    if template:
+        catalog_crop_scopes = {
+            item.code: {str(crop).upper() for crop in (item.applicable_crops or [])}
+            for item in db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True).all()
+        }
+        for stage in stages:
+            for index, recommendation in enumerate(stage.get("recommended_activities", []) or [], start=1):
+                input_code = recommendation.get("input_code")
+                applicable = catalog_crop_scopes.get(input_code)
+                if applicable and template.crop_code.upper() not in applicable:
+                    issues.append({
+                        "level": "ERROR",
+                        "code": "INPUT_NOT_APPLICABLE_TO_CROP",
+                        "message": f"Input {input_code} is not applicable to {template.crop_code}",
+                        "target": f"{stage.get('code')}:recommendation:{index}",
+                    })
     if not stages:
         issues.append({"level": "ERROR", "code": "DRAFT_WITHOUT_STAGES", "message": "Draft workflow must have at least one stage", "target": str(version_id)})
 
@@ -1176,8 +1209,78 @@ def _recommendation_audit_snapshot(rec: WorkflowTemplateRecommendation) -> dict:
         "typical_cost_per_acre": str(rec.typical_cost_per_acre) if rec.typical_cost_per_acre is not None else None,
         "is_critical": bool(rec.is_critical),
         "description": deepcopy(rec.description),
+        "input_source": (rec.metadata_ or {}).get("input_source"),
         "is_active": bool(rec.is_active),
     }
+
+
+def _custom_input_code(input_name: str, requested_code: Optional[str] = None) -> str:
+    requested = (requested_code or "").strip().upper()
+    if requested.startswith("CUSTOM_"):
+        return requested[:50]
+    slug = re.sub(r"[^A-Z0-9]+", "_", input_name.upper()).strip("_") or "LOCAL_INPUT"
+    return f"CUSTOM_{slug}"[:50]
+
+
+def _resolve_recommendation_input(
+    db: Session,
+    template: WorkflowTemplate,
+    *,
+    input_source: Optional[str],
+    input_code: Optional[str],
+    input_name: str,
+) -> dict:
+    source = (input_source or "").strip().upper()
+    code = (input_code or "").strip().upper() or None
+    catalog_item = db.query(AgriculturalInput).filter(
+        AgriculturalInput.code == code,
+        AgriculturalInput.is_active == True,
+    ).first() if code else None
+    if not source:
+        if catalog_item:
+            source = "CATALOG"
+        else:
+            raise HTTPException(400, {
+                "error": "INPUT_SOURCE_REQUIRED",
+                "message": "Choose a catalog input or explicitly mark the recommendation as CUSTOM.",
+            })
+    if source == "CATALOG":
+        if not catalog_item:
+            raise HTTPException(409, {
+                "error": "UNKNOWN_CATALOG_INPUT",
+                "message": f"Input code {code or '-'} is not an active catalog input.",
+                "input_code": code,
+            })
+        applicable = {str(crop).upper() for crop in (catalog_item.applicable_crops or [])}
+        if applicable and template.crop_code.upper() not in applicable:
+            raise HTTPException(409, {
+                "error": "INPUT_NOT_APPLICABLE_TO_CROP",
+                "message": f"{catalog_item.code} is not applicable to {template.crop_code}.",
+                "input_code": catalog_item.code,
+                "crop_code": template.crop_code,
+                "applicable_crops": sorted(applicable),
+            })
+        return {
+            "input_code": catalog_item.code,
+            "input_name": input_name,
+            "metadata": {
+                "input_source": "CATALOG",
+                "catalog_input_id": str(catalog_item.id),
+                "catalog_name": catalog_item.canonical_name,
+                "catalog_category_code": catalog_item.category.code if catalog_item.category else None,
+                "catalog_unit": catalog_item.unit,
+            },
+        }
+    if source == "CUSTOM":
+        return {
+            "input_code": _custom_input_code(input_name, code),
+            "input_name": input_name,
+            "metadata": {"input_source": "CUSTOM", "custom_input": True},
+        }
+    raise HTTPException(400, {
+        "error": "INVALID_INPUT_SOURCE",
+        "message": "input_source must be CATALOG or CUSTOM.",
+    })
 
 
 def _apply_recommendation_changes(rec: WorkflowTemplateRecommendation, changes: dict) -> None:
@@ -1235,6 +1338,13 @@ def create_draft_workflow_recommendation(
         raise HTTPException(400, "input_name cannot be empty")
     if body.sort_order is not None and body.sort_order < 0:
         raise HTTPException(400, "sort_order cannot be negative")
+    resolved_input = _resolve_recommendation_input(
+        db,
+        template,
+        input_source=body.input_source,
+        input_code=body.input_code,
+        input_name=input_name,
+    )
 
     max_sort_order = (
         db.query(WorkflowTemplateRecommendation.sort_order)
@@ -1253,13 +1363,13 @@ def create_draft_workflow_recommendation(
         sort_order=sort_order,
         day_offset=int(body.day_offset or 0),
         activity_type=activity_type,
-        input_code=body.input_code or None,
-        input_name=input_name,
+        input_code=resolved_input["input_code"],
+        input_name=resolved_input["input_name"],
         typical_quantity=body.typical_quantity or None,
         typical_cost_per_acre=body.typical_cost_per_acre,
         is_critical=bool(body.is_critical),
         description=body.description or None,
-        metadata_={"source": "draft_admin"},
+        metadata_={"source": "draft_admin", **resolved_input["metadata"]},
         created_at=now,
         updated_at=now,
     )
@@ -1299,6 +1409,18 @@ def update_draft_workflow_recommendation(
     changes = body.dict(exclude_unset=True)
     if not changes:
         raise HTTPException(400, "No recommendation changes supplied")
+    requested_source = changes.pop("input_source", None)
+    if requested_source is not None or "input_code" in changes or "input_name" in changes:
+        resolved_input = _resolve_recommendation_input(
+            db,
+            template,
+            input_source=requested_source or (rec.metadata_ or {}).get("input_source"),
+            input_code=changes.get("input_code", rec.input_code),
+            input_name=(changes.get("input_name", rec.input_name) or "").strip(),
+        )
+        changes["input_code"] = resolved_input["input_code"]
+        changes["input_name"] = resolved_input["input_name"]
+        rec.metadata_ = {**(rec.metadata_ or {}), **resolved_input["metadata"]}
     _apply_recommendation_changes(rec, changes)
     now = datetime.now(timezone.utc)
     rec.updated_at = now
@@ -2093,7 +2215,32 @@ def create_project_workflow_override(
         raise HTTPException(400, "target_type must be STAGE or RECOMMENDATION")
     if operation not in ("HIDE", "RENAME", "CHANGE_DURATION", "CHANGE_OFFSET", "CHANGE_QUANTITY", "ADD_RECOMMENDATION"):
         raise HTTPException(400, "Unsupported override operation")
-    _validate_override_payload(target_type, operation, body.override_payload or {})
+    override_payload = deepcopy(body.override_payload or {})
+    _validate_override_payload(target_type, operation, override_payload)
+    template, _ = version_row
+    if operation == "ADD_RECOMMENDATION":
+        input_name = str(override_payload.get("input_name") or "").strip()
+        resolved_input = _resolve_recommendation_input(
+            db,
+            template,
+            input_source=override_payload.get("input_source"),
+            input_code=override_payload.get("input_code"),
+            input_name=input_name,
+        )
+        if resolved_input["metadata"]["input_source"] == "CATALOG":
+            assert_catalog_input_allowed_for_project_crop(
+                db,
+                tenant_id=x_tenant_id,
+                project_id=project_id,
+                crop_code=template.crop_code,
+                input_code=resolved_input["input_code"],
+            )
+        override_payload["input_code"] = resolved_input["input_code"]
+        override_payload["input_name"] = resolved_input["input_name"]
+        override_payload["metadata"] = {
+            **(override_payload.get("metadata") or {}),
+            **resolved_input["metadata"],
+        }
 
     override = WorkflowTemplateOverride(
         id=uuid.uuid4(),
@@ -2103,7 +2250,7 @@ def create_project_workflow_override(
         target_type=target_type,
         target_code=body.target_code,
         operation=operation,
-        override_payload=body.override_payload or {},
+        override_payload=override_payload,
         priority=body.priority,
         reason=body.reason,
         created_at=datetime.now(timezone.utc),

@@ -425,6 +425,7 @@ export interface WorkflowDraftStageUpdateRequest {
 
 export interface WorkflowDraftRecommendationRequest {
   day_offset?: number;
+  input_source?: "CATALOG" | "CUSTOM";
   activity_type?: string;
   input_code?: string | null;
   input_name?: string;

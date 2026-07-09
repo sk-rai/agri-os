@@ -13,6 +13,7 @@ from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
 from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateEnablement, WorkflowTemplateOverride, WorkflowTemplateVersion
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -93,8 +94,10 @@ def main():
 
     db = SessionLocal()
     project_id = uuid.uuid4()
+    admin_user = None
     try:
         ensure_tenant(db)
+        admin_user, admin_headers = create_test_admin(db)
         rice = db.query(WorkflowTemplate).filter(WorkflowTemplate.code == "WF_RICE_KHARIF_DEFAULT").first()
         version = db.query(WorkflowTemplateVersion).filter(
             WorkflowTemplateVersion.template_id == rice.id,
@@ -127,6 +130,7 @@ def main():
         db.commit()
 
         client = TestClient(app)
+        client.headers.update(admin_headers)
         base = client.get(
             f"/api/v1/workflow-catalog/workflow-preview/{version.id}?project_id={project_id}",
             headers={"X-Tenant-ID": TENANT_ID},
@@ -220,7 +224,7 @@ def main():
             "override_payload": {
                 "day_offset": 6,
                 "activity_type": "LABOR",
-                "input_code": "LABOR_GENERAL",
+                "input_source": "CUSTOM",
                 "input_name": "Custom nursery labour",
                 "typical_quantity": "2 labour-days/acre",
                 "typical_cost_per_acre": 900,
@@ -230,11 +234,13 @@ def main():
             "priority": 60,
             "reason": "Regression add custom recommendation",
         })
-        custom_rec = recommendation_by_target(added, "NURSERY|LABOR_GENERAL")
+        custom_rec = recommendation_by_target(added, "NURSERY|CUSTOM_CUSTOM_NURSERY_LABOUR")
         check(custom_rec["input_name"] == "Custom nursery labour", "Added recommendation appears in preview")
         check(custom_rec["day_offset"] == 6, "Added recommendation keeps day offset")
         check(custom_rec["typical_quantity"] == "2 labour-days/acre", "Added recommendation keeps quantity")
         check(custom_rec["metadata"]["source"] == "project_override", "Added recommendation is marked as project override sourced")
+        check(custom_rec["metadata"]["input_source"] == "CUSTOM", "Project custom recommendation records custom source")
+        check(custom_rec["input_code"] == "CUSTOM_CUSTOM_NURSERY_LABOUR", "Project custom recommendation receives stable code")
         check(len(added["applied_overrides"]) == 5, "Preview reports added recommendation override")
 
         history_with_active = client.get(
@@ -285,6 +291,8 @@ def main():
         check(invalid.status_code == 400, "Invalid operation/target combination is rejected", f"Status: {invalid.status_code}")
     finally:
         cleanup(db, project_id)
+        if admin_user:
+            delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\n" + "=" * 72)

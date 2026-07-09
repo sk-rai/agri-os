@@ -231,7 +231,8 @@ def main():
             json={
                 "day_offset": 5,
                 "activity_type": "LABOR",
-                "input_code": "LABOR_GENERAL",
+                "input_source": "CATALOG",
+                "input_code": "FIELD_PREPARATION_LABOR",
                 "input_name": "Draft custom labour",
                 "typical_quantity": "1 labour-day/acre",
                 "is_critical": False,
@@ -243,7 +244,50 @@ def main():
         add_rec_nursery = next(stage for stage in add_rec_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
         added_rec = next(rec for rec in add_rec_nursery["recommended_activities"] if rec["input_name"] == "Draft custom labour")
         added_rec_id = added_rec["metadata"]["recommendation_id"]
-        check(added_rec["input_code"] == "LABOR_GENERAL", "Created draft recommendation keeps input code")
+        check(added_rec["metadata"]["input_source"] == "CATALOG", "Catalog recommendation records catalog source")
+
+        unknown_rec = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY/recommendations",
+            headers=headers,
+            json={
+                "day_offset": 6,
+                "activity_type": "OTHER",
+                "input_code": "ACCIDENTAL_UNKNOWN_CODE",
+                "input_name": "Accidental unknown input",
+            },
+        )
+        check(unknown_rec.status_code == 400, "Unknown input requires explicit CUSTOM source", f"Status: {unknown_rec.status_code}")
+
+        incompatible_rec = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY/recommendations",
+            headers=headers,
+            json={
+                "day_offset": 6,
+                "activity_type": "SEED",
+                "input_source": "CATALOG",
+                "input_code": "HEALTHY_CANE_SETTS",
+                "input_name": "Cane setts",
+            },
+        )
+        check(incompatible_rec.status_code == 409, "Catalog input incompatible with crop is rejected", f"Status: {incompatible_rec.status_code}")
+
+        custom_rec_response = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY/recommendations",
+            headers=headers,
+            json={
+                "day_offset": 6,
+                "activity_type": "OTHER",
+                "input_source": "CUSTOM",
+                "input_name": "Local Bio Tonic",
+                "typical_quantity": "1 litre/acre",
+            },
+        )
+        check(custom_rec_response.status_code == 200, "Explicit custom input is accepted", f"Status: {custom_rec_response.status_code}")
+        custom_stage = next(stage for stage in custom_rec_response.json()["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        custom_rec = next(rec for rec in custom_stage["recommended_activities"] if rec["input_name"] == "Local Bio Tonic")
+        check(custom_rec["input_code"] == "CUSTOM_LOCAL_BIO_TONIC", "Custom input receives stable CUSTOM code")
+        check(custom_rec["metadata"]["input_source"] == "CUSTOM", "Custom recommendation records explicit source")
+        check(added_rec["input_code"] == "FIELD_PREPARATION_LABOR", "Created draft recommendation keeps input code")
         check(added_rec["day_offset"] == 5, "Created draft recommendation keeps day offset")
 
         delete_rec = client.delete(

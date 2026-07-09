@@ -62,7 +62,7 @@ INPUT_DEFS = [
     ("PEST_DISEASE_MONITORING", "OBSERVATION", "Pest/Disease Monitoring", "operation", None, ["RICE", "SUGARCANE"], ["BPH/Stem Borer Check", "Early Shoot Borer Monitoring", "Top Borer / Pyrilla Monitoring"]),
     ("IRRIGATION_LIGHT", "IRRIGATION", "Light Irrigation", "hour", None, ["RICE", "SUGARCANE"], ["First Light Irrigation", "First Irrigation After Planting"]),
     ("IRRIGATION_MAINTAIN_WATER", "IRRIGATION", "Maintain Water Level", "hour", None, ["RICE"], ["Maintain Water Level", "Critical Irrigation"]),
-    ("IRRIGATION_MOISTURE", "IRRIGATION", "Moisture Maintenance Irrigation", "hour", None, ["SUGARCANE"], ["Moisture Maintenance", "Tillering Irrigation", "Critical Growth Irrigation", "Reduce Irrigation Frequency", "Reduce Water Gradually"]),
+    ("IRRIGATION_MOISTURE", "IRRIGATION", "Moisture Maintenance Irrigation", "hour", None, ["RICE", "SUGARCANE"], ["Moisture Maintenance", "Tillering Irrigation", "Critical Growth Irrigation", "Reduce Irrigation Frequency", "Reduce Water Gradually"]),
     ("FIELD_PREPARATION_LABOR", "LABOR", "Field Preparation Labor", "operation", None, ["RICE", "SUGARCANE"], ["Puddling (Field Preparation)", "Deep Ploughing & Field Preparation"]),
     ("TRANSPLANTING_LABOR", "LABOR", "Transplanting Labor", "operation", None, ["RICE"], ["Transplanting"]),
     ("WEEDING_HOEING_LABOR", "LABOR", "Weeding/Hoeing Labor", "operation", None, ["SUGARCANE"], ["First Hoeing / Light Weeding", "Interculture & Weeding"]),
