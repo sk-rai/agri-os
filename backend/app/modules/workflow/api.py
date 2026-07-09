@@ -26,7 +26,7 @@ from app.modules.workflow.template_service import (
     workflow_version_to_stage_definitions,
     workflow_version_to_stage_definitions_for_scope,
 )
-from app.modules.master_data.models import Crop, CropLifecycleTemplate
+from app.modules.master_data.models import AgriculturalProduct, AgriculturalProductPackage, Crop, CropLifecycleTemplate, CropStageInputRule, ProjectProductApproval
 from app.modules.master_data.input_assignment_service import (
     allowed_input_codes_for_project_crop,
     assert_catalog_input_allowed_for_project_crop,
@@ -130,6 +130,16 @@ class ActivityCreate(BaseModel):
     quantity_unit: Optional[str] = None
     area_applied: Optional[float] = None
     area_unit: Optional[str] = None
+    input_rule_id: Optional[uuid.UUID] = None
+    product_id: Optional[uuid.UUID] = None
+    product_code: Optional[str] = None
+    package_id: Optional[uuid.UUID] = None
+    package_sku: Optional[str] = None
+    recommended_quantity: Optional[float] = None
+    recommended_quantity_unit: Optional[str] = None
+    actual_quantity: Optional[float] = None
+    actual_quantity_unit: Optional[str] = None
+    dosage_variance_reason: Optional[str] = None
     cost_amount: Optional[float] = None
     activity_date: date
     gps_lat: Optional[float] = None
@@ -299,6 +309,90 @@ def build_crop_cycle_response(
     }
 
 
+
+def _normalize_code(value: Optional[str]) -> Optional[str]:
+    return value.strip().upper().replace(" ", "_") if value and value.strip() else None
+
+
+def _validate_activity_traceability(db: Session, *, tenant_id: str, cycle: CropCycle, body: ActivityCreate) -> dict:
+    """Validate optional dosage-rule/product/package references for activity logs."""
+    trace = {"input_rule": None, "product": None, "package": None}
+    input_code = _normalize_code(body.input_code)
+    product_code = _normalize_code(body.product_code)
+    package_sku = _normalize_code(body.package_sku)
+
+    if body.input_rule_id:
+        rule = db.query(CropStageInputRule).filter(
+            CropStageInputRule.id == body.input_rule_id,
+            CropStageInputRule.tenant_id == tenant_id,
+            CropStageInputRule.is_active == True,
+            CropStageInputRule.enabled == True,
+        ).first()
+        if not rule:
+            raise HTTPException(404, "Input dosage rule not found")
+        if rule.crop_code != cycle.crop_code or (rule.season_code and rule.season_code != cycle.season_code):
+            raise HTTPException(409, "Input dosage rule does not match crop cycle crop/season")
+        if rule.project_id and rule.project_id != cycle.project_id:
+            raise HTTPException(409, "Project-scoped input dosage rule does not match crop cycle project")
+        if input_code and rule.input_code != input_code:
+            raise HTTPException(409, "Input dosage rule input_code does not match activity input_code")
+        input_code = input_code or rule.input_code
+        trace["input_rule"] = rule
+
+    product = None
+    if body.product_id or product_code:
+        query = db.query(AgriculturalProduct).filter(AgriculturalProduct.is_active == True, AgriculturalProduct.status == "ACTIVE")
+        query = query.filter(AgriculturalProduct.id == body.product_id) if body.product_id else query.filter(AgriculturalProduct.code == product_code)
+        product = query.first()
+        if not product:
+            raise HTTPException(404, "Active product not found")
+        if input_code and product.canonical_input.code != input_code:
+            raise HTTPException(409, "Product canonical input does not match activity input_code")
+        input_code = input_code or product.canonical_input.code
+        product_code = product.code
+        trace["product"] = product
+
+        if cycle.project_id:
+            approvals = db.query(ProjectProductApproval).filter(
+                ProjectProductApproval.tenant_id == tenant_id,
+                ProjectProductApproval.project_id == cycle.project_id,
+                ProjectProductApproval.is_active == True,
+            ).all()
+            if approvals:
+                approval = next((row for row in approvals if row.product_id == product.id), None)
+                if not approval or not approval.enabled:
+                    raise HTTPException(409, "Product is not enabled for this project")
+
+    package = None
+    if body.package_id or package_sku:
+        query = db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.is_active == True, AgriculturalProductPackage.status == "ACTIVE")
+        query = query.filter(AgriculturalProductPackage.id == body.package_id) if body.package_id else query.filter(AgriculturalProductPackage.sku == package_sku)
+        package = query.first()
+        if not package:
+            raise HTTPException(404, "Active product package not found")
+        if product and package.product_id != product.id:
+            raise HTTPException(409, "Package does not belong to selected product")
+        if not product:
+            product = db.query(AgriculturalProduct).filter(AgriculturalProduct.id == package.product_id, AgriculturalProduct.is_active == True, AgriculturalProduct.status == "ACTIVE").first()
+            if not product:
+                raise HTTPException(404, "Active product not found for package")
+            if input_code and product.canonical_input.code != input_code:
+                raise HTTPException(409, "Package product canonical input does not match activity input_code")
+            input_code = input_code or product.canonical_input.code
+            product_code = product.code
+            trace["product"] = product
+        package_sku = package.sku
+        trace["package"] = package
+
+    if trace["input_rule"] and product_code:
+        allowed = [str(code).upper() for code in (trace["input_rule"].allowed_product_codes or [])]
+        if allowed and product_code not in allowed:
+            raise HTTPException(409, "Selected product is not allowed by the input dosage rule")
+
+    trace["input_code"] = input_code
+    trace["product_code"] = product_code
+    trace["package_sku"] = package_sku
+    return trace
 # --- Endpoints ---
 
 @router.post("", response_model=CropCycleResponse, status_code=201)
@@ -1327,7 +1421,8 @@ def log_activity(
         raise HTTPException(404, "Crop cycle not found")
     if cycle.status == "COMPLETED":
         raise HTTPException(409, "Completed crop cycles are read-only")
-    assert_catalog_input_allowed_for_project_crop(db, tenant_id=x_tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code, input_code=body.input_code)
+    traceability = _validate_activity_traceability(db, tenant_id=x_tenant_id, cycle=cycle, body=body)
+    assert_catalog_input_allowed_for_project_crop(db, tenant_id=x_tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code, input_code=traceability["input_code"] or body.input_code)
 
     # Find currently active stage (if any)
     active_stage = (
@@ -1348,12 +1443,22 @@ def log_activity(
         tenant_id=x_tenant_id,
         farmer_id=cycle.farmer_id,
         activity_type=body.activity_type,
-        input_code=body.input_code,
+        input_code=traceability["input_code"] or body.input_code,
         input_name=body.input_name,
         quantity=body.quantity,
         quantity_unit=body.quantity_unit,
         area_applied=body.area_applied,
         area_unit=body.area_unit,
+        input_rule_id=body.input_rule_id,
+        product_id=traceability["product"].id if traceability["product"] else body.product_id,
+        product_code=traceability["product_code"],
+        package_id=traceability["package"].id if traceability["package"] else body.package_id,
+        package_sku=traceability["package_sku"],
+        recommended_quantity=body.recommended_quantity,
+        recommended_quantity_unit=body.recommended_quantity_unit,
+        actual_quantity=body.actual_quantity,
+        actual_quantity_unit=body.actual_quantity_unit,
+        dosage_variance_reason=body.dosage_variance_reason,
         cost_amount=body.cost_amount,
         activity_date=body.activity_date,
         gps_lat=body.gps_lat,
@@ -1383,7 +1488,10 @@ def log_activity(
         action="ACTIVITY_LOGGED",
         payload={
             "activity_type": body.activity_type,
-            "input_code": body.input_code,
+            "input_code": traceability["input_code"] or body.input_code,
+            "input_rule_id": str(body.input_rule_id) if body.input_rule_id else None,
+            "product_code": traceability["product_code"],
+            "package_sku": traceability["package_sku"],
             "quantity": str(body.quantity) if body.quantity else None,
             "cost": str(body.cost_amount) if body.cost_amount else None,
             "stage_code": active_stage.stage_code if active_stage else None,
@@ -1400,6 +1508,9 @@ def log_activity(
     return {
         "activity_id": str(activity.id),
         "activity_type": body.activity_type,
+        "input_rule_id": str(activity.input_rule_id) if activity.input_rule_id else None,
+        "product_code": activity.product_code,
+        "package_sku": activity.package_sku,
         "stage_code": active_stage.stage_code if active_stage else None,
         "cycle_total_input_cost": str(cycle.total_input_cost or 0),
         "events_published": ["crop_activity_logged.v1"],
@@ -1453,9 +1564,20 @@ def list_activities(
         {
             "id": str(a.id),
             "activity_type": a.activity_type,
+            "input_code": a.input_code,
             "input_name": a.input_name,
             "quantity": str(a.quantity) if a.quantity else None,
             "quantity_unit": a.quantity_unit,
+            "input_rule_id": str(a.input_rule_id) if a.input_rule_id else None,
+            "product_id": str(a.product_id) if a.product_id else None,
+            "product_code": a.product_code,
+            "package_id": str(a.package_id) if a.package_id else None,
+            "package_sku": a.package_sku,
+            "recommended_quantity": str(a.recommended_quantity) if a.recommended_quantity is not None else None,
+            "recommended_quantity_unit": a.recommended_quantity_unit,
+            "actual_quantity": str(a.actual_quantity) if a.actual_quantity is not None else None,
+            "actual_quantity_unit": a.actual_quantity_unit,
+            "dosage_variance_reason": a.dosage_variance_reason,
             "cost_amount": str(a.cost_amount) if a.cost_amount else None,
             "activity_date": a.activity_date.isoformat() if a.activity_date else None,
             "stage_code": stage_map.get(a.stage_instance_id),

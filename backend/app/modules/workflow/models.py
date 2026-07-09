@@ -370,6 +370,18 @@ class CropActivity(Base, UUIDPrimaryKey, AuditMixin):
     area_applied = Column(DECIMAL(10, 2))  # Area this was applied to
     area_unit = Column(String(20))
 
+    # Recommendation/product traceability (optional; preserves legacy logs)
+    input_rule_id = Column(UUID(as_uuid=True), ForeignKey("crop_stage_input_rules.id"))
+    product_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_products.id"))
+    product_code = Column(String(80))
+    package_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_product_packages.id"))
+    package_sku = Column(String(100))
+    recommended_quantity = Column(DECIMAL(12, 3))
+    recommended_quantity_unit = Column(String(20))
+    actual_quantity = Column(DECIMAL(12, 3))
+    actual_quantity_unit = Column(String(20))
+    dosage_variance_reason = Column(Text)
+
     # Cost
     cost_amount = Column(DECIMAL(12, 2))
     cost_currency = Column(String(5), default="INR")
@@ -392,4 +404,7 @@ class CropActivity(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_activity_type", "activity_type"),
         Index("idx_activity_date", "activity_date"),
         Index("idx_activity_tenant", "tenant_id"),
+        Index("idx_activity_input_rule", "input_rule_id"),
+        Index("idx_activity_product", "product_code"),
+        Index("idx_activity_package", "package_sku"),
     )
