@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.workflow.models import (
     CropActivity,
@@ -106,6 +107,7 @@ def main():
     previous_snapshots = {}
 
     db = SessionLocal()
+    admin_user, headers = create_test_admin(db)
     try:
         ensure_default_tenant(db)
         template, published_version = get_rice_workflow(db)
@@ -226,6 +228,7 @@ def main():
             draft_version_id=draft_version_id,
             previous_snapshots=previous_snapshots,
         )
+        delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\n" + "=" * 72)

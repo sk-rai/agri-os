@@ -58,7 +58,14 @@ export async function api<T = unknown>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(error.detail || res.statusText, res.status);
+    const detail = error.detail;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && typeof detail.message === "string"
+          ? detail.message
+          : res.statusText;
+    throw new ApiError(message, res.status);
   }
 
   return res.json() as Promise<T>;

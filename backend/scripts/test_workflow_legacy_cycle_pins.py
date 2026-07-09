@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance, WorkflowTemplate, WorkflowTemplateAuditEvent, WorkflowTemplateVersion
 
@@ -89,6 +90,7 @@ def main():
     project_id = uuid.uuid4()
 
     db = SessionLocal()
+    admin_user, headers = create_test_admin(db)
     try:
         ensure_default_tenant(db)
         workflow_template, published_version = get_rice_workflow(db)
@@ -182,6 +184,7 @@ def main():
         check(cycle.workflow_template_version_id == published_version.id, "Legacy cycle row is pinned after backfill")
     finally:
         cleanup(db, farmer_id, parcel_id, cycle_id)
+        delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\n" + "=" * 72)

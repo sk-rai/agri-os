@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.master_data.models import AgriculturalInput, Crop
@@ -1040,6 +1041,7 @@ def update_draft_workflow_stage(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Edit a stage inside a DRAFT workflow version and return updated draft preview."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
@@ -1101,7 +1103,7 @@ def update_draft_workflow_stage(
         tenant_id=x_tenant_id,
         template_id=template.id,
         template_version_id=version.id,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=principal.user_id,
         action="UPDATE_STAGE",
         target_type="STAGE",
         target_id=str(stage.id),
@@ -1220,6 +1222,7 @@ def create_draft_workflow_recommendation(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Add a recommendation to a stage inside a DRAFT workflow version."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
@@ -1267,7 +1270,7 @@ def create_draft_workflow_recommendation(
         tenant_id=x_tenant_id,
         template_id=template.id,
         template_version_id=version.id,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=principal.user_id,
         action="CREATE_RECOMMENDATION",
         target_type="RECOMMENDATION",
         target_id=str(new_rec.id),
@@ -1287,6 +1290,7 @@ def update_draft_workflow_recommendation(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Edit a recommendation inside a DRAFT workflow version."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
@@ -1304,7 +1308,7 @@ def update_draft_workflow_recommendation(
         tenant_id=x_tenant_id,
         template_id=template.id,
         template_version_id=version.id,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=principal.user_id,
         action="UPDATE_RECOMMENDATION",
         target_type="RECOMMENDATION",
         target_id=str(rec.id),
@@ -1324,6 +1328,7 @@ def delete_draft_workflow_recommendation(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Soft-delete a recommendation from a DRAFT workflow version."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
@@ -1338,7 +1343,7 @@ def delete_draft_workflow_recommendation(
         tenant_id=x_tenant_id,
         template_id=template.id,
         template_version_id=version.id,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=principal.user_id,
         action="DELETE_RECOMMENDATION",
         target_type="RECOMMENDATION",
         target_id=str(rec.id),
@@ -1369,6 +1374,7 @@ def publish_draft_workflow_template_version(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     """Publish a validated DRAFT workflow version and make it Android-visible."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
@@ -1403,7 +1409,7 @@ def publish_draft_workflow_template_version(
             previous_metadata["active_pinned_cycle_count_at_archive"] = impact.get("active_pinned_cycle_count", 0)
             previous.metadata_ = previous_metadata
 
-    published_by = _actor_uuid(x_actor_id)
+    published_by = principal.user_id
     before = {"status": version.status, "published_at": version.published_at.isoformat() if version.published_at else None}
 
     version.status = "PUBLISHED"
@@ -1721,6 +1727,7 @@ def backfill_legacy_cycle_pins(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     """Pin eligible legacy crop cycles to their matching published workflow version."""
     candidates = _legacy_cycle_pin_candidates(
@@ -1743,7 +1750,7 @@ def backfill_legacy_cycle_pins(
             cycle.updated_at = now
             key = (candidate["workflow_template"].id, version.id, candidate["workflow_template"].code, version.version_number)
             pinned_by_version[key] = pinned_by_version.get(key, 0) + 1
-        actor_id = _actor_uuid(x_actor_id)
+        actor_id = principal.user_id
         for (template_id, version_id, template_code, version_number), count in pinned_by_version.items():
             _record_workflow_audit_event(
                 db,
@@ -1879,6 +1886,7 @@ def restore_workflow_template_version_to_draft(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     """Restore a published/archived workflow version into a new editable draft."""
     template, source_version = _version_row_for_template(
@@ -1890,7 +1898,7 @@ def restore_workflow_template_version_to_draft(
         "Published or archived workflow template version not found",
     )
     return _copy_workflow_version_to_draft(
-        db, template, source_version, body.version_number, tenant_id=x_tenant_id, actor_id=_actor_uuid(x_actor_id), action="RESTORE_DRAFT"
+        db, template, source_version, body.version_number, tenant_id=x_tenant_id, actor_id=principal.user_id, action="RESTORE_DRAFT"
     )
 
 
@@ -1902,6 +1910,7 @@ def clone_workflow_template_version_to_draft(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Clone a published workflow version into an editable draft version."""
     template, source_version = _version_row_for_template(
@@ -1913,7 +1922,7 @@ def clone_workflow_template_version_to_draft(
         "Published workflow template version not found",
     )
     return _copy_workflow_version_to_draft(
-        db, template, source_version, body.version_number, tenant_id=x_tenant_id, actor_id=_actor_uuid(x_actor_id), action="CLONE_DRAFT"
+        db, template, source_version, body.version_number, tenant_id=x_tenant_id, actor_id=principal.user_id, action="CLONE_DRAFT"
     )
 
 
@@ -1976,6 +1985,9 @@ def upsert_project_workflow_enablement(
     body: WorkflowEnablementUpdate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
+    ),
 ):
     """Create/update a project-level workflow enablement row.
 
@@ -2047,6 +2059,9 @@ def create_project_workflow_override(
     body: WorkflowOverrideCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
+    ),
 ):
     """Create a project-level workflow override and return updated preview.
 
@@ -2105,6 +2120,9 @@ def delete_project_workflow_override(
     override_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
+    ),
 ):
     """Archive a project-level override and return updated preview."""
     override = (

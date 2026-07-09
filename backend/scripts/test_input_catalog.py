@@ -14,6 +14,7 @@ from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
 from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.workflow.models import WorkflowTemplateRecommendation
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -53,6 +54,10 @@ def main():
     print("=" * 72)
 
     client = TestClient(app)
+    auth_db = SessionLocal()
+    admin_user, admin_headers = create_test_admin(auth_db)
+    client.headers.update(admin_headers)
+    auth_db.close()
 
     print("\n[1] Input categories API")
     categories_response = client.get("/api/v1/input-catalog/categories")
@@ -299,6 +304,10 @@ def main():
     ]
     check(any(rec.get("input_code") == "HEALTHY_CANE_SETTS" for rec in sugar_recs), "Sugarcane recommendations include cane sett input code")
     check(any(rec.get("input_code") == "IRRIGATION_MOISTURE" for rec in sugar_recs), "Sugarcane recommendations include irrigation input code")
+
+    auth_db = SessionLocal()
+    delete_test_admin(auth_db, admin_user.id)
+    auth_db.close()
 
     print("\n" + "=" * 72)
     print("🟢 Input catalog and recommendation mappings validated")

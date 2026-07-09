@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Tenant, Project
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.workflow.models import (
     WorkflowTemplate,
     WorkflowTemplateVersion,
@@ -82,6 +83,8 @@ def main():
 
     print("\n[2] Project explicit allow-list and stage override")
     db = SessionLocal()
+    admin_user, admin_headers = create_test_admin(db)
+    headers.update(admin_headers)
     project_id = uuid.uuid4()
     try:
         ensure_default_tenant(db)
@@ -174,6 +177,7 @@ def main():
         check("TRANSPLANTING" in stage_codes, "Other Rice stages remain visible")
     finally:
         cleanup(db, project_id)
+        delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\n" + "=" * 72)

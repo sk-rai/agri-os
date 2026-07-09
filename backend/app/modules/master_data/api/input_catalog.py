@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
@@ -91,15 +92,6 @@ class AgriculturalInputCreate(AgriculturalInputUpdate):
     @classmethod
     def normalize_code(cls, value):
         return value.strip().upper().replace(" ", "_")
-
-def _actor_uuid(value: Optional[str]):
-    if not value:
-        return None
-    try:
-        return uuid.UUID(value)
-    except (TypeError, ValueError):
-        return None
-
 
 def _assignment_snapshot(assignment: Optional[ProjectInputAssignment]) -> Optional[dict]:
     if not assignment:
@@ -261,6 +253,7 @@ def create_input(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     existing = db.query(AgriculturalInput).filter(AgriculturalInput.code == body.code).first()
     if existing:
@@ -290,7 +283,7 @@ def create_input(
         db,
         tenant_id=x_tenant_id,
         item=item,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=principal.user_id,
         action="CREATE_INPUT",
         before=None,
         after=after,
@@ -474,6 +467,9 @@ def upsert_project_input_assignment(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
+    ),
 ):
     project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
     item = db.query(AgriculturalInput).filter(
@@ -520,7 +516,7 @@ def upsert_project_input_assignment(
         project_id=project_id,
         input_code=item.code,
         assignment_id=assignment.id,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=principal.user_id,
         action=action,
         before=before,
         after=after,
@@ -657,6 +653,7 @@ def archive_input(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper()).first()
     if not item:
@@ -676,7 +673,7 @@ def archive_input(
             db,
             tenant_id=x_tenant_id,
             item=item,
-            actor_id=_actor_uuid(x_actor_id),
+            actor_id=principal.user_id,
             action="ARCHIVE_INPUT",
             before=before,
             after=after,
@@ -695,6 +692,7 @@ def restore_input(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     item = db.query(AgriculturalInput).filter(AgriculturalInput.code == input_code.upper()).first()
     if not item:
@@ -708,7 +706,7 @@ def restore_input(
             db,
             tenant_id=x_tenant_id,
             item=item,
-            actor_id=_actor_uuid(x_actor_id),
+            actor_id=principal.user_id,
             action="RESTORE_INPUT",
             before=before,
             after=after,
@@ -759,6 +757,7 @@ def update_input(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     item = (
         db.query(AgriculturalInput)
@@ -775,7 +774,7 @@ def update_input(
             db,
             tenant_id=x_tenant_id,
             item=item,
-            actor_id=_actor_uuid(x_actor_id),
+            actor_id=principal.user_id,
             action="UPDATE_INPUT",
             before=before,
             after=after,

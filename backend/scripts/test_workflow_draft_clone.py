@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.workflow.models import (
     WorkflowTemplate,
     WorkflowTemplateAuditEvent,
@@ -61,6 +62,7 @@ def main():
     print("=" * 72)
 
     db = SessionLocal()
+    admin_user, admin_headers = create_test_admin(db)
     draft_version_id = None
     restored_draft_id = None
     source_version_id = None
@@ -88,7 +90,7 @@ def main():
         ).count()
 
         client = TestClient(app)
-        headers = {"X-Tenant-ID": TENANT_ID}
+        headers = admin_headers
         catalog_before = client.get("/api/v1/workflow-catalog/enabled-crop-workflows", headers=headers)
         check(catalog_before.status_code == 200, "Published catalog before clone returns 200", f"Status: {catalog_before.status_code}")
         ids_before = {item["workflow_template_version_id"] for item in catalog_before.json()["workflows"]}
@@ -360,6 +362,7 @@ def main():
                 db.commit()
         cleanup_draft(db, restored_draft_id)
         cleanup_draft(db, draft_version_id)
+        delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\n" + "=" * 72)

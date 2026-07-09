@@ -42,11 +42,14 @@ export default function LoginPage() {
       const res = await authApi.verifyOtp(mobile, otp, "web-admin-browser") as {
         access_token: string;
         user_id: string;
+        role: string;
+        tenant_id: string;
       };
       // Store auth state
       localStorage.setItem("agrios_token", res.access_token);
       localStorage.setItem("agrios_user_id", res.user_id);
-      localStorage.setItem("agrios_tenant_id", tenantId);
+      localStorage.setItem("agrios_tenant_id", res.tenant_id || tenantId);
+      localStorage.setItem("agrios_role", res.role);
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Invalid OTP");
