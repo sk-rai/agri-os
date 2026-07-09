@@ -163,6 +163,81 @@ class ProjectInputAssignmentAuditEvent(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class AgriculturalProduct(Base, UUIDPrimaryKey, AuditMixin):
+    """Manufacturer-specific branded product mapped to a canonical input."""
+
+    __tablename__ = "agricultural_products"
+
+    code = Column(String(80), unique=True, nullable=False, index=True)
+    canonical_input_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_inputs.id"), nullable=False, index=True)
+    manufacturer_id = Column(UUID(as_uuid=True), ForeignKey("manufacturers.id"), nullable=False, index=True)
+    brand_name = Column(String(200), nullable=False)
+    composition = Column(String(300))
+    registration_number = Column(String(100), index=True)
+    registration_authority = Column(String(150))
+    registration_expiry_date = Column(Date)
+    country = Column(String(50), default="India")
+    status = Column(String(20), nullable=False, default="ACTIVE", index=True)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    canonical_input = relationship("AgriculturalInput")
+    manufacturer = relationship("Manufacturer")
+    packages = relationship("AgriculturalProductPackage", back_populates="product", cascade="all, delete-orphan")
+
+
+class AgriculturalProductPackage(Base, UUIDPrimaryKey, AuditMixin):
+    """Sellable package/size for an agricultural product."""
+
+    __tablename__ = "agricultural_product_packages"
+
+    product_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_products.id"), nullable=False, index=True)
+    sku = Column(String(100), unique=True, nullable=False, index=True)
+    quantity = Column(DECIMAL(12, 3), nullable=False)
+    unit = Column(String(20), nullable=False)
+    pack_label = Column(String(100), nullable=False)
+    barcode = Column(String(100), unique=True)
+    status = Column(String(20), nullable=False, default="ACTIVE", index=True)
+
+    product = relationship("AgriculturalProduct", back_populates="packages")
+
+
+class ProjectProductApproval(Base, UUIDPrimaryKey, AuditMixin):
+    """Project allow/preference rule for a branded agricultural product."""
+
+    __tablename__ = "project_product_approvals"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_products.id"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    preferred = Column(Boolean, nullable=False, default=False)
+    display_order = Column(Integer, nullable=False, default=1000)
+    reason = Column(Text)
+
+    product = relationship("AgriculturalProduct")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "project_id", "product_id", name="uq_project_product_approval"),)
+
+
+class ProductCatalogAuditEvent(Base, UUIDPrimaryKey, AuditMixin):
+    """Audit event for manufacturer, product, package and approval mutations."""
+
+    __tablename__ = "product_catalog_audit_events"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    entity_type = Column(String(30), nullable=False, index=True)
+    entity_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    entity_code = Column(String(100), nullable=False, index=True)
+    actor_id = Column(UUID(as_uuid=True))
+    action = Column(String(50), nullable=False)
+    before_payload = Column(JSONB)
+    after_payload = Column(JSONB)
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (Index("idx_product_catalog_audit_entity", "entity_type", "entity_code", "created_at"),)
+
+
 class InputCatalogImportBatch(Base, UUIDPrimaryKey, AuditMixin):
     """Validated CSV import batch awaiting explicit admin application."""
 

@@ -23,6 +23,10 @@ from app.modules.master_data.models.input import (
     AgriculturalInput,
     AgriculturalInputAuditEvent,
     InputCatalogImportBatch,
+    AgriculturalProduct,
+    AgriculturalProductPackage,
+    ProjectProductApproval,
+    ProductCatalogAuditEvent,
     ProjectInputAssignment,
     ProjectInputAssignmentAuditEvent,
 )
@@ -48,6 +52,10 @@ __all__ = [
     "AgriculturalInput",
     "AgriculturalInputAuditEvent",
     "InputCatalogImportBatch",
+    "AgriculturalProduct",
+    "AgriculturalProductPackage",
+    "ProjectProductApproval",
+    "ProductCatalogAuditEvent",
     "ProjectInputAssignment",
     "ProjectInputAssignmentAuditEvent",
 ]

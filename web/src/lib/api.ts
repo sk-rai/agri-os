@@ -1099,3 +1099,16 @@ export const tenantAdminUsersApi = {
   audit: (userId?: string) =>
     api<UserAccessAuditResponse>(`/api/v1/admin/user-access-audit${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
 };
+
+// Manufacturer and branded product catalog
+export interface ManufacturerDto { id: string; code: string; canonical_name: string; short_name?: string | null; country: string; aliases: Array<Record<string,string>>; is_active: boolean }
+export interface ProductPackageDto { id: string; sku: string; quantity: string; unit: string; pack_label: string; barcode?: string | null; status: string }
+export interface AgriculturalProductDto { id: string; code: string; canonical_input_code: string; canonical_input_name: string; manufacturer_code: string; manufacturer_name: string; brand_name: string; composition?: string | null; registration_number?: string | null; registration_authority?: string | null; registration_expiry_date?: string | null; country: string; status: string; packages: ProductPackageDto[]; project_approval?: { enabled: boolean; preferred: boolean; display_order: number; reason?: string | null } | null }
+export const productCatalogApi = {
+  manufacturers: () => api<{count:number; manufacturers:ManufacturerDto[]}>("/api/v1/product-catalog/manufacturers"),
+  createManufacturer: (body: Record<string, unknown>) => api<ManufacturerDto>("/api/v1/product-catalog/manufacturers", {method:"POST", body}),
+  products: (params?: {inputCode?:string; manufacturerCode?:string; projectId?:string; includeInactive?:boolean}) => { const q=new URLSearchParams(); if(params?.inputCode)q.set("input_code",params.inputCode); if(params?.manufacturerCode)q.set("manufacturer_code",params.manufacturerCode); if(params?.projectId)q.set("project_id",params.projectId); if(params?.includeInactive)q.set("include_inactive","true"); return api<{count:number; approval_policy:string; products:AgriculturalProductDto[]}>(`/api/v1/product-catalog/products?${q}`); },
+  createProduct: (body: Record<string, unknown>) => api<AgriculturalProductDto>("/api/v1/product-catalog/products", {method:"POST", body}),
+  updateProduct: (code:string, body:Record<string,unknown>) => api<AgriculturalProductDto>(`/api/v1/product-catalog/products/${code}`, {method:"PUT", body}),
+  approveProduct: (projectId:string, code:string, body:Record<string,unknown>) => api<{product:AgriculturalProductDto}>(`/api/v1/product-catalog/projects/${projectId}/products/${code}`, {method:"PUT", body}),
+};

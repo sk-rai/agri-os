@@ -11,6 +11,7 @@ const navItems = [
   { href: "/workflows", label: "Workflows", icon: "🌱" },
   { href: "/project-workflows", label: "Project Workflows", icon: "🧭" },
   { href: "/inputs", label: "Inputs", icon: "🧪" },
+  { href: "/products", label: "Products & Brands", icon: "📦" },
   { href: "/project-inputs", label: "Project Inputs", icon: "🎛️" },
   { href: "/conflicts", label: "Conflicts", icon: "⚠️" },
 ];
