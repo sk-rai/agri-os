@@ -1,4 +1,4 @@
-"""Agricultural input master data: fertilizers, pesticides, seeds.
+﻿"""Agricultural input master data: fertilizers, pesticides, seeds.
 
 Source: Public company catalogs, ministry data.
 Canonical naming per Semantic Registry v1: input_category, agricultural_input.
@@ -162,6 +162,71 @@ class ProjectInputAssignmentAuditEvent(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_project_input_assignment_audit_input", "project_id", "input_code"),
     )
 
+class CropStageInputRule(Base, UUIDPrimaryKey, AuditMixin):
+    """Crop/stage/activity compatibility and dosage rule for a canonical input.
+
+    These rules sit between workflow recommendations and the input/product
+    catalogs. A workflow can recommend a canonical input; this table defines
+    whether that input is allowed for a crop stage and the dosage guidance that
+    Android/admin should render.
+    """
+
+    __tablename__ = "crop_stage_input_rules"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), index=True)
+    crop_code = Column(String(30), nullable=False, index=True)
+    season_code = Column(String(20), index=True)
+    stage_code = Column(String(50), nullable=False, index=True)
+    activity_type = Column(String(30), nullable=False, index=True)
+    input_id = Column(UUID(as_uuid=True), ForeignKey("agricultural_inputs.id"), nullable=False, index=True)
+    input_code = Column(String(50), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    priority = Column(Integer, nullable=False, default=1000)
+    dosage_quantity = Column(DECIMAL(12, 3))
+    dosage_unit = Column(String(20))
+    dosage_area_unit = Column(String(20), nullable=False, default="ACRE")
+    min_quantity = Column(DECIMAL(12, 3))
+    max_quantity = Column(DECIMAL(12, 3))
+    application_method = Column(Text)
+    timing_note = Column(Text)
+    safety_note = Column(Text)
+    allowed_product_codes = Column(JSONB, default=list)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    reason = Column(Text)
+
+    input = relationship("AgriculturalInput")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "project_id", "crop_code", "season_code", "stage_code", "activity_type", "input_code", name="uq_crop_stage_input_rule_scope"),
+        Index("idx_crop_stage_input_rule_lookup", "tenant_id", "project_id", "crop_code", "stage_code", "activity_type"),
+        Index("idx_crop_stage_input_rule_input", "input_code", "enabled"),
+    )
+
+
+class CropStageInputRuleAuditEvent(Base, UUIDPrimaryKey, AuditMixin):
+    """Audit event for crop-stage input compatibility/dosage rules."""
+
+    __tablename__ = "crop_stage_input_rule_audit_events"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), index=True)
+    rule_id = Column(UUID(as_uuid=True), ForeignKey("crop_stage_input_rules.id"), index=True)
+    input_code = Column(String(50), nullable=False, index=True)
+    crop_code = Column(String(30), nullable=False, index=True)
+    stage_code = Column(String(50), nullable=False, index=True)
+    activity_type = Column(String(30), nullable=False, index=True)
+    actor_id = Column(UUID(as_uuid=True))
+    action = Column(String(50), nullable=False)
+    before_payload = Column(JSONB)
+    after_payload = Column(JSONB)
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_crop_stage_input_rule_audit_rule", "rule_id", "created_at"),
+        Index("idx_crop_stage_input_rule_audit_scope", "tenant_id", "project_id", "crop_code", "stage_code"),
+    )
 
 class AgriculturalProduct(Base, UUIDPrimaryKey, AuditMixin):
     """Manufacturer-specific branded product mapped to a canonical input."""

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Typed API client for Agri-OS backend.
  * Handles auth headers (Bearer JWT + X-Tenant-ID) and 401 redirects.
  */
@@ -918,6 +918,41 @@ export interface InputReferencesResponse {
   };
 }
 
+
+export interface CropStageInputRuleDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  rule_scope: "GLOBAL" | "PROJECT" | string;
+  crop_code: string;
+  season_code?: string | null;
+  stage_code: string;
+  activity_type: string;
+  input_code: string;
+  input_name: string;
+  input_category_code?: string | null;
+  enabled: boolean;
+  priority: number;
+  dosage: { quantity?: string | null; unit?: string | null; area_unit: string; min_quantity?: string | null; max_quantity?: string | null };
+  application_method?: string | null;
+  timing_note?: string | null;
+  safety_note?: string | null;
+  allowed_product_codes: string[];
+  metadata?: Record<string, unknown>;
+  reason?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CropStageInputRulesResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id?: string | null;
+  filter_policy: string;
+  count: number;
+  rules: CropStageInputRuleDto[];
+}
 export interface InputCsvDiagnostic {
   field: string;
   code: string;
@@ -962,7 +997,20 @@ export const inputCatalogApi = {
   validateCsv: (file: File) => apiUpload<InputCsvImportBatch>("/api/v1/input-catalog/csv/validate", file),
   applyCsv: (batchId: string, reason: string) => api<InputCsvImportBatch>(`/api/v1/input-catalog/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
   csvImportHistory: () => api<InputCsvImportHistory>("/api/v1/input-catalog/csv/imports"),
-  categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
+  inputRules: (params?: { cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; projectId?: string; includeDisabled?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.seasonCode) query.set("season_code", params.seasonCode);
+    if (params?.stageCode) query.set("stage_code", params.stageCode);
+    if (params?.activityType) query.set("activity_type", params.activityType);
+    if (params?.inputCode) query.set("input_code", params.inputCode);
+    if (params?.projectId) query.set("project_id", params.projectId);
+    if (params?.includeDisabled) query.set("include_disabled", "true");
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<CropStageInputRulesResponse>(`/api/v1/input-catalog/input-rules${suffix}`);
+  },
+  createInputRule: (data: Record<string, unknown>) => api<CropStageInputRuleDto>("/api/v1/input-catalog/input-rules", { method: "POST", body: data }),
+  updateInputRule: (ruleId: string, data: Record<string, unknown>) => api<CropStageInputRuleDto>(`/api/v1/input-catalog/input-rules/${ruleId}`, { method: "PATCH", body: data }),  categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
   inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string; includeInactive?: boolean; includeUnpublished?: boolean; status?: string }) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);

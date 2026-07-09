@@ -1,4 +1,4 @@
-"""Read-only agricultural input catalog APIs."""
+﻿"""Read-only agricultural input catalog APIs."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, optional_admin_viewer, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Project
-from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
+from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent, CropStageInputRule, CropStageInputRuleAuditEvent
 from app.modules.workflow.models import (
     WorkflowTemplate,
     WorkflowTemplateRecommendation,
@@ -38,6 +38,94 @@ class ProjectInputAssignmentUpdate(BaseModel):
     reason: Optional[str] = None
     metadata: Optional[dict] = None
 
+
+
+class CropStageInputRuleUpsert(BaseModel):
+    crop_code: str = Field(..., min_length=2, max_length=30)
+    season_code: Optional[str] = Field(None, max_length=20)
+    stage_code: str = Field(..., min_length=2, max_length=50)
+    activity_type: str = Field(..., min_length=2, max_length=30)
+    input_code: str = Field(..., min_length=2, max_length=50)
+    project_id: Optional[uuid.UUID] = None
+    enabled: bool = True
+    priority: int = Field(1000, ge=0)
+    dosage_quantity: Optional[str] = None
+    dosage_unit: Optional[str] = Field(None, max_length=20)
+    dosage_area_unit: str = Field("ACRE", min_length=1, max_length=20)
+    min_quantity: Optional[str] = None
+    max_quantity: Optional[str] = None
+    application_method: Optional[str] = None
+    timing_note: Optional[str] = None
+    safety_note: Optional[str] = None
+    allowed_product_codes: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    reason: str = Field(..., min_length=3, max_length=500)
+
+    @field_validator("crop_code", "season_code", "stage_code", "activity_type", "input_code", "dosage_unit", "dosage_area_unit", mode="before")
+    @classmethod
+    def normalize_codes(cls, value):
+        if value is None:
+            return None
+        return str(value).strip().upper().replace(" ", "_")
+
+    @field_validator("dosage_quantity", "min_quantity", "max_quantity")
+    @classmethod
+    def validate_decimal(cls, value):
+        if value in (None, ""):
+            return None
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            raise ValueError("quantity fields must be numeric")
+        if parsed < 0:
+            raise ValueError("quantity fields must be non-negative")
+        return str(parsed)
+
+    @field_validator("allowed_product_codes")
+    @classmethod
+    def normalize_product_codes(cls, value):
+        return sorted({str(code).strip().upper().replace(" ", "_") for code in (value or []) if str(code).strip()})
+
+
+class CropStageInputRulePatch(BaseModel):
+    enabled: Optional[bool] = None
+    priority: Optional[int] = Field(None, ge=0)
+    dosage_quantity: Optional[str] = None
+    dosage_unit: Optional[str] = None
+    dosage_area_unit: Optional[str] = None
+    min_quantity: Optional[str] = None
+    max_quantity: Optional[str] = None
+    application_method: Optional[str] = None
+    timing_note: Optional[str] = None
+    safety_note: Optional[str] = None
+    allowed_product_codes: Optional[list[str]] = None
+    metadata: Optional[dict] = None
+    reason: str = Field(..., min_length=3, max_length=500)
+
+    @field_validator("dosage_quantity", "min_quantity", "max_quantity")
+    @classmethod
+    def validate_decimal(cls, value):
+        if value in (None, ""):
+            return None
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            raise ValueError("quantity fields must be numeric")
+        if parsed < 0:
+            raise ValueError("quantity fields must be non-negative")
+        return str(parsed)
+
+    @field_validator("dosage_unit", "dosage_area_unit", mode="before")
+    @classmethod
+    def normalize_units(cls, value):
+        return str(value).strip().upper().replace(" ", "_") if value is not None else None
+
+    @field_validator("allowed_product_codes")
+    @classmethod
+    def normalize_product_codes(cls, value):
+        if value is None:
+            return None
+        return sorted({str(code).strip().upper().replace(" ", "_") for code in value if str(code).strip()})
 
 class InputArchiveRequest(BaseModel):
     reason: Optional[str] = None
@@ -240,6 +328,127 @@ def input_payload(item: AgriculturalInput) -> dict:
         "is_active": item.is_active,
     }
 
+
+
+def _decimal_payload(value):
+    return str(value) if value is not None else None
+
+
+def _input_rule_payload(rule: CropStageInputRule) -> dict:
+    item = rule.input
+    return {
+        "id": str(rule.id),
+        "tenant_id": rule.tenant_id,
+        "project_id": str(rule.project_id) if rule.project_id else None,
+        "rule_scope": "PROJECT" if rule.project_id else "GLOBAL",
+        "crop_code": rule.crop_code,
+        "season_code": rule.season_code,
+        "stage_code": rule.stage_code,
+        "activity_type": rule.activity_type,
+        "input_code": rule.input_code,
+        "input_name": item.canonical_name if item else rule.input_code,
+        "input_category_code": item.category.code if item and item.category else None,
+        "enabled": bool(rule.enabled),
+        "priority": rule.priority,
+        "dosage": {"quantity": _decimal_payload(rule.dosage_quantity), "unit": rule.dosage_unit, "area_unit": rule.dosage_area_unit, "min_quantity": _decimal_payload(rule.min_quantity), "max_quantity": _decimal_payload(rule.max_quantity)},
+        "application_method": rule.application_method,
+        "timing_note": rule.timing_note,
+        "safety_note": rule.safety_note,
+        "allowed_product_codes": rule.allowed_product_codes or [],
+        "metadata": rule.metadata_ or {},
+        "reason": rule.reason,
+        "is_active": bool(rule.is_active),
+        "created_at": rule.created_at.isoformat() if rule.created_at else None,
+        "updated_at": rule.updated_at.isoformat() if rule.updated_at else None,
+    }
+
+
+def _input_rule_audit_payload(event: CropStageInputRuleAuditEvent) -> dict:
+    return {
+        "id": str(event.id), "tenant_id": event.tenant_id, "project_id": str(event.project_id) if event.project_id else None,
+        "rule_id": str(event.rule_id) if event.rule_id else None, "input_code": event.input_code,
+        "crop_code": event.crop_code, "stage_code": event.stage_code, "activity_type": event.activity_type,
+        "actor_id": str(event.actor_id) if event.actor_id else None, "action": event.action,
+        "before": event.before_payload, "after": event.after_payload, "reason": event.reason,
+        "metadata": event.metadata_ or {}, "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
+
+
+def _record_input_rule_audit(db: Session, *, tenant_id: str, rule: CropStageInputRule, actor_id, action: str, before: Optional[dict], after: Optional[dict], reason: Optional[str]) -> None:
+    db.add(CropStageInputRuleAuditEvent(id=uuid.uuid4(), tenant_id=tenant_id, project_id=rule.project_id, rule_id=rule.id,
+        input_code=rule.input_code, crop_code=rule.crop_code, stage_code=rule.stage_code, activity_type=rule.activity_type,
+        actor_id=actor_id, action=action, before_payload=before, after_payload=after, reason=reason,
+        metadata_={"source": "admin_api"}, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)))
+
+
+def _assert_project_exists(db: Session, *, tenant_id: str, project_id: Optional[uuid.UUID]) -> None:
+    if project_id and not db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id, Project.is_active == True).first():
+        raise HTTPException(404, "Project not found")
+
+
+def _input_rule_lookup_query(db: Session, body: CropStageInputRuleUpsert, tenant_id: str):
+    query = db.query(CropStageInputRule).filter(CropStageInputRule.tenant_id == tenant_id, CropStageInputRule.crop_code == body.crop_code,
+        CropStageInputRule.stage_code == body.stage_code, CropStageInputRule.activity_type == body.activity_type, CropStageInputRule.input_code == body.input_code)
+    query = query.filter(CropStageInputRule.project_id == body.project_id) if body.project_id else query.filter(CropStageInputRule.project_id.is_(None))
+    query = query.filter(CropStageInputRule.season_code == body.season_code) if body.season_code else query.filter(CropStageInputRule.season_code.is_(None))
+    return query
+
+
+@router.get("/input-rules")
+def list_crop_stage_input_rules(crop_code: Optional[str] = Query(None), season_code: Optional[str] = Query(None), stage_code: Optional[str] = Query(None), activity_type: Optional[str] = Query(None), input_code: Optional[str] = Query(None), project_id: Optional[uuid.UUID] = Query(None), include_disabled: bool = Query(False), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), admin_principal: Optional[AdminPrincipal] = Depends(optional_admin_viewer)):
+    if include_disabled and admin_principal is None:
+        raise HTTPException(403, "Admin VIEW permission is required to include disabled rules")
+    _assert_project_exists(db, tenant_id=x_tenant_id, project_id=project_id)
+    query = db.query(CropStageInputRule).join(AgriculturalInput).filter(CropStageInputRule.tenant_id == x_tenant_id, CropStageInputRule.is_active == True, AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED")
+    query = query.filter((CropStageInputRule.project_id == project_id) | (CropStageInputRule.project_id.is_(None))) if project_id else query.filter(CropStageInputRule.project_id.is_(None))
+    if not include_disabled: query = query.filter(CropStageInputRule.enabled == True)
+    if crop_code: query = query.filter(CropStageInputRule.crop_code == crop_code.upper())
+    if season_code: query = query.filter((CropStageInputRule.season_code == season_code.upper()) | (CropStageInputRule.season_code.is_(None)))
+    if stage_code: query = query.filter(CropStageInputRule.stage_code == stage_code.upper())
+    if activity_type: query = query.filter(CropStageInputRule.activity_type == activity_type.upper())
+    if input_code: query = query.filter(CropStageInputRule.input_code == input_code.upper())
+    rules = query.order_by(CropStageInputRule.project_id.nullsfirst(), CropStageInputRule.priority, CropStageInputRule.input_code).all()
+    return {"schema_version": "input_rules.v1", "tenant_id": x_tenant_id, "project_id": str(project_id) if project_id else None, "filter_policy": "PROJECT_PLUS_GLOBAL" if project_id else "GLOBAL_ONLY", "count": len(rules), "rules": [_input_rule_payload(rule) for rule in rules]}
+
+
+@router.get("/input-rules/audit")
+def list_crop_stage_input_rule_audit(project_id: Optional[uuid.UUID] = Query(None), input_code: Optional[str] = Query(None), crop_code: Optional[str] = Query(None), stage_code: Optional[str] = Query(None), action: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
+    query = db.query(CropStageInputRuleAuditEvent).filter(CropStageInputRuleAuditEvent.tenant_id == x_tenant_id)
+    if project_id: query = query.filter(CropStageInputRuleAuditEvent.project_id == project_id)
+    if input_code: query = query.filter(CropStageInputRuleAuditEvent.input_code == input_code.upper())
+    if crop_code: query = query.filter(CropStageInputRuleAuditEvent.crop_code == crop_code.upper())
+    if stage_code: query = query.filter(CropStageInputRuleAuditEvent.stage_code == stage_code.upper())
+    if action: query = query.filter(CropStageInputRuleAuditEvent.action == action.upper())
+    events = query.order_by(CropStageInputRuleAuditEvent.created_at.desc()).limit(limit).all()
+    return {"schema_version": "input_rules_audit.v1", "tenant_id": x_tenant_id, "count": len(events), "events": [_input_rule_audit_payload(event) for event in events]}
+
+
+@router.post("/input-rules")
+def create_crop_stage_input_rule(body: CropStageInputRuleUpsert, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+    _assert_project_exists(db, tenant_id=x_tenant_id, project_id=body.project_id)
+    item = db.query(AgriculturalInput).filter(AgriculturalInput.code == body.input_code, AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").first()
+    if not item: raise HTTPException(404, f"Published input '{body.input_code}' not found")
+    if _input_rule_lookup_query(db, body, x_tenant_id).first(): raise HTTPException(409, "Input rule already exists for this scope")
+    rule = CropStageInputRule(id=uuid.uuid4(), tenant_id=x_tenant_id, project_id=body.project_id, crop_code=body.crop_code, season_code=body.season_code, stage_code=body.stage_code, activity_type=body.activity_type, input_id=item.id, input_code=item.code, enabled=body.enabled, priority=body.priority, dosage_quantity=Decimal(body.dosage_quantity) if body.dosage_quantity is not None else None, dosage_unit=body.dosage_unit, dosage_area_unit=body.dosage_area_unit, min_quantity=Decimal(body.min_quantity) if body.min_quantity is not None else None, max_quantity=Decimal(body.max_quantity) if body.max_quantity is not None else None, application_method=body.application_method, timing_note=body.timing_note, safety_note=body.safety_note, allowed_product_codes=body.allowed_product_codes, metadata_=body.metadata, reason=body.reason, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc), is_active=True)
+    db.add(rule); db.flush(); db.refresh(rule); after = _input_rule_payload(rule)
+    _record_input_rule_audit(db, tenant_id=x_tenant_id, rule=rule, actor_id=principal.user_id, action="CREATE_INPUT_RULE", before=None, after=after, reason=body.reason)
+    db.commit(); db.refresh(rule); return _input_rule_payload(rule)
+
+
+@router.patch("/input-rules/{rule_id}")
+def update_crop_stage_input_rule(rule_id: uuid.UUID, body: CropStageInputRulePatch, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+    rule = db.query(CropStageInputRule).filter(CropStageInputRule.id == rule_id, CropStageInputRule.tenant_id == x_tenant_id, CropStageInputRule.is_active == True).first()
+    if not rule: raise HTTPException(404, "Input rule not found")
+    before = _input_rule_payload(rule); data = body.model_dump(exclude_unset=True, exclude={"reason"})
+    for field in ["enabled", "priority", "dosage_unit", "dosage_area_unit", "application_method", "timing_note", "safety_note", "allowed_product_codes"]:
+        if field in data: setattr(rule, field, data[field])
+    for field in ["dosage_quantity", "min_quantity", "max_quantity"]:
+        if field in data: setattr(rule, field, Decimal(data[field]) if data[field] is not None else None)
+    if "metadata" in data: rule.metadata_ = data["metadata"] or {}
+    rule.reason = body.reason; rule.updated_at = datetime.now(timezone.utc)
+    db.flush(); db.refresh(rule); after = _input_rule_payload(rule)
+    _record_input_rule_audit(db, tenant_id=x_tenant_id, rule=rule, actor_id=principal.user_id, action="UPDATE_INPUT_RULE", before=before, after=after, reason=body.reason)
+    db.commit(); db.refresh(rule); return _input_rule_payload(rule)
 
 @router.get("/categories")
 def list_input_categories(db: Session = Depends(get_db)):

@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from pathlib import Path
 from logging.config import fileConfig
 
@@ -54,6 +54,8 @@ from app.modules.master_data.models import (  # noqa: F401
     AgriculturalProductPackage,
     ProjectProductApproval,
     ProductCatalogAuditEvent,
+    CropStageInputRule,
+    CropStageInputRuleAuditEvent,
 )
 
 config = context.config

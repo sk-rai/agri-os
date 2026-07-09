@@ -1,4 +1,4 @@
-from app.modules.master_data.models.geography import (
+﻿from app.modules.master_data.models.geography import (
     GeographyState,
     GeographyDistrict,
     GeographyBlock,
@@ -29,6 +29,8 @@ from app.modules.master_data.models.input import (
     ProductCatalogAuditEvent,
     ProjectInputAssignment,
     ProjectInputAssignmentAuditEvent,
+    CropStageInputRule,
+    CropStageInputRuleAuditEvent,
 )
 
 __all__ = [
@@ -58,4 +60,6 @@ __all__ = [
     "ProductCatalogAuditEvent",
     "ProjectInputAssignment",
     "ProjectInputAssignmentAuditEvent",
+    "CropStageInputRule",
+    "CropStageInputRuleAuditEvent",
 ]
