@@ -1,7 +1,7 @@
 """Regression for admin activity usage reporting."""
 from datetime import date, datetime, timezone
 from pathlib import Path
-import sys, uuid
+import csv, io, sys, uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
@@ -85,6 +85,16 @@ def main():
         check(payload["summary"]["variance_count"] == 1, "summary variance count is correct")
         check(payload["summary"]["quantity_by_input"][0]["quantity"] == "38.000", "summary quantity by input is correct")
         check(payload["summary"]["quantity_by_product"][0]["product_code"] == PRODUCT, "summary quantity by product is correct")
+
+        csv_response = client.get(f"/api/v1/reports/activity-usage.csv?project_id={project_id}&crop_code=RICE&stage_code=TILLERING&product_code={PRODUCT}")
+        check(csv_response.status_code == 200, "activity usage CSV returns 200", csv_response.text[:300])
+        check(csv_response.headers["content-type"].startswith("text/csv"), "CSV content type is text/csv")
+        check("activity_usage.csv" in csv_response.headers.get("content-disposition", ""), "CSV response has download filename")
+        csv_rows = list(csv.DictReader(io.StringIO(csv_response.text)))
+        check(len(csv_rows) == 1, "CSV export returns one row")
+        check(csv_rows[0]["activity_id"] == str(activity.id), "CSV row includes activity id")
+        check(csv_rows[0]["product_code"] == PRODUCT and csv_rows[0]["package_sku"] == SKU, "CSV row includes product/package")
+        check(csv_rows[0]["actual_quantity"] == "38.000", "CSV row includes actual quantity")
         print("PASS")
     finally:
         cleanup(db, admin=admin, farmer_id=farmer_id, parcel_id=parcel_id, project_id=project_id, cycle_id=cycle_id)

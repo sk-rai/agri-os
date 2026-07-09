@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import csv
 from datetime import date
 from decimal import Decimal
+import io
 from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Header, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
@@ -16,6 +19,42 @@ from app.modules.farmer.models import Farmer, Parcel
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
+
+
+ACTIVITY_USAGE_CSV_COLUMNS = [
+    "activity_id",
+    "activity_date",
+    "tenant_id",
+    "project_id",
+    "farmer_id",
+    "farmer_name",
+    "parcel_id",
+    "parcel_label",
+    "crop_cycle_id",
+    "crop_code",
+    "season_code",
+    "stage_code",
+    "activity_type",
+    "input_code",
+    "input_name",
+    "input_rule_id",
+    "product_id",
+    "product_code",
+    "package_id",
+    "package_sku",
+    "recommended_quantity",
+    "recommended_quantity_unit",
+    "actual_quantity",
+    "actual_quantity_unit",
+    "dosage_variance_reason",
+    "quantity",
+    "quantity_unit",
+    "area_applied",
+    "area_unit",
+    "cost_amount",
+    "cost_currency",
+    "notes",
+]
 
 
 def _decimal_text(value):
@@ -32,23 +71,22 @@ def _decimal_sum(values):
     return str(total) if found else "0"
 
 
-@router.get("/activity-usage")
-def activity_usage_report(
-    project_id: Optional[uuid.UUID] = Query(None),
-    farmer_id: Optional[uuid.UUID] = Query(None),
-    parcel_id: Optional[uuid.UUID] = Query(None),
-    crop_code: Optional[str] = Query(None),
-    season_code: Optional[str] = Query(None),
-    stage_code: Optional[str] = Query(None),
-    activity_type: Optional[str] = Query(None),
-    input_code: Optional[str] = Query(None),
-    product_code: Optional[str] = Query(None),
-    date_from: Optional[date] = Query(None),
-    date_to: Optional[date] = Query(None),
-    limit: int = Query(250, ge=1, le=1000),
-    db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+def _activity_usage_rows(
+    *,
+    db: Session,
+    tenant_id: str,
+    project_id: Optional[uuid.UUID],
+    farmer_id: Optional[uuid.UUID],
+    parcel_id: Optional[uuid.UUID],
+    crop_code: Optional[str],
+    season_code: Optional[str],
+    stage_code: Optional[str],
+    activity_type: Optional[str],
+    input_code: Optional[str],
+    product_code: Optional[str],
+    date_from: Optional[date],
+    date_to: Optional[date],
+    limit: int,
 ):
     query = (
         db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
@@ -56,7 +94,7 @@ def activity_usage_report(
         .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
         .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
         .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
-        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.tenant_id == x_tenant_id)
+        .filter(CropActivity.tenant_id == tenant_id, CropCycle.tenant_id == tenant_id)
     )
     if project_id:
         query = query.filter(CropCycle.project_id == project_id)
@@ -118,11 +156,30 @@ def activity_usage_report(
             "cost_currency": activity.cost_currency,
             "notes": activity.notes,
         })
+    return report_rows
 
+
+def _activity_usage_payload(
+    *,
+    tenant_id: str,
+    rows,
+    project_id: Optional[uuid.UUID],
+    farmer_id: Optional[uuid.UUID],
+    parcel_id: Optional[uuid.UUID],
+    crop_code: Optional[str],
+    season_code: Optional[str],
+    stage_code: Optional[str],
+    activity_type: Optional[str],
+    input_code: Optional[str],
+    product_code: Optional[str],
+    date_from: Optional[date],
+    date_to: Optional[date],
+    limit: int,
+):
     quantity_by_input = defaultdict(Decimal)
     quantity_by_product = defaultdict(Decimal)
     variance_count = 0
-    for row in report_rows:
+    for row in rows:
         quantity_value = row.get("actual_quantity") or row.get("quantity")
         unit = row.get("actual_quantity_unit") or row.get("quantity_unit") or "UNKNOWN"
         if quantity_value is not None:
@@ -136,7 +193,7 @@ def activity_usage_report(
 
     return {
         "schema_version": "activity_usage_report.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {
             "project_id": str(project_id) if project_id else None,
             "farmer_id": str(farmer_id) if farmer_id else None,
@@ -152,8 +209,8 @@ def activity_usage_report(
             "limit": limit,
         },
         "summary": {
-            "activity_count": len(report_rows),
-            "total_cost": _decimal_sum([row.get("cost_amount") for row in report_rows]),
+            "activity_count": len(rows),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in rows]),
             "variance_count": variance_count,
             "quantity_by_input": [
                 {"input_code": key[0], "unit": key[1], "quantity": str(value)}
@@ -164,6 +221,110 @@ def activity_usage_report(
                 for key, value in sorted(quantity_by_product.items())
             ],
         },
-        "count": len(report_rows),
-        "activities": report_rows,
+        "count": len(rows),
+        "activities": rows,
     }
+
+
+def _activity_usage_csv(rows):
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=ACTIVITY_USAGE_CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: row.get(column) for column in ACTIVITY_USAGE_CSV_COLUMNS})
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+@router.get("/activity-usage")
+def activity_usage_report(
+    project_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    stage_code: Optional[str] = Query(None),
+    activity_type: Optional[str] = Query(None),
+    input_code: Optional[str] = Query(None),
+    product_code: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    limit: int = Query(250, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    rows = _activity_usage_rows(
+        db=db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        farmer_id=farmer_id,
+        parcel_id=parcel_id,
+        crop_code=crop_code,
+        season_code=season_code,
+        stage_code=stage_code,
+        activity_type=activity_type,
+        input_code=input_code,
+        product_code=product_code,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    return _activity_usage_payload(
+        tenant_id=x_tenant_id,
+        rows=rows,
+        project_id=project_id,
+        farmer_id=farmer_id,
+        parcel_id=parcel_id,
+        crop_code=crop_code,
+        season_code=season_code,
+        stage_code=stage_code,
+        activity_type=activity_type,
+        input_code=input_code,
+        product_code=product_code,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+
+
+@router.get("/activity-usage.csv")
+def activity_usage_report_csv(
+    project_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    stage_code: Optional[str] = Query(None),
+    activity_type: Optional[str] = Query(None),
+    input_code: Optional[str] = Query(None),
+    product_code: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    limit: int = Query(1000, ge=1, le=5000),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    rows = _activity_usage_rows(
+        db=db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        farmer_id=farmer_id,
+        parcel_id=parcel_id,
+        crop_code=crop_code,
+        season_code=season_code,
+        stage_code=stage_code,
+        activity_type=activity_type,
+        input_code=input_code,
+        product_code=product_code,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    csv_text = _activity_usage_csv(rows)
+    return StreamingResponse(
+        iter([csv_text]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="activity_usage.csv"'},
+    )

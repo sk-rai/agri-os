@@ -144,24 +144,30 @@ export interface ActivityUsageReportResponse {
   activities: ActivityUsageRow[];
 }
 
+type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
+
+function activityUsageQuery(params?: ActivityUsageParams): string {
+  const query = new URLSearchParams();
+  if (params?.projectId) query.set("project_id", params.projectId);
+  if (params?.farmerId) query.set("farmer_id", params.farmerId);
+  if (params?.parcelId) query.set("parcel_id", params.parcelId);
+  if (params?.cropCode) query.set("crop_code", params.cropCode);
+  if (params?.seasonCode) query.set("season_code", params.seasonCode);
+  if (params?.stageCode) query.set("stage_code", params.stageCode);
+  if (params?.activityType) query.set("activity_type", params.activityType);
+  if (params?.inputCode) query.set("input_code", params.inputCode);
+  if (params?.productCode) query.set("product_code", params.productCode);
+  if (params?.dateFrom) query.set("date_from", params.dateFrom);
+  if (params?.dateTo) query.set("date_to", params.dateTo);
+  if (params?.limit) query.set("limit", String(params.limit));
+  return query.toString() ? `?${query.toString()}` : "";
+}
+
 export const reportsApi = {
-  activityUsage: (params?: { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number }) => {
-    const query = new URLSearchParams();
-    if (params?.projectId) query.set("project_id", params.projectId);
-    if (params?.farmerId) query.set("farmer_id", params.farmerId);
-    if (params?.parcelId) query.set("parcel_id", params.parcelId);
-    if (params?.cropCode) query.set("crop_code", params.cropCode);
-    if (params?.seasonCode) query.set("season_code", params.seasonCode);
-    if (params?.stageCode) query.set("stage_code", params.stageCode);
-    if (params?.activityType) query.set("activity_type", params.activityType);
-    if (params?.inputCode) query.set("input_code", params.inputCode);
-    if (params?.productCode) query.set("product_code", params.productCode);
-    if (params?.dateFrom) query.set("date_from", params.dateFrom);
-    if (params?.dateTo) query.set("date_to", params.dateTo);
-    if (params?.limit) query.set("limit", String(params.limit));
-    const suffix = query.toString() ? `?${query.toString()}` : "";
-    return api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${suffix}`);
-  },
+  activityUsage: (params?: ActivityUsageParams) =>
+    api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),
+  downloadActivityUsageCsv: (params?: ActivityUsageParams) =>
+    apiDownload(`/api/v1/reports/activity-usage.csv${activityUsageQuery(params)}`, "activity_usage.csv"),
 };
 // --- Typed API functions ---
 

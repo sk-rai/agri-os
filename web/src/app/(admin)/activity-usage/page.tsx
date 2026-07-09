@@ -19,6 +19,7 @@ export default function ActivityUsagePage() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [report, setReport] = useState<ActivityUsageReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -46,6 +47,29 @@ export default function ActivityUsagePage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const exportCsv = useCallback(async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      await reportsApi.downloadActivityUsageCsv({
+        projectId: filters.projectId || undefined,
+        cropCode: filters.cropCode || undefined,
+        seasonCode: filters.seasonCode || undefined,
+        stageCode: filters.stageCode || undefined,
+        activityType: filters.activityType || undefined,
+        inputCode: filters.inputCode || undefined,
+        productCode: filters.productCode || undefined,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+        limit: 5000,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export activity usage CSV");
+    } finally {
+      setExporting(false);
+    }
+  }, [filters]);
+
   const summary = report?.summary;
   return <div>
     <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -53,7 +77,7 @@ export default function ActivityUsagePage() {
         <h1 className="text-2xl font-bold text-gray-900">Activity Usage</h1>
         <p className="mt-1 text-sm text-gray-500">Read-only input, product and package usage across crop activities.</p>
       </div>
-      <button onClick={load} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button>
+      <div className="flex gap-2"><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={load} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
     </div>
     {error && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     <div className="mb-6 rounded bg-white p-5 shadow">
