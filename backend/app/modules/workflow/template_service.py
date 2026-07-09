@@ -14,6 +14,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.farmer.models import Project
+from app.modules.master_data.models import AgriculturalInput, CropStageInputRule
 from app.modules.workflow.models import (
     WorkflowTemplate,
     WorkflowTemplateVersion,
@@ -39,6 +40,133 @@ def _cost(value):
         return float(value)
     return value
 
+
+
+def _decimal_text(value):
+    return str(value) if value is not None else None
+
+
+def _input_rule_payload(rule: CropStageInputRule) -> dict:
+    item = rule.input
+    return {
+        "id": str(rule.id),
+        "rule_scope": "PROJECT" if rule.project_id else "GLOBAL",
+        "project_id": str(rule.project_id) if rule.project_id else None,
+        "crop_code": rule.crop_code,
+        "season_code": rule.season_code,
+        "stage_code": rule.stage_code,
+        "activity_type": rule.activity_type,
+        "input_code": rule.input_code,
+        "input_name": item.canonical_name if item else rule.input_code,
+        "input_category_code": item.category.code if item and item.category else None,
+        "enabled": bool(rule.enabled),
+        "priority": rule.priority,
+        "dosage": {
+            "quantity": _decimal_text(rule.dosage_quantity),
+            "unit": rule.dosage_unit,
+            "area_unit": rule.dosage_area_unit,
+            "min_quantity": _decimal_text(rule.min_quantity),
+            "max_quantity": _decimal_text(rule.max_quantity),
+        },
+        "application_method": rule.application_method,
+        "timing_note": rule.timing_note,
+        "safety_note": rule.safety_note,
+        "allowed_product_codes": rule.allowed_product_codes or [],
+        "metadata": rule.metadata_ or {},
+    }
+
+
+def _best_input_rule_map(
+    db: Session,
+    stages: list[dict],
+    *,
+    crop_code: str,
+    season_code: Optional[str] = None,
+    tenant_id: str = "default",
+    project_id=None,
+) -> dict[tuple[str, str, str], CropStageInputRule]:
+    stage_codes = {str(stage.get("code") or "").upper() for stage in stages if stage.get("code")}
+    recs = [rec for stage in stages for rec in (stage.get("recommended_activities", []) or [])]
+    input_codes = {str(rec.get("input_code") or "").upper() for rec in recs if rec.get("input_code")}
+    activity_types = {str(rec.get("activity_type") or "").upper() for rec in recs if rec.get("activity_type")}
+    if not stage_codes or not input_codes or not activity_types:
+        return {}
+
+    query = db.query(CropStageInputRule).join(AgriculturalInput).filter(
+        CropStageInputRule.tenant_id == tenant_id,
+        CropStageInputRule.is_active == True,
+        CropStageInputRule.enabled == True,
+        CropStageInputRule.crop_code == crop_code.upper(),
+        CropStageInputRule.stage_code.in_(stage_codes),
+        CropStageInputRule.activity_type.in_(activity_types),
+        CropStageInputRule.input_code.in_(input_codes),
+        AgriculturalInput.is_active == True,
+        AgriculturalInput.catalog_status == "PUBLISHED",
+    )
+    if project_id:
+        query = query.filter(or_(CropStageInputRule.project_id == project_id, CropStageInputRule.project_id.is_(None)))
+    else:
+        query = query.filter(CropStageInputRule.project_id.is_(None))
+    if season_code:
+        query = query.filter(or_(CropStageInputRule.season_code == season_code.upper(), CropStageInputRule.season_code.is_(None)))
+    else:
+        query = query.filter(CropStageInputRule.season_code.is_(None))
+
+    def rank(rule: CropStageInputRule):
+        project_rank = 0 if project_id and rule.project_id and str(rule.project_id) == str(project_id) else 1
+        season_rank = 0 if season_code and rule.season_code == season_code.upper() else 1
+        return (project_rank, season_rank, rule.priority or 1000, str(rule.updated_at or ""))
+
+    best: dict[tuple[str, str, str], CropStageInputRule] = {}
+    for rule in sorted(query.all(), key=rank):
+        key = (rule.stage_code, rule.activity_type, rule.input_code)
+        best.setdefault(key, rule)
+    return best
+
+
+def enrich_stage_definitions_with_input_rules(
+    db: Session,
+    stages: list[dict],
+    *,
+    crop_code: Optional[str],
+    season_code: Optional[str] = None,
+    tenant_id: str = "default",
+    project_id=None,
+) -> list[dict]:
+    """Attach optional dosage/compatibility guidance to recommendations.
+
+    Existing Android fields are preserved. New clients can read input_rule and
+    recommended_dosage; older clients safely ignore the extra keys.
+    """
+    if not crop_code or not stages:
+        return stages
+    result = deepcopy(stages)
+    rules = _best_input_rule_map(db, result, crop_code=crop_code, season_code=season_code, tenant_id=tenant_id, project_id=project_id)
+    if not rules:
+        return result
+    for stage in result:
+        stage_code = str(stage.get("code") or "").upper()
+        enriched_recs = []
+        for rec in stage.get("recommended_activities", []) or []:
+            rec_copy = dict(rec)
+            input_code = str(rec_copy.get("input_code") or "").upper()
+            activity_type = str(rec_copy.get("activity_type") or "").upper()
+            rule = rules.get((stage_code, activity_type, input_code))
+            if rule:
+                payload = _input_rule_payload(rule)
+                rec_copy["input_rule"] = payload
+                rec_copy["recommended_dosage"] = payload["dosage"]
+                rec_copy["allowed_product_codes"] = payload["allowed_product_codes"]
+                rec_copy["rule_application_method"] = payload["application_method"]
+                rec_copy["rule_timing_note"] = payload["timing_note"]
+                rec_copy["rule_safety_note"] = payload["safety_note"]
+                metadata = dict(rec_copy.get("metadata") or {})
+                metadata["input_rule_id"] = payload["id"]
+                metadata["input_rule_scope"] = payload["rule_scope"]
+                rec_copy["metadata"] = metadata
+            enriched_recs.append(rec_copy)
+        stage["recommended_activities"] = enriched_recs
+    return result
 
 def find_published_workflow_template(
     db: Session,
@@ -273,12 +401,21 @@ def workflow_version_to_stage_definitions_for_scope(
     *,
     tenant_id: str = "default",
     project_id=None,
+    crop_code: Optional[str] = None,
+    season_code: Optional[str] = None,
 ) -> list[dict]:
     stages = workflow_version_to_stage_definitions(db, version_id)
     overrides = scoped_overrides(db, template_version_id=version_id, tenant_id=tenant_id, project_id=project_id)
     if overrides:
         stages = apply_workflow_overrides(stages, overrides)
-    return stages
+    return enrich_stage_definitions_with_input_rules(
+        db,
+        stages,
+        crop_code=crop_code,
+        season_code=season_code,
+        tenant_id=tenant_id,
+        project_id=project_id,
+    )
 
 
 def _is_newer_workflow_catalog_row(

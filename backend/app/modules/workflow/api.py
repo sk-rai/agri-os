@@ -501,6 +501,8 @@ def create_crop_cycle(
             pinned_workflow_version.id,
             tenant_id=x_tenant_id,
             project_id=body.project_id,
+            crop_code=resolved_crop_code,
+            season_code=requested_season_code,
         )
     else:
         stages_data = template.stages or []
@@ -912,6 +914,8 @@ def get_recommended_activities(
             cycle.workflow_template_version_id,
             tenant_id=x_tenant_id,
             project_id=cycle.project_id,
+            crop_code=cycle.crop_code,
+            season_code=cycle.season_code,
         )
 
     if template_stages is None:
@@ -929,6 +933,8 @@ def get_recommended_activities(
                 workflow_version.id,
                 tenant_id=x_tenant_id,
                 project_id=cycle.project_id,
+                crop_code=cycle.crop_code,
+                season_code=cycle.season_code,
             )
         else:
             template_stages = template.stages or []
@@ -974,6 +980,12 @@ def get_recommended_activities(
                 "typical_cost_per_acre": rec.get("typical_cost_per_acre"),
                 "is_critical": rec.get("is_critical", False),
                 "description": rec.get("description"),
+                "input_rule": rec.get("input_rule"),
+                "recommended_dosage": rec.get("recommended_dosage"),
+                "allowed_product_codes": rec.get("allowed_product_codes", []),
+                "rule_application_method": rec.get("rule_application_method"),
+                "rule_timing_note": rec.get("rule_timing_note"),
+                "rule_safety_note": rec.get("rule_safety_note"),
                 "logged": bool(matched_logs),
                 "logged_activity_ids": [str(a.id) for a in matched_logs],
                 "logged_activity_date": matched_logs[0].activity_date.isoformat() if matched_logs and matched_logs[0].activity_date else None,
@@ -1498,7 +1510,7 @@ def get_crop_template(
     workflow_metadata = None
     if workflow_pair:
         workflow_template, workflow_version = workflow_pair
-        stages = workflow_version_to_stage_definitions_for_scope(db, workflow_version.id, tenant_id="default")
+        stages = workflow_version_to_stage_definitions_for_scope(db, workflow_version.id, tenant_id="default", crop_code=crop_code.upper(), season_code=template.season_code)
         workflow_metadata = workflow_template_metadata(workflow_template, workflow_version)
     else:
         stages = template.stages or []

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Typed API client for Agri-OS backend.
  * Handles auth headers (Bearer JWT + X-Tenant-ID) and 401 redirects.
  */
@@ -183,6 +183,8 @@ export const conflictsApi = {
 
 
 // Workflow catalog
+export interface RecommendationDosageRule { quantity?: string | null; unit?: string | null; area_unit: string; min_quantity?: string | null; max_quantity?: string | null; }
+
 export interface WorkflowRecommendation {
   day_offset: number;
   activity_type: string;
@@ -193,6 +195,12 @@ export interface WorkflowRecommendation {
   is_critical: boolean;
   description?: Record<string, string> | null;
   metadata?: Record<string, unknown> | null;
+  input_rule?: Record<string, unknown> | null;
+  recommended_dosage?: RecommendationDosageRule | null;
+  allowed_product_codes?: string[];
+  rule_application_method?: string | null;
+  rule_timing_note?: string | null;
+  rule_safety_note?: string | null;
 }
 
 export interface WorkflowStage {

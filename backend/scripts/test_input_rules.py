@@ -1,4 +1,4 @@
-﻿"""Regression for crop-stage input compatibility and dosage rules."""
+"""Regression for crop-stage input compatibility and dosage rules."""
 from datetime import date, datetime, timezone
 from pathlib import Path
 import sys, uuid
@@ -10,11 +10,13 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Project, Tenant
 from app.modules.master_data.models import CropStageInputRule, CropStageInputRuleAuditEvent
+from app.modules.workflow.template_service import find_published_workflow_template, workflow_version_to_stage_definitions_for_scope
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 PROJECT = uuid.uuid4()
 GLOBAL_STAGE = "REGRESSION_TILLERING"
 PROJECT_STAGE = "REGRESSION_PROJECT_STAGE"
+REAL_TEMPLATE_STAGE = "TILLERING"
 
 
 def now(): return datetime.now(timezone.utc)
@@ -25,7 +27,7 @@ def check(value, label):
 
 
 def cleanup(db, admin=None):
-    rule_ids = [r.id for r in db.query(CropStageInputRule).filter(CropStageInputRule.stage_code.in_([GLOBAL_STAGE, PROJECT_STAGE])).all()]
+    rule_ids = [r.id for r in db.query(CropStageInputRule).filter((CropStageInputRule.stage_code.in_([GLOBAL_STAGE, PROJECT_STAGE])) | (CropStageInputRule.project_id == PROJECT)).all()]
     if rule_ids:
         db.query(CropStageInputRuleAuditEvent).filter(CropStageInputRuleAuditEvent.rule_id.in_(rule_ids)).delete(synchronize_session=False)
         db.query(CropStageInputRule).filter(CropStageInputRule.id.in_(rule_ids)).delete(synchronize_session=False)
@@ -62,6 +64,18 @@ def main():
         project_runtime = anonymous.get(f"/api/v1/input-catalog/input-rules?project_id={PROJECT}&crop_code=RICE", headers={"X-Tenant-ID":"default"})
         stages = {r["stage_code"] for r in project_runtime.json()["rules"]}
         check({GLOBAL_STAGE, PROJECT_STAGE}.issubset(stages), "project runtime includes global plus project rules")
+
+        template_rule_payload = {**payload, "project_id": str(PROJECT), "stage_code": REAL_TEMPLATE_STAGE, "dosage_quantity":"36", "priority":1, "reason":"Regression workflow enrichment rule"}
+        template_rule = client.post("/api/v1/input-catalog/input-rules", json=template_rule_payload)
+        check(template_rule.status_code == 200, "project rule for real workflow stage is created")
+        workflow_pair = find_published_workflow_template(db, crop_code="RICE", season_code="KHARIF", tenant_id="default")
+        check(workflow_pair is not None, "published Rice workflow exists for enrichment")
+        _, workflow_version = workflow_pair
+        rendered = workflow_version_to_stage_definitions_for_scope(db, workflow_version.id, tenant_id="default", project_id=PROJECT, crop_code="RICE", season_code="KHARIF")
+        tillering_recs = [rec for stage in rendered if stage.get("code") == REAL_TEMPLATE_STAGE for rec in stage.get("recommended_activities", [])]
+        enriched = next((rec for rec in tillering_recs if rec.get("input_code") == "UREA_46_N" and rec.get("input_rule")), None)
+        check(enriched is not None, "workflow recommendation is enriched with input rule")
+        check(enriched["recommended_dosage"]["quantity"] == "36.000" and enriched["input_rule"]["rule_scope"] == "PROJECT", "project dosage rule wins in renderer")
 
         updated = client.patch(f"/api/v1/input-catalog/input-rules/{rule_id}", json={"enabled":False, "dosage_quantity":"42", "reason":"Regression disable rule"})
         check(updated.status_code == 200 and updated.json()["enabled"] is False and updated.json()["dosage"]["quantity"] == "42.000", "rule can be updated and disabled")

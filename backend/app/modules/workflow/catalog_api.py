@@ -472,6 +472,8 @@ def list_enabled_crop_workflows(
                 version.id,
                 tenant_id=x_tenant_id,
                 project_id=project_id,
+                crop_code=template.crop_code,
+                season_code=template.season_code,
             )
         workflows.append(item)
 
@@ -852,6 +854,8 @@ def preview_workflow_template_version(
         version.id,
         tenant_id=x_tenant_id,
         project_id=project_id,
+        crop_code=template.crop_code,
+        season_code=template.season_code,
     )
     overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=x_tenant_id, project_id=project_id)
     known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()}
