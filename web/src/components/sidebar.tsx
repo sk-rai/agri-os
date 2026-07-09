@@ -13,6 +13,7 @@ const navItems = [
   { href: "/inputs", label: "Inputs", icon: "🧪" },
   { href: "/products", label: "Products & Brands", icon: "📦" },
   { href: "/project-inputs", label: "Project Inputs", icon: "🎛️" },
+  { href: "/activity-usage", label: "Activity Usage", icon: "📈" },
   { href: "/conflicts", label: "Conflicts", icon: "⚠️" },
 ];
 

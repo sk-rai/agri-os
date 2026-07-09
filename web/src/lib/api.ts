@@ -95,6 +95,74 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
   URL.revokeObjectURL(url);
 }
 
+export interface ActivityUsageRow {
+  activity_id: string;
+  activity_date?: string | null;
+  project_id?: string | null;
+  farmer_id?: string | null;
+  farmer_name?: string | null;
+  parcel_id?: string | null;
+  parcel_label?: string | null;
+  crop_cycle_id: string;
+  crop_code: string;
+  season_code: string;
+  stage_code?: string | null;
+  activity_type: string;
+  input_code?: string | null;
+  input_name?: string | null;
+  input_rule_id?: string | null;
+  product_id?: string | null;
+  product_code?: string | null;
+  package_id?: string | null;
+  package_sku?: string | null;
+  recommended_quantity?: string | null;
+  recommended_quantity_unit?: string | null;
+  actual_quantity?: string | null;
+  actual_quantity_unit?: string | null;
+  dosage_variance_reason?: string | null;
+  quantity?: string | null;
+  quantity_unit?: string | null;
+  area_applied?: string | null;
+  area_unit?: string | null;
+  cost_amount?: string | null;
+  cost_currency?: string | null;
+  notes?: string | null;
+}
+
+export interface ActivityUsageReportResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  summary: {
+    activity_count: number;
+    total_cost: string;
+    variance_count: number;
+    quantity_by_input: Array<{ input_code: string; unit: string; quantity: string }>;
+    quantity_by_product: Array<{ product_code: string; package_sku?: string | null; unit: string; quantity: string }>;
+  };
+  count: number;
+  activities: ActivityUsageRow[];
+}
+
+export const reportsApi = {
+  activityUsage: (params?: { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.projectId) query.set("project_id", params.projectId);
+    if (params?.farmerId) query.set("farmer_id", params.farmerId);
+    if (params?.parcelId) query.set("parcel_id", params.parcelId);
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.seasonCode) query.set("season_code", params.seasonCode);
+    if (params?.stageCode) query.set("stage_code", params.stageCode);
+    if (params?.activityType) query.set("activity_type", params.activityType);
+    if (params?.inputCode) query.set("input_code", params.inputCode);
+    if (params?.productCode) query.set("product_code", params.productCode);
+    if (params?.dateFrom) query.set("date_from", params.dateFrom);
+    if (params?.dateTo) query.set("date_to", params.dateTo);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${suffix}`);
+  },
+};
 // --- Typed API functions ---
 
 export interface Tenant {
