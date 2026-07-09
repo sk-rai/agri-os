@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { reportsApi, type ActivityUsageReportResponse } from "@/lib/api";
+import { reportsApi, type ActivityUsageFilterOptionsResponse, type ActivityUsageReportResponse } from "@/lib/api";
 
 const EMPTY_FILTERS = {
   projectId: "",
+  farmerId: "",
+  parcelId: "",
   cropCode: "",
   seasonCode: "",
   stageCode: "",
@@ -15,29 +17,47 @@ const EMPTY_FILTERS = {
   dateTo: "",
 };
 
+type Filters = typeof EMPTY_FILTERS;
+
+function reportParams(filters: Filters, limit: number) {
+  return {
+    projectId: filters.projectId || undefined,
+    farmerId: filters.farmerId || undefined,
+    parcelId: filters.parcelId || undefined,
+    cropCode: filters.cropCode || undefined,
+    seasonCode: filters.seasonCode || undefined,
+    stageCode: filters.stageCode || undefined,
+    activityType: filters.activityType || undefined,
+    inputCode: filters.inputCode || undefined,
+    productCode: filters.productCode || undefined,
+    dateFrom: filters.dateFrom || undefined,
+    dateTo: filters.dateTo || undefined,
+    limit,
+  };
+}
+
 export default function ActivityUsagePage() {
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [options, setOptions] = useState<ActivityUsageFilterOptionsResponse | null>(null);
   const [report, setReport] = useState<ActivityUsageReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    reportsApi
+      .activityUsageFilterOptions()
+      .then(setOptions)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load filter options"))
+      .finally(() => setLoadingOptions(false));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setReport(await reportsApi.activityUsage({
-        projectId: filters.projectId || undefined,
-        cropCode: filters.cropCode || undefined,
-        seasonCode: filters.seasonCode || undefined,
-        stageCode: filters.stageCode || undefined,
-        activityType: filters.activityType || undefined,
-        inputCode: filters.inputCode || undefined,
-        productCode: filters.productCode || undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        limit: 250,
-      }));
+      setReport(await reportsApi.activityUsage(reportParams(filters, 250)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load activity usage");
     } finally {
@@ -51,18 +71,7 @@ export default function ActivityUsagePage() {
     setExporting(true);
     setError(null);
     try {
-      await reportsApi.downloadActivityUsageCsv({
-        projectId: filters.projectId || undefined,
-        cropCode: filters.cropCode || undefined,
-        seasonCode: filters.seasonCode || undefined,
-        stageCode: filters.stageCode || undefined,
-        activityType: filters.activityType || undefined,
-        inputCode: filters.inputCode || undefined,
-        productCode: filters.productCode || undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        limit: 5000,
-      });
+      await reportsApi.downloadActivityUsageCsv(reportParams(filters, 5000));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to export activity usage CSV");
     } finally {
@@ -77,18 +86,27 @@ export default function ActivityUsagePage() {
         <h1 className="text-2xl font-bold text-gray-900">Activity Usage</h1>
         <p className="mt-1 text-sm text-gray-500">Read-only input, product and package usage across crop activities.</p>
       </div>
-      <div className="flex gap-2"><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={load} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
+      <div className="flex gap-2">
+        <button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button>
+        <button onClick={load} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button>
+      </div>
     </div>
     {error && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     <div className="mb-6 rounded bg-white p-5 shadow">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold text-gray-900">Filters</h2>
+        <span className="text-xs text-gray-400">{loadingOptions ? "Loading options..." : "Options from logged activity data"}</span>
+      </div>
       <div className="grid gap-3 md:grid-cols-5">
-        <Field label="Project ID" value={filters.projectId} set={v => setFilters({ ...filters, projectId: v })} />
-        <Field label="Crop" value={filters.cropCode} set={v => setFilters({ ...filters, cropCode: v })} />
-        <Field label="Season" value={filters.seasonCode} set={v => setFilters({ ...filters, seasonCode: v })} />
-        <Field label="Stage" value={filters.stageCode} set={v => setFilters({ ...filters, stageCode: v })} />
-        <Field label="Activity" value={filters.activityType} set={v => setFilters({ ...filters, activityType: v })} />
-        <Field label="Input code" value={filters.inputCode} set={v => setFilters({ ...filters, inputCode: v })} />
-        <Field label="Product code" value={filters.productCode} set={v => setFilters({ ...filters, productCode: v })} />
+        <SelectField label="Project" value={filters.projectId} set={v => setFilters({ ...filters, projectId: v })} options={(options?.projects || []).map(item => ({ value: item.id || "", label: item.label }))} />
+        <SelectField label="Farmer" value={filters.farmerId} set={v => setFilters({ ...filters, farmerId: v })} options={(options?.farmers || []).map(item => ({ value: item.id || "", label: item.label }))} />
+        <SelectField label="Parcel" value={filters.parcelId} set={v => setFilters({ ...filters, parcelId: v })} options={(options?.parcels || []).map(item => ({ value: item.id || "", label: item.label }))} />
+        <SelectField label="Crop" value={filters.cropCode} set={v => setFilters({ ...filters, cropCode: v })} options={(options?.crops || []).map(value => ({ value, label: value }))} />
+        <SelectField label="Season" value={filters.seasonCode} set={v => setFilters({ ...filters, seasonCode: v })} options={(options?.seasons || []).map(value => ({ value, label: value }))} />
+        <SelectField label="Stage" value={filters.stageCode} set={v => setFilters({ ...filters, stageCode: v })} options={(options?.stages || []).map(item => ({ value: item.code || "", label: `${item.code} - ${item.label}` }))} />
+        <SelectField label="Activity" value={filters.activityType} set={v => setFilters({ ...filters, activityType: v })} options={(options?.activity_types || []).map(value => ({ value, label: value }))} />
+        <SelectField label="Input" value={filters.inputCode} set={v => setFilters({ ...filters, inputCode: v })} options={(options?.inputs || []).map(item => ({ value: item.code || "", label: `${item.code} - ${item.label}` }))} />
+        <SelectField label="Product" value={filters.productCode} set={v => setFilters({ ...filters, productCode: v })} options={(options?.products || []).map(item => ({ value: item.code || "", label: item.code || item.label }))} />
         <Field label="From" type="date" value={filters.dateFrom} set={v => setFilters({ ...filters, dateFrom: v })} />
         <Field label="To" type="date" value={filters.dateTo} set={v => setFilters({ ...filters, dateTo: v })} />
         <button onClick={() => { setFilters(EMPTY_FILTERS); }} className="mt-5 rounded border px-3 py-2 text-sm">Clear filters</button>
@@ -124,6 +142,9 @@ export default function ActivityUsagePage() {
   </div>;
 }
 
+function SelectField({ label, value, set, options }: { label: string; value: string; set: (value: string) => void; options: Array<{ value: string; label: string }> }) {
+  return <label className="text-xs text-gray-500">{label}<select value={value} onChange={e => set(e.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option>{options.filter(option => option.value).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+}
 function Field({ label, value, set, type = "text" }: { label: string; value: string; set: (value: string) => void; type?: string }) {
   return <label className="text-xs text-gray-500">{label}<input type={type} value={value} onChange={e => set(e.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>;
 }

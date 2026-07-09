@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, Parcel
+from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -235,6 +235,64 @@ def _activity_usage_csv(rows):
     buffer.seek(0)
     return buffer.getvalue()
 
+
+@router.get("/activity-usage/filter-options")
+def activity_usage_filter_options(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    base = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel, Project)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .outerjoin(Project, Project.id == CropCycle.project_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.tenant_id == x_tenant_id)
+        .all()
+    )
+    projects = {}
+    farmers = {}
+    parcels = {}
+    crops = set()
+    seasons = set()
+    stages = {}
+    activity_types = set()
+    inputs = {}
+    products = {}
+    for activity, cycle, stage, farmer, parcel, project in base:
+        if project:
+            projects[str(project.id)] = project.name
+        if farmer:
+            farmers[str(farmer.id)] = farmer.display_name or farmer.mobile_number or str(farmer.id)
+        if parcel:
+            parcels[str(parcel.id)] = parcel.survey_number or str(parcel.id)
+        if cycle.crop_code:
+            crops.add(cycle.crop_code)
+        if cycle.season_code:
+            seasons.add(cycle.season_code)
+        if stage and stage.stage_code:
+            stages[stage.stage_code] = stage.stage_name or stage.stage_code
+        if activity.activity_type:
+            activity_types.add(activity.activity_type)
+        if activity.input_code:
+            inputs[activity.input_code] = activity.input_name or activity.input_code
+        if activity.product_code:
+            products[activity.product_code] = activity.product_code
+    return {
+        "schema_version": "activity_usage_filter_options.v1",
+        "tenant_id": x_tenant_id,
+        "projects": [{"id": key, "label": value} for key, value in sorted(projects.items(), key=lambda item: item[1])],
+        "farmers": [{"id": key, "label": value} for key, value in sorted(farmers.items(), key=lambda item: item[1])],
+        "parcels": [{"id": key, "label": value} for key, value in sorted(parcels.items(), key=lambda item: item[1])],
+        "crops": sorted(crops),
+        "seasons": sorted(seasons),
+        "stages": [{"code": key, "label": value} for key, value in sorted(stages.items())],
+        "activity_types": sorted(activity_types),
+        "inputs": [{"code": key, "label": value} for key, value in sorted(inputs.items())],
+        "products": [{"code": key, "label": value} for key, value in sorted(products.items())],
+    }
 
 @router.get("/activity-usage")
 def activity_usage_report(

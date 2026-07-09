@@ -144,6 +144,25 @@ export interface ActivityUsageReportResponse {
   activities: ActivityUsageRow[];
 }
 
+export interface ActivityUsageFilterOption {
+  id?: string;
+  code?: string;
+  label: string;
+}
+
+export interface ActivityUsageFilterOptionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  projects: ActivityUsageFilterOption[];
+  farmers: ActivityUsageFilterOption[];
+  parcels: ActivityUsageFilterOption[];
+  crops: string[];
+  seasons: string[];
+  stages: ActivityUsageFilterOption[];
+  activity_types: string[];
+  inputs: ActivityUsageFilterOption[];
+  products: ActivityUsageFilterOption[];
+}
 type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
 
 function activityUsageQuery(params?: ActivityUsageParams): string {
@@ -164,6 +183,7 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
 }
 
 export const reportsApi = {
+  activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),
   downloadActivityUsageCsv: (params?: ActivityUsageParams) =>

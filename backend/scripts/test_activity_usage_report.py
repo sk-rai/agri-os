@@ -95,6 +95,15 @@ def main():
         check(csv_rows[0]["activity_id"] == str(activity.id), "CSV row includes activity id")
         check(csv_rows[0]["product_code"] == PRODUCT and csv_rows[0]["package_sku"] == SKU, "CSV row includes product/package")
         check(csv_rows[0]["actual_quantity"] == "38.000", "CSV row includes actual quantity")
+
+        options_response = client.get("/api/v1/reports/activity-usage/filter-options")
+        check(options_response.status_code == 200, "activity usage filter options return 200", options_response.text[:300])
+        options = options_response.json()
+        check(any(item["id"] == str(project_id) for item in options["projects"]), "filter options include project")
+        check("RICE" in options["crops"] and "KHARIF" in options["seasons"], "filter options include crop and season")
+        check(any(item["code"] == "TILLERING" for item in options["stages"]), "filter options include stage")
+        check(any(item["code"] == "UREA_46_N" for item in options["inputs"]), "filter options include input")
+        check(any(item["code"] == PRODUCT for item in options["products"]), "filter options include product")
         print("PASS")
     finally:
         cleanup(db, admin=admin, farmer_id=farmer_id, parcel_id=parcel_id, project_id=project_id, cycle_id=cycle_id)
