@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
@@ -69,4 +69,29 @@ class OTPRecord(Base, UUIDPrimaryKey):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+
+
+class TenantUserAccessAuditEvent(Base, UUIDPrimaryKey):
+    """Immutable audit event for tenant roles and project access."""
+
+    __tablename__ = "tenant_user_access_audit_events"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, index=True)
+    target_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    actor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), index=True)
+    action = Column(String(50), nullable=False, index=True)
+    before_payload = Column(JSONB)
+    after_payload = Column(JSONB)
+    reason = Column(Text)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_tenant_user_access_audit_tenant_created", "tenant_id", "created_at"),
+        Index("idx_tenant_user_access_audit_target_created", "target_user_id", "created_at"),
     )

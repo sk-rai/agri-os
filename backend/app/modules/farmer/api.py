@@ -22,7 +22,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
+from app.modules.auth.models import TenantUserAccessAuditEvent, User
 from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
@@ -73,6 +75,7 @@ class RoleAssign(BaseModel):
     user_id: uuid.UUID
     role: str = Field(..., pattern=r"^(DEALER|FIELD_AGENT|AGRONOMIST|MANAGER|ENTERPRISE_ADMIN)$")
     territory_scope: dict = Field(default_factory=dict)
+    reason: Optional[str] = None
 
 
 class FarmerCreate(BaseModel):
@@ -660,6 +663,7 @@ def assign_role(
     body: RoleAssign,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
 ):
     """Assign a user to a project with a role and territory scope."""
     project = db.query(Project).filter(
@@ -668,16 +672,51 @@ def assign_role(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    role = ProjectRole(
+    user = db.query(User).filter(
+        User.id == body.user_id,
+        User.tenant_id == x_tenant_id,
+        User.is_active == True,
+    ).first()
+    if not user:
+        raise HTTPException(404, "Tenant user not found")
+    role = db.query(ProjectRole).filter(
+        ProjectRole.project_id == project_id,
+        ProjectRole.user_id == body.user_id,
+    ).first()
+    before = None if not role else {
+        "role": role.role,
+        "territory_scope": role.territory_scope or {},
+        "is_active": role.is_active,
+    }
+    if not role:
+        role = ProjectRole(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            user_id=body.user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(role)
+    role.role = body.role
+    role.territory_scope = body.territory_scope
+    role.is_active = True
+    role.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    db.add(TenantUserAccessAuditEvent(
         id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        target_user_id=body.user_id,
+        actor_id=principal.user_id,
         project_id=project_id,
-        user_id=body.user_id,
-        role=body.role,
-        territory_scope=body.territory_scope,
+        action="ASSIGN_PROJECT_ACCESS" if before is None else "CHANGE_PROJECT_ACCESS",
+        before_payload=before,
+        after_payload={
+            "role": role.role,
+            "territory_scope": role.territory_scope or {},
+            "is_active": role.is_active,
+        },
+        reason=body.reason or "Legacy project role assignment API",
         created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    db.add(role)
+    ))
     db.commit()
     return {"status": "assigned", "role": body.role, "project_id": str(project_id)}
 

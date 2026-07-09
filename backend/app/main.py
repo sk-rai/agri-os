@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.middleware import TenantMiddleware
 from app.modules.master_data.api import master_data_router
-from app.modules.auth import auth_router
+from app.modules.auth.api import router as auth_router
+from app.modules.auth.admin_api import router as admin_user_router
 from app.modules.sync import sync_router, dashboard_router, conflicts_router
 from app.modules.farmer import farmer_router
 from app.modules.farmer.soil_profile import router as soil_profile_router
@@ -49,6 +50,7 @@ app.add_middleware(
 # --- Routers ---
 app.include_router(master_data_router)
 app.include_router(auth_router)
+app.include_router(admin_user_router)
 app.include_router(sync_router)
 app.include_router(dashboard_router)
 app.include_router(conflicts_router)

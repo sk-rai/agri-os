@@ -14,13 +14,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.service import JWT_ALGORITHM, JWT_SECRET
-from app.modules.farmer.models import Project, ProjectRole
 
 
 class AdminPermission(str, Enum):
     EDIT = "EDIT"
     PUBLISH = "PUBLISH"
     PROJECT_EDIT = "PROJECT_EDIT"
+    MANAGE_USERS = "MANAGE_USERS"
 
 
 ROLE_PERMISSIONS: dict[str, set[AdminPermission]] = {
@@ -28,6 +28,7 @@ ROLE_PERMISSIONS: dict[str, set[AdminPermission]] = {
         AdminPermission.EDIT,
         AdminPermission.PUBLISH,
         AdminPermission.PROJECT_EDIT,
+        AdminPermission.MANAGE_USERS,
     },
     "MANAGER": {
         AdminPermission.EDIT,
@@ -88,6 +89,8 @@ def require_admin_permission(permission: AdminPermission, *, project_scoped: boo
         x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
         db: Session = Depends(get_db),
     ) -> AdminPrincipal:
+        from app.modules.farmer.models import Project, ProjectRole
+
         if not authorization or not authorization.startswith("Bearer "):
             raise _unauthorized("Bearer token is required for admin mutations.")
         token = authorization[7:].strip()

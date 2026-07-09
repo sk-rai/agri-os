@@ -933,3 +933,71 @@ export const inputCatalogApi = {
     return api<ProjectInputAssignmentAuditResponse>(`/api/v1/input-catalog/projects/${projectId}/input-assignments/audit${suffix}`);
   },
 };
+
+
+export interface TenantAdminProjectAccess {
+  project_role_id: string;
+  project_id: string;
+  project_name: string;
+  project_status: string;
+  role: string;
+  territory_scope: Record<string, unknown>;
+}
+
+export interface TenantAdminUser {
+  id: string;
+  mobile_number_masked: string;
+  display_name?: string | null;
+  role: string;
+  tenant_id: string;
+  is_active: boolean;
+  last_login_at?: string | null;
+  login_count: number;
+  project_access: TenantAdminProjectAccess[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface TenantAdminUsersResponse {
+  schema_version: string;
+  tenant_id: string;
+  available_roles: string[];
+  project_roles: string[];
+  count: number;
+  users: TenantAdminUser[];
+}
+
+export interface UserAccessAuditEvent {
+  id: string;
+  target_user_id: string;
+  actor_id: string;
+  project_id?: string | null;
+  action: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  reason?: string | null;
+  created_at: string;
+}
+
+export interface UserAccessAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  events: UserAccessAuditEvent[];
+}
+
+export const tenantAdminUsersApi = {
+  list: () => api<TenantAdminUsersResponse>("/api/v1/admin/users"),
+  invite: (data: { mobile_number: string; display_name?: string | null; role: string; reason: string }) =>
+    api<{ created: boolean; user: TenantAdminUser }>("/api/v1/admin/users/by-mobile", { method: "PUT", body: data }),
+  changeRole: (userId: string, data: { role: string; display_name?: string | null; reason: string }) =>
+    api<{ user: TenantAdminUser }>(`/api/v1/admin/users/${userId}/role`, { method: "PUT", body: data }),
+  revoke: (userId: string, reason: string) =>
+    api<{ status: string; user_id: string }>(`/api/v1/admin/users/${userId}`, { method: "DELETE", body: { reason } }),
+  assignProject: (userId: string, projectId: string, data: { role: string; territory_scope?: Record<string, unknown>; reason: string }) =>
+    api<{ user: TenantAdminUser }>(`/api/v1/admin/users/${userId}/projects/${projectId}`, { method: "PUT", body: data }),
+  revokeProject: (userId: string, projectId: string, reason: string) =>
+    api<{ user: TenantAdminUser }>(`/api/v1/admin/users/${userId}/projects/${projectId}`, { method: "DELETE", body: { reason } }),
+  audit: (userId?: string) =>
+    api<UserAccessAuditResponse>(`/api/v1/admin/user-access-audit${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
+};
