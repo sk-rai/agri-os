@@ -983,6 +983,7 @@ def get_recommended_activities(
                 "input_rule": rec.get("input_rule"),
                 "recommended_dosage": rec.get("recommended_dosage"),
                 "allowed_product_codes": rec.get("allowed_product_codes", []),
+                "allowed_products": rec.get("allowed_products", []),
                 "rule_application_method": rec.get("rule_application_method"),
                 "rule_timing_note": rec.get("rule_timing_note"),
                 "rule_safety_note": rec.get("rule_safety_note"),

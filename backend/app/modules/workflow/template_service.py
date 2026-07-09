@@ -14,7 +14,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.farmer.models import Project
-from app.modules.master_data.models import AgriculturalInput, CropStageInputRule
+from app.modules.master_data.models import AgriculturalInput, AgriculturalProduct, CropStageInputRule, Manufacturer, ProjectProductApproval
 from app.modules.workflow.models import (
     WorkflowTemplate,
     WorkflowTemplateVersion,
@@ -46,7 +46,74 @@ def _decimal_text(value):
     return str(value) if value is not None else None
 
 
-def _input_rule_payload(rule: CropStageInputRule) -> dict:
+
+def _package_payload(package) -> dict:
+    return {
+        "id": str(package.id),
+        "sku": package.sku,
+        "quantity": _decimal_text(package.quantity),
+        "unit": package.unit,
+        "pack_label": package.pack_label,
+        "barcode": package.barcode,
+        "status": package.status,
+    }
+
+
+def _product_payload(product: AgriculturalProduct, approval=None) -> dict:
+    return {
+        "id": str(product.id),
+        "code": product.code,
+        "canonical_input_code": product.canonical_input.code if product.canonical_input else None,
+        "canonical_input_name": product.canonical_input.canonical_name if product.canonical_input else None,
+        "manufacturer_code": product.manufacturer.code if product.manufacturer else None,
+        "manufacturer_name": product.manufacturer.canonical_name if product.manufacturer else None,
+        "brand_name": product.brand_name,
+        "composition": product.composition,
+        "registration_number": product.registration_number,
+        "registration_authority": product.registration_authority,
+        "registration_expiry_date": product.registration_expiry_date.isoformat() if product.registration_expiry_date else None,
+        "country": product.country,
+        "status": product.status,
+        "packages": [_package_payload(package) for package in sorted(product.packages, key=lambda item: item.pack_label) if package.is_active and package.status == "ACTIVE"],
+        "project_approval": None if not approval else {
+            "enabled": approval.enabled,
+            "preferred": approval.preferred,
+            "display_order": approval.display_order,
+            "reason": approval.reason,
+        },
+    }
+
+
+def _allowed_products_for_rule(db: Session, rule: CropStageInputRule, project_id=None) -> list[dict]:
+    allowed_codes = [str(code).strip().upper() for code in (rule.allowed_product_codes or []) if str(code).strip()]
+    if not allowed_codes:
+        return []
+    query = db.query(AgriculturalProduct).join(
+        AgriculturalInput, AgriculturalInput.id == AgriculturalProduct.canonical_input_id
+    ).join(Manufacturer, Manufacturer.id == AgriculturalProduct.manufacturer_id).filter(
+        AgriculturalProduct.is_active == True,
+        AgriculturalProduct.status == "ACTIVE",
+        AgriculturalProduct.code.in_(allowed_codes),
+        AgriculturalInput.code == rule.input_code,
+        AgriculturalInput.is_active == True,
+        AgriculturalInput.catalog_status == "PUBLISHED",
+        Manufacturer.is_active == True,
+    )
+    rows = query.order_by(AgriculturalProduct.brand_name).all()
+    approvals = {}
+    if project_id:
+        approval_rows = db.query(ProjectProductApproval).filter(
+            ProjectProductApproval.project_id == project_id,
+            ProjectProductApproval.tenant_id == rule.tenant_id,
+            ProjectProductApproval.is_active == True,
+        ).all()
+        approvals = {approval.product_id: approval for approval in approval_rows}
+        if approval_rows:
+            rows = [row for row in rows if row.id in approvals and approvals[row.id].enabled]
+        rows.sort(key=lambda row: (not (approvals.get(row.id) and approvals[row.id].preferred), approvals.get(row.id).display_order if approvals.get(row.id) else 1000, row.brand_name))
+    return [_product_payload(row, approvals.get(row.id)) for row in rows]
+
+def _input_rule_payload(db: Session, rule: CropStageInputRule, project_id=None) -> dict:
     item = rule.input
     return {
         "id": str(rule.id),
@@ -72,6 +139,7 @@ def _input_rule_payload(rule: CropStageInputRule) -> dict:
         "timing_note": rule.timing_note,
         "safety_note": rule.safety_note,
         "allowed_product_codes": rule.allowed_product_codes or [],
+        "allowed_products": _allowed_products_for_rule(db, rule, project_id=project_id),
         "metadata": rule.metadata_ or {},
     }
 
@@ -153,10 +221,11 @@ def enrich_stage_definitions_with_input_rules(
             activity_type = str(rec_copy.get("activity_type") or "").upper()
             rule = rules.get((stage_code, activity_type, input_code))
             if rule:
-                payload = _input_rule_payload(rule)
+                payload = _input_rule_payload(db, rule, project_id=project_id)
                 rec_copy["input_rule"] = payload
                 rec_copy["recommended_dosage"] = payload["dosage"]
                 rec_copy["allowed_product_codes"] = payload["allowed_product_codes"]
+                rec_copy["allowed_products"] = payload["allowed_products"]
                 rec_copy["rule_application_method"] = payload["application_method"]
                 rec_copy["rule_timing_note"] = payload["timing_note"]
                 rec_copy["rule_safety_note"] = payload["safety_note"]

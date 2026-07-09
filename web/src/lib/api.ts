@@ -198,6 +198,7 @@ export interface WorkflowRecommendation {
   input_rule?: Record<string, unknown> | null;
   recommended_dosage?: RecommendationDosageRule | null;
   allowed_product_codes?: string[];
+  allowed_products?: AgriculturalProductDto[];
   rule_application_method?: string | null;
   rule_timing_note?: string | null;
   rule_safety_note?: string | null;

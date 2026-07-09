@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Project, Tenant
-from app.modules.master_data.models import CropStageInputRule, CropStageInputRuleAuditEvent
+from app.modules.master_data.models import AgriculturalProduct, AgriculturalProductPackage, CropStageInputRule, CropStageInputRuleAuditEvent, Manufacturer, ProductCatalogAuditEvent, ProjectProductApproval
 from app.modules.workflow.template_service import find_published_workflow_template, workflow_version_to_stage_definitions_for_scope
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
@@ -17,6 +17,8 @@ PROJECT = uuid.uuid4()
 GLOBAL_STAGE = "REGRESSION_TILLERING"
 PROJECT_STAGE = "REGRESSION_PROJECT_STAGE"
 REAL_TEMPLATE_STAGE = "TILLERING"
+RULE_MFG = "RULE_REGRESSION_AGRO"
+RULE_PRODUCT = "RULE_REGRESSION_UREA"
 
 
 def now(): return datetime.now(timezone.utc)
@@ -31,6 +33,13 @@ def cleanup(db, admin=None):
     if rule_ids:
         db.query(CropStageInputRuleAuditEvent).filter(CropStageInputRuleAuditEvent.rule_id.in_(rule_ids)).delete(synchronize_session=False)
         db.query(CropStageInputRule).filter(CropStageInputRule.id.in_(rule_ids)).delete(synchronize_session=False)
+    product = db.query(AgriculturalProduct).filter(AgriculturalProduct.code == RULE_PRODUCT).first()
+    if product:
+        db.query(ProjectProductApproval).filter(ProjectProductApproval.product_id == product.id).delete(synchronize_session=False)
+        db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.product_id == product.id).delete(synchronize_session=False)
+        db.query(AgriculturalProduct).filter(AgriculturalProduct.id == product.id).delete(synchronize_session=False)
+    db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([RULE_MFG, RULE_PRODUCT])).delete(synchronize_session=False)
+    db.query(Manufacturer).filter(Manufacturer.code == RULE_MFG).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == PROJECT).delete(synchronize_session=False)
     db.commit()
     if admin: delete_test_admin(db, admin.id)
@@ -65,7 +74,14 @@ def main():
         stages = {r["stage_code"] for r in project_runtime.json()["rules"]}
         check({GLOBAL_STAGE, PROJECT_STAGE}.issubset(stages), "project runtime includes global plus project rules")
 
-        template_rule_payload = {**payload, "project_id": str(PROJECT), "stage_code": REAL_TEMPLATE_STAGE, "dosage_quantity":"36", "priority":1, "reason":"Regression workflow enrichment rule"}
+        mfg = client.post("/api/v1/product-catalog/manufacturers", json={"code":RULE_MFG,"canonical_name":"Rule Regression Agro","country":"India","reason":"Input rule product expansion"})
+        check(mfg.status_code == 200, "manufacturer for rule product is created")
+        product = client.post("/api/v1/product-catalog/products", json={"code":RULE_PRODUCT,"canonical_input_code":"UREA_46_N","manufacturer_code":RULE_MFG,"brand_name":"Rule Regression Urea","composition":"46% N","registration_number":"RULE-UREA-001","country":"India","packages":[{"sku":"RULE-UREA-45KG","quantity":"45","unit":"kg","pack_label":"45 kg bag"}],"reason":"Input rule product expansion"})
+        check(product.status_code == 200, "product for rule expansion is created")
+        approval = client.put(f"/api/v1/product-catalog/projects/{PROJECT}/products/{RULE_PRODUCT}", json={"enabled":True,"preferred":True,"display_order":1,"reason":"Preferred rule product"})
+        check(approval.status_code == 200, "project approves rule product")
+
+        template_rule_payload = {**payload, "project_id": str(PROJECT), "stage_code": REAL_TEMPLATE_STAGE, "dosage_quantity":"36", "priority":1, "allowed_product_codes":[RULE_PRODUCT], "reason":"Regression workflow enrichment rule"}
         template_rule = client.post("/api/v1/input-catalog/input-rules", json=template_rule_payload)
         check(template_rule.status_code == 200, "project rule for real workflow stage is created")
         workflow_pair = find_published_workflow_template(db, crop_code="RICE", season_code="KHARIF", tenant_id="default")
@@ -76,6 +92,9 @@ def main():
         enriched = next((rec for rec in tillering_recs if rec.get("input_code") == "UREA_46_N" and rec.get("input_rule")), None)
         check(enriched is not None, "workflow recommendation is enriched with input rule")
         check(enriched["recommended_dosage"]["quantity"] == "36.000" and enriched["input_rule"]["rule_scope"] == "PROJECT", "project dosage rule wins in renderer")
+        check(enriched["allowed_product_codes"] == [RULE_PRODUCT], "recommendation carries allowed product codes")
+        check(enriched["allowed_products"][0]["code"] == RULE_PRODUCT and enriched["allowed_products"][0]["packages"][0]["pack_label"] == "45 kg bag", "recommendation expands allowed products with packages")
+        check(enriched["allowed_products"][0]["project_approval"]["preferred"] is True, "expanded product includes project approval metadata")
 
         updated = client.patch(f"/api/v1/input-catalog/input-rules/{rule_id}", json={"enabled":False, "dosage_quantity":"42", "reason":"Regression disable rule"})
         check(updated.status_code == 200 and updated.json()["enabled"] is False and updated.json()["dosage"]["quantity"] == "42.000", "rule can be updated and disabled")
