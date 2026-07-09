@@ -71,6 +71,30 @@ export async function api<T = unknown>(
   return res.json() as Promise<T>;
 }
 
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: getAuthHeaders(), body: form });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(typeof error.detail === "string" ? error.detail : JSON.stringify(error.detail), res.status);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function apiDownload(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new ApiError(`Download failed: ${res.statusText}`, res.status);
+  const disposition = res.headers.get("content-disposition") || "";
+  const name = disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 // --- Typed API functions ---
 
 export interface Tenant {
@@ -870,7 +894,50 @@ export interface InputReferencesResponse {
   };
 }
 
+export interface InputCsvDiagnostic {
+  field: string;
+  code: string;
+  message: string;
+}
+
+export interface InputCsvRowResult {
+  row_number: number;
+  code: string;
+  action: "CREATE" | "UPDATE" | "UNCHANGED" | "INVALID";
+  errors: InputCsvDiagnostic[];
+  warnings: InputCsvDiagnostic[];
+}
+
+export interface InputCsvImportBatch {
+  batch_id: string;
+  file_name: string;
+  status: string;
+  can_apply: boolean;
+  expires_at: string;
+  applied_at?: string | null;
+  created_at: string;
+  report: {
+    can_apply: boolean;
+    counts: Record<string, number>;
+    rows: InputCsvRowResult[];
+    applied_counts?: Record<string, number>;
+    apply_reason?: string;
+  };
+}
+
+export interface InputCsvImportHistory {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  imports: InputCsvImportBatch[];
+}
+
 export const inputCatalogApi = {
+  downloadCsvTemplate: () => apiDownload("/api/v1/input-catalog/csv/template", "agri-os-input-catalog-template.csv"),
+  exportCsv: (includeInactive = false) => apiDownload(`/api/v1/input-catalog/csv/export?include_inactive=${includeInactive}`, "agri-os-input-catalog.csv"),
+  validateCsv: (file: File) => apiUpload<InputCsvImportBatch>("/api/v1/input-catalog/csv/validate", file),
+  applyCsv: (batchId: string, reason: string) => api<InputCsvImportBatch>(`/api/v1/input-catalog/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
+  csvImportHistory: () => api<InputCsvImportHistory>("/api/v1/input-catalog/csv/imports"),
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
   inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string; includeInactive?: boolean }) => {
     const query = new URLSearchParams();

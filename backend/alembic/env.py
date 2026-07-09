@@ -49,6 +49,7 @@ from app.modules.master_data.models import (  # noqa: F401
     AgriculturalInputAuditEvent,
     ProjectInputAssignment,
     ProjectInputAssignmentAuditEvent,
+    InputCatalogImportBatch,
 )
 
 config = context.config

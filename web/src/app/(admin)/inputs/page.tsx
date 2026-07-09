@@ -8,6 +8,8 @@ import {
   type AgriInputDto,
   type AgriInputUpdateRequest,
   type InputCategoryDto,
+  type InputCsvImportBatch,
+  type InputCsvImportHistory,
   type InputReferencesResponse,
 } from "@/lib/api";
 
@@ -121,6 +123,13 @@ export default function InputsPage() {
   const [cropCode, setCropCode] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [showCsv, setShowCsv] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvBatch, setCsvBatch] = useState<InputCsvImportBatch | null>(null);
+  const [csvHistory, setCsvHistory] = useState<InputCsvImportHistory | null>(null);
+  const [csvReason, setCsvReason] = useState("Input catalog CSV import");
+  const [csvBusy, setCsvBusy] = useState(false);
 
   useEffect(() => {
     inputCatalogApi
@@ -147,7 +156,7 @@ export default function InputsPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [category, cropCode, query, showArchived]);
+  }, [category, cropCode, query, showArchived, catalogRefresh]);
 
   useEffect(() => {
     setDraft(selected ? toDraft(selected) : null);
@@ -189,6 +198,36 @@ export default function InputsPage() {
     });
     return counts;
   }, [inputs]);
+
+  const loadCsvHistory = () => inputCatalogApi.csvImportHistory().then(setCsvHistory).catch(() => setCsvHistory(null));
+
+  const openCsvPanel = () => {
+    setShowCsv((value) => !value);
+    if (!showCsv) void loadCsvHistory();
+  };
+
+  const validateCsv = async () => {
+    if (!csvFile) return;
+    setCsvBusy(true); setError(null); setNotice(null);
+    try {
+      setCsvBatch(await inputCatalogApi.validateCsv(csvFile));
+      await loadCsvHistory();
+    } catch (e) { setError(e instanceof Error ? e.message : "CSV validation failed"); }
+    finally { setCsvBusy(false); }
+  };
+
+  const applyCsv = async () => {
+    if (!csvBatch) return;
+    setCsvBusy(true); setError(null); setNotice(null);
+    try {
+      const applied = await inputCatalogApi.applyCsv(csvBatch.batch_id, csvReason.trim());
+      setCsvBatch(applied);
+      setCatalogRefresh((value) => value + 1);
+      await loadCsvHistory();
+      setNotice(`CSV applied: ${applied.report.applied_counts?.created || 0} created, ${applied.report.applied_counts?.updated || 0} updated.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "CSV apply failed"); }
+    finally { setCsvBusy(false); }
+  };
 
   const updateDraft = (patch: Partial<InputDraft>) => {
     setDraft((current) => current ? { ...current, ...patch } : current);
@@ -318,14 +357,33 @@ export default function InputsPage() {
             Admin master data for canonical seeds, fertilizers, crop protection, labor, machinery, and irrigation inputs.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => { setShowCreate((value) => !value); setNewDraft(emptyNewInputDraft(category)); }}
-          className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-        >
-          {showCreate ? "Close new input" : "New input"}
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={openCsvPanel} className="w-fit rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            {showCsv ? "Close CSV tools" : "CSV import / export"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowCreate((value) => !value); setNewDraft(emptyNewInputDraft(category)); }}
+            className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            {showCreate ? "Close new input" : "New input"}
+          </button>
+        </div>
       </div>
+
+      {showCsv ? (
+        <CsvCatalogPanel
+          file={csvFile}
+          batch={csvBatch}
+          history={csvHistory}
+          reason={csvReason}
+          busy={csvBusy}
+          onFile={(file) => { setCsvFile(file); setCsvBatch(null); }}
+          onReason={setCsvReason}
+          onValidate={validateCsv}
+          onApply={applyCsv}
+        />
+      ) : null}
 
       {showCreate ? (
         <NewInputPanel
@@ -469,6 +527,58 @@ export default function InputsPage() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function CsvCatalogPanel({ file, batch, history, reason, busy, onFile, onReason, onValidate, onApply }: {
+  file: File | null;
+  batch: InputCsvImportBatch | null;
+  history: InputCsvImportHistory | null;
+  reason: string;
+  busy: boolean;
+  onFile: (file: File | null) => void;
+  onReason: (value: string) => void;
+  onValidate: () => void;
+  onApply: () => void;
+}) {
+  const counts = batch?.report.counts || {};
+  return (
+    <div className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">CSV catalog exchange</h2>
+          <p className="mt-1 text-xs text-gray-500">Validation is a dry run. No catalog data changes until you inspect the report and apply it.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => inputCatalogApi.downloadCsvTemplate()} className="rounded border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Download template</button>
+          <button type="button" onClick={() => inputCatalogApi.exportCsv()} className="rounded border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Export active catalog</button>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+        <label className="flex-1 text-xs font-medium text-gray-500">CSV file
+          <input type="file" accept=".csv,text/csv" onChange={(e) => onFile(e.target.files?.[0] || null)} className="mt-1 block w-full rounded border p-2 text-sm" />
+        </label>
+        <button type="button" disabled={!file || busy} onClick={onValidate} className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? "Working..." : "Validate dry run"}</button>
+      </div>
+      {batch ? (
+        <div className="mt-5">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded bg-gray-100 px-2 py-1">Status: {batch.status}</span>
+            <span className="rounded bg-green-50 px-2 py-1 text-green-700">Create: {counts.create || 0}</span>
+            <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">Update: {counts.update || 0}</span>
+            <span className="rounded bg-gray-50 px-2 py-1">Unchanged: {counts.unchanged || 0}</span>
+            <span className="rounded bg-red-50 px-2 py-1 text-red-700">Errors: {counts.errors || 0}</span>
+          </div>
+          <div className="mt-3 max-h-72 overflow-auto rounded border">
+            <table className="min-w-full text-left text-xs"><thead className="sticky top-0 bg-gray-50"><tr><th className="p-2">Row</th><th className="p-2">Code</th><th className="p-2">Action</th><th className="p-2">Diagnostics</th></tr></thead>
+              <tbody className="divide-y">{batch.report.rows.map((row) => <tr key={`${row.row_number}-${row.code}`}><td className="p-2">{row.row_number}</td><td className="p-2 font-mono">{row.code || "-"}</td><td className="p-2">{row.action}</td><td className="p-2">{[...row.errors, ...row.warnings].map((d) => <p key={`${d.field}-${d.code}`} className={row.errors.includes(d) ? "text-red-600" : "text-amber-600"}>{d.field}: {d.message}</p>)}</td></tr>)}</tbody>
+            </table>
+          </div>
+          {batch.can_apply ? <div className="mt-3 flex flex-col gap-2 md:flex-row"><input value={reason} onChange={(e) => onReason(e.target.value)} placeholder="Reason for import" className="flex-1 rounded border px-3 py-2 text-sm" /><button type="button" disabled={busy || reason.trim().length < 3} onClick={onApply} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply validated changes</button></div> : null}
+        </div>
+      ) : null}
+      {history?.imports.length ? <details className="mt-4 text-xs"><summary className="cursor-pointer font-medium text-gray-600">Recent imports ({history.count})</summary><div className="mt-2 space-y-1">{history.imports.slice(0, 8).map((item) => <p key={item.batch_id} className="rounded bg-gray-50 p-2">{new Date(item.created_at).toLocaleString()} · {item.file_name} · {item.status}</p>)}</div></details> : null}
     </div>
   );
 }

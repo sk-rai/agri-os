@@ -22,6 +22,7 @@ from app.modules.workflow.config import router as workflow_config_router
 from app.modules.workflow.catalog_api import router as workflow_catalog_router
 from app.modules.master_data.api.crop_catalog import router as crop_catalog_router
 from app.modules.master_data.api.input_catalog import router as input_catalog_router
+from app.modules.master_data.api.input_catalog_csv import router as input_catalog_csv_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -62,6 +63,7 @@ app.include_router(workflow_config_router)
 app.include_router(workflow_catalog_router)
 app.include_router(crop_catalog_router)
 app.include_router(input_catalog_router)
+app.include_router(input_catalog_csv_router)
 
 
 # --- Health Check ---

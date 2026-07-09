@@ -17,6 +17,7 @@ from app.modules.auth.service import JWT_ALGORITHM, JWT_SECRET
 
 
 class AdminPermission(str, Enum):
+    VIEW = "VIEW"
     EDIT = "EDIT"
     PUBLISH = "PUBLISH"
     PROJECT_EDIT = "PROJECT_EDIT"
@@ -25,29 +26,34 @@ class AdminPermission(str, Enum):
 
 ROLE_PERMISSIONS: dict[str, set[AdminPermission]] = {
     "ENTERPRISE_ADMIN": {
+        AdminPermission.VIEW,
         AdminPermission.EDIT,
         AdminPermission.PUBLISH,
         AdminPermission.PROJECT_EDIT,
         AdminPermission.MANAGE_USERS,
     },
     "MANAGER": {
+        AdminPermission.VIEW,
         AdminPermission.EDIT,
         AdminPermission.PUBLISH,
         AdminPermission.PROJECT_EDIT,
     },
     "AGRONOMIST": {
+        AdminPermission.VIEW,
         AdminPermission.EDIT,
         AdminPermission.PROJECT_EDIT,
     },
     "ADMIN_EDITOR": {
+        AdminPermission.VIEW,
         AdminPermission.EDIT,
     },
     "ADMIN_PUBLISHER": {
+        AdminPermission.VIEW,
         AdminPermission.EDIT,
         AdminPermission.PUBLISH,
     },
-    "ADMIN_VIEWER": set(),
-    "VIEWER": set(),
+    "ADMIN_VIEWER": {AdminPermission.VIEW},
+    "VIEWER": {AdminPermission.VIEW},
 }
 
 
