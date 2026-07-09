@@ -818,6 +818,50 @@ export interface ProjectInputAssignmentAuditResponse {
   events: ProjectInputAssignmentAuditEvent[];
 }
 
+export interface InputWorkflowReferenceDto {
+  recommendation_id: string;
+  workflow_template_id: string;
+  workflow_code: string;
+  workflow_name: string;
+  crop_code: string;
+  season_code: string;
+  workflow_template_version_id: string;
+  version_number: string;
+  version_status: string;
+  stage_id: string;
+  stage_code: string;
+  stage_name?: Record<string, string> | string | null;
+  activity_type: string;
+  input_name: string;
+  day_offset: number;
+  is_critical: boolean;
+}
+
+export interface InputProjectReferenceDto {
+  assignment_id: string;
+  project_id: string;
+  project_name: string;
+  project_status: string;
+  tenant_id: string;
+  enabled: boolean;
+  display_order: number;
+  reason?: string | null;
+}
+
+export interface InputReferencesResponse {
+  schema_version: string;
+  input_code: string;
+  references: {
+    workflow_recommendations: number;
+    project_assignments: number;
+    total: number;
+  };
+  usage: {
+    workflow_recommendations: InputWorkflowReferenceDto[];
+    project_assignments: InputProjectReferenceDto[];
+  };
+}
+
 export const inputCatalogApi = {
   categories: () => api<InputCategoriesResponse>("/api/v1/input-catalog/categories"),
   inputs: (params?: { category?: string; cropCode?: string; projectId?: string; q?: string; includeInactive?: boolean }) => {
@@ -851,6 +895,8 @@ export const inputCatalogApi = {
       method: "POST",
       body: { reason: reason || null },
     }),
+  references: (code: string) =>
+    api<InputReferencesResponse>(`/api/v1/input-catalog/inputs/${code}/references`),
   inputAudit: (code: string, params?: { action?: string; limit?: number }) => {
     const query = new URLSearchParams();
     if (params?.action) query.set("action", params.action);

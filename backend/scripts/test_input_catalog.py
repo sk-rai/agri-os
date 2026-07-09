@@ -76,6 +76,30 @@ def main():
     check(urea["canonical_name"] == "Urea", "Input detail returns canonical name")
     check("RICE" in urea["applicable_crops"], "Input detail includes applicable crop")
 
+    references_response = client.get("/api/v1/input-catalog/inputs/UREA_46_N/references")
+    check(references_response.status_code == 200, "Input references return 200")
+    references_payload = references_response.json()
+    check(
+        references_payload["references"]["total"]
+        == len(references_payload["usage"]["workflow_recommendations"])
+        + len(references_payload["usage"]["project_assignments"]),
+        "Input reference counts match detailed usage rows",
+    )
+    check(
+        all(
+            row.get("workflow_template_version_id") and row.get("stage_code")
+            for row in references_payload["usage"]["workflow_recommendations"]
+        ),
+        "Workflow usage rows include version and stage identity",
+    )
+    check(
+        all(
+            row.get("project_id") and row.get("project_name")
+            for row in references_payload["usage"]["project_assignments"]
+        ),
+        "Project usage rows include project identity",
+    )
+
     print("\n[3] Input catalog admin create/update API")
     temp_code = "REGRESSION_TEST_INPUT"
     db = SessionLocal()

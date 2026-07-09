@@ -8,6 +8,7 @@ import {
   type AgriInputDto,
   type AgriInputUpdateRequest,
   type InputCategoryDto,
+  type InputReferencesResponse,
 } from "@/lib/api";
 
 type InputDraft = {
@@ -111,6 +112,8 @@ export default function InputsPage() {
   const [newDraft, setNewDraft] = useState<NewInputDraft>(() => emptyNewInputDraft());
   const [auditEvents, setAuditEvents] = useState<AgriInputAuditEvent[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [references, setReferences] = useState<InputReferencesResponse | null>(null);
+  const [loadingReferences, setLoadingReferences] = useState(false);
   const [changeReason, setChangeReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -155,14 +158,21 @@ export default function InputsPage() {
   useEffect(() => {
     if (!selected) {
       setAuditEvents([]);
+      setReferences(null);
       return;
     }
     setLoadingAudit(true);
+    setLoadingReferences(true);
     inputCatalogApi
       .inputAudit(selected.code, { limit: 10 })
       .then((payload) => setAuditEvents(payload.events))
       .catch(() => setAuditEvents([]))
       .finally(() => setLoadingAudit(false));
+    inputCatalogApi
+      .references(selected.code)
+      .then(setReferences)
+      .catch(() => setReferences(null))
+      .finally(() => setLoadingReferences(false));
   }, [selected]);
 
   const cropOptions = useMemo(() => {
@@ -449,6 +459,8 @@ export default function InputsPage() {
             changeReason={changeReason}
             auditEvents={auditEvents}
             loadingAudit={loadingAudit}
+            references={references}
+            loadingReferences={loadingReferences}
             onChangeReason={setChangeReason}
             onSave={saveSelected}
             onArchive={archiveSelected}
@@ -545,6 +557,8 @@ function InputEditor({
   changeReason,
   auditEvents,
   loadingAudit,
+  references,
+  loadingReferences,
   onDraft,
   onChangeReason,
   onSave,
@@ -558,6 +572,8 @@ function InputEditor({
   changeReason: string;
   auditEvents: AgriInputAuditEvent[];
   loadingAudit: boolean;
+  references: InputReferencesResponse | null;
+  loadingReferences: boolean;
   onDraft: (patch: Partial<InputDraft>) => void;
   onChangeReason: (value: string) => void;
   onSave: () => void;
@@ -635,7 +651,92 @@ function InputEditor({
         )}
       </div>
 
+      <InputUsagePanel references={references} loading={loadingReferences} />
       <InputAuditPanel events={auditEvents} loading={loadingAudit} />
+    </div>
+  );
+}
+
+function localizedLabel(value?: Record<string, string> | string | null) {
+  if (!value) return "-";
+  if (typeof value === "string") return value;
+  return value.en || Object.values(value)[0] || "-";
+}
+
+function InputUsagePanel({ references, loading }: { references: InputReferencesResponse | null; loading: boolean }) {
+  const workflowReferences = references?.usage.workflow_recommendations || [];
+  const projectReferences = references?.usage.project_assignments || [];
+  const total = references?.references.total || 0;
+
+  return (
+    <div className="mt-6 border-t pt-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Used by</h3>
+          <p className="text-xs text-gray-500">Active workflow recommendations and project assignments referencing this input.</p>
+        </div>
+        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{total}</span>
+      </div>
+      {loading ? <p className="rounded bg-gray-50 p-3 text-xs text-gray-500">Loading usage references...</p> : null}
+      {!loading && !references ? <p className="rounded bg-red-50 p-3 text-xs text-red-600">Usage references could not be loaded.</p> : null}
+      {!loading && references && total === 0 ? (
+        <p className="rounded bg-gray-50 p-3 text-xs text-gray-400">This input is not currently referenced and can be archived safely.</p>
+      ) : null}
+      {!loading && workflowReferences.length > 0 ? (
+        <div className="mb-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+            Workflow recommendations ({workflowReferences.length})
+          </p>
+          <div className="max-h-64 space-y-2 overflow-auto pr-1">
+            {workflowReferences.map((reference) => (
+              <a
+                key={reference.recommendation_id}
+                href={`/workflows/preview/${reference.workflow_template_version_id}${reference.version_status === "DRAFT" ? "?draft=true" : ""}`}
+                className="block rounded border p-3 text-xs hover:border-blue-200 hover:bg-blue-50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-gray-800">{reference.workflow_name}</p>
+                  <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
+                    v{reference.version_number} / {reference.version_status}
+                  </span>
+                </div>
+                <p className="mt-1 text-gray-600">
+                  {reference.crop_code} / {reference.season_code} / {localizedLabel(reference.stage_name)} ({reference.stage_code})
+                </p>
+                <p className="mt-1 text-gray-500">
+                  {reference.activity_type} / {reference.input_name} / Day +{reference.day_offset}
+                  {reference.is_critical ? " / Critical" : ""}
+                </p>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {!loading && projectReferences.length > 0 ? (
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+            Project assignments ({projectReferences.length})
+          </p>
+          <div className="max-h-48 space-y-2 overflow-auto pr-1">
+            {projectReferences.map((reference) => (
+              <a
+                key={reference.assignment_id}
+                href={`/project-inputs?project_id=${reference.project_id}`}
+                className="block rounded border p-3 text-xs hover:border-blue-200 hover:bg-blue-50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-gray-800">{reference.project_name}</p>
+                  <span className={`rounded px-2 py-0.5 text-[10px] ${reference.enabled ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {reference.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <p className="mt-1 text-gray-500">{reference.project_status} / Order {reference.display_order}</p>
+                {reference.reason ? <p className="mt-1 text-gray-500">Reason: {reference.reason}</p> : null}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

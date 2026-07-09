@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, InputCategory, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
-from app.modules.workflow.models import WorkflowTemplateRecommendation
+from app.modules.workflow.models import (
+    WorkflowTemplate,
+    WorkflowTemplateRecommendation,
+    WorkflowTemplateStage,
+    WorkflowTemplateVersion,
+)
 from app.modules.master_data.input_assignment_service import (
     assignment_map,
     ensure_project_input_assignment_table,
@@ -563,6 +568,79 @@ def _input_reference_summary(db: Session, input_code: str) -> dict:
     }
 
 
+def _input_reference_details(db: Session, input_code: str) -> dict:
+    code = input_code.upper()
+    workflow_rows = (
+        db.query(
+            WorkflowTemplateRecommendation,
+            WorkflowTemplateStage,
+            WorkflowTemplateVersion,
+            WorkflowTemplate,
+        )
+        .join(WorkflowTemplateStage, WorkflowTemplateStage.id == WorkflowTemplateRecommendation.template_stage_id)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.id == WorkflowTemplateStage.template_version_id)
+        .join(WorkflowTemplate, WorkflowTemplate.id == WorkflowTemplateVersion.template_id)
+        .filter(
+            WorkflowTemplateRecommendation.input_code == code,
+            WorkflowTemplateRecommendation.is_active == True,
+        )
+        .order_by(
+            WorkflowTemplate.crop_code,
+            WorkflowTemplate.season_code,
+            WorkflowTemplateVersion.version_number,
+            WorkflowTemplateStage.stage_order,
+            WorkflowTemplateRecommendation.sort_order,
+        )
+        .all()
+    )
+    assignment_rows = (
+        db.query(ProjectInputAssignment, Project)
+        .join(Project, Project.id == ProjectInputAssignment.project_id)
+        .filter(
+            ProjectInputAssignment.input_code == code,
+            ProjectInputAssignment.is_active == True,
+        )
+        .order_by(Project.name, ProjectInputAssignment.display_order)
+        .all()
+    )
+    return {
+        "workflow_recommendations": [
+            {
+                "recommendation_id": str(recommendation.id),
+                "workflow_template_id": str(template.id),
+                "workflow_code": template.code,
+                "workflow_name": template.canonical_name,
+                "crop_code": template.crop_code,
+                "season_code": template.season_code,
+                "workflow_template_version_id": str(version.id),
+                "version_number": version.version_number,
+                "version_status": version.status,
+                "stage_id": str(stage.id),
+                "stage_code": stage.stage_code,
+                "stage_name": stage.stage_name,
+                "activity_type": recommendation.activity_type,
+                "input_name": recommendation.input_name,
+                "day_offset": recommendation.day_offset,
+                "is_critical": recommendation.is_critical,
+            }
+            for recommendation, stage, version, template in workflow_rows
+        ],
+        "project_assignments": [
+            {
+                "assignment_id": str(assignment.id),
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "project_status": project.status,
+                "tenant_id": assignment.tenant_id,
+                "enabled": assignment.enabled,
+                "display_order": assignment.display_order,
+                "reason": assignment.reason,
+            }
+            for assignment, project in assignment_rows
+        ],
+    }
+
+
 @router.get("/inputs/{input_code}/references")
 def get_input_references(input_code: str, db: Session = Depends(get_db)):
     item = (
@@ -576,6 +654,7 @@ def get_input_references(input_code: str, db: Session = Depends(get_db)):
         "schema_version": "1.0.0",
         "input_code": item.code,
         "references": _input_reference_summary(db, item.code),
+        "usage": _input_reference_details(db, item.code),
     }
 
 
