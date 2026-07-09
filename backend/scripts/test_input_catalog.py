@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
-from app.modules.master_data.input_assignment_service import ensure_agricultural_input_audit_table, ensure_project_input_assignment_audit_table, ensure_project_input_assignment_table
 from app.modules.master_data.models import AgriculturalInput, AgriculturalInputAuditEvent, ProjectInputAssignment, ProjectInputAssignmentAuditEvent
 from app.modules.workflow.models import WorkflowTemplateRecommendation
 
@@ -33,7 +32,6 @@ def ensure_default_tenant(db):
 
 
 def cleanup_project(db, project_id):
-    ensure_project_input_assignment_audit_table(db)
     db.query(ProjectInputAssignmentAuditEvent).filter(ProjectInputAssignmentAuditEvent.project_id == project_id).delete(synchronize_session=False)
     db.query(ProjectInputAssignment).filter(ProjectInputAssignment.project_id == project_id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
@@ -104,7 +102,6 @@ def main():
     temp_code = "REGRESSION_TEST_INPUT"
     db = SessionLocal()
     try:
-        ensure_agricultural_input_audit_table(db)
         db.query(AgriculturalInputAuditEvent).filter(AgriculturalInputAuditEvent.input_code == temp_code).delete(synchronize_session=False)
         db.query(AgriculturalInput).filter(AgriculturalInput.code == temp_code).delete(synchronize_session=False)
         db.commit()
@@ -193,7 +190,6 @@ def main():
     check(restore_response.status_code == 200, "Input catalog test restore returns 200", f"Status: {restore_response.status_code}")
     db = SessionLocal()
     try:
-        ensure_agricultural_input_audit_table(db)
         db.query(AgriculturalInputAuditEvent).filter(
             AgriculturalInputAuditEvent.input_code == "UREA_46_N",
             AgriculturalInputAuditEvent.reason.in_(["Regression test metadata edit", "Regression test restore"]),

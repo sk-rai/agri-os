@@ -22,9 +22,6 @@ from app.modules.workflow.models import (
 )
 from app.modules.master_data.input_assignment_service import (
     assignment_map,
-    ensure_project_input_assignment_table,
-    ensure_project_input_assignment_audit_table,
-    ensure_agricultural_input_audit_table,
     explicit_allowlist_mode,
     input_assignment_decision,
     project_crop_scope,
@@ -168,7 +165,6 @@ def _record_input_audit(
     reason: Optional[str],
     metadata: Optional[dict] = None,
 ) -> None:
-    ensure_agricultural_input_audit_table(db)
     db.add(AgriculturalInputAuditEvent(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -199,7 +195,6 @@ def _record_input_assignment_audit(
     reason: Optional[str],
     metadata: Optional[dict] = None,
 ) -> None:
-    ensure_project_input_assignment_audit_table(db)
     db.add(ProjectInputAssignmentAuditEvent(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -393,7 +388,6 @@ def get_project_input_assignments(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    ensure_project_input_assignment_table(db)
     project_scope = project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
     assignments = project_input_assignments(db, tenant_id=x_tenant_id, project_id=project_id)
     assignments_by_code = assignment_map(assignments)
@@ -452,7 +446,6 @@ def get_project_input_assignment_audit(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    ensure_project_input_assignment_audit_table(db)
     project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
     query = db.query(ProjectInputAssignmentAuditEvent).filter(
         ProjectInputAssignmentAuditEvent.tenant_id == x_tenant_id,
@@ -482,7 +475,6 @@ def upsert_project_input_assignment(
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
-    ensure_project_input_assignment_table(db)
     project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
     item = db.query(AgriculturalInput).filter(
         AgriculturalInput.code == input_code.upper(),
@@ -736,7 +728,6 @@ def get_input_audit(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    ensure_agricultural_input_audit_table(db)
     item = (
         db.query(AgriculturalInput)
         .filter(AgriculturalInput.code == input_code.upper(), AgriculturalInput.is_active == True)

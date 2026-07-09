@@ -22,6 +22,7 @@ from app.modules.workflow.models import (  # noqa: F401
     WorkflowTemplateRecommendation,
     WorkflowTemplateEnablement,
     WorkflowTemplateOverride,
+    WorkflowTemplateAuditEvent,
 )
 
 from app.modules.master_data.models import (  # noqa: F401
@@ -43,6 +44,9 @@ from app.modules.master_data.models import (  # noqa: F401
     InputCategory,
     Manufacturer,
     AgriculturalInput,
+    AgriculturalInputAuditEvent,
+    ProjectInputAssignment,
+    ProjectInputAssignmentAuditEvent,
 )
 
 config = context.config

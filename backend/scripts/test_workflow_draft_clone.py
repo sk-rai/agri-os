@@ -292,7 +292,8 @@ def main():
         check(rice_versions_after_publish == [draft_version_id], "Android catalog serves the newly published version once")
 
         old_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{source_version.id}", headers=headers)
-        check(old_preview.status_code == 404, "Archived source version is no longer Android-preview visible", f"Status: {old_preview.status_code}")
+        check(old_preview.status_code == 200, "Archived source version remains renderable for pinned cycles", f"Status: {old_preview.status_code}")
+        check(old_preview.json()["status"] == "ARCHIVED", "Archived source preview reports archived status")
         new_preview = client.get(f"/api/v1/workflow-catalog/workflow-preview/{draft_version_id}", headers=headers)
         check(new_preview.status_code == 200, "Newly published draft is Android-preview visible", f"Status: {new_preview.status_code}")
 

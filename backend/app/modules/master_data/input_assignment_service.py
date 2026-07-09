@@ -6,90 +6,10 @@ import uuid
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import AgriculturalInput, ProjectInputAssignment
-
-
-def ensure_project_input_assignment_table(db: Session) -> None:
-    """Create project input assignment table in migration-light MVP environments."""
-    db.execute(text("""
-        CREATE TABLE IF NOT EXISTS project_input_assignments (
-            id UUID PRIMARY KEY,
-            tenant_id VARCHAR(50) NOT NULL,
-            project_id UUID NOT NULL REFERENCES projects(id),
-            input_id UUID NOT NULL REFERENCES agricultural_inputs(id),
-            input_code VARCHAR(50) NOT NULL,
-            enabled BOOLEAN NOT NULL DEFAULT TRUE,
-            display_order INTEGER NOT NULL DEFAULT 1000,
-            reason TEXT,
-            effective_from DATE,
-            effective_to DATE,
-            metadata JSONB DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ,
-            updated_at TIMESTAMPTZ,
-            version VARCHAR(20) DEFAULT 'v1.0',
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            CONSTRAINT uq_project_input_assignment UNIQUE (tenant_id, project_id, input_code)
-        )
-    """))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_project ON project_input_assignments(project_id, enabled)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_code ON project_input_assignments(input_code)"))
-    db.commit()
-
-
-
-def ensure_project_input_assignment_audit_table(db: Session) -> None:
-    """Create project input assignment audit table in migration-light MVP environments."""
-    ensure_project_input_assignment_table(db)
-    db.execute(text("""
-        CREATE TABLE IF NOT EXISTS project_input_assignment_audit_events (
-            id UUID PRIMARY KEY,
-            tenant_id VARCHAR(50) NOT NULL,
-            project_id UUID NOT NULL REFERENCES projects(id),
-            input_code VARCHAR(50) NOT NULL,
-            assignment_id UUID REFERENCES project_input_assignments(id),
-            actor_id UUID,
-            action VARCHAR(50) NOT NULL,
-            before_payload JSONB,
-            after_payload JSONB,
-            reason TEXT,
-            metadata JSONB DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ,
-            updated_at TIMESTAMPTZ,
-            version VARCHAR(20) DEFAULT 'v1.0',
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
-        )
-    """))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_audit_project ON project_input_assignment_audit_events(project_id, created_at)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_input_assignment_audit_input ON project_input_assignment_audit_events(project_id, input_code)"))
-    db.commit()
-
-def ensure_agricultural_input_audit_table(db: Session) -> None:
-    """Create master input audit table in migration-light MVP environments."""
-    db.execute(text("""
-        CREATE TABLE IF NOT EXISTS agricultural_input_audit_events (
-            id UUID PRIMARY KEY,
-            tenant_id VARCHAR(50) NOT NULL,
-            input_id UUID NOT NULL REFERENCES agricultural_inputs(id),
-            input_code VARCHAR(50) NOT NULL,
-            actor_id UUID,
-            action VARCHAR(50) NOT NULL,
-            before_payload JSONB,
-            after_payload JSONB,
-            reason TEXT,
-            metadata JSONB DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ,
-            updated_at TIMESTAMPTZ,
-            version VARCHAR(20) DEFAULT 'v1.0',
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
-        )
-    """))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_agricultural_input_audit_input ON agricultural_input_audit_events(input_code, created_at)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_agricultural_input_audit_tenant ON agricultural_input_audit_events(tenant_id, created_at)"))
-    db.commit()
 
 
 def project_crop_scope(db: Session, *, project_id: Optional[uuid.UUID], tenant_id: str) -> set[str] | None:
@@ -116,7 +36,6 @@ def input_matches_crop_scope(item: AgriculturalInput, crop_scope: set[str] | Non
 def project_input_assignments(db: Session, *, tenant_id: str, project_id: Optional[uuid.UUID]) -> list[ProjectInputAssignment]:
     if not project_id:
         return []
-    ensure_project_input_assignment_table(db)
     return db.query(ProjectInputAssignment).filter(
         ProjectInputAssignment.tenant_id == tenant_id,
         ProjectInputAssignment.project_id == project_id,

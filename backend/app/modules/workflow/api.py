@@ -14,7 +14,6 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
@@ -36,19 +35,6 @@ from app.modules.farmer.models import Parcel
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
-
-
-def _ensure_crop_cycle_workflow_version_column(db: Session) -> None:
-    """Add workflow version pinning column in migration-light MVP environments."""
-    db.execute(text(
-        "ALTER TABLE crop_cycles "
-        "ADD COLUMN IF NOT EXISTS workflow_template_version_id UUID "
-        "REFERENCES workflow_template_versions(id)"
-    ))
-    db.execute(text(
-        "CREATE INDEX IF NOT EXISTS idx_crop_cycle_workflow_version "
-        "ON crop_cycles(workflow_template_version_id)"
-    ))
 
 
 def _assert_project_workflow_allows_cycle(
@@ -327,7 +313,6 @@ def create_crop_cycle(
     Loads stages from crop_lifecycle_templates (never hardcoded).
     Auto-derives farmer_id from X-Actor-ID and lifecycle_template_id from crop_code+season.
     """
-    _ensure_crop_cycle_workflow_version_column(db)
 
     # Auto-derive farmer_id from actor (parcel owner or self-enrollment)
     farmer_id = body.farmer_id
@@ -632,7 +617,6 @@ def list_crop_cycles(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """List crop cycles for Android Home/parcel filtering."""
-    _ensure_crop_cycle_workflow_version_column(db)
     query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id)
     if farmer_id:
         query = query.filter(CropCycle.farmer_id == farmer_id)
@@ -680,7 +664,6 @@ def list_eligible_parcels(
     """
     target_year = season_year or date.today().year
     season_filter = season.upper() if season else None
-    _ensure_crop_cycle_workflow_version_column(db)
 
     parcels = (
         db.query(Parcel)
@@ -847,7 +830,6 @@ def get_recommended_activities(
     and logged activities for this cycle. Templates remain reference data; this
     endpoint is the Android-facing source for dated recommendations.
     """
-    _ensure_crop_cycle_workflow_version_column(db)
     cycle = (
         db.query(CropCycle)
         .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
@@ -1019,7 +1001,6 @@ def get_crop_cycle(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Get a crop cycle with its stages and current status."""
-    _ensure_crop_cycle_workflow_version_column(db)
     cycle = (
         db.query(CropCycle)
         .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
@@ -1056,7 +1037,6 @@ def advance_stage(
     Updates crop_cycle.status based on aggregate stage states.
     Publishes crop_stage_completed.v1 event on COMPLETE.
     """
-    _ensure_crop_cycle_workflow_version_column(db)
     # Load stage instance
     stage = (
         db.query(CropStageInstance)
@@ -1253,7 +1233,6 @@ def complete_crop_cycle(
     This is a backend escape hatch for Android/product flows where the user
     finishes harvest and wants the cycle moved to history/read-only.
     """
-    _ensure_crop_cycle_workflow_version_column(db)
     cycle = (
         db.query(CropCycle)
         .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
@@ -1325,7 +1304,6 @@ def log_activity(
     If no stage is active, activity is still accepted (linked to cycle only).
     Append-only for conflict resolution.
     """
-    _ensure_crop_cycle_workflow_version_column(db)
     # Verify cycle exists and belongs to tenant
     cycle = (
         db.query(CropCycle)

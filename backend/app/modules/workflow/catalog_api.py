@@ -13,7 +13,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -50,45 +49,6 @@ def _actor_uuid(x_actor_id: Optional[str]):
         raise HTTPException(400, "X-Actor-ID must be a UUID when supplied")
 
 
-def _ensure_crop_cycle_workflow_version_column(db: Session) -> None:
-    """Ensure workflow version pinning exists for catalog usage reporting."""
-    db.execute(text(
-        "ALTER TABLE crop_cycles "
-        "ADD COLUMN IF NOT EXISTS workflow_template_version_id UUID "
-        "REFERENCES workflow_template_versions(id)"
-    ))
-    db.execute(text(
-        "CREATE INDEX IF NOT EXISTS idx_crop_cycle_workflow_version "
-        "ON crop_cycles(workflow_template_version_id)"
-    ))
-
-
-def _ensure_workflow_audit_table(db: Session) -> None:
-    """Create workflow audit table in migration-light MVP environments."""
-    db.execute(text("""
-        CREATE TABLE IF NOT EXISTS workflow_template_audit_events (
-            id UUID PRIMARY KEY,
-            tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(id),
-            template_id UUID NOT NULL REFERENCES workflow_templates(id),
-            template_version_id UUID REFERENCES workflow_template_versions(id),
-            actor_id UUID,
-            action VARCHAR(60) NOT NULL,
-            target_type VARCHAR(40) NOT NULL,
-            target_id VARCHAR(120),
-            target_code VARCHAR(220),
-            before JSONB,
-            after JSONB,
-            reason TEXT,
-            metadata JSONB DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-    """))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_template ON workflow_template_audit_events(template_id, created_at)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_version ON workflow_template_audit_events(template_version_id, created_at)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_action ON workflow_template_audit_events(action)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS idx_workflow_template_audit_actor ON workflow_template_audit_events(actor_id)"))
-
-
 def _record_workflow_audit_event(
     db: Session,
     *,
@@ -105,7 +65,6 @@ def _record_workflow_audit_event(
     reason: Optional[str] = None,
     metadata: Optional[dict] = None,
 ) -> None:
-    _ensure_workflow_audit_table(db)
     db.add(WorkflowTemplateAuditEvent(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -272,7 +231,6 @@ def _legacy_cycle_pin_candidates(
     season_code: Optional[str] = None,
     limit: int = 200,
 ) -> list[dict]:
-    _ensure_crop_cycle_workflow_version_column(db)
     query = db.query(CropCycle).filter(
         CropCycle.tenant_id == tenant_id,
         CropCycle.workflow_template_version_id == None,
@@ -725,7 +683,6 @@ def _preview_warnings(stages: list[dict], known_input_codes: set[str]) -> list[d
 
 
 def _workflow_version_usage_counts(db: Session, version_id) -> dict:
-    _ensure_crop_cycle_workflow_version_column(db)
     pinned_cycle_count = db.query(CropCycle).filter(
         CropCycle.workflow_template_version_id == version_id,
         CropCycle.status != "ARCHIVED",
@@ -1826,7 +1783,6 @@ def list_workflow_template_versions(
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
     """Return version history for a workflow template, including DRAFT/PUBLISHED/ARCHIVED rows."""
-    _ensure_crop_cycle_workflow_version_column(db)
     template = db.query(WorkflowTemplate).filter(
         WorkflowTemplate.id == template_id,
         WorkflowTemplate.is_active == True,
@@ -1892,7 +1848,6 @@ def list_workflow_template_audit_events(
     if not template:
         raise HTTPException(404, "Workflow template not found")
 
-    _ensure_workflow_audit_table(db)
     db.commit()
     query = db.query(WorkflowTemplateAuditEvent).filter(
         WorkflowTemplateAuditEvent.tenant_id == x_tenant_id,
