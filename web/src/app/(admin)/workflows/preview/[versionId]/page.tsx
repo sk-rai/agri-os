@@ -51,6 +51,7 @@ export default function WorkflowPreviewPage() {
   const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
   const [draftValidating, setDraftValidating] = useState(false);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
+  const [selectedStageCode, setSelectedStageCode] = useState<string | null>(null);
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
     const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
@@ -259,6 +260,7 @@ export default function WorkflowPreviewPage() {
   const isDraftPreview = preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft";
   const publishBlocked = Boolean(draftValidation && !draftValidation.can_publish);
   const stages = preview.android_preview.stages || [];
+  const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0] || null;
   const recommendations = stages.flatMap((stage) => stage.recommended_activities || []);
   const warningCounts = preview.warnings.reduce<Record<string, number>>((acc, warning) => {
     acc[warning.level] = (acc[warning.level] || 0) + 1;
@@ -349,6 +351,15 @@ export default function WorkflowPreviewPage() {
         </div>
       ) : null}
 
+
+      <VisualWorkflowBuilder
+        stages={stages}
+        selectedStageCode={selectedStage?.code || null}
+        onSelectStage={setSelectedStageCode}
+        draftEditable={isDraftPreview}
+        projectScoped={Boolean(preview.project_id)}
+      />
+
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
         <WarningsPanel warnings={preview.warnings} warningCounts={warningCounts} />
         <OverridesPanel
@@ -397,6 +408,132 @@ export default function WorkflowPreviewPage() {
           {JSON.stringify(preview.android_preview, null, 2)}
         </pre>
       </details>
+    </div>
+  );
+}
+
+
+function VisualWorkflowBuilder({
+  stages,
+  selectedStageCode,
+  onSelectStage,
+  draftEditable,
+  projectScoped,
+}: {
+  stages: WorkflowStage[];
+  selectedStageCode: string | null;
+  onSelectStage: (stageCode: string) => void;
+  draftEditable: boolean;
+  projectScoped: boolean;
+}) {
+  const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
+  const totalDuration = stages.reduce((sum, stage) => sum + (stage.duration_days || 0), 0);
+  const maxRecommendations = Math.max(1, ...stages.map((stage) => stage.recommended_activities?.length || 0));
+
+  return (
+    <div className="mb-6 rounded-xl border border-green-100 bg-white shadow">
+      <div className="border-b border-green-100 p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Visual Workflow Builder</h2>
+            <p className="mt-1 text-sm text-gray-500">Stage canvas for the Android-rendered crop cycle. Select a stage to inspect recommendations and timing.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge>{stages.length} stages</Badge>
+            <Badge>{totalDuration} days</Badge>
+            <Badge>{draftEditable ? "Draft editable" : "Read-only published"}</Badge>
+            {projectScoped ? <Badge>Project overrides visible</Badge> : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="p-5">
+        {stages.length === 0 ? (
+          <p className="rounded bg-gray-50 p-4 text-sm text-gray-500">No stages are present in this workflow version.</p>
+        ) : (
+          <div className="space-y-5">
+            <div className="overflow-x-auto pb-3">
+              <div className="flex min-w-max items-stretch gap-3">
+                {stages.map((stage, index) => {
+                  const recCount = stage.recommended_activities?.length || 0;
+                  const selected = stage.code === selectedStage?.code;
+                  const recIntensity = Math.max(8, Math.round((recCount / maxRecommendations) * 36));
+                  return (
+                    <button
+                      key={stage.code}
+                      type="button"
+                      onClick={() => onSelectStage(stage.code)}
+                      className={`group relative flex w-56 flex-col rounded-xl border p-4 text-left transition ${selected ? "border-green-500 bg-green-50 shadow-md ring-2 ring-green-100" : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/40"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Stage {index + 1}</p>
+                          <h3 className="mt-1 line-clamp-2 font-semibold text-gray-900">{labelText(stage.name)}</h3>
+                        </div>
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">{stage.code}</span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+                        <MiniMetric label="Start" value={`D+${stage.day_offset ?? 0}`} />
+                        <MiniMetric label="Days" value={stage.duration_days || 0} />
+                        <MiniMetric label="Recs" value={recCount} />
+                      </div>
+                      <div className="mt-4 h-2 rounded-full bg-gray-100">
+                        <div className="h-2 rounded-full bg-green-500" style={{ width: `${recIntensity}%` }} />
+                      </div>
+                      <p className="mt-2 text-[11px] text-gray-400">Recommendation density</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {selectedStage ? <StageInspector stage={selectedStage} draftEditable={draftEditable} /> : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string | number }) {
+  return <div className="rounded bg-white/80 p-2"><p className="text-[10px] uppercase text-gray-400">{label}</p><p className="font-semibold text-gray-900">{value}</p></div>;
+}
+
+function StageInspector({ stage, draftEditable }: { stage: WorkflowStage; draftEditable: boolean }) {
+  const recs = stage.recommended_activities || [];
+  return (
+    <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-wrap gap-2 text-xs"><Badge>{stage.code}</Badge><Badge>{stage.stage_type || "Stage"}</Badge><Badge>{stage.phase || "Phase ?"}</Badge></div>
+        <h3 className="mt-3 text-xl font-bold text-gray-900">{labelText(stage.name)}</h3>
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div><dt className="text-xs uppercase text-gray-400">Day offset</dt><dd className="font-semibold text-gray-900">D+{stage.day_offset ?? 0}</dd></div>
+          <div><dt className="text-xs uppercase text-gray-400">Duration</dt><dd className="font-semibold text-gray-900">{stage.duration_days || 0} days</dd></div>
+          <div><dt className="text-xs uppercase text-gray-400">Recommendations</dt><dd className="font-semibold text-gray-900">{recs.length}</dd></div>
+          <div><dt className="text-xs uppercase text-gray-400">Mode</dt><dd className="font-semibold text-gray-900">{draftEditable ? "Editable draft" : "Read only"}</dd></div>
+        </dl>
+        <p className="mt-4 text-xs text-gray-500">Use the detailed editor below to rename stages, change duration, or edit recommendations. This canvas is the visual navigation layer.</p>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-gray-900">Recommendations in this stage</h3><span className="text-xs text-gray-400">{recs.length} items</span></div>
+        {recs.length === 0 ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">No recommendations configured for this stage.</p> : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          {recs.map((rec, index) => <RecommendationCanvasCard key={`${stage.code}-${rec.input_code || rec.input_name}-${index}`} recommendation={rec} index={index} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecommendationCanvasCard({ recommendation, index }: { recommendation: WorkflowRecommendation; index: number }) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm">
+      <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-medium uppercase text-gray-400">Recommendation {index + 1}</p><h4 className="mt-1 font-semibold text-gray-900">{recommendation.input_name || recommendation.input_code || recommendation.activity_type}</h4></div>{recommendation.is_critical ? <span className="rounded bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700">Critical</span> : null}</div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge>{recommendation.activity_type}</Badge><Badge>D+{recommendation.day_offset}</Badge>{recommendation.input_code ? <Badge>{recommendation.input_code}</Badge> : null}</div>
+      {recommendation.typical_quantity ? <p className="mt-3 text-xs text-gray-600">Qty: {recommendation.typical_quantity}</p> : null}
+      {recommendation.typical_cost_per_acre ? <p className="mt-1 text-xs text-gray-600">Cost/acre: {recommendation.typical_cost_per_acre}</p> : null}
+      {recommendation.allowed_product_codes?.length ? <p className="mt-2 font-mono text-[11px] text-gray-500">Products: {recommendation.allowed_product_codes.slice(0, 3).join(", ")}{recommendation.allowed_product_codes.length > 3 ? "..." : ""}</p> : null}
     </div>
   );
 }
