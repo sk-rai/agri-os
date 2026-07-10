@@ -301,6 +301,44 @@ def main():
         editable_rec = nursery_recs[0]
         editable_rec_id = editable_rec["metadata"]["recommendation_id"]
 
+        check(len(nursery_recs) > 1, "Draft nursery has multiple recommendations to reorder")
+        nursery_rec_ids = [rec["metadata"]["recommendation_id"] for rec in nursery_recs]
+        reordered_rec_ids = nursery_rec_ids[:]
+        reordered_rec_ids[0], reordered_rec_ids[1] = reordered_rec_ids[1], reordered_rec_ids[0]
+        reorder_recs = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/reorder",
+            headers=headers,
+            json={"stage_code": "NURSERY", "recommendation_ids": reordered_rec_ids},
+        )
+        check(reorder_recs.status_code == 200, "Draft recommendation reorder returns 200", f"Status: {reorder_recs.status_code}")
+        reorder_recs_payload = reorder_recs.json()
+        reordered_nursery = next(stage for stage in reorder_recs_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        check(
+            [rec["metadata"]["recommendation_id"] for rec in reordered_nursery["recommended_activities"]] == reordered_rec_ids,
+            "Draft recommendation reorder updates preview order",
+        )
+
+        reorder_recs_missing = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/reorder",
+            headers=headers,
+            json={"stage_code": "NURSERY", "recommendation_ids": reordered_rec_ids[:-1]},
+        )
+        check(reorder_recs_missing.status_code == 400, "Draft recommendation reorder rejects incomplete list", f"Status: {reorder_recs_missing.status_code}")
+
+        reorder_recs_duplicate = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/reorder",
+            headers=headers,
+            json={"stage_code": "NURSERY", "recommendation_ids": [reordered_rec_ids[0]] + reordered_rec_ids},
+        )
+        check(reorder_recs_duplicate.status_code == 400, "Draft recommendation reorder rejects duplicate ids", f"Status: {reorder_recs_duplicate.status_code}")
+
+        reorder_recs_published = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/recommendations/reorder",
+            headers=headers,
+            json={"stage_code": "NURSERY", "recommendation_ids": reordered_rec_ids},
+        )
+        check(reorder_recs_published.status_code == 404, "Published version cannot reorder draft recommendations", f"Status: {reorder_recs_published.status_code}")
+
         patch_rec = client.patch(
             f"/api/v1/workflow-catalog/drafts/{draft_version_id}/recommendations/{editable_rec_id}",
             headers=headers,
@@ -499,6 +537,7 @@ def main():
             "CREATE_DRAFT_STAGE",
             "DUPLICATE_DRAFT_STAGE",
             "REORDER_DRAFT_STAGES",
+            "REORDER_DRAFT_RECOMMENDATIONS",
             "UPDATE_RECOMMENDATION",
             "CREATE_RECOMMENDATION",
             "DELETE_RECOMMENDATION",

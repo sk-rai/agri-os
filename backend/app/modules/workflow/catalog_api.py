@@ -193,6 +193,11 @@ class WorkflowDraftRecommendationCreate(BaseModel):
     sort_order: Optional[int] = None
 
 
+class WorkflowDraftRecommendationReorder(BaseModel):
+    stage_code: str
+    recommendation_ids: list[uuid.UUID]
+
+
 class WorkflowLegacyCycleBackfillRequest(BaseModel):
     dry_run: bool = True
     project_id: Optional[uuid.UUID] = None
@@ -1682,6 +1687,75 @@ def create_draft_workflow_recommendation(
         target_code=f"{stage.stage_code}|{new_rec.input_code or new_rec.input_name}",
         after=_recommendation_audit_snapshot(new_rec),
         metadata={"stage_code": stage.stage_code},
+    )
+    db.commit()
+    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+
+
+@router.patch("/drafts/{workflow_template_version_id}/recommendations/reorder")
+def reorder_draft_workflow_recommendations(
+    workflow_template_version_id: uuid.UUID,
+    body: WorkflowDraftRecommendationReorder,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Reorder all active recommendations for one stage in a DRAFT workflow version."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    stage = _get_draft_stage(db, version.id, body.stage_code)
+    requested_ids = list(body.recommendation_ids or [])
+    if not requested_ids:
+        raise HTTPException(400, "recommendation_ids cannot be empty")
+    requested_id_strings = [str(rec_id) for rec_id in requested_ids]
+    if len(requested_id_strings) != len(set(requested_id_strings)):
+        raise HTTPException(400, "recommendation_ids contains duplicate values")
+
+    recs = (
+        db.query(WorkflowTemplateRecommendation)
+        .filter(
+            WorkflowTemplateRecommendation.template_stage_id == stage.id,
+            WorkflowTemplateRecommendation.is_active == True,
+        )
+        .order_by(WorkflowTemplateRecommendation.sort_order.asc())
+        .all()
+    )
+    recs_by_id = {str(rec.id): rec for rec in recs}
+    existing_ids = set(recs_by_id.keys())
+    requested_set = set(requested_id_strings)
+    missing = sorted(existing_ids - requested_set)
+    unknown = sorted(requested_set - existing_ids)
+    if missing or unknown:
+        raise HTTPException(
+            400,
+            {
+                "message": "recommendation_ids must include every active recommendation for the stage exactly once",
+                "missing_recommendation_ids": missing,
+                "unknown_recommendation_ids": unknown,
+            },
+        )
+
+    before = [_recommendation_audit_snapshot(rec) for rec in recs]
+    now = datetime.now(timezone.utc)
+    for index, rec_id in enumerate(requested_id_strings, start=1):
+        rec = recs_by_id[rec_id]
+        rec.sort_order = index
+        rec.updated_at = now
+    version.updated_at = now
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id) or principal.user_id,
+        action="REORDER_DRAFT_RECOMMENDATIONS",
+        target_type="STAGE",
+        target_id=str(stage.id),
+        target_code=stage.stage_code,
+        before={"recommendations": before},
+        after={"stage_code": stage.stage_code, "recommendation_ids": requested_id_strings},
+        metadata={"recommendation_count": len(requested_id_strings)},
+        reason=f"Reorder draft recommendations for {stage.stage_code}",
     )
     db.commit()
     return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)

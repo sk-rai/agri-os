@@ -998,6 +998,11 @@ export interface WorkflowDraftRecommendationRequest {
   sort_order?: number;
 }
 
+export interface WorkflowDraftRecommendationReorderRequest {
+  stage_code: string;
+  recommendation_ids: string[];
+}
+
 export interface WorkflowPreviewResponse {
   schema_version: string;
   tenant_id: string;
@@ -1225,6 +1230,11 @@ export const workflowCatalogApi = {
     }),
   updateDraftRecommendation: (versionId: string, recommendationId: string, data: WorkflowDraftRecommendationRequest) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/recommendations/${recommendationId}`, {
+      method: "PATCH",
+      body: data,
+    }),
+  reorderDraftRecommendations: (versionId: string, data: WorkflowDraftRecommendationReorderRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/recommendations/reorder`, {
       method: "PATCH",
       body: data,
     }),

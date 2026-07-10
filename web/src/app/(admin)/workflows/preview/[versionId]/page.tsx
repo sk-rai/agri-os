@@ -42,6 +42,10 @@ function normalizeStageCode(value: string) {
   return value.toUpperCase().replace(/[^A-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
 }
 
+function recommendationId(rec: WorkflowRecommendation) {
+  return typeof rec.metadata?.recommendation_id === "string" ? rec.metadata.recommendation_id : null;
+}
+
 export default function WorkflowPreviewPage() {
   const params = useParams<{ versionId: string }>();
   const searchParams = useSearchParams();
@@ -287,6 +291,24 @@ export default function WorkflowPreviewPage() {
     }
   };
 
+  const reorderDraftRecommendations = async (stageCode: string, recommendationIds: string[]) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_REC_REORDER:${stageCode}`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.reorderDraftRecommendations(preview.workflow_template_version_id, {
+        stage_code: stageCode,
+        recommendation_ids: recommendationIds,
+      });
+      setPreview(updated);
+      setDraftValidation(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reorder draft recommendations");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
   const deleteDraftRecommendation = async (recommendationId: string) => {
     if (!preview) return;
     setBusyTarget(`DRAFT_REC:${recommendationId}`);
@@ -426,6 +448,7 @@ export default function WorkflowPreviewPage() {
         onCreateDraftStage={createDraftStage}
         onDuplicateDraftStage={duplicateDraftStage}
         onReorderDraftStages={reorderDraftStages}
+        onReorderDraftRecommendations={reorderDraftRecommendations}
       />
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -501,6 +524,7 @@ function VisualWorkflowBuilder({
   onCreateDraftStage,
   onDuplicateDraftStage,
   onReorderDraftStages,
+  onReorderDraftRecommendations,
 }: {
   stages: WorkflowStage[];
   selectedStageCode: string | null;
@@ -511,11 +535,23 @@ function VisualWorkflowBuilder({
   onCreateDraftStage: (afterStageCode: string, data: WorkflowDraftStageCreateRequest) => void;
   onDuplicateDraftStage: (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => void;
   onReorderDraftStages: (stageCodes: string[]) => void;
+  onReorderDraftRecommendations: (stageCode: string, recommendationIds: string[]) => void;
 }) {
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
   const selectedStageIndex = selectedStage ? stages.findIndex((stage) => stage.code === selectedStage.code) : -1;
   const [stageAction, setStageAction] = useState<StageActionMode | null>(null);
   const totalDuration = stages.reduce((sum, stage) => sum + (stage.duration_days || 0), 0);
+  const moveRecommendation = (stage: WorkflowStage, recommendationIndex: number, direction: -1 | 1) => {
+    const recs = stage.recommended_activities || [];
+    const targetIndex = recommendationIndex + direction;
+    if (targetIndex < 0 || targetIndex >= recs.length) return;
+    const nextRecs = [...recs];
+    const [moved] = nextRecs.splice(recommendationIndex, 1);
+    nextRecs.splice(targetIndex, 0, moved);
+    const ids = nextRecs.map(recommendationId).filter((id): id is string => Boolean(id));
+    if (ids.length !== nextRecs.length) return;
+    onReorderDraftRecommendations(stage.code, ids);
+  };
   const moveSelectedStage = (direction: -1 | 1) => {
     if (!selectedStage || selectedStageIndex < 0) return;
     const targetIndex = selectedStageIndex + direction;
@@ -600,6 +636,7 @@ function VisualWorkflowBuilder({
                   onMoveLater={() => moveSelectedStage(1)}
                   canMoveEarlier={draftEditable && selectedStageIndex > 0}
                   canMoveLater={draftEditable && selectedStageIndex >= 0 && selectedStageIndex < stages.length - 1}
+                  onMoveRecommendation={(recommendationIndex, direction) => moveRecommendation(selectedStage, recommendationIndex, direction)}
                 />
                 {draftEditable && stageAction ? (
                   <StageActionPanel
@@ -644,6 +681,7 @@ function StageInspector({
   onMoveLater,
   canMoveEarlier,
   canMoveLater,
+  onMoveRecommendation,
 }: {
   stage: WorkflowStage;
   draftEditable: boolean;
@@ -657,6 +695,7 @@ function StageInspector({
   onMoveLater: () => void;
   canMoveEarlier: boolean;
   canMoveLater: boolean;
+  onMoveRecommendation: (recommendationIndex: number, direction: -1 | 1) => void;
 }) {
   const recs = stage.recommended_activities || [];
   return (
@@ -688,7 +727,19 @@ function StageInspector({
         <div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-gray-900">Recommendations in this stage</h3><span className="text-xs text-gray-400">{recs.length} items</span></div>
         {recs.length === 0 ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">No recommendations configured for this stage.</p> : null}
         <div className="grid gap-3 md:grid-cols-2">
-          {recs.map((rec, index) => <RecommendationCanvasCard key={`${stage.code}-${rec.input_code || rec.input_name}-${index}`} recommendation={rec} index={index} />)}
+          {recs.map((rec, index) => (
+            <RecommendationCanvasCard
+              key={`${stage.code}-${rec.input_code || rec.input_name}-${index}`}
+              recommendation={rec}
+              index={index}
+              draftEditable={draftEditable}
+              busy={busyTarget === `DRAFT_REC_REORDER:${stage.code}`}
+              canMoveEarlier={draftEditable && index > 0 && Boolean(recommendationId(rec))}
+              canMoveLater={draftEditable && index < recs.length - 1 && Boolean(recommendationId(rec))}
+              onMoveEarlier={() => onMoveRecommendation(index, -1)}
+              onMoveLater={() => onMoveRecommendation(index, 1)}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -791,10 +842,39 @@ function StageActionPanel({
   );
 }
 
-function RecommendationCanvasCard({ recommendation, index }: { recommendation: WorkflowRecommendation; index: number }) {
+function RecommendationCanvasCard({
+  recommendation,
+  index,
+  draftEditable,
+  busy,
+  canMoveEarlier,
+  canMoveLater,
+  onMoveEarlier,
+  onMoveLater,
+}: {
+  recommendation: WorkflowRecommendation;
+  index: number;
+  draftEditable: boolean;
+  busy: boolean;
+  canMoveEarlier: boolean;
+  canMoveLater: boolean;
+  onMoveEarlier: () => void;
+  onMoveLater: () => void;
+}) {
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm">
-      <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-medium uppercase text-gray-400">Recommendation {index + 1}</p><h4 className="mt-1 font-semibold text-gray-900">{recommendation.input_name || recommendation.input_code || recommendation.activity_type}</h4></div>{recommendation.is_critical ? <span className="rounded bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700">Critical</span> : null}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div><p className="text-xs font-medium uppercase text-gray-400">Recommendation {index + 1}</p><h4 className="mt-1 font-semibold text-gray-900">{recommendation.input_name || recommendation.input_code || recommendation.activity_type}</h4></div>
+        <div className="flex flex-col items-end gap-2">
+          {recommendation.is_critical ? <span className="rounded bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700">Critical</span> : null}
+          {draftEditable ? (
+            <div className="flex gap-1">
+              <button type="button" disabled={busy || !canMoveEarlier} onClick={onMoveEarlier} className="rounded border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">Earlier</button>
+              <button type="button" disabled={busy || !canMoveLater} onClick={onMoveLater} className="rounded border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">Later</button>
+            </div>
+          ) : null}
+        </div>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge>{recommendation.activity_type}</Badge><Badge>D+{recommendation.day_offset}</Badge>{recommendation.input_code ? <Badge>{recommendation.input_code}</Badge> : null}</div>
       {recommendation.typical_quantity ? <p className="mt-3 text-xs text-gray-600">Qty: {recommendation.typical_quantity}</p> : null}
       {recommendation.typical_cost_per_acre ? <p className="mt-1 text-xs text-gray-600">Cost/acre: {recommendation.typical_cost_per_acre}</p> : null}
@@ -1503,7 +1583,7 @@ function RecommendationPreview({
   const [inputName, setInputName] = useState(rec.input_name || "");
   const [dayOffset, setDayOffset] = useState(String(rec.day_offset ?? 0));
   const [quantity, setQuantity] = useState(rec.typical_quantity || "");
-  const recommendationId = typeof rec.metadata?.recommendation_id === "string" ? rec.metadata.recommendation_id : null;
+  const recId = recommendationId(rec);
 
   useEffect(() => {
     setInputName(rec.input_name || "");
@@ -1512,7 +1592,7 @@ function RecommendationPreview({
   }, [rec.input_name, rec.day_offset, rec.typical_quantity]);
 
   const recBusy = busyTarget === `RECOMMENDATION:${targetCode}`;
-  const draftRecBusy = recommendationId ? busyTarget === `DRAFT_REC:${recommendationId}` : false;
+  const draftRecBusy = recId ? busyTarget === `DRAFT_REC:${recId}` : false;
 
   return (
     <tr>
@@ -1590,16 +1670,16 @@ function RecommendationPreview({
                 <>
                   <button
                     type="button"
-                    disabled={!recommendationId || draftRecBusy || !inputName.trim() || dayOffset === ""}
-                    onClick={() => recommendationId && onUpdateDraftRecommendation(recommendationId, { input_name: inputName.trim(), day_offset: Number(dayOffset), typical_quantity: quantity.trim() || null })}
+                    disabled={!recId || draftRecBusy || !inputName.trim() || dayOffset === ""}
+                    onClick={() => recId && onUpdateDraftRecommendation(recId, { input_name: inputName.trim(), day_offset: Number(dayOffset), typical_quantity: quantity.trim() || null })}
                     className="rounded border border-green-200 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
                   >
                     {draftRecBusy ? "Saving..." : "Save draft"}
                   </button>
                   <button
                     type="button"
-                    disabled={!recommendationId || draftRecBusy}
-                    onClick={() => recommendationId && onDeleteDraftRecommendation(recommendationId)}
+                    disabled={!recId || draftRecBusy}
+                    onClick={() => recId && onDeleteDraftRecommendation(recId)}
                     className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
                   >
                     {draftRecBusy ? "Saving..." : "Delete"}
