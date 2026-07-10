@@ -321,6 +321,146 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
 
 
 
+def _farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel):
+    parcel_cycles = cycles_by_parcel.get(parcel.id, [])
+    parcel_activities = activities_by_parcel.get(parcel.id, [])
+    return {
+        "id": str(parcel.id),
+        "project_id": str(parcel.project_id) if parcel.project_id else None,
+        "survey_number": parcel.survey_number,
+        "local_name": parcel.local_name,
+        "display_name": parcel.local_name or parcel.survey_number or str(parcel.id),
+        "reported_area": _decimal_text(parcel.reported_area),
+        "reported_area_unit": parcel.reported_area_unit,
+        "ownership_type": parcel.ownership_type,
+        "village_name": parcel.village_name_manual,
+        "current_crop_code": parcel.current_crop_code,
+        "geometry_source": parcel.geometry_source,
+        "centroid_lat": _decimal_text(parcel.centroid_lat),
+        "centroid_lng": _decimal_text(parcel.centroid_lng),
+        "computed_area_hectares": _decimal_text(parcel.computed_area_hectares),
+        "status": parcel.status,
+        "crop_cycle_count": len(parcel_cycles),
+        "active_cycle_count": sum(1 for cycle in parcel_cycles if cycle.status == "ACTIVE"),
+        "completed_cycle_count": sum(1 for cycle in parcel_cycles if cycle.status == "COMPLETED"),
+        "activity_count": len(parcel_activities),
+        "total_cost": _decimal_sum(total_cost_by_parcel.get(parcel.id, [])),
+    }
+
+
+def _farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle):
+    cycle_activities = activities_by_cycle.get(cycle.id, [])
+    return {
+        "id": str(cycle.id),
+        "parcel_id": str(cycle.parcel_id) if cycle.parcel_id else None,
+        "project_id": str(cycle.project_id) if cycle.project_id else None,
+        "crop_code": cycle.crop_code,
+        "season_code": cycle.season_code,
+        "status": cycle.status,
+        "lifecycle_template_id": str(cycle.lifecycle_template_id) if cycle.lifecycle_template_id else None,
+        "workflow_template_version_id": str(cycle.workflow_template_version_id) if cycle.workflow_template_version_id else None,
+        "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+        "expected_harvest_date": cycle.expected_harvest_date.isoformat() if cycle.expected_harvest_date else None,
+        "actual_harvest_date": cycle.actual_harvest_date.isoformat() if cycle.actual_harvest_date else None,
+        "activity_count": len(cycle_activities),
+        "total_cost": _decimal_sum(total_cost_by_cycle.get(cycle.id, [])),
+    }
+
+
+@router.get("/farmers/{farmer_id}/trace")
+def farmer_trace_report(
+    farmer_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    project = db.query(Project).filter(Project.id == farmer.project_id).first() if farmer.project_id else None
+    parcels = (
+        db.query(Parcel)
+        .filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id)
+        .order_by(Parcel.created_at.asc())
+        .all()
+    )
+    cycles = (
+        db.query(CropCycle)
+        .filter(CropCycle.tenant_id == x_tenant_id, CropCycle.farmer_id == farmer.id)
+        .order_by(CropCycle.created_at.asc())
+        .all()
+    )
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.farmer_id == farmer.id)
+        .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
+        .all()
+    )
+    activities = [_activity_trace_row(activity, cycle, stage, row_farmer, parcel) for activity, cycle, stage, row_farmer, parcel in activity_rows_raw]
+
+    cycles_by_parcel = defaultdict(list)
+    activities_by_parcel = defaultdict(list)
+    activities_by_cycle = defaultdict(list)
+    total_cost_by_parcel = defaultdict(list)
+    total_cost_by_cycle = defaultdict(list)
+    variance_count = 0
+    for cycle in cycles:
+        cycles_by_parcel[cycle.parcel_id].append(cycle)
+    for row in activities:
+        parcel_key = uuid.UUID(row["parcel_id"]) if row.get("parcel_id") else None
+        cycle_key = uuid.UUID(row["crop_cycle_id"]) if row.get("crop_cycle_id") else None
+        if parcel_key:
+            activities_by_parcel[parcel_key].append(row)
+            total_cost_by_parcel[parcel_key].append(row.get("cost_amount"))
+        if cycle_key:
+            activities_by_cycle[cycle_key].append(row)
+            total_cost_by_cycle[cycle_key].append(row.get("cost_amount"))
+        if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None:
+            if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
+                variance_count += 1
+
+    return {
+        "schema_version": "farmer_trace.v1",
+        "tenant_id": x_tenant_id,
+        "farmer": {
+            "id": str(farmer.id),
+            "project_id": str(farmer.project_id) if farmer.project_id else None,
+            "user_id": str(farmer.user_id) if farmer.user_id else None,
+            "mobile_number": farmer.mobile_number,
+            "display_name": farmer.display_name,
+            "father_name": farmer.father_name,
+            "village_name": farmer.village_name_manual,
+            "primary_crop_code": farmer.primary_crop_code,
+            "status": farmer.status,
+            "created_at": farmer.created_at.isoformat() if farmer.created_at else None,
+            "updated_at": farmer.updated_at.isoformat() if farmer.updated_at else None,
+        },
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+        } if project else None,
+        "summary": {
+            "parcel_count": len(parcels),
+            "crop_cycle_count": len(cycles),
+            "active_cycle_count": sum(1 for cycle in cycles if cycle.status == "ACTIVE"),
+            "completed_cycle_count": sum(1 for cycle in cycles if cycle.status == "COMPLETED"),
+            "activity_count": len(activities),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
+            "variance_count": variance_count,
+        },
+        "parcels": [_farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel) for parcel in parcels],
+        "crop_cycles": [_farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle) for cycle in cycles],
+        "activities": activities[:250],
+    }
+
+
+
 
 
 @router.get("/projects/{project_id}/input-compliance")
