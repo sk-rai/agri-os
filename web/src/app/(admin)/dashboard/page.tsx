@@ -314,7 +314,7 @@ function SyncHealthPanel({ data, loading }: { data: SyncMaterializationHealthRes
           <h2 className="text-base font-semibold text-gray-900">Sync & materialization health</h2>
           <p className="text-sm text-gray-500">Accepted mobile events compared with operational farmer, parcel, and geometry rows.</p>
         </div>
-        <Link href="/conflicts" className="text-sm font-medium text-blue-700 hover:underline">Open conflicts</Link>
+        <div className="flex gap-3"><Link href="/sync-health" className="text-sm font-medium text-blue-700 hover:underline">Open sync health</Link><Link href="/conflicts" className="text-sm font-medium text-blue-700 hover:underline">Conflicts</Link></div>
       </div>
       {loading && !data ? <p className="mt-4 text-sm text-gray-500">Loading sync health...</p> : null}
       {summary ? (

@@ -15,6 +15,7 @@ const navItems = [
   { href: "/project-inputs", label: "Project Inputs", icon: "🎛️" },
   { href: "/activity-usage", label: "Activity Usage", icon: "📈" },
   { href: "/lookup", label: "Lookup", icon: "Search" },
+  { href: "/sync-health", label: "Sync Health", icon: "Pulse" },
   { href: "/conflicts", label: "Conflicts", icon: "⚠️" },
 ];
 
