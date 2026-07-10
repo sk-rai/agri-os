@@ -22,6 +22,7 @@ import {
 
 type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
 type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION";
+type StageActionMode = "CREATE" | "DUPLICATE";
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -494,6 +495,7 @@ function VisualWorkflowBuilder({
   onDuplicateDraftStage: (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => void;
 }) {
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
+  const [stageAction, setStageAction] = useState<StageActionMode | null>(null);
   const totalDuration = stages.reduce((sum, stage) => sum + (stage.duration_days || 0), 0);
   const maxRecommendations = Math.max(1, ...stages.map((stage) => stage.recommended_activities?.length || 0));
 
@@ -556,46 +558,35 @@ function VisualWorkflowBuilder({
             </div>
 
             {selectedStage ? (
-              <StageInspector
-                stage={selectedStage}
-                draftEditable={draftEditable}
-                busyTarget={busyTarget}
-                onEditStage={() => scrollToStageEditor(selectedStage.code, "stage")}
-                onAddRecommendation={() => scrollToStageEditor(selectedStage.code, "recommendation")}
-                onCreateStageAfter={() => {
-                  const defaultCode = normalizeStageCode(`${selectedStage.code}_NEXT`);
-                  const code = window.prompt("New stage code", defaultCode);
-                  if (!code) return;
-                  const normalizedCode = normalizeStageCode(code);
-                  if (!normalizedCode) return;
-                  const name = window.prompt("Stage display name", "New stage");
-                  if (!name) return;
-                  const durationInput = window.prompt("Duration in days", "1") || "1";
-                  const duration = Number.parseInt(durationInput, 10);
-                  onCreateDraftStage(selectedStage.code, {
-                    after_stage_code: selectedStage.code,
-                    stage_code: normalizedCode,
-                    stage_name: { en: name },
-                    duration_days: Number.isFinite(duration) ? Math.max(0, duration) : 1,
-                    stage_type: selectedStage.stage_type || undefined,
-                    phase: selectedStage.phase || undefined,
-                  });
-                }}
-                onDuplicateStage={() => {
-                  const defaultCode = normalizeStageCode(`${selectedStage.code}_COPY`);
-                  const code = window.prompt("Duplicate stage code", defaultCode);
-                  if (!code) return;
-                  const normalizedCode = normalizeStageCode(code);
-                  if (!normalizedCode) return;
-                  const defaultName = `${labelText(selectedStage.name) || selectedStage.code} Copy`;
-                  const name = window.prompt("Duplicate stage display name", defaultName);
-                  onDuplicateDraftStage(selectedStage.code, {
-                    after_stage_code: selectedStage.code,
-                    stage_code: normalizedCode,
-                    stage_name: name ? { en: name } : undefined,
-                  });
-                }}
-              />
+              <div className="space-y-4">
+                <StageInspector
+                  stage={selectedStage}
+                  draftEditable={draftEditable}
+                  busyTarget={busyTarget}
+                  activeStageAction={stageAction}
+                  onEditStage={() => scrollToStageEditor(selectedStage.code, "stage")}
+                  onAddRecommendation={() => scrollToStageEditor(selectedStage.code, "recommendation")}
+                  onCreateStageAfter={() => setStageAction(stageAction === "CREATE" ? null : "CREATE")}
+                  onDuplicateStage={() => setStageAction(stageAction === "DUPLICATE" ? null : "DUPLICATE")}
+                />
+                {draftEditable && stageAction ? (
+                  <StageActionPanel
+                    key={`${selectedStage.code}-${stageAction}`}
+                    mode={stageAction}
+                    stage={selectedStage}
+                    busy={Boolean(busyTarget)}
+                    onCancel={() => setStageAction(null)}
+                    onSubmit={(payload) => {
+                      if (stageAction === "CREATE") {
+                        onCreateDraftStage(selectedStage.code, payload as WorkflowDraftStageCreateRequest);
+                      } else {
+                        onDuplicateDraftStage(selectedStage.code, payload as WorkflowDraftStageDuplicateRequest);
+                      }
+                      setStageAction(null);
+                    }}
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
         )}
@@ -612,6 +603,7 @@ function StageInspector({
   stage,
   draftEditable,
   busyTarget,
+  activeStageAction,
   onEditStage,
   onAddRecommendation,
   onCreateStageAfter,
@@ -620,6 +612,7 @@ function StageInspector({
   stage: WorkflowStage;
   draftEditable: boolean;
   busyTarget: string | null;
+  activeStageAction: StageActionMode | null;
   onEditStage: () => void;
   onAddRecommendation: () => void;
   onCreateStageAfter: () => void;
@@ -642,8 +635,8 @@ function StageInspector({
           <button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Add recommendation</button>
           {draftEditable ? (
             <>
-              <button type="button" disabled={Boolean(busyTarget)} onClick={onCreateStageAfter} className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60">Add stage after</button>
-              <button type="button" disabled={Boolean(busyTarget)} onClick={onDuplicateStage} className="rounded border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-wait disabled:opacity-60">Duplicate stage</button>
+              <button type="button" disabled={Boolean(busyTarget)} onClick={onCreateStageAfter} className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${activeStageAction === "CREATE" ? "border-blue-500 bg-blue-50 text-blue-800" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}>Add stage after</button>
+              <button type="button" disabled={Boolean(busyTarget)} onClick={onDuplicateStage} className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${activeStageAction === "DUPLICATE" ? "border-purple-500 bg-purple-50 text-purple-800" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}>Duplicate stage</button>
             </>
           ) : null}
         </div><p className="mt-3 text-xs text-gray-500">Double-click any stage card or use these shortcuts to jump to the detailed editor below.</p>
@@ -657,6 +650,102 @@ function StageInspector({
         </div>
       </div>
     </div>
+  );
+}
+
+function StageActionPanel({
+  mode,
+  stage,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  mode: StageActionMode;
+  stage: WorkflowStage;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: WorkflowDraftStageCreateRequest | WorkflowDraftStageDuplicateRequest) => void;
+}) {
+  const isDuplicate = mode === "DUPLICATE";
+  const stageName = labelText(stage.name) || stage.code;
+  const defaultCode = normalizeStageCode(`${stage.code}_${isDuplicate ? "COPY" : "NEXT"}`);
+  const [stageCode, setStageCode] = useState(defaultCode);
+  const [name, setName] = useState(isDuplicate ? `${stageName} Copy` : "New stage");
+  const [durationDays, setDurationDays] = useState(String(Math.max(1, stage.duration_days || 1)));
+  const [phase, setPhase] = useState(stage.phase || "");
+  const [stageType, setStageType] = useState(stage.stage_type || "");
+  const normalizedCode = normalizeStageCode(stageCode);
+  const duration = Number.parseInt(durationDays, 10);
+  const canSubmit = Boolean(normalizedCode && name.trim()) && (isDuplicate || (Number.isFinite(duration) && duration >= 0));
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!canSubmit || busy) return;
+        if (isDuplicate) {
+          onSubmit({
+            after_stage_code: stage.code,
+            stage_code: normalizedCode,
+            stage_name: { en: name.trim() },
+          });
+        } else {
+          onSubmit({
+            after_stage_code: stage.code,
+            stage_code: normalizedCode,
+            stage_name: { en: name.trim() },
+            duration_days: duration,
+            phase: phase.trim() || undefined,
+            stage_type: stageType.trim() || undefined,
+          });
+        }
+      }}
+      className={`rounded-lg border p-4 shadow-sm ${isDuplicate ? "border-purple-200 bg-purple-50/60" : "border-blue-200 bg-blue-50/60"}`}
+    >
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900">{isDuplicate ? "Duplicate stage" : "Add stage after selected"}</h3>
+          <p className="mt-1 text-sm text-gray-600">
+            {isDuplicate ? "Copies the selected stage and its recommendations into this draft." : `Creates a new stage immediately after ${stage.code}.`}
+          </p>
+        </div>
+        <Badge>After {stage.code}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <label className="text-sm lg:col-span-1">
+          <span className="text-xs font-medium uppercase text-gray-500">Stage code</span>
+          <input value={stageCode} onChange={(event) => setStageCode(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 font-mono text-sm" placeholder="CUSTOM_STAGE" />
+          {stageCode !== normalizedCode ? <span className="mt-1 block text-[11px] text-gray-500">Will save as {normalizedCode || "?"}</span> : null}
+        </label>
+        <label className="text-sm lg:col-span-2">
+          <span className="text-xs font-medium uppercase text-gray-500">Display name</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 text-sm" placeholder="Stage name" />
+        </label>
+        {!isDuplicate ? (
+          <>
+            <label className="text-sm">
+              <span className="text-xs font-medium uppercase text-gray-500">Duration</span>
+              <input type="number" min={0} value={durationDays} onChange={(event) => setDurationDays(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label className="text-sm">
+              <span className="text-xs font-medium uppercase text-gray-500">Stage type</span>
+              <input value={stageType} onChange={(event) => setStageType(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 text-sm" placeholder="CUSTOM" />
+            </label>
+            <label className="text-sm lg:col-span-2">
+              <span className="text-xs font-medium uppercase text-gray-500">Phase</span>
+              <input value={phase} onChange={(event) => setPhase(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 text-sm" placeholder="VEGETATIVE" />
+            </label>
+          </>
+        ) : null}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button type="submit" disabled={!canSubmit || busy} className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60">
+          {busy ? "Saving..." : isDuplicate ? "Duplicate stage" : "Create stage"}
+        </button>
+        <button type="button" disabled={busy} onClick={onCancel} className="rounded border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white disabled:cursor-wait disabled:opacity-60">Cancel</button>
+        {!canSubmit ? <span className="text-xs text-red-600">Stage code and name are required; duration must be 0 or more.</span> : null}
+      </div>
+    </form>
   );
 }
 
