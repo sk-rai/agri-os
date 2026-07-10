@@ -322,6 +322,140 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
 
 
 
+
+@router.get("/projects/{project_id}/input-compliance")
+def project_input_compliance_report(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
+        .all()
+    )
+    activities = [_activity_trace_row(activity, cycle, stage, farmer, parcel) for activity, cycle, stage, farmer, parcel in activity_rows_raw]
+
+    approvals = (
+        db.query(ProjectProductApproval, AgriculturalProduct)
+        .join(AgriculturalProduct, AgriculturalProduct.id == ProjectProductApproval.product_id)
+        .filter(ProjectProductApproval.tenant_id == x_tenant_id, ProjectProductApproval.project_id == project.id)
+        .all()
+    )
+    approved_product_codes = {product.code for approval, product in approvals if approval.enabled}
+    preferred_product_codes = {product.code for approval, product in approvals if approval.enabled and approval.preferred}
+
+    quantity_by_input = defaultdict(Decimal)
+    quantity_by_product = defaultdict(Decimal)
+    quantity_by_crop_stage = defaultdict(Decimal)
+    activity_count_by_crop_stage = defaultdict(int)
+    variance_reasons = defaultdict(int)
+    total_cost_values = []
+    linked_count = 0
+    custom_count = 0
+    product_approved_count = 0
+    product_unapproved_count = 0
+    product_preferred_count = 0
+    product_missing_count = 0
+    variance_count = 0
+
+    for row in activities:
+        total_cost_values.append(row.get("cost_amount"))
+        if row.get("input_rule_id"):
+            linked_count += 1
+        else:
+            custom_count += 1
+
+        product_code = row.get("product_code")
+        if product_code:
+            if product_code in approved_product_codes:
+                product_approved_count += 1
+            else:
+                product_unapproved_count += 1
+            if product_code in preferred_product_codes:
+                product_preferred_count += 1
+        elif row.get("input_code"):
+            product_missing_count += 1
+
+        if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None:
+            if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
+                variance_count += 1
+                variance_reasons[row.get("dosage_variance_reason") or "UNSPECIFIED"] += 1
+
+        quantity_value = row.get("actual_quantity") or row.get("quantity")
+        unit = row.get("actual_quantity_unit") or row.get("quantity_unit") or "UNKNOWN"
+        if quantity_value is not None:
+            if row.get("input_code"):
+                quantity_by_input[(row["input_code"], unit)] += Decimal(str(quantity_value))
+            if row.get("product_code"):
+                quantity_by_product[(row["product_code"], row.get("package_sku") or "", unit)] += Decimal(str(quantity_value))
+            crop_stage_key = (row.get("crop_code") or "UNKNOWN", row.get("stage_code") or "UNSTAGED", unit)
+            quantity_by_crop_stage[crop_stage_key] += Decimal(str(quantity_value))
+        activity_count_by_crop_stage[(row.get("crop_code") or "UNKNOWN", row.get("stage_code") or "UNSTAGED")] += 1
+
+    activity_count = len(activities)
+    linked_rate = str((Decimal(linked_count) / Decimal(activity_count) * Decimal("100")).quantize(Decimal("0.01"))) if activity_count else "0.00"
+    variance_rate = str((Decimal(variance_count) / Decimal(activity_count) * Decimal("100")).quantize(Decimal("0.01"))) if activity_count else "0.00"
+    approval_rate = str((Decimal(product_approved_count) / Decimal(product_approved_count + product_unapproved_count) * Decimal("100")).quantize(Decimal("0.01"))) if (product_approved_count + product_unapproved_count) else "0.00"
+
+    return {
+        "schema_version": "project_input_compliance.v1",
+        "tenant_id": x_tenant_id,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+            "start_date": project.start_date.isoformat() if project.start_date else None,
+            "end_date": project.end_date.isoformat() if project.end_date else None,
+            "crop_scope": project.crop_scope or [],
+        },
+        "summary": {
+            "activity_count": activity_count,
+            "total_cost": _decimal_sum(total_cost_values),
+            "recommendation_linked_count": linked_count,
+            "custom_activity_count": custom_count,
+            "recommendation_linked_rate_percent": linked_rate,
+            "variance_count": variance_count,
+            "variance_rate_percent": variance_rate,
+            "product_approved_count": product_approved_count,
+            "product_unapproved_count": product_unapproved_count,
+            "product_preferred_count": product_preferred_count,
+            "product_missing_count": product_missing_count,
+            "product_approval_rate_percent": approval_rate,
+        },
+        "quantity_by_input": [
+            {"input_code": key[0], "unit": key[1], "quantity": str(value)}
+            for key, value in sorted(quantity_by_input.items())
+        ],
+        "quantity_by_product": [
+            {"product_code": key[0], "package_sku": key[1] or None, "unit": key[2], "quantity": str(value)}
+            for key, value in sorted(quantity_by_product.items())
+        ],
+        "quantity_by_crop_stage": [
+            {"crop_code": key[0], "stage_code": key[1], "unit": key[2], "quantity": str(value)}
+            for key, value in sorted(quantity_by_crop_stage.items())
+        ],
+        "activity_count_by_crop_stage": [
+            {"crop_code": key[0], "stage_code": key[1], "activity_count": value}
+            for key, value in sorted(activity_count_by_crop_stage.items())
+        ],
+        "top_variance_reasons": [
+            {"reason": key, "count": value}
+            for key, value in sorted(variance_reasons.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ],
+        "activities": activities[:250],
+    }
+
 @router.get("/products/{product_code}/trace")
 def product_trace_report(
     product_code: str,

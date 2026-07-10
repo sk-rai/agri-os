@@ -157,6 +157,31 @@ export interface ActivityUsageReportResponse {
   activities: ActivityUsageRow[];
 }
 
+export interface ProjectInputComplianceResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: { id: string; name: string; status: string; start_date?: string | null; end_date?: string | null; crop_scope: string[] };
+  summary: {
+    activity_count: number;
+    total_cost: string;
+    recommendation_linked_count: number;
+    custom_activity_count: number;
+    recommendation_linked_rate_percent: string;
+    variance_count: number;
+    variance_rate_percent: string;
+    product_approved_count: number;
+    product_unapproved_count: number;
+    product_preferred_count: number;
+    product_missing_count: number;
+    product_approval_rate_percent: string;
+  };
+  quantity_by_input: Array<{ input_code: string; unit: string; quantity: string }>;
+  quantity_by_product: Array<{ product_code: string; package_sku?: string | null; unit: string; quantity: string }>;
+  quantity_by_crop_stage: Array<{ crop_code: string; stage_code: string; unit: string; quantity: string }>;
+  activity_count_by_crop_stage: Array<{ crop_code: string; stage_code: string; activity_count: number }>;
+  top_variance_reasons: Array<{ reason: string; count: number }>;
+  activities: ActivityUsageRow[];
+}
 export interface ProductTraceResponse {
   schema_version: string;
   tenant_id: string;
@@ -255,6 +280,7 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
 }
 
 export const reportsApi = {
+  projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
   productTrace: (productCode: string) => api<ProductTraceResponse>(`/api/v1/reports/products/${encodeURIComponent(productCode)}/trace`),
   inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),

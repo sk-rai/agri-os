@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { projectsApi, type Project } from "@/lib/api";
 
@@ -101,9 +102,12 @@ export default function ProjectsPage() {
                     </div>
                   )}
                 </div>
-                <span className={`px-2 py-1 rounded text-xs ${statusColor[p.status] || "bg-gray-100"}`}>
-                  {p.status}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-2 py-1 rounded text-xs ${statusColor[p.status] || "bg-gray-100"}`}>
+                    {p.status}
+                  </span>
+                  <Link href={`/project-compliance/${p.id}`} className="text-xs text-blue-600 hover:underline">Compliance</Link>
+                </div>
               </div>
             </div>
           ))}
