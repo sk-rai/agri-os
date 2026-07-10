@@ -330,6 +330,7 @@ export interface AdminLookupProject {
   end_date?: string | null;
   crop_cycle_count: number;
   trace_url: string;
+  compliance_url?: string | null;
 }
 export interface AdminLookupFarmer {
   id: string;
@@ -371,6 +372,32 @@ export interface AdminLookupResponse {
   farmers: AdminLookupFarmer[];
   parcels: AdminLookupParcel[];
 }
+export interface ProjectTraceResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: { id: string; name: string; status?: string | null; start_date?: string | null; end_date?: string | null; crop_scope: string[] };
+  summary: {
+    farmer_count: number;
+    parcel_count: number;
+    crop_cycle_count: number;
+    active_cycle_count: number;
+    completed_cycle_count: number;
+    activity_count: number;
+    total_cost: string;
+    variance_count: number;
+    geometry_captured_count: number;
+    geometry_missing_count: number;
+  };
+  crop_distribution: Array<{ crop_code: string; crop_cycle_count: number }>;
+  cycle_status_distribution: Array<{ status: string; crop_cycle_count: number }>;
+  geometry_coverage: Array<{ geometry_source: string; parcel_count: number }>;
+  activity_count_by_type: Array<{ activity_type: string; activity_count: number }>;
+  activity_count_by_crop_stage: Array<{ crop_code: string; stage_code: string; activity_count: number }>;
+  farmers: Array<AdminLookupFarmer & { parcel_count: number }>;
+  parcels: AdminLookupParcel[];
+  crop_cycles: FarmerTraceCycle[];
+  activities: ActivityUsageRow[];
+}
 export interface ActivityUsageFilterOption {
   id?: string;
   code?: string;
@@ -411,6 +438,7 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
 
 export const reportsApi = {
   projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
+  projectTrace: (projectId: string, limit = 25) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace?limit=${limit}`),
   productTrace: (productCode: string) => api<ProductTraceResponse>(`/api/v1/reports/products/${encodeURIComponent(productCode)}/trace`),
   inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),

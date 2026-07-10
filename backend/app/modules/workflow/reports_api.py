@@ -564,6 +564,162 @@ def farmer_trace_report(
 
 
 
+
+@router.get("/projects/{project_id}/trace")
+def project_trace_report(
+    project_id: uuid.UUID,
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    farmers = (
+        db.query(Farmer)
+        .filter(Farmer.tenant_id == x_tenant_id, Farmer.project_id == project.id)
+        .order_by(Farmer.updated_at.desc())
+        .all()
+    )
+    parcels = (
+        db.query(Parcel)
+        .filter(Parcel.tenant_id == x_tenant_id, Parcel.project_id == project.id)
+        .order_by(Parcel.updated_at.desc())
+        .all()
+    )
+    cycles = (
+        db.query(CropCycle)
+        .filter(CropCycle.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        .order_by(CropCycle.updated_at.desc())
+        .all()
+    )
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        .order_by(CropActivity.activity_date.desc(), CropActivity.created_at.desc())
+        .all()
+    )
+    activities = [_activity_trace_row(activity, cycle, stage, farmer, parcel) for activity, cycle, stage, farmer, parcel in activity_rows_raw]
+
+    parcels_by_farmer = defaultdict(int)
+    cycles_by_farmer = defaultdict(int)
+    activities_by_farmer = defaultdict(int)
+    activities_by_cycle = defaultdict(list)
+    total_cost_by_cycle = defaultdict(list)
+    crop_distribution = defaultdict(int)
+    cycle_status_distribution = defaultdict(int)
+    geometry_coverage = defaultdict(int)
+    activity_count_by_type = defaultdict(int)
+    activity_count_by_crop_stage = defaultdict(int)
+    variance_count = 0
+
+    for parcel in parcels:
+        parcels_by_farmer[parcel.farmer_id] += 1
+        geometry_coverage[parcel.geometry_source or "NONE"] += 1
+    for cycle in cycles:
+        cycles_by_farmer[cycle.farmer_id] += 1
+        crop_distribution[cycle.crop_code or "UNKNOWN"] += 1
+        cycle_status_distribution[cycle.status or "UNKNOWN"] += 1
+    for row in activities:
+        farmer_key = uuid.UUID(row["farmer_id"]) if row.get("farmer_id") else None
+        cycle_key = uuid.UUID(row["crop_cycle_id"]) if row.get("crop_cycle_id") else None
+        if farmer_key:
+            activities_by_farmer[farmer_key] += 1
+        if cycle_key:
+            activities_by_cycle[cycle_key].append(row)
+            total_cost_by_cycle[cycle_key].append(row.get("cost_amount"))
+        activity_count_by_type[row.get("activity_type") or "UNKNOWN"] += 1
+        activity_count_by_crop_stage[(row.get("crop_code") or "UNKNOWN", row.get("stage_code") or "UNSTAGED")] += 1
+        if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None:
+            if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
+                variance_count += 1
+
+    return {
+        "schema_version": "project_trace.v1",
+        "tenant_id": x_tenant_id,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+            "start_date": project.start_date.isoformat() if project.start_date else None,
+            "end_date": project.end_date.isoformat() if project.end_date else None,
+            "crop_scope": project.crop_scope or [],
+        },
+        "summary": {
+            "farmer_count": len(farmers),
+            "parcel_count": len(parcels),
+            "crop_cycle_count": len(cycles),
+            "active_cycle_count": sum(1 for cycle in cycles if cycle.status == "ACTIVE"),
+            "completed_cycle_count": sum(1 for cycle in cycles if cycle.status == "COMPLETED"),
+            "activity_count": len(activities),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
+            "variance_count": variance_count,
+            "geometry_captured_count": sum(1 for parcel in parcels if parcel.geometry_source and parcel.geometry_source != "NONE"),
+            "geometry_missing_count": sum(1 for parcel in parcels if not parcel.geometry_source or parcel.geometry_source == "NONE"),
+        },
+        "crop_distribution": [
+            {"crop_code": key, "crop_cycle_count": value}
+            for key, value in sorted(crop_distribution.items())
+        ],
+        "cycle_status_distribution": [
+            {"status": key, "crop_cycle_count": value}
+            for key, value in sorted(cycle_status_distribution.items())
+        ],
+        "geometry_coverage": [
+            {"geometry_source": key, "parcel_count": value}
+            for key, value in sorted(geometry_coverage.items())
+        ],
+        "activity_count_by_type": [
+            {"activity_type": key, "activity_count": value}
+            for key, value in sorted(activity_count_by_type.items())
+        ],
+        "activity_count_by_crop_stage": [
+            {"crop_code": key[0], "stage_code": key[1], "activity_count": value}
+            for key, value in sorted(activity_count_by_crop_stage.items())
+        ],
+        "farmers": [
+            {
+                "id": str(farmer.id),
+                "label": farmer.display_name or farmer.mobile_number or str(farmer.id),
+                "display_name": farmer.display_name,
+                "mobile_number": farmer.mobile_number,
+                "village_name": farmer.village_name_manual,
+                "primary_crop_code": farmer.primary_crop_code,
+                "status": farmer.status,
+                "parcel_count": parcels_by_farmer.get(farmer.id, 0),
+                "crop_cycle_count": cycles_by_farmer.get(farmer.id, 0),
+                "activity_count": activities_by_farmer.get(farmer.id, 0),
+                "trace_url": f"/farmer-trace/{farmer.id}",
+            }
+            for farmer in farmers[:limit]
+        ],
+        "parcels": [
+            {
+                "id": str(parcel.id),
+                "label": parcel.local_name or parcel.survey_number or str(parcel.id),
+                "survey_number": parcel.survey_number,
+                "local_name": parcel.local_name,
+                "farmer_id": str(parcel.farmer_id),
+                "reported_area": _decimal_text(parcel.reported_area),
+                "reported_area_unit": parcel.reported_area_unit,
+                "ownership_type": parcel.ownership_type,
+                "village_name": parcel.village_name_manual,
+                "geometry_source": parcel.geometry_source,
+                "status": parcel.status,
+                "trace_url": f"/parcel-trace/{parcel.id}",
+            }
+            for parcel in parcels[:limit]
+        ],
+        "crop_cycles": [_farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle) for cycle in cycles[:limit]],
+        "activities": activities[:limit],
+    }
+
 @router.get("/projects/{project_id}/input-compliance")
 def project_input_compliance_report(
     project_id: uuid.UUID,
@@ -1197,7 +1353,8 @@ def admin_lookup_report(
                 "start_date": project.start_date.isoformat() if project.start_date else None,
                 "end_date": project.end_date.isoformat() if project.end_date else None,
                 "crop_cycle_count": cycle_count_by_project.get(project.id, 0),
-                "trace_url": f"/project-compliance/{project.id}",
+                "trace_url": f"/project-trace/{project.id}",
+                "compliance_url": f"/project-compliance/{project.id}",
             }
             for project in projects
         ],

@@ -74,7 +74,7 @@ export default function AdminLookupPage() {
               <td className="p-3">{project.crop_scope?.join(", ") || "-"}</td>
               <td className="p-3"><div>{project.start_date || "-"}</div><div className="text-xs text-gray-500">{project.end_date || "-"}</div></td>
               <td className="p-3">{project.crop_cycle_count}</td>
-              <td className="p-3"><Link href={project.trace_url} className="text-blue-600">Project report</Link></td>
+              <td className="p-3"><div className="flex flex-col gap-1"><Link href={project.trace_url} className="text-blue-600">Project trace</Link>{project.compliance_url && <Link href={project.compliance_url} className="text-xs text-blue-600">Compliance</Link>}</div></td>
             </tr>)}
             {!loading && result?.projects.length === 0 && <Empty colSpan={6} label="No projects found." />}
           </tbody>
