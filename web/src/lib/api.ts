@@ -981,6 +981,10 @@ export interface WorkflowDraftStageDuplicateRequest {
   stage_name?: Record<string, string> | null;
 }
 
+export interface WorkflowDraftStageReorderRequest {
+  stage_codes: string[];
+}
+
 export interface WorkflowDraftRecommendationRequest {
   day_offset?: number;
   input_source?: "CATALOG" | "CUSTOM";
@@ -1207,6 +1211,11 @@ export const workflowCatalogApi = {
   duplicateDraftStage: (versionId: string, stageCode: string, data: WorkflowDraftStageDuplicateRequest = {}) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${encodeURIComponent(stageCode)}/duplicate`, {
       method: "POST",
+      body: data,
+    }),
+  reorderDraftStages: (versionId: string, data: WorkflowDraftStageReorderRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/reorder`, {
+      method: "PATCH",
       body: data,
     }),
   createDraftRecommendation: (versionId: string, stageCode: string, data: WorkflowDraftRecommendationRequest) =>

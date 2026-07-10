@@ -257,6 +257,21 @@ export default function WorkflowPreviewPage() {
     }
   };
 
+  const reorderDraftStages = async (stageCodes: string[]) => {
+    if (!preview) return;
+    setBusyTarget("DRAFT_STAGE:REORDER");
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.reorderDraftStages(preview.workflow_template_version_id, { stage_codes: stageCodes });
+      setPreview(updated);
+      setDraftValidation(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reorder draft stages");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
   const updateDraftRecommendation = async (recommendationId: string, data: WorkflowDraftRecommendationRequest) => {
     if (!preview) return;
     setBusyTarget(`DRAFT_REC:${recommendationId}`);
@@ -410,6 +425,7 @@ export default function WorkflowPreviewPage() {
         busyTarget={busyTarget}
         onCreateDraftStage={createDraftStage}
         onDuplicateDraftStage={duplicateDraftStage}
+        onReorderDraftStages={reorderDraftStages}
       />
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -484,6 +500,7 @@ function VisualWorkflowBuilder({
   busyTarget,
   onCreateDraftStage,
   onDuplicateDraftStage,
+  onReorderDraftStages,
 }: {
   stages: WorkflowStage[];
   selectedStageCode: string | null;
@@ -493,10 +510,21 @@ function VisualWorkflowBuilder({
   busyTarget: string | null;
   onCreateDraftStage: (afterStageCode: string, data: WorkflowDraftStageCreateRequest) => void;
   onDuplicateDraftStage: (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => void;
+  onReorderDraftStages: (stageCodes: string[]) => void;
 }) {
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
+  const selectedStageIndex = selectedStage ? stages.findIndex((stage) => stage.code === selectedStage.code) : -1;
   const [stageAction, setStageAction] = useState<StageActionMode | null>(null);
   const totalDuration = stages.reduce((sum, stage) => sum + (stage.duration_days || 0), 0);
+  const moveSelectedStage = (direction: -1 | 1) => {
+    if (!selectedStage || selectedStageIndex < 0) return;
+    const targetIndex = selectedStageIndex + direction;
+    if (targetIndex < 0 || targetIndex >= stages.length) return;
+    const nextStages = [...stages];
+    const [moved] = nextStages.splice(selectedStageIndex, 1);
+    nextStages.splice(targetIndex, 0, moved);
+    onReorderDraftStages(nextStages.map((stage) => stage.code));
+  };
   const maxRecommendations = Math.max(1, ...stages.map((stage) => stage.recommended_activities?.length || 0));
 
   return (
@@ -568,6 +596,10 @@ function VisualWorkflowBuilder({
                   onAddRecommendation={() => scrollToStageEditor(selectedStage.code, "recommendation")}
                   onCreateStageAfter={() => setStageAction(stageAction === "CREATE" ? null : "CREATE")}
                   onDuplicateStage={() => setStageAction(stageAction === "DUPLICATE" ? null : "DUPLICATE")}
+                  onMoveEarlier={() => moveSelectedStage(-1)}
+                  onMoveLater={() => moveSelectedStage(1)}
+                  canMoveEarlier={draftEditable && selectedStageIndex > 0}
+                  canMoveLater={draftEditable && selectedStageIndex >= 0 && selectedStageIndex < stages.length - 1}
                 />
                 {draftEditable && stageAction ? (
                   <StageActionPanel
@@ -608,6 +640,10 @@ function StageInspector({
   onAddRecommendation,
   onCreateStageAfter,
   onDuplicateStage,
+  onMoveEarlier,
+  onMoveLater,
+  canMoveEarlier,
+  canMoveLater,
 }: {
   stage: WorkflowStage;
   draftEditable: boolean;
@@ -617,6 +653,10 @@ function StageInspector({
   onAddRecommendation: () => void;
   onCreateStageAfter: () => void;
   onDuplicateStage: () => void;
+  onMoveEarlier: () => void;
+  onMoveLater: () => void;
+  canMoveEarlier: boolean;
+  canMoveLater: boolean;
 }) {
   const recs = stage.recommended_activities || [];
   return (
@@ -637,6 +677,8 @@ function StageInspector({
             <>
               <button type="button" disabled={Boolean(busyTarget)} onClick={onCreateStageAfter} className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${activeStageAction === "CREATE" ? "border-blue-500 bg-blue-50 text-blue-800" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}>Add stage after</button>
               <button type="button" disabled={Boolean(busyTarget)} onClick={onDuplicateStage} className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${activeStageAction === "DUPLICATE" ? "border-purple-500 bg-purple-50 text-purple-800" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}>Duplicate stage</button>
+              <button type="button" disabled={Boolean(busyTarget) || !canMoveEarlier} onClick={onMoveEarlier} className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">Move earlier</button>
+              <button type="button" disabled={Boolean(busyTarget) || !canMoveLater} onClick={onMoveLater} className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">Move later</button>
             </>
           ) : null}
         </div><p className="mt-3 text-xs text-gray-500">Double-click any stage card or use these shortcuts to jump to the detailed editor below.</p>

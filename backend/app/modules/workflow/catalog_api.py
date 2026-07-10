@@ -150,6 +150,10 @@ class WorkflowDraftStageDuplicate(BaseModel):
     stage_name: Optional[dict[str, str]] = None
 
 
+class WorkflowDraftStageReorder(BaseModel):
+    stage_codes: list[str]
+
+
 class WorkflowDraftStageUpdate(BaseModel):
     stage_name: Optional[dict[str, str]] = None
     duration_days: Optional[int] = None
@@ -1089,6 +1093,76 @@ def validate_draft_workflow_template_version(
         "version": version.version_number,
         "status": version.status,
     }
+
+
+@router.patch("/drafts/{workflow_template_version_id}/stages/reorder")
+def reorder_draft_workflow_stages(
+    workflow_template_version_id: uuid.UUID,
+    body: WorkflowDraftStageReorder,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Reorder all active stages inside a DRAFT workflow version."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    requested_codes = [_normalize_stage_code(code) for code in (body.stage_codes or [])]
+    if not requested_codes:
+        raise HTTPException(400, "stage_codes cannot be empty")
+    if len(requested_codes) != len(set(requested_codes)):
+        raise HTTPException(400, "stage_codes contains duplicate values")
+
+    stages = (
+        db.query(WorkflowTemplateStage)
+        .filter(WorkflowTemplateStage.template_version_id == version.id, WorkflowTemplateStage.is_active == True)
+        .order_by(WorkflowTemplateStage.stage_order.asc())
+        .all()
+    )
+    stages_by_code = {stage.stage_code: stage for stage in stages}
+    existing_codes = set(stages_by_code.keys())
+    requested_set = set(requested_codes)
+    missing = sorted(existing_codes - requested_set)
+    unknown = sorted(requested_set - existing_codes)
+    if missing or unknown:
+        raise HTTPException(
+            400,
+            {
+                "message": "stage_codes must include every active draft stage exactly once",
+                "missing_stage_codes": missing,
+                "unknown_stage_codes": unknown,
+            },
+        )
+
+    before = [_stage_audit_snapshot(stage) for stage in stages]
+    now = datetime.now(timezone.utc)
+    # Avoid transient conflicts with unique (template_version_id, stage_order).
+    offset = 10000
+    for index, code in enumerate(requested_codes, start=1):
+        stage = stages_by_code[code]
+        stage.stage_order = offset + index
+        stage.updated_at = now
+    db.flush()
+    for index, code in enumerate(requested_codes, start=1):
+        stage = stages_by_code[code]
+        stage.stage_order = index
+        stage.updated_at = now
+    version.updated_at = now
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id) or principal.user_id,
+        action="REORDER_DRAFT_STAGES",
+        target_type="VERSION",
+        target_id=str(version.id),
+        before={"stages": before},
+        after={"stage_codes": requested_codes},
+        metadata={"stage_count": len(requested_codes)},
+        reason="Reorder draft workflow stages",
+    )
+    db.commit()
+    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
 
 
 @router.patch("/drafts/{workflow_template_version_id}/stages/{stage_code}")

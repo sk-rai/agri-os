@@ -254,6 +254,48 @@ def main():
         )
         check(duplicate_stage_published.status_code == 404, "Published version cannot duplicate draft stages", f"Status: {duplicate_stage_published.status_code}")
 
+        current_stage_codes = [stage["code"] for stage in duplicate_stage_payload["android_preview"]["stages"]]
+        nursery_position = current_stage_codes.index("NURSERY")
+        reordered_stage_codes = current_stage_codes[:]
+        moved = reordered_stage_codes.pop(nursery_position)
+        reordered_stage_codes.insert(nursery_position + 1, moved)
+        reorder_stage = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/reorder",
+            headers=headers,
+            json={"stage_codes": reordered_stage_codes},
+        )
+        check(reorder_stage.status_code == 200, "Draft stage reorder returns 200", f"Status: {reorder_stage.status_code}")
+        reorder_payload = reorder_stage.json()
+        check(
+            [stage["code"] for stage in reorder_payload["android_preview"]["stages"]] == reordered_stage_codes,
+            "Draft stage reorder updates preview order",
+        )
+        check(
+            reorder_payload["android_preview"]["stages"][nursery_position + 1]["code"] == "NURSERY",
+            "Reordered nursery moved later by one position",
+        )
+
+        reorder_missing = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/reorder",
+            headers=headers,
+            json={"stage_codes": reordered_stage_codes[:-1]},
+        )
+        check(reorder_missing.status_code == 400, "Draft stage reorder rejects incomplete stage list", f"Status: {reorder_missing.status_code}")
+
+        reorder_duplicate = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/reorder",
+            headers=headers,
+            json={"stage_codes": [reordered_stage_codes[0]] + reordered_stage_codes},
+        )
+        check(reorder_duplicate.status_code == 400, "Draft stage reorder rejects duplicate stage codes", f"Status: {reorder_duplicate.status_code}")
+
+        reorder_published = client.patch(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/stages/reorder",
+            headers=headers,
+            json={"stage_codes": reordered_stage_codes},
+        )
+        check(reorder_published.status_code == 404, "Published version cannot reorder draft stages", f"Status: {reorder_published.status_code}")
+
         nursery_recs = patched_nursery.get("recommended_activities", [])
         check(len(nursery_recs) > 0, "Draft nursery has recommendations to edit")
         editable_rec = nursery_recs[0]
@@ -456,6 +498,7 @@ def main():
             "UPDATE_STAGE",
             "CREATE_DRAFT_STAGE",
             "DUPLICATE_DRAFT_STAGE",
+            "REORDER_DRAFT_STAGES",
             "UPDATE_RECOMMENDATION",
             "CREATE_RECOMMENDATION",
             "DELETE_RECOMMENDATION",
