@@ -372,6 +372,20 @@ export interface AdminLookupResponse {
   farmers: AdminLookupFarmer[];
   parcels: AdminLookupParcel[];
 }
+export interface ProjectTraceFilterOptionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  farmers: Array<{ id: string; label: string }>;
+  parcels: Array<{ id: string; label: string; farmer_id: string }>;
+  crops: string[];
+  seasons: string[];
+  cycle_statuses: string[];
+  stages: Array<{ code: string; label: string }>;
+  activity_types: string[];
+  inputs: Array<{ code: string; label: string }>;
+  products: Array<{ code: string; label: string }>;
+}
 export interface ProjectTraceResponse {
   schema_version: string;
   tenant_id: string;
@@ -459,6 +473,7 @@ function projectTraceQuery(params?: ProjectTraceParams): string {
 export const reportsApi = {
   projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
   projectTrace: (projectId: string, params?: ProjectTraceParams) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace${projectTraceQuery(params)}`),
+  projectTraceFilterOptions: (projectId: string) => api<ProjectTraceFilterOptionsResponse>(`/api/v1/reports/projects/${projectId}/trace/filter-options`),
   productTrace: (productCode: string) => api<ProductTraceResponse>(`/api/v1/reports/products/${encodeURIComponent(productCode)}/trace`),
   inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),

@@ -2,18 +2,29 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { reportsApi, type ProjectTraceResponse } from "@/lib/api";
+import { reportsApi, type ProjectTraceFilterOptionsResponse, type ProjectTraceResponse } from "@/lib/api";
 
 const EMPTY_FILTERS = { farmerId: "", parcelId: "", cropCode: "", seasonCode: "", stageCode: "", activityType: "", inputCode: "", productCode: "", cycleStatus: "", hasVariance: "", dateFrom: "", dateTo: "" };
 type Filters = typeof EMPTY_FILTERS;
 
 export default function ProjectTracePage({ params }: { params: { projectId: string } }) {
   const [trace, setTrace] = useState<ProjectTraceResponse | null>(null);
+  const [options, setOptions] = useState<ProjectTraceFilterOptionsResponse | null>(null);
+  const [loadingOptions, setLoadingOptions] = useState(true);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoadingOptions(true);
+    reportsApi
+      .projectTraceFilterOptions(params.projectId)
+      .then(setOptions)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load filter options"))
+      .finally(() => setLoadingOptions(false));
+  }, [params.projectId]);
 
   useEffect(() => {
     setLoading(true);
@@ -69,7 +80,7 @@ export default function ProjectTracePage({ params }: { params: { projectId: stri
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-gray-900">Filters</h2>
-          <p className="text-xs text-gray-400">Filters apply to project cycles, activities, summaries, and CSV export.</p>
+          <p className="text-xs text-gray-400">Filters apply to project cycles, activities, summaries, and CSV export. {loadingOptions ? "Loading options..." : ""}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={clearFilters} className="rounded border px-3 py-2 text-sm">Clear</button>
@@ -77,16 +88,16 @@ export default function ProjectTracePage({ params }: { params: { projectId: stri
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-5">
-        <Field label="Farmer ID" value={filters.farmerId} set={(v) => setFilters({ ...filters, farmerId: v })} />
-        <Field label="Parcel ID" value={filters.parcelId} set={(v) => setFilters({ ...filters, parcelId: v })} />
-        <Field label="Crop" value={filters.cropCode} set={(v) => setFilters({ ...filters, cropCode: v })} placeholder="RICE" />
-        <Field label="Season" value={filters.seasonCode} set={(v) => setFilters({ ...filters, seasonCode: v })} placeholder="KHARIF" />
-        <Field label="Stage" value={filters.stageCode} set={(v) => setFilters({ ...filters, stageCode: v })} placeholder="TILLERING" />
-        <Field label="Activity" value={filters.activityType} set={(v) => setFilters({ ...filters, activityType: v })} placeholder="FERTILIZER" />
-        <Field label="Input" value={filters.inputCode} set={(v) => setFilters({ ...filters, inputCode: v })} placeholder="UREA_46_N" />
-        <Field label="Product" value={filters.productCode} set={(v) => setFilters({ ...filters, productCode: v })} />
-        <Field label="Cycle status" value={filters.cycleStatus} set={(v) => setFilters({ ...filters, cycleStatus: v })} placeholder="ACTIVE" />
-        <label className="text-xs text-gray-500">Variance<select value={filters.hasVariance} onChange={(e) => setFilters({ ...filters, hasVariance: e.target.value })} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option><option value="true">Variance only</option><option value="false">No variance</option></select></label>
+        <SelectField label="Farmer" value={filters.farmerId} set={(v) => setFilters({ ...filters, farmerId: v, parcelId: "" })} options={(options?.farmers || []).map((item) => ({ value: item.id, label: item.label }))} />
+        <SelectField label="Parcel" value={filters.parcelId} set={(v) => setFilters({ ...filters, parcelId: v })} options={(options?.parcels || []).filter((item) => !filters.farmerId || item.farmer_id === filters.farmerId).map((item) => ({ value: item.id, label: item.label }))} />
+        <SelectField label="Crop" value={filters.cropCode} set={(v) => setFilters({ ...filters, cropCode: v })} options={(options?.crops || []).map((value) => ({ value, label: value }))} />
+        <SelectField label="Season" value={filters.seasonCode} set={(v) => setFilters({ ...filters, seasonCode: v })} options={(options?.seasons || []).map((value) => ({ value, label: value }))} />
+        <SelectField label="Stage" value={filters.stageCode} set={(v) => setFilters({ ...filters, stageCode: v })} options={(options?.stages || []).map((item) => ({ value: item.code, label: `${item.code} - ${item.label}` }))} />
+        <SelectField label="Activity" value={filters.activityType} set={(v) => setFilters({ ...filters, activityType: v })} options={(options?.activity_types || []).map((value) => ({ value, label: value }))} />
+        <SelectField label="Input" value={filters.inputCode} set={(v) => setFilters({ ...filters, inputCode: v })} options={(options?.inputs || []).map((item) => ({ value: item.code, label: `${item.code} - ${item.label}` }))} />
+        <SelectField label="Product" value={filters.productCode} set={(v) => setFilters({ ...filters, productCode: v })} options={(options?.products || []).map((item) => ({ value: item.code, label: item.label }))} />
+        <SelectField label="Cycle status" value={filters.cycleStatus} set={(v) => setFilters({ ...filters, cycleStatus: v })} options={(options?.cycle_statuses || []).map((value) => ({ value, label: value }))} />
+        <SelectField label="Variance" value={filters.hasVariance} set={(v) => setFilters({ ...filters, hasVariance: v })} options={[{ value: "true", label: "Variance only" }, { value: "false", label: "No variance" }]} />
         <Field label="From" type="date" value={filters.dateFrom} set={(v) => setFilters({ ...filters, dateFrom: v })} />
         <Field label="To" type="date" value={filters.dateTo} set={(v) => setFilters({ ...filters, dateTo: v })} />
       </div>
@@ -194,6 +205,10 @@ function SummaryList({ title, rows, footer }: { title: string; rows: string[]; f
 }
 function Empty({ colSpan, label }: { colSpan: number; label: string }) {
   return <tr><td colSpan={colSpan} className="p-8 text-center text-gray-400">{label}</td></tr>;
+}
+
+function SelectField({ label, value, set, options }: { label: string; value: string; set: (value: string) => void; options: Array<{ value: string; label: string }> }) {
+  return <label className="text-xs text-gray-500">{label}<select value={value} onChange={(e) => set(e.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option>{options.filter((option) => option.value).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
 }
 
 function Field({ label, value, set, type = "text", placeholder }: { label: string; value: string; set: (value: string) => void; type?: string; placeholder?: string }) {

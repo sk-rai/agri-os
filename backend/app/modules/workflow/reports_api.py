@@ -733,6 +733,85 @@ def _project_trace_activity_query(
     return query
 
 
+@router.get("/projects/{project_id}/trace/filter-options")
+def project_trace_filter_options(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    farmers = (
+        db.query(Farmer)
+        .filter(Farmer.tenant_id == x_tenant_id, Farmer.project_id == project.id)
+        .order_by(Farmer.display_name.asc(), Farmer.mobile_number.asc())
+        .all()
+    )
+    parcels = (
+        db.query(Parcel)
+        .filter(Parcel.tenant_id == x_tenant_id, Parcel.project_id == project.id)
+        .order_by(Parcel.survey_number.asc(), Parcel.local_name.asc())
+        .all()
+    )
+    cycle_rows = (
+        db.query(CropCycle)
+        .filter(CropCycle.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        .all()
+    )
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        .all()
+    )
+
+    stages = {}
+    activity_types = set()
+    inputs = {}
+    products = {}
+    for activity, cycle, stage in activity_rows_raw:
+        if stage and stage.stage_code:
+            stages[stage.stage_code] = stage.stage_name or stage.stage_code
+        if activity.activity_type:
+            activity_types.add(activity.activity_type)
+        if activity.input_code:
+            inputs[activity.input_code] = activity.input_name or activity.input_code
+        if activity.product_code:
+            products[activity.product_code] = activity.product_code
+
+    return {
+        "schema_version": "project_trace_filter_options.v1",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project.id),
+        "farmers": [
+            {
+                "id": str(farmer.id),
+                "label": farmer.display_name or farmer.mobile_number or str(farmer.id),
+            }
+            for farmer in farmers
+        ],
+        "parcels": [
+            {
+                "id": str(parcel.id),
+                "label": parcel.local_name or parcel.survey_number or str(parcel.id),
+                "farmer_id": str(parcel.farmer_id),
+            }
+            for parcel in parcels
+        ],
+        "crops": sorted({cycle.crop_code for cycle in cycle_rows if cycle.crop_code}),
+        "seasons": sorted({cycle.season_code for cycle in cycle_rows if cycle.season_code}),
+        "cycle_statuses": sorted({cycle.status for cycle in cycle_rows if cycle.status}),
+        "stages": [{"code": key, "label": value} for key, value in sorted(stages.items())],
+        "activity_types": sorted(activity_types),
+        "inputs": [{"code": key, "label": value} for key, value in sorted(inputs.items())],
+        "products": [{"code": key, "label": value} for key, value in sorted(products.items())],
+    }
+
+
 @router.get("/projects/{project_id}/trace")
 def project_trace_report(
     project_id: uuid.UUID,
