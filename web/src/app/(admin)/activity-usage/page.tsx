@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportsApi, type ActivityUsageFilterOptionsResponse, type ActivityUsageReportResponse, type ActivityUsageRow } from "@/lib/api";
 
 const EMPTY_FILTERS = {
@@ -197,7 +197,7 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Stage name", row.stage_name],
           ["Stage order", row.stage_order != null ? String(row.stage_order) : null],
           ["Stage status", row.stage_status],
-        ]} />
+        ]} action={<a href={`/crop-cycle-trace/${row.crop_cycle_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open cycle trace</a>} />
         <TraceSection title="Farmer / parcel" rows={[
           ["Farmer ID", row.farmer_id],
           ["Farmer name", row.farmer_name],
@@ -222,9 +222,9 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
   </div>;
 }
 
-function TraceSection({ title, rows }: { title: string; rows: Array<[string, string | number | null | undefined]> }) {
+function TraceSection({ title, rows, action }: { title: string; rows: Array<[string, string | number | null | undefined]>; action?: ReactNode }) {
   return <section className="rounded border p-4">
-    <h3 className="mb-3 font-semibold text-gray-900">{title}</h3>
+    <div className="mb-3 flex items-center justify-between gap-3"><h3 className="font-semibold text-gray-900">{title}</h3>{action}</div>
     <dl className="grid gap-2 text-sm md:grid-cols-2">
       {rows.map(([label, value]) => <div key={label}>
         <dt className="text-xs uppercase text-gray-400">{label}</dt>

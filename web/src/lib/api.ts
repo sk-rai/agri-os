@@ -157,6 +157,34 @@ export interface ActivityUsageReportResponse {
   activities: ActivityUsageRow[];
 }
 
+export interface CropCycleTraceStage {
+  stage_instance_id: string;
+  stage_code: string;
+  stage_name: string;
+  stage_order: number;
+  status: string;
+  expected_duration_days?: number | null;
+  planned_start_date?: string | null;
+  actual_start_date?: string | null;
+  actual_end_date?: string | null;
+  started_by?: string | null;
+  completed_by?: string | null;
+  skip_reason?: string | null;
+  activity_count: number;
+  total_cost: string;
+}
+
+export interface CropCycleTraceResponse {
+  schema_version: string;
+  tenant_id: string;
+  cycle: Record<string, string | number | null> & { id: string; crop_code: string; season_code: string; status: string };
+  project?: Record<string, string | null> | null;
+  farmer?: Record<string, string | null> | null;
+  parcel?: Record<string, string | null> | null;
+  summary: { stage_count: number; activity_count: number; total_cost: string; variance_count: number };
+  stages: CropCycleTraceStage[];
+  activities: ActivityUsageRow[];
+}
 export interface ActivityUsageFilterOption {
   id?: string;
   code?: string;
@@ -196,6 +224,7 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
 }
 
 export const reportsApi = {
+  cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),

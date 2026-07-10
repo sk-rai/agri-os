@@ -9,7 +9,7 @@ import io
 from typing import Optional
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -259,6 +259,167 @@ def _activity_usage_csv(rows):
     buffer.seek(0)
     return buffer.getvalue()
 
+
+
+def _activity_trace_row(activity, cycle, stage, farmer, parcel):
+    return {
+        "activity_id": str(activity.id),
+        "activity_date": activity.activity_date.isoformat() if activity.activity_date else None,
+        "tenant_id": activity.tenant_id,
+        "project_id": str(cycle.project_id) if cycle.project_id else None,
+        "farmer_id": str(cycle.farmer_id) if cycle.farmer_id else None,
+        "farmer_name": farmer.display_name if farmer else None,
+        "parcel_id": str(cycle.parcel_id) if cycle.parcel_id else None,
+        "parcel_label": parcel.survey_number if parcel else None,
+        "crop_cycle_id": str(cycle.id),
+        "crop_cycle_status": cycle.status,
+        "workflow_template_version_id": str(cycle.workflow_template_version_id) if cycle.workflow_template_version_id else None,
+        "crop_code": cycle.crop_code,
+        "season_code": cycle.season_code,
+        "stage_code": stage.stage_code if stage else None,
+        "stage_instance_id": str(stage.id) if stage else None,
+        "stage_name": stage.stage_name if stage else None,
+        "stage_order": stage.stage_order if stage else None,
+        "stage_status": stage.status if stage else None,
+        "activity_type": activity.activity_type,
+        "input_code": activity.input_code,
+        "input_name": activity.input_name,
+        "input_rule_id": str(activity.input_rule_id) if activity.input_rule_id else None,
+        "product_id": str(activity.product_id) if activity.product_id else None,
+        "product_code": activity.product_code,
+        "package_id": str(activity.package_id) if activity.package_id else None,
+        "package_sku": activity.package_sku,
+        "recommended_quantity": _decimal_text(activity.recommended_quantity),
+        "recommended_quantity_unit": activity.recommended_quantity_unit,
+        "actual_quantity": _decimal_text(activity.actual_quantity),
+        "actual_quantity_unit": activity.actual_quantity_unit,
+        "dosage_variance_reason": activity.dosage_variance_reason,
+        "quantity": _decimal_text(activity.quantity),
+        "quantity_unit": activity.quantity_unit,
+        "area_applied": _decimal_text(activity.area_applied),
+        "area_unit": activity.area_unit,
+        "cost_amount": _decimal_text(activity.cost_amount),
+        "cost_currency": activity.cost_currency,
+        "gps_lat": _decimal_text(activity.gps_lat),
+        "gps_lng": _decimal_text(activity.gps_lng),
+        "logged_by": str(activity.logged_by) if activity.logged_by else None,
+        "logging_method": activity.logging_method,
+        "created_at": activity.created_at.isoformat() if activity.created_at else None,
+        "updated_at": activity.updated_at.isoformat() if activity.updated_at else None,
+        "notes": activity.notes,
+    }
+
+
+@router.get("/crop-cycles/{cycle_id}/trace")
+def crop_cycle_trace_report(
+    cycle_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id).first()
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+
+    farmer = db.query(Farmer).filter(Farmer.id == cycle.farmer_id).first()
+    parcel = db.query(Parcel).filter(Parcel.id == cycle.parcel_id).first()
+    project = db.query(Project).filter(Project.id == cycle.project_id).first() if cycle.project_id else None
+    stages = (
+        db.query(CropStageInstance)
+        .filter(CropStageInstance.crop_cycle_id == cycle.id, CropStageInstance.tenant_id == x_tenant_id)
+        .order_by(CropStageInstance.stage_order.asc())
+        .all()
+    )
+    stage_by_id = {stage.id: stage for stage in stages}
+    activities = (
+        db.query(CropActivity)
+        .filter(CropActivity.crop_cycle_id == cycle.id, CropActivity.tenant_id == x_tenant_id)
+        .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
+        .all()
+    )
+    activity_rows = [_activity_trace_row(activity, cycle, stage_by_id.get(activity.stage_instance_id), farmer, parcel) for activity in activities]
+    activity_count_by_stage = defaultdict(int)
+    cost_by_stage = defaultdict(Decimal)
+    for row in activity_rows:
+        key = row.get("stage_code") or "UNSTAGED"
+        activity_count_by_stage[key] += 1
+        if row.get("cost_amount") is not None:
+            cost_by_stage[key] += Decimal(str(row["cost_amount"]))
+
+    stage_rows = []
+    for stage in stages:
+        stage_rows.append({
+            "stage_instance_id": str(stage.id),
+            "stage_code": stage.stage_code,
+            "stage_name": stage.stage_name,
+            "stage_order": stage.stage_order,
+            "status": stage.status,
+            "expected_duration_days": stage.expected_duration_days,
+            "planned_start_date": stage.planned_start_date.isoformat() if stage.planned_start_date else None,
+            "actual_start_date": stage.actual_start_date.isoformat() if stage.actual_start_date else None,
+            "actual_end_date": stage.actual_end_date.isoformat() if stage.actual_end_date else None,
+            "started_by": str(stage.started_by) if stage.started_by else None,
+            "completed_by": str(stage.completed_by) if stage.completed_by else None,
+            "skip_reason": stage.skip_reason,
+            "activity_count": activity_count_by_stage.get(stage.stage_code, 0),
+            "total_cost": str(cost_by_stage.get(stage.stage_code, Decimal("0"))),
+        })
+
+    return {
+        "schema_version": "crop_cycle_trace.v1",
+        "tenant_id": x_tenant_id,
+        "cycle": {
+            "id": str(cycle.id),
+            "project_id": str(cycle.project_id) if cycle.project_id else None,
+            "farmer_id": str(cycle.farmer_id),
+            "parcel_id": str(cycle.parcel_id),
+            "crop_code": cycle.crop_code,
+            "variety_code": cycle.variety_code,
+            "season_code": cycle.season_code,
+            "status": cycle.status,
+            "lifecycle_template_id": str(cycle.lifecycle_template_id) if cycle.lifecycle_template_id else None,
+            "workflow_template_version_id": str(cycle.workflow_template_version_id) if cycle.workflow_template_version_id else None,
+            "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+            "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
+            "expected_harvest_date": cycle.expected_harvest_date.isoformat() if cycle.expected_harvest_date else None,
+            "actual_harvest_date": cycle.actual_harvest_date.isoformat() if cycle.actual_harvest_date else None,
+            "reported_yield_kg": _decimal_text(cycle.reported_yield_kg),
+            "reported_yield_unit": cycle.reported_yield_unit,
+            "total_input_cost": _decimal_text(cycle.total_input_cost),
+            "total_revenue": _decimal_text(cycle.total_revenue),
+            "notes": cycle.notes,
+            "created_at": cycle.created_at.isoformat() if cycle.created_at else None,
+            "updated_at": cycle.updated_at.isoformat() if cycle.updated_at else None,
+        },
+        "project": {"id": str(project.id), "name": project.name, "status": project.status} if project else None,
+        "farmer": {
+            "id": str(farmer.id),
+            "display_name": farmer.display_name,
+            "mobile_number": farmer.mobile_number,
+            "village_name": farmer.village_name_manual,
+            "status": farmer.status,
+        } if farmer else None,
+        "parcel": {
+            "id": str(parcel.id),
+            "survey_number": parcel.survey_number,
+            "local_name": parcel.local_name,
+            "reported_area": _decimal_text(parcel.reported_area),
+            "reported_area_unit": parcel.reported_area_unit,
+            "ownership_type": parcel.ownership_type,
+            "geometry_source": parcel.geometry_source,
+            "centroid_lat": _decimal_text(parcel.centroid_lat),
+            "centroid_lng": _decimal_text(parcel.centroid_lng),
+            "status": parcel.status,
+        } if parcel else None,
+        "summary": {
+            "stage_count": len(stage_rows),
+            "activity_count": len(activity_rows),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activity_rows]),
+            "variance_count": sum(1 for row in activity_rows if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None and Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"]))),
+        },
+        "stages": stage_rows,
+        "activities": activity_rows,
+    }
 
 @router.get("/activity-usage/filter-options")
 def activity_usage_filter_options(
