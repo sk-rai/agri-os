@@ -13,6 +13,33 @@ type DashboardFilters = {
 
 const initialFilters: DashboardFilters = { projectId: "", dateFrom: "", dateTo: "" };
 
+function compactQuery(params: Record<string, string | number | null | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  });
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+function dashboardActivityHref(data: AdminDashboardResponse, params: Record<string, string | number | null | undefined> = {}) {
+  return `/activity-usage${compactQuery({
+    projectId: data.filters.project_id,
+    dateFrom: data.filters.date_from,
+    dateTo: data.filters.date_to,
+    ...params,
+  })}`;
+}
+
+function dashboardProjectTraceHref(data: AdminDashboardResponse, params: Record<string, string | number | null | undefined> = {}) {
+  if (!data.filters.project_id) return "/lookup";
+  return `/project-trace/${data.filters.project_id}${compactQuery({
+    dateFrom: data.filters.date_from,
+    dateTo: data.filters.date_to,
+    ...params,
+  })}`;
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<AdminDashboardResponse | null>(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -112,20 +139,20 @@ export default function DashboardPage() {
       {summary ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Projects" value={summary.project_count} tone="blue" />
-            <StatCard label="Farmers" value={summary.farmer_count} tone="green" />
-            <StatCard label="Parcels" value={summary.parcel_count} tone="indigo" />
-            <StatCard label="Crop cycles" value={summary.crop_cycle_count} tone="purple" />
-            <StatCard label="Active cycles" value={summary.active_cycle_count} tone="yellow" />
-            <StatCard label="Completed cycles" value={summary.completed_cycle_count} tone="green" />
-            <StatCard label="Activities" value={summary.activity_count} tone="blue" />
-            <StatCard label="Activity cost" value={`?${summary.total_cost}`} tone="slate" />
+            <StatCard label="Projects" value={summary.project_count} tone="blue" href="/lookup" />
+            <StatCard label="Farmers" value={summary.farmer_count} tone="green" href="/lookup" />
+            <StatCard label="Parcels" value={summary.parcel_count} tone="indigo" href="/lookup" />
+            <StatCard label="Crop cycles" value={summary.crop_cycle_count} tone="purple" href={dashboardProjectTraceHref(data)} />
+            <StatCard label="Active cycles" value={summary.active_cycle_count} tone="yellow" href={dashboardProjectTraceHref(data, { cycleStatus: "ACTIVE" })} />
+            <StatCard label="Completed cycles" value={summary.completed_cycle_count} tone="green" href={dashboardProjectTraceHref(data, { cycleStatus: "COMPLETED" })} />
+            <StatCard label="Activities" value={summary.activity_count} tone="blue" href={dashboardActivityHref(data)} />
+            <StatCard label="Activity cost" value={`INR ${summary.total_cost}`} tone="slate" href={dashboardActivityHref(data)} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <SummaryList title="Crop distribution" empty="No crop cycles yet" rows={data.crop_distribution.map((row) => ({ label: row.crop_code, value: row.crop_cycle_count }))} />
-            <SummaryList title="Geometry coverage" empty="No parcels yet" rows={data.geometry_coverage.map((row) => ({ label: row.geometry_source, value: row.parcel_count }))} />
-            <SummaryList title="Activity types" empty="No activities yet" rows={data.activity_count_by_type.map((row) => ({ label: row.activity_type, value: row.activity_count }))} />
+            <SummaryList title="Crop distribution" empty="No crop cycles yet" rows={data.crop_distribution.map((row) => ({ label: row.crop_code, value: row.crop_cycle_count, href: data.filters.project_id ? dashboardProjectTraceHref(data, { cropCode: row.crop_code }) : dashboardActivityHref(data, { cropCode: row.crop_code }) }))} />
+            <SummaryList title="Geometry coverage" empty="No parcels yet" rows={data.geometry_coverage.map((row) => ({ label: row.geometry_source, value: row.parcel_count, href: "/lookup" }))} />
+            <SummaryList title="Activity types" empty="No activities yet" rows={data.activity_count_by_type.map((row) => ({ label: row.activity_type, value: row.activity_count, href: dashboardActivityHref(data, { activityType: row.activity_type }) }))} />
           </div>
 
           <RecentProjects data={data} />
@@ -138,7 +165,7 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ label, value, tone }: { label: string; value: string | number; tone: "blue" | "green" | "indigo" | "purple" | "yellow" | "slate" }) {
+function StatCard({ label, value, tone, href }: { label: string; value: string | number; tone: "blue" | "green" | "indigo" | "purple" | "yellow" | "slate"; href?: string }) {
   const toneMap = {
     blue: "border-blue-200 bg-blue-50 text-blue-800",
     green: "border-green-200 bg-green-50 text-green-800",
@@ -147,25 +174,28 @@ function StatCard({ label, value, tone }: { label: string; value: string | numbe
     yellow: "border-yellow-200 bg-yellow-50 text-yellow-800",
     slate: "border-slate-200 bg-slate-50 text-slate-800",
   };
-  return (
-    <div className={`rounded-lg border p-4 shadow-sm ${toneMap[tone]}`}>
+  const content = (
+    <>
       <p className="text-sm opacity-80">{label}</p>
       <p className="mt-1 text-3xl font-bold">{value}</p>
-    </div>
+      {href ? <p className="mt-2 text-xs font-medium opacity-75">Open drill-down</p> : null}
+    </>
   );
+  const className = `rounded-lg border p-4 shadow-sm transition ${toneMap[tone]} ${href ? "hover:-translate-y-0.5 hover:shadow-md" : ""}`;
+  return href ? <Link href={href} className={className}>{content}</Link> : <div className={className}>{content}</div>;
 }
 
-function SummaryList({ title, rows, empty }: { title: string; rows: Array<{ label: string; value: number }>; empty: string }) {
+function SummaryList({ title, rows, empty }: { title: string; rows: Array<{ label: string; value: number; href?: string }>; empty: string }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <h2 className="text-base font-semibold text-gray-900">{title}</h2>
       {rows.length === 0 ? <p className="mt-3 text-sm text-gray-500">{empty}</p> : null}
       <div className="mt-3 space-y-2">
         {rows.map((row) => (
-          <div key={row.label} className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm">
+          <Link key={row.label} href={row.href || "#"} className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm hover:bg-blue-50">
             <span className="font-medium text-gray-700">{row.label}</span>
             <span className="text-gray-900">{row.value}</span>
-          </div>
+          </Link>
         ))}
       </div>
     </section>
@@ -225,9 +255,9 @@ function RecentActivities({ data }: { data: AdminDashboardResponse }) {
           <td className="px-3 py-2">{activity.activity_date || "-"}</td>
           <td className="px-3 py-2">{activity.farmer_name || "-"}</td>
           <td className="px-3 py-2">{activity.crop_code} / {activity.stage_code || "-"}</td>
-          <td className="px-3 py-2">{activity.activity_type}</td>
-          <td className="px-3 py-2">{activity.input_name || activity.input_code || "-"}</td>
-          <td className="px-3 py-2 text-right">{activity.cost_amount ? `?${activity.cost_amount}` : "-"}</td>
+          <td className="px-3 py-2"><Link className="text-blue-700 hover:underline" href={dashboardActivityHref(data, { activityType: activity.activity_type })}>{activity.activity_type}</Link></td>
+          <td className="px-3 py-2"><Link className="text-blue-700 hover:underline" href={dashboardActivityHref(data, { inputCode: activity.input_code })}>{activity.input_name || activity.input_code || "-"}</Link></td>
+          <td className="px-3 py-2 text-right">{activity.cost_amount ? `INR ${activity.cost_amount}` : "-"}</td>
         </tr>
       ))}
     </TableSection>

@@ -36,8 +36,33 @@ function reportParams(filters: Filters, limit: number) {
   };
 }
 
-export default function ActivityUsagePage() {
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
+  for (const key of keys) {
+    const value = searchParams?.[key];
+    if (Array.isArray(value)) return value[0] || "";
+    if (value) return value;
+  }
+  return "";
+}
+
+function filtersFromSearchParams(searchParams?: Record<string, string | string[] | undefined>): Filters {
+  return {
+    projectId: paramValue(searchParams, "projectId", "project_id"),
+    farmerId: paramValue(searchParams, "farmerId", "farmer_id"),
+    parcelId: paramValue(searchParams, "parcelId", "parcel_id"),
+    cropCode: paramValue(searchParams, "cropCode", "crop_code"),
+    seasonCode: paramValue(searchParams, "seasonCode", "season_code"),
+    stageCode: paramValue(searchParams, "stageCode", "stage_code"),
+    activityType: paramValue(searchParams, "activityType", "activity_type"),
+    inputCode: paramValue(searchParams, "inputCode", "input_code"),
+    productCode: paramValue(searchParams, "productCode", "product_code"),
+    dateFrom: paramValue(searchParams, "dateFrom", "date_from"),
+    dateTo: paramValue(searchParams, "dateTo", "date_to"),
+  };
+}
+
+export default function ActivityUsagePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const [filters, setFilters] = useState<Filters>(() => filtersFromSearchParams(searchParams));
   const [options, setOptions] = useState<ActivityUsageFilterOptionsResponse | null>(null);
   const [report, setReport] = useState<ActivityUsageReportResponse | null>(null);
   const [selectedRow, setSelectedRow] = useState<ActivityUsageRow | null>(null);

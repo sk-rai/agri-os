@@ -7,12 +7,38 @@ import { reportsApi, type ProjectTraceFilterOptionsResponse, type ProjectTraceRe
 const EMPTY_FILTERS = { farmerId: "", parcelId: "", cropCode: "", seasonCode: "", stageCode: "", activityType: "", inputCode: "", productCode: "", cycleStatus: "", hasVariance: "", dateFrom: "", dateTo: "" };
 type Filters = typeof EMPTY_FILTERS;
 
-export default function ProjectTracePage({ params }: { params: { projectId: string } }) {
+function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
+  for (const key of keys) {
+    const value = searchParams?.[key];
+    if (Array.isArray(value)) return value[0] || "";
+    if (value) return value;
+  }
+  return "";
+}
+
+function filtersFromSearchParams(searchParams?: Record<string, string | string[] | undefined>): Filters {
+  return {
+    farmerId: paramValue(searchParams, "farmerId", "farmer_id"),
+    parcelId: paramValue(searchParams, "parcelId", "parcel_id"),
+    cropCode: paramValue(searchParams, "cropCode", "crop_code"),
+    seasonCode: paramValue(searchParams, "seasonCode", "season_code"),
+    stageCode: paramValue(searchParams, "stageCode", "stage_code"),
+    activityType: paramValue(searchParams, "activityType", "activity_type"),
+    inputCode: paramValue(searchParams, "inputCode", "input_code"),
+    productCode: paramValue(searchParams, "productCode", "product_code"),
+    cycleStatus: paramValue(searchParams, "cycleStatus", "cycle_status"),
+    hasVariance: paramValue(searchParams, "hasVariance", "has_variance"),
+    dateFrom: paramValue(searchParams, "dateFrom", "date_from"),
+    dateTo: paramValue(searchParams, "dateTo", "date_to"),
+  };
+}
+
+export default function ProjectTracePage({ params, searchParams }: { params: { projectId: string }; searchParams?: Record<string, string | string[] | undefined> }) {
   const [trace, setTrace] = useState<ProjectTraceResponse | null>(null);
   const [options, setOptions] = useState<ProjectTraceFilterOptionsResponse | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(true);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>(() => filtersFromSearchParams(searchParams));
+  const [appliedFilters, setAppliedFilters] = useState<Filters>(() => filtersFromSearchParams(searchParams));
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
