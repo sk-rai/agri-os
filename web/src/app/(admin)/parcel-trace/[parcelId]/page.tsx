@@ -2,98 +2,74 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { reportsApi, type FarmerTraceResponse } from "@/lib/api";
+import { reportsApi, type ParcelTraceResponse } from "@/lib/api";
 
-export default function FarmerTracePage({ params }: { params: { farmerId: string } }) {
-  const [trace, setTrace] = useState<FarmerTraceResponse | null>(null);
+export default function ParcelTracePage({ params }: { params: { parcelId: string } }) {
+  const [trace, setTrace] = useState<ParcelTraceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     reportsApi
-      .farmerTrace(params.farmerId)
+      .parcelTrace(params.parcelId)
       .then(setTrace)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load farmer trace"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load parcel trace"))
       .finally(() => setLoading(false));
-  }, [params.farmerId]);
+  }, [params.parcelId]);
 
-  if (loading) return <div className="text-gray-500">Loading farmer trace...</div>;
+  if (loading) return <div className="text-gray-500">Loading parcel trace...</div>;
   if (error) return <div className="text-red-600">Error: {error}</div>;
-  if (!trace) return <div className="text-gray-500">No farmer trace found.</div>;
+  if (!trace) return <div className="text-gray-500">No parcel trace found.</div>;
 
   return <div>
     <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
       <div>
-        <Link href="/activity-usage" className="text-sm text-blue-600">&lt; Back to Activity Usage</Link>
-        <h1 className="mt-2 text-2xl font-bold text-gray-900">Farmer Trace</h1>
-        <p className="mt-1 text-sm text-gray-500">{trace.farmer.display_name || trace.farmer.mobile_number || trace.farmer.id}</p>
+        <Link href={trace.farmer?.id ? `/farmer-trace/${trace.farmer.id}` : "/activity-usage"} className="text-sm text-blue-600">&lt; Back to farmer trace</Link>
+        <h1 className="mt-2 text-2xl font-bold text-gray-900">Parcel Trace</h1>
+        <p className="mt-1 text-sm text-gray-500">{trace.parcel.display_name || trace.parcel.survey_number || trace.parcel.id}</p>
       </div>
       <div className="rounded bg-white p-4 text-sm shadow">
-        <div className="font-mono text-xs text-gray-500">{trace.farmer.id}</div>
-        <div className="mt-1 text-gray-700">Project: <span className="font-mono">{trace.project?.name || trace.project?.id || "-"}</span></div>
+        <div className="font-mono text-xs text-gray-500">{trace.parcel.id}</div>
+        <div className="mt-1 text-gray-700">Farmer: <span className="font-mono">{trace.farmer?.display_name || trace.farmer?.mobile_number || trace.farmer?.id || "-"}</span></div>
       </div>
     </div>
 
     <div className="mb-6 grid gap-4 md:grid-cols-4">
-      <Card label="Parcels" value={trace.summary.parcel_count} />
       <Card label="Crop cycles" value={trace.summary.crop_cycle_count} />
+      <Card label="Active cycles" value={trace.summary.active_cycle_count} />
       <Card label="Activities" value={trace.summary.activity_count} />
       <Card label="Total cost" value={`INR ${trace.summary.total_cost}`} />
     </div>
 
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
-      <InfoSection title="Farmer" rows={[
-        ["Name", trace.farmer.display_name],
-        ["Mobile", trace.farmer.mobile_number],
-        ["Village", trace.farmer.village_name],
-        ["Primary crop", trace.farmer.primary_crop_code],
-        ["Status", trace.farmer.status],
+      <InfoSection title="Parcel identity" rows={[
+        ["Survey", trace.parcel.survey_number],
+        ["Local name", trace.parcel.local_name],
+        ["Area", [trace.parcel.reported_area, trace.parcel.reported_area_unit].filter(Boolean).join(" ")],
+        ["Ownership", trace.parcel.ownership_type],
+        ["Village", trace.parcel.village_name],
+        ["Status", trace.parcel.status],
       ]} />
-      <InfoSection title="Project" rows={[
+      <InfoSection title="Geometry" rows={[
+        ["Source", trace.parcel.geometry_source],
+        ["Centroid", trace.parcel.centroid_lat && trace.parcel.centroid_lng ? `${trace.parcel.centroid_lat}, ${trace.parcel.centroid_lng}` : null],
+        ["Computed area ha", trace.parcel.computed_area_hectares],
+        ["Accuracy meters", trace.parcel.geometry_accuracy_meters],
+        ["Captured at", trace.parcel.geometry_captured_at],
+      ]} />
+      <InfoSection title="Farmer / project" rows={[
+        ["Farmer", trace.farmer?.display_name],
+        ["Mobile", trace.farmer?.mobile_number],
+        ["Farmer ID", trace.farmer?.id],
         ["Project", trace.project?.name],
         ["Project ID", trace.project?.id],
-        ["Project status", trace.project?.status],
-        ["Tenant", trace.tenant_id],
-      ]} />
-      <InfoSection title="Usage summary" rows={[
-        ["Active cycles", trace.summary.active_cycle_count],
-        ["Completed cycles", trace.summary.completed_cycle_count],
-        ["Dosage variances", trace.summary.variance_count],
-        ["Returned activities", trace.activities.length],
-      ]} />
+      ]} action={trace.farmer?.id ? <Link href={`/farmer-trace/${trace.farmer.id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open farmer</Link> : undefined} />
     </div>
-
-    <section className="mb-6 rounded bg-white p-5 shadow">
-      <h2 className="mb-4 text-lg font-bold text-gray-900">Parcels</h2>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {trace.parcels.map((parcel) => <div key={parcel.id} className="rounded border p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-semibold text-gray-900">{parcel.display_name || parcel.survey_number || parcel.id}</div>
-              <div className="font-mono text-xs text-gray-500">{parcel.id}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href={`/parcel-trace/${parcel.id}`} className="text-xs text-blue-600">Open parcel</Link>
-              <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">{parcel.status || "-"}</span>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
-            <Mini label="Area" value={[parcel.reported_area, parcel.reported_area_unit].filter(Boolean).join(" ")} />
-            <Mini label="Ownership" value={parcel.ownership_type} />
-            <Mini label="Geometry" value={parcel.geometry_source} />
-            <Mini label="Cycles" value={`${parcel.crop_cycle_count} (${parcel.active_cycle_count} active)`} />
-            <Mini label="Activities" value={parcel.activity_count} />
-            <Mini label="Cost" value={`INR ${parcel.total_cost}`} />
-          </div>
-        </div>)}
-        {trace.parcels.length === 0 && <p className="text-sm text-gray-400">No parcels found for this farmer.</p>}
-      </div>
-    </section>
 
     <section className="mb-6 overflow-hidden rounded bg-white shadow">
       <div className="border-b p-5">
-        <h2 className="text-lg font-bold text-gray-900">Crop cycles</h2>
-        <p className="text-sm text-gray-500">Pinned workflow version and usage counts per farmer cycle.</p>
+        <h2 className="text-lg font-bold text-gray-900">Crop cycles on this parcel</h2>
+        <p className="text-sm text-gray-500">Cycle history, pinned workflow version, and activity totals for the selected land parcel.</p>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-gray-50"><tr>{["Crop", "Season", "Status", "Dates", "Activities", "Workflow", "Trace"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
@@ -107,15 +83,15 @@ export default function FarmerTracePage({ params }: { params: { farmerId: string
             <td className="p-3 font-mono text-xs">{cycle.workflow_template_version_id || "-"}</td>
             <td className="p-3"><Link href={`/crop-cycle-trace/${cycle.id}`} className="text-blue-600">Open cycle</Link></td>
           </tr>)}
-          {trace.crop_cycles.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-gray-400">No crop cycles found.</td></tr>}
+          {trace.crop_cycles.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-gray-400">No crop cycles found for this parcel.</td></tr>}
         </tbody>
       </table>
     </section>
 
     <section className="overflow-hidden rounded bg-white shadow">
       <div className="border-b p-5">
-        <h2 className="text-lg font-bold text-gray-900">Recent activities</h2>
-        <p className="text-sm text-gray-500">Up to 250 logged activities tied to this farmer.</p>
+        <h2 className="text-lg font-bold text-gray-900">Parcel activities</h2>
+        <p className="text-sm text-gray-500">Up to 250 logged activities from all crop cycles on this parcel.</p>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-gray-50"><tr>{["Date", "Crop/stage", "Activity", "Input", "Product", "Qty", "Cost", "Links"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
@@ -130,7 +106,7 @@ export default function FarmerTracePage({ params }: { params: { farmerId: string
             <td className="p-3">{activity.cost_amount ? `INR ${activity.cost_amount}` : "-"}</td>
             <td className="p-3"><Link href={`/crop-cycle-trace/${activity.crop_cycle_id}`} className="text-blue-600">Cycle</Link></td>
           </tr>)}
-          {trace.activities.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-gray-400">No activities logged.</td></tr>}
+          {trace.activities.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-gray-400">No activities logged for this parcel.</td></tr>}
         </tbody>
       </table>
     </section>
@@ -141,9 +117,9 @@ function Card({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded bg-white p-5 shadow"><p className="text-xs uppercase text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900">{value}</p></div>;
 }
 
-function InfoSection({ title, rows }: { title: string; rows: Array<[string, string | number | null | undefined]> }) {
+function InfoSection({ title, rows, action }: { title: string; rows: Array<[string, string | number | null | undefined]>; action?: React.ReactNode }) {
   return <section className="rounded bg-white p-5 shadow">
-    <h2 className="mb-3 font-bold text-gray-900">{title}</h2>
+    <div className="mb-3 flex items-center justify-between gap-3"><h2 className="font-bold text-gray-900">{title}</h2>{action}</div>
     <dl className="space-y-2 text-sm">
       {rows.map(([label, value]) => <div key={label}>
         <dt className="text-xs uppercase text-gray-400">{label}</dt>
@@ -151,8 +127,4 @@ function InfoSection({ title, rows }: { title: string; rows: Array<[string, stri
       </div>)}
     </dl>
   </section>;
-}
-
-function Mini({ label, value }: { label: string; value?: string | number | null }) {
-  return <div><div className="text-xs uppercase text-gray-400">{label}</div><div className="font-mono text-gray-800">{value || "-"}</div></div>;
 }

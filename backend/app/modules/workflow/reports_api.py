@@ -367,6 +367,107 @@ def _farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle):
     }
 
 
+
+def _parcel_trace_payload(*, parcel, farmer, project, cycles, activities, tenant_id):
+    activities_by_cycle = defaultdict(list)
+    total_cost_by_cycle = defaultdict(list)
+    variance_count = 0
+    for row in activities:
+        cycle_key = uuid.UUID(row["crop_cycle_id"]) if row.get("crop_cycle_id") else None
+        if cycle_key:
+            activities_by_cycle[cycle_key].append(row)
+            total_cost_by_cycle[cycle_key].append(row.get("cost_amount"))
+        if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None:
+            if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
+                variance_count += 1
+
+    return {
+        "schema_version": "parcel_trace.v1",
+        "tenant_id": tenant_id,
+        "parcel": {
+            "id": str(parcel.id),
+            "farmer_id": str(parcel.farmer_id),
+            "project_id": str(parcel.project_id) if parcel.project_id else None,
+            "survey_number": parcel.survey_number,
+            "local_name": parcel.local_name,
+            "display_name": parcel.local_name or parcel.survey_number or str(parcel.id),
+            "reported_area": _decimal_text(parcel.reported_area),
+            "reported_area_unit": parcel.reported_area_unit,
+            "ownership_type": parcel.ownership_type,
+            "village_name": parcel.village_name_manual,
+            "soil_type_code": parcel.soil_type_code,
+            "current_crop_code": parcel.current_crop_code,
+            "geometry_source": parcel.geometry_source,
+            "centroid_lat": _decimal_text(parcel.centroid_lat),
+            "centroid_lng": _decimal_text(parcel.centroid_lng),
+            "computed_area_hectares": _decimal_text(parcel.computed_area_hectares),
+            "geometry_accuracy_meters": _decimal_text(parcel.geometry_accuracy_meters),
+            "geometry_captured_at": parcel.geometry_captured_at.isoformat() if parcel.geometry_captured_at else None,
+            "status": parcel.status,
+            "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
+            "updated_at": parcel.updated_at.isoformat() if parcel.updated_at else None,
+        },
+        "farmer": {
+            "id": str(farmer.id),
+            "project_id": str(farmer.project_id) if farmer.project_id else None,
+            "mobile_number": farmer.mobile_number,
+            "display_name": farmer.display_name,
+            "village_name": farmer.village_name_manual,
+            "primary_crop_code": farmer.primary_crop_code,
+            "status": farmer.status,
+        } if farmer else None,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+        } if project else None,
+        "summary": {
+            "crop_cycle_count": len(cycles),
+            "active_cycle_count": sum(1 for cycle in cycles if cycle.status == "ACTIVE"),
+            "completed_cycle_count": sum(1 for cycle in cycles if cycle.status == "COMPLETED"),
+            "activity_count": len(activities),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
+            "variance_count": variance_count,
+        },
+        "crop_cycles": [_farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle) for cycle in cycles],
+        "activities": activities[:250],
+    }
+
+
+@router.get("/parcels/{parcel_id}/trace")
+def parcel_trace_report(
+    parcel_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == x_tenant_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+
+    farmer = db.query(Farmer).filter(Farmer.id == parcel.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    project_id = parcel.project_id or (farmer.project_id if farmer else None)
+    project = db.query(Project).filter(Project.id == project_id).first() if project_id else None
+    cycles = (
+        db.query(CropCycle)
+        .filter(CropCycle.tenant_id == x_tenant_id, CropCycle.parcel_id == parcel.id)
+        .order_by(CropCycle.created_at.asc())
+        .all()
+    )
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.parcel_id == parcel.id)
+        .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
+        .all()
+    )
+    activities = [_activity_trace_row(activity, cycle, stage, row_farmer, row_parcel) for activity, cycle, stage, row_farmer, row_parcel in activity_rows_raw]
+    return _parcel_trace_payload(parcel=parcel, farmer=farmer, project=project, cycles=cycles, activities=activities, tenant_id=x_tenant_id)
+
+
 @router.get("/farmers/{farmer_id}/trace")
 def farmer_trace_report(
     farmer_id: uuid.UUID,

@@ -205,7 +205,7 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Parcel label", row.parcel_label],
           ["Project ID", row.project_id],
           ["Tenant", row.tenant_id],
-        ]} action={row.farmer_id ? <a href={`/farmer-trace/${row.farmer_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open farmer trace</a> : undefined} />
+        ]} action={<div className="flex gap-2">{row.farmer_id && <a href={`/farmer-trace/${row.farmer_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open farmer</a>}{row.parcel_id && <a href={`/parcel-trace/${row.parcel_id}`} className="rounded border px-3 py-1 text-xs text-gray-700">Open parcel</a>}</div>} />
         <TraceSection title="Logging / GPS" rows={[
           ["Logged by", row.logged_by],
           ["Logging method", row.logging_method],

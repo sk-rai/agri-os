@@ -296,6 +296,30 @@ export interface FarmerTraceResponse {
   crop_cycles: FarmerTraceCycle[];
   activities: ActivityUsageRow[];
 }
+export interface ParcelTraceResponse {
+  schema_version: string;
+  tenant_id: string;
+  parcel: FarmerTraceParcel & {
+    farmer_id: string;
+    soil_type_code?: string | null;
+    geometry_accuracy_meters?: string | null;
+    geometry_captured_at?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  };
+  farmer?: Record<string, string | null> & { id: string } | null;
+  project?: Record<string, string | null> | null;
+  summary: {
+    crop_cycle_count: number;
+    active_cycle_count: number;
+    completed_cycle_count: number;
+    activity_count: number;
+    total_cost: string;
+    variance_count: number;
+  };
+  crop_cycles: FarmerTraceCycle[];
+  activities: ActivityUsageRow[];
+}
 export interface ActivityUsageFilterOption {
   id?: string;
   code?: string;
@@ -340,6 +364,7 @@ export const reportsApi = {
   inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   farmerTrace: (farmerId: string) => api<FarmerTraceResponse>(`/api/v1/reports/farmers/${farmerId}/trace`),
+  parcelTrace: (parcelId: string) => api<ParcelTraceResponse>(`/api/v1/reports/parcels/${parcelId}/trace`),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),
