@@ -4,19 +4,40 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { reportsApi, type AdminLookupResponse } from "@/lib/api";
 
-export default function AdminLookupPage() {
-  const [query, setQuery] = useState("");
-  const [submittedQuery, setSubmittedQuery] = useState("");
+type LookupFilters = { projectId: string; geometryStatus: string; geometrySource: string };
+
+function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
+  for (const key of keys) {
+    const value = searchParams?.[key];
+    if (Array.isArray(value)) return value[0] || "";
+    if (value) return value;
+  }
+  return "";
+}
+
+function filtersFromSearchParams(searchParams?: Record<string, string | string[] | undefined>): LookupFilters {
+  return {
+    projectId: paramValue(searchParams, "projectId", "project_id"),
+    geometryStatus: paramValue(searchParams, "geometryStatus", "geometry_status"),
+    geometrySource: paramValue(searchParams, "geometrySource", "geometry_source"),
+  };
+}
+
+export default function AdminLookupPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const [query, setQuery] = useState(paramValue(searchParams, "q", "query"));
+  const [submittedQuery, setSubmittedQuery] = useState(paramValue(searchParams, "q", "query"));
+  const [filters, setFilters] = useState<LookupFilters>(() => filtersFromSearchParams(searchParams));
+  const [submittedFilters, setSubmittedFilters] = useState<LookupFilters>(() => filtersFromSearchParams(searchParams));
   const [result, setResult] = useState<AdminLookupResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (search: string) => {
+  const load = useCallback(async (search: string, nextFilters: LookupFilters) => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await reportsApi.lookup(search, 25));
+      setResult(await reportsApi.lookup({ query: search, projectId: nextFilters.projectId || undefined, geometryStatus: nextFilters.geometryStatus || undefined, geometrySource: nextFilters.geometrySource || undefined, limit: 25 }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load lookup results");
     } finally {
@@ -24,20 +45,20 @@ export default function AdminLookupPage() {
     }
   }, []);
 
-  useEffect(() => { load(""); }, [load]);
+  useEffect(() => { load(submittedQuery, submittedFilters); }, [load, submittedQuery, submittedFilters]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     const next = query.trim();
     setSubmittedQuery(next);
-    load(next);
+    setSubmittedFilters({ ...filters });
   }
 
   async function exportCsv() {
     setExporting(true);
     setError(null);
     try {
-      await reportsApi.downloadLookupCsv(submittedQuery, 500);
+      await reportsApi.downloadLookupCsv({ query: submittedQuery, projectId: submittedFilters.projectId || undefined, geometryStatus: submittedFilters.geometryStatus || undefined, geometrySource: submittedFilters.geometrySource || undefined, limit: 500 });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to export lookup CSV");
     } finally {
@@ -46,6 +67,7 @@ export default function AdminLookupPage() {
   }
 
   const total = (result?.projects.length || 0) + (result?.farmers.length || 0) + (result?.parcels.length || 0);
+  const activeFilterText = [submittedFilters.projectId ? `Project ${submittedFilters.projectId}` : null, submittedFilters.geometryStatus ? `Geometry ${submittedFilters.geometryStatus}` : null, submittedFilters.geometrySource ? `Source ${submittedFilters.geometrySource}` : null].filter(Boolean).join(" ? ");
 
   return <div>
     <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -53,7 +75,7 @@ export default function AdminLookupPage() {
         <h1 className="text-2xl font-bold text-gray-900">Admin Lookup</h1>
         <p className="mt-1 text-sm text-gray-500">Find projects, farmers, and parcels, then jump directly into traceability views.</p>
       </div>
-      <div className="flex gap-2"><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
+      <div className="flex gap-2"><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery, submittedFilters)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
     </div>
 
     <form onSubmit={submit} className="mb-6 rounded bg-white p-5 shadow">
@@ -61,12 +83,19 @@ export default function AdminLookupPage() {
       <div className="mt-2 flex flex-col gap-3 md:flex-row">
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. 9900000001, 1234/98, Rice, farmer UUID" className="flex-1 rounded border p-3 text-sm text-gray-900" />
         <button type="submit" disabled={loading} className="rounded bg-green-700 px-5 py-3 text-sm font-medium text-white disabled:opacity-50">Search</button>
-        <button type="button" onClick={() => { setQuery(""); setSubmittedQuery(""); load(""); }} className="rounded border px-5 py-3 text-sm">Clear</button>
+        <button type="button" onClick={() => { const empty = { projectId: "", geometryStatus: "", geometrySource: "" }; setQuery(""); setSubmittedQuery(""); setFilters(empty); setSubmittedFilters(empty); }} className="rounded border px-5 py-3 text-sm">Clear</button>
       </div>
-      <p className="mt-2 text-xs text-gray-400">Blank search shows recent records. Search is tenant-scoped and read-only.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <label className="text-xs text-gray-500">Project ID<input value={filters.projectId} onChange={(event) => setFilters({ ...filters, projectId: event.target.value })} placeholder="Optional project UUID" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Geometry status<select value={filters.geometryStatus} onChange={(event) => setFilters({ ...filters, geometryStatus: event.target.value, geometrySource: event.target.value ? "" : filters.geometrySource })} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option><option value="MISSING">Missing geometry</option><option value="CAPTURED">Captured geometry</option></select></label>
+        <label className="text-xs text-gray-500">Geometry source<select value={filters.geometrySource} onChange={(event) => setFilters({ ...filters, geometrySource: event.target.value, geometryStatus: event.target.value ? "" : filters.geometryStatus })} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option><option value="PIN_DROP">PIN_DROP</option><option value="GPS_WALK">GPS_WALK</option><option value="NONE">NONE / Missing</option></select></label>
+      </div>
+      <p className="mt-2 text-xs text-gray-400">Blank search shows recent records. Search is tenant-scoped and read-only. Geometry filters apply to parcel rows.</p>
     </form>
 
     {error && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+
+    {activeFilterText && <p className="mb-4 rounded bg-blue-50 p-3 text-sm text-blue-700">Active filters: {activeFilterText}</p>}
 
     <div className="mb-6 grid gap-4 md:grid-cols-4">
       <Card label="Total matches" value={loading ? "..." : total} />

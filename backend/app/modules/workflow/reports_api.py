@@ -1818,18 +1818,27 @@ def _safe_uuid(value: Optional[str]):
 @router.get("/lookup")
 def admin_lookup_report(
     q: Optional[str] = Query(None, description="Search projects, farmers, and parcels by name, mobile, survey number, or ID"),
+    project_id: Optional[uuid.UUID] = Query(None),
+    geometry_status: Optional[str] = Query(None, description="Parcel geometry status: CAPTURED or MISSING"),
+    geometry_source: Optional[str] = Query(None, description="Parcel geometry source such as PIN_DROP, GPS_WALK, or NONE"),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     term = (q or "").strip()
+    geometry_status_value = geometry_status.upper() if geometry_status else None
+    geometry_source_value = geometry_source.upper() if geometry_source else None
     like = f"%{term}%" if term else None
     uuid_value = _safe_uuid(term)
 
     project_query = db.query(Project).filter(Project.tenant_id == x_tenant_id)
     farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
     parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id)
+    if project_id:
+        project_query = project_query.filter(Project.id == project_id)
+        farmer_query = farmer_query.filter(Farmer.project_id == project_id)
+        parcel_query = parcel_query.filter(Parcel.project_id == project_id)
     # SQLAlchemy boolean OR is kept inline to avoid expanding imports in this legacy report module.
     if term:
         project_condition = Project.name.ilike(like) | Project.status.ilike(like)
@@ -1842,6 +1851,23 @@ def admin_lookup_report(
         project_query = db.query(Project).filter(Project.tenant_id == x_tenant_id, project_condition)
         farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, farmer_condition)
         parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, parcel_condition)
+        if project_id:
+            project_query = project_query.filter(Project.id == project_id)
+            farmer_query = farmer_query.filter(Farmer.project_id == project_id)
+            parcel_query = parcel_query.filter(Parcel.project_id == project_id)
+
+    if geometry_status_value == "MISSING":
+        parcel_query = parcel_query.filter((Parcel.geometry_source.is_(None)) | (Parcel.geometry_source == "NONE"))
+    elif geometry_status_value == "CAPTURED":
+        parcel_query = parcel_query.filter(Parcel.geometry_source.isnot(None), Parcel.geometry_source != "NONE")
+    elif geometry_status_value:
+        raise HTTPException(400, "geometry_status must be CAPTURED or MISSING")
+
+    if geometry_source_value:
+        if geometry_source_value in {"MISSING", "NONE"}:
+            parcel_query = parcel_query.filter((Parcel.geometry_source.is_(None)) | (Parcel.geometry_source == "NONE"))
+        else:
+            parcel_query = parcel_query.filter(Parcel.geometry_source == geometry_source_value)
 
     projects = project_query.order_by(Project.updated_at.desc()).limit(limit).all()
     farmers = farmer_query.order_by(Farmer.updated_at.desc()).limit(limit).all()
@@ -1880,6 +1906,11 @@ def admin_lookup_report(
         "schema_version": "admin_lookup.v1",
         "tenant_id": x_tenant_id,
         "query": term,
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "geometry_status": geometry_status_value,
+            "geometry_source": geometry_source_value,
+        },
         "limit": limit,
         "projects": [
             {
@@ -1940,12 +1971,15 @@ def admin_lookup_report(
 @router.get("/lookup.csv")
 def admin_lookup_report_csv(
     q: Optional[str] = Query(None, description="Search projects, farmers, and parcels by name, mobile, survey number, or ID"),
+    project_id: Optional[uuid.UUID] = Query(None),
+    geometry_status: Optional[str] = Query(None),
+    geometry_source: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
-    payload = admin_lookup_report(q=q, limit=limit, db=db, x_tenant_id=x_tenant_id, principal=principal)
+    payload = admin_lookup_report(q=q, project_id=project_id, geometry_status=geometry_status, geometry_source=geometry_source, limit=limit, db=db, x_tenant_id=x_tenant_id, principal=principal)
     rows = []
     for project in payload["projects"]:
         rows.append({
@@ -1991,7 +2025,8 @@ def admin_lookup_report_csv(
             "activity_count": parcel.get("activity_count"),
             "trace_url": parcel.get("trace_url"),
         })
-    filename = "admin_lookup.csv" if not (q or "").strip() else "admin_lookup_search.csv"
+    has_filters = bool((q or "").strip() or project_id or geometry_status or geometry_source)
+    filename = "admin_lookup.csv" if not has_filters else "admin_lookup_search.csv"
     return _csv_stream(_rows_csv(rows, LOOKUP_CSV_COLUMNS), filename)
 
 @router.get("/activity-usage/filter-options")

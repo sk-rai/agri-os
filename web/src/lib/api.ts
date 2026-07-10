@@ -367,6 +367,7 @@ export interface AdminLookupResponse {
   schema_version: string;
   tenant_id: string;
   query: string;
+  filters?: { project_id?: string | null; geometry_status?: string | null; geometry_source?: string | null };
   limit: number;
   projects: AdminLookupProject[];
   farmers: AdminLookupFarmer[];
@@ -461,9 +462,21 @@ export interface ActivityUsageFilterOptionsResponse {
   products: ActivityUsageFilterOption[];
 }
 type AdminDashboardParams = { projectId?: string; dateFrom?: string; dateTo?: string; limit?: number };
+type AdminLookupParams = { query?: string; projectId?: string; geometryStatus?: string; geometrySource?: string; limit?: number };
 type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
 type ProjectTraceParams = { farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; cycleStatus?: string; hasVariance?: string; dateFrom?: string; dateTo?: string; limit?: number };
 
+
+
+function adminLookupQuery(params?: AdminLookupParams): string {
+  const query = new URLSearchParams();
+  query.set("q", params?.query || "");
+  if (params?.projectId) query.set("project_id", params.projectId);
+  if (params?.geometryStatus) query.set("geometry_status", params.geometryStatus);
+  if (params?.geometrySource) query.set("geometry_source", params.geometrySource);
+  query.set("limit", String(params?.limit || 25));
+  return `?${query.toString()}`;
+}
 
 function adminDashboardQuery(params?: AdminDashboardParams): string {
   const query = new URLSearchParams();
@@ -519,9 +532,14 @@ export const reportsApi = {
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   farmerTrace: (farmerId: string) => api<FarmerTraceResponse>(`/api/v1/reports/farmers/${farmerId}/trace`),
   parcelTrace: (parcelId: string) => api<ParcelTraceResponse>(`/api/v1/reports/parcels/${parcelId}/trace`),
-  lookup: (query?: string, limit = 25) => api<AdminLookupResponse>(`/api/v1/reports/lookup?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`),
-  downloadLookupCsv: (query?: string, limit = 100) =>
-    apiDownload(`/api/v1/reports/lookup.csv?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`, "admin_lookup.csv"),
+  lookup: (params?: string | AdminLookupParams, limit = 25) => {
+    const queryParams = typeof params === "string" ? { query: params, limit } : params;
+    return api<AdminLookupResponse>(`/api/v1/reports/lookup${adminLookupQuery(queryParams)}`);
+  },
+  downloadLookupCsv: (params?: string | AdminLookupParams, limit = 100) => {
+    const queryParams = typeof params === "string" ? { query: params, limit } : { ...params, limit: params?.limit || limit };
+    return apiDownload(`/api/v1/reports/lookup.csv${adminLookupQuery(queryParams)}`, "admin_lookup.csv");
+  },
   downloadProjectTraceCsv: (projectId: string, params?: ProjectTraceParams) =>
     apiDownload(`/api/v1/reports/projects/${projectId}/trace.csv${projectTraceQuery(params)}`, "project_trace.csv"),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),

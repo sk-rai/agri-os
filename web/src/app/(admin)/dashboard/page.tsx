@@ -22,6 +22,17 @@ function compactQuery(params: Record<string, string | number | null | undefined>
   return encoded ? `?${encoded}` : "";
 }
 
+
+function dashboardLookupHref(data: AdminDashboardResponse, params: Record<string, string | number | null | undefined> = {}) {
+  return `/lookup${compactQuery({ projectId: data.filters.project_id, ...params })}`;
+}
+
+function geometryLookupHref(data: AdminDashboardResponse, geometrySource: string) {
+  const source = geometrySource.toUpperCase();
+  if (source === "MISSING" || source === "NONE") return dashboardLookupHref(data, { geometryStatus: "MISSING" });
+  return dashboardLookupHref(data, { geometrySource: source });
+}
+
 function dashboardActivityHref(data: AdminDashboardResponse, params: Record<string, string | number | null | undefined> = {}) {
   return `/activity-usage${compactQuery({
     projectId: data.filters.project_id,
@@ -139,9 +150,9 @@ export default function DashboardPage() {
       {summary ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Projects" value={summary.project_count} tone="blue" href="/lookup" />
-            <StatCard label="Farmers" value={summary.farmer_count} tone="green" href="/lookup" />
-            <StatCard label="Parcels" value={summary.parcel_count} tone="indigo" href="/lookup" />
+            <StatCard label="Projects" value={summary.project_count} tone="blue" href={dashboardLookupHref(data)} />
+            <StatCard label="Farmers" value={summary.farmer_count} tone="green" href={dashboardLookupHref(data)} />
+            <StatCard label="Parcels" value={summary.parcel_count} tone="indigo" href={dashboardLookupHref(data)} />
             <StatCard label="Crop cycles" value={summary.crop_cycle_count} tone="purple" href={dashboardProjectTraceHref(data)} />
             <StatCard label="Active cycles" value={summary.active_cycle_count} tone="yellow" href={dashboardProjectTraceHref(data, { cycleStatus: "ACTIVE" })} />
             <StatCard label="Completed cycles" value={summary.completed_cycle_count} tone="green" href={dashboardProjectTraceHref(data, { cycleStatus: "COMPLETED" })} />
@@ -151,7 +162,7 @@ export default function DashboardPage() {
 
           <div className="grid gap-4 lg:grid-cols-3">
             <SummaryList title="Crop distribution" empty="No crop cycles yet" rows={data.crop_distribution.map((row) => ({ label: row.crop_code, value: row.crop_cycle_count, href: data.filters.project_id ? dashboardProjectTraceHref(data, { cropCode: row.crop_code }) : dashboardActivityHref(data, { cropCode: row.crop_code }) }))} />
-            <SummaryList title="Geometry coverage" empty="No parcels yet" rows={data.geometry_coverage.map((row) => ({ label: row.geometry_source, value: row.parcel_count, href: "/lookup" }))} />
+            <SummaryList title="Geometry coverage" empty="No parcels yet" rows={data.geometry_coverage.map((row) => ({ label: row.geometry_source, value: row.parcel_count, href: geometryLookupHref(data, row.geometry_source) }))} />
             <SummaryList title="Activity types" empty="No activities yet" rows={data.activity_count_by_type.map((row) => ({ label: row.activity_type, value: row.activity_count, href: dashboardActivityHref(data, { activityType: row.activity_type }) }))} />
           </div>
 
