@@ -640,9 +640,114 @@ def farmer_trace_report(
 
 
 
+def _project_trace_filter_payload(
+    *,
+    farmer_id,
+    parcel_id,
+    crop_code,
+    season_code,
+    stage_code,
+    activity_type,
+    input_code,
+    product_code,
+    cycle_status,
+    has_variance,
+    date_from,
+    date_to,
+    limit,
+):
+    return {
+        "farmer_id": str(farmer_id) if farmer_id else None,
+        "parcel_id": str(parcel_id) if parcel_id else None,
+        "crop_code": crop_code.upper() if crop_code else None,
+        "season_code": season_code.upper() if season_code else None,
+        "stage_code": stage_code.upper() if stage_code else None,
+        "activity_type": activity_type.upper() if activity_type else None,
+        "input_code": input_code.upper() if input_code else None,
+        "product_code": product_code.upper() if product_code else None,
+        "cycle_status": cycle_status.upper() if cycle_status else None,
+        "has_variance": has_variance,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+        "limit": limit,
+    }
+
+
+def _apply_project_cycle_filters(query, *, farmer_id, parcel_id, crop_code, season_code, cycle_status):
+    if farmer_id:
+        query = query.filter(CropCycle.farmer_id == farmer_id)
+    if parcel_id:
+        query = query.filter(CropCycle.parcel_id == parcel_id)
+    if crop_code:
+        query = query.filter(CropCycle.crop_code == crop_code.upper())
+    if season_code:
+        query = query.filter(CropCycle.season_code == season_code.upper())
+    if cycle_status:
+        query = query.filter(CropCycle.status == cycle_status.upper())
+    return query
+
+
+def _project_trace_activity_query(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id: uuid.UUID,
+    farmer_id: Optional[uuid.UUID],
+    parcel_id: Optional[uuid.UUID],
+    crop_code: Optional[str],
+    season_code: Optional[str],
+    stage_code: Optional[str],
+    activity_type: Optional[str],
+    input_code: Optional[str],
+    product_code: Optional[str],
+    cycle_status: Optional[str],
+    has_variance: Optional[bool],
+    date_from: Optional[date],
+    date_to: Optional[date],
+):
+    query = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == tenant_id, CropCycle.project_id == project_id)
+    )
+    query = _apply_project_cycle_filters(query, farmer_id=farmer_id, parcel_id=parcel_id, crop_code=crop_code, season_code=season_code, cycle_status=cycle_status)
+    if stage_code:
+        query = query.filter(CropStageInstance.stage_code == stage_code.upper())
+    if activity_type:
+        query = query.filter(CropActivity.activity_type == activity_type.upper())
+    if input_code:
+        query = query.filter(CropActivity.input_code == input_code.upper())
+    if product_code:
+        query = query.filter(CropActivity.product_code == product_code.upper())
+    if date_from:
+        query = query.filter(CropActivity.activity_date >= date_from)
+    if date_to:
+        query = query.filter(CropActivity.activity_date <= date_to)
+    if has_variance is True:
+        query = query.filter(CropActivity.recommended_quantity.isnot(None), CropActivity.actual_quantity.isnot(None), CropActivity.recommended_quantity != CropActivity.actual_quantity)
+    elif has_variance is False:
+        query = query.filter((CropActivity.recommended_quantity.is_(None)) | (CropActivity.actual_quantity.is_(None)) | (CropActivity.recommended_quantity == CropActivity.actual_quantity))
+    return query
+
+
 @router.get("/projects/{project_id}/trace")
 def project_trace_report(
     project_id: uuid.UUID,
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    stage_code: Optional[str] = Query(None),
+    activity_type: Optional[str] = Query(None),
+    input_code: Optional[str] = Query(None),
+    product_code: Optional[str] = Query(None),
+    cycle_status: Optional[str] = Query(None),
+    has_variance: Optional[bool] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
@@ -664,19 +769,27 @@ def project_trace_report(
         .order_by(Parcel.updated_at.desc())
         .all()
     )
-    cycles = (
-        db.query(CropCycle)
-        .filter(CropCycle.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
-        .order_by(CropCycle.updated_at.desc())
-        .all()
-    )
+    cycle_query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+    cycle_query = _apply_project_cycle_filters(cycle_query, farmer_id=farmer_id, parcel_id=parcel_id, crop_code=crop_code, season_code=season_code, cycle_status=cycle_status)
+    cycles = cycle_query.order_by(CropCycle.updated_at.desc()).all()
     activity_rows_raw = (
-        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
-        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
-        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
-        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
-        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
-        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        _project_trace_activity_query(
+            db,
+            tenant_id=x_tenant_id,
+            project_id=project.id,
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            crop_code=crop_code,
+            season_code=season_code,
+            stage_code=stage_code,
+            activity_type=activity_type,
+            input_code=input_code,
+            product_code=product_code,
+            cycle_status=cycle_status,
+            has_variance=has_variance,
+            date_from=date_from,
+            date_to=date_to,
+        )
         .order_by(CropActivity.activity_date.desc(), CropActivity.created_at.desc())
         .all()
     )
@@ -718,6 +831,21 @@ def project_trace_report(
     return {
         "schema_version": "project_trace.v1",
         "tenant_id": x_tenant_id,
+        "filters": _project_trace_filter_payload(
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            crop_code=crop_code,
+            season_code=season_code,
+            stage_code=stage_code,
+            activity_type=activity_type,
+            input_code=input_code,
+            product_code=product_code,
+            cycle_status=cycle_status,
+            has_variance=has_variance,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        ),
         "project": {
             "id": str(project.id),
             "name": project.name,
@@ -799,6 +927,18 @@ def project_trace_report(
 @router.get("/projects/{project_id}/trace.csv")
 def project_trace_report_csv(
     project_id: uuid.UUID,
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    stage_code: Optional[str] = Query(None),
+    activity_type: Optional[str] = Query(None),
+    input_code: Optional[str] = Query(None),
+    product_code: Optional[str] = Query(None),
+    cycle_status: Optional[str] = Query(None),
+    has_variance: Optional[bool] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     limit: int = Query(5000, ge=1, le=10000),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
@@ -809,12 +949,23 @@ def project_trace_report_csv(
         raise HTTPException(404, "Project not found")
 
     activity_rows_raw = (
-        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
-        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
-        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
-        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
-        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
-        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        _project_trace_activity_query(
+            db,
+            tenant_id=x_tenant_id,
+            project_id=project.id,
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            crop_code=crop_code,
+            season_code=season_code,
+            stage_code=stage_code,
+            activity_type=activity_type,
+            input_code=input_code,
+            product_code=product_code,
+            cycle_status=cycle_status,
+            has_variance=has_variance,
+            date_from=date_from,
+            date_to=date_to,
+        )
         .order_by(CropActivity.activity_date.desc(), CropActivity.created_at.desc())
         .limit(limit)
         .all()

@@ -375,6 +375,7 @@ export interface AdminLookupResponse {
 export interface ProjectTraceResponse {
   schema_version: string;
   tenant_id: string;
+  filters: Record<string, string | number | boolean | null>;
   project: { id: string; name: string; status?: string | null; start_date?: string | null; end_date?: string | null; crop_scope: string[] };
   summary: {
     farmer_count: number;
@@ -418,6 +419,7 @@ export interface ActivityUsageFilterOptionsResponse {
   products: ActivityUsageFilterOption[];
 }
 type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
+type ProjectTraceParams = { farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; cycleStatus?: string; hasVariance?: string; dateFrom?: string; dateTo?: string; limit?: number };
 
 function activityUsageQuery(params?: ActivityUsageParams): string {
   const query = new URLSearchParams();
@@ -436,9 +438,27 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
   return query.toString() ? `?${query.toString()}` : "";
 }
 
+function projectTraceQuery(params?: ProjectTraceParams): string {
+  const query = new URLSearchParams();
+  if (params?.farmerId) query.set("farmer_id", params.farmerId);
+  if (params?.parcelId) query.set("parcel_id", params.parcelId);
+  if (params?.cropCode) query.set("crop_code", params.cropCode);
+  if (params?.seasonCode) query.set("season_code", params.seasonCode);
+  if (params?.stageCode) query.set("stage_code", params.stageCode);
+  if (params?.activityType) query.set("activity_type", params.activityType);
+  if (params?.inputCode) query.set("input_code", params.inputCode);
+  if (params?.productCode) query.set("product_code", params.productCode);
+  if (params?.cycleStatus) query.set("cycle_status", params.cycleStatus);
+  if (params?.hasVariance) query.set("has_variance", params.hasVariance);
+  if (params?.dateFrom) query.set("date_from", params.dateFrom);
+  if (params?.dateTo) query.set("date_to", params.dateTo);
+  if (params?.limit) query.set("limit", String(params.limit));
+  return query.toString() ? `?${query.toString()}` : "";
+}
+
 export const reportsApi = {
   projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
-  projectTrace: (projectId: string, limit = 25) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace?limit=${limit}`),
+  projectTrace: (projectId: string, params?: ProjectTraceParams) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace${projectTraceQuery(params)}`),
   productTrace: (productCode: string) => api<ProductTraceResponse>(`/api/v1/reports/products/${encodeURIComponent(productCode)}/trace`),
   inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
@@ -447,8 +467,8 @@ export const reportsApi = {
   lookup: (query?: string, limit = 25) => api<AdminLookupResponse>(`/api/v1/reports/lookup?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`),
   downloadLookupCsv: (query?: string, limit = 100) =>
     apiDownload(`/api/v1/reports/lookup.csv?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`, "admin_lookup.csv"),
-  downloadProjectTraceCsv: (projectId: string, limit = 5000) =>
-    apiDownload(`/api/v1/reports/projects/${projectId}/trace.csv?limit=${limit}`, "project_trace.csv"),
+  downloadProjectTraceCsv: (projectId: string, params?: ProjectTraceParams) =>
+    apiDownload(`/api/v1/reports/projects/${projectId}/trace.csv${projectTraceQuery(params)}`, "project_trace.csv"),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),

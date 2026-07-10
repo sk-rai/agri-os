@@ -4,30 +4,45 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { reportsApi, type ProjectTraceResponse } from "@/lib/api";
 
+const EMPTY_FILTERS = { farmerId: "", parcelId: "", cropCode: "", seasonCode: "", stageCode: "", activityType: "", inputCode: "", productCode: "", cycleStatus: "", hasVariance: "", dateFrom: "", dateTo: "" };
+type Filters = typeof EMPTY_FILTERS;
+
 export default function ProjectTracePage({ params }: { params: { projectId: string } }) {
   const [trace, setTrace] = useState<ProjectTraceResponse | null>(null);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     reportsApi
-      .projectTrace(params.projectId, 25)
+      .projectTrace(params.projectId, cleanFilters({ ...appliedFilters, limit: "25" }))
       .then(setTrace)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load project trace"))
       .finally(() => setLoading(false));
-  }, [params.projectId]);
+  }, [params.projectId, appliedFilters]);
 
   async function exportCsv() {
     setExporting(true);
     setError(null);
     try {
-      await reportsApi.downloadProjectTraceCsv(params.projectId, 5000);
+      await reportsApi.downloadProjectTraceCsv(params.projectId, cleanFilters({ ...appliedFilters, limit: "5000" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to export project trace CSV");
     } finally {
       setExporting(false);
     }
+  }
+
+  function applyFilters() {
+    setAppliedFilters({ ...filters });
+  }
+
+  function clearFilters() {
+    setFilters(EMPTY_FILTERS);
+    setAppliedFilters(EMPTY_FILTERS);
   }
 
   if (loading) return <div className="text-gray-500">Loading project trace...</div>;
@@ -49,6 +64,33 @@ export default function ProjectTracePage({ params }: { params: { projectId: stri
         </div>
       </div>
     </div>
+
+    <section className="mb-6 rounded bg-white p-5 shadow">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-900">Filters</h2>
+          <p className="text-xs text-gray-400">Filters apply to project cycles, activities, summaries, and CSV export.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={clearFilters} className="rounded border px-3 py-2 text-sm">Clear</button>
+          <button onClick={applyFilters} disabled={loading} className="rounded bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50">Apply</button>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-5">
+        <Field label="Farmer ID" value={filters.farmerId} set={(v) => setFilters({ ...filters, farmerId: v })} />
+        <Field label="Parcel ID" value={filters.parcelId} set={(v) => setFilters({ ...filters, parcelId: v })} />
+        <Field label="Crop" value={filters.cropCode} set={(v) => setFilters({ ...filters, cropCode: v })} placeholder="RICE" />
+        <Field label="Season" value={filters.seasonCode} set={(v) => setFilters({ ...filters, seasonCode: v })} placeholder="KHARIF" />
+        <Field label="Stage" value={filters.stageCode} set={(v) => setFilters({ ...filters, stageCode: v })} placeholder="TILLERING" />
+        <Field label="Activity" value={filters.activityType} set={(v) => setFilters({ ...filters, activityType: v })} placeholder="FERTILIZER" />
+        <Field label="Input" value={filters.inputCode} set={(v) => setFilters({ ...filters, inputCode: v })} placeholder="UREA_46_N" />
+        <Field label="Product" value={filters.productCode} set={(v) => setFilters({ ...filters, productCode: v })} />
+        <Field label="Cycle status" value={filters.cycleStatus} set={(v) => setFilters({ ...filters, cycleStatus: v })} placeholder="ACTIVE" />
+        <label className="text-xs text-gray-500">Variance<select value={filters.hasVariance} onChange={(e) => setFilters({ ...filters, hasVariance: e.target.value })} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option><option value="true">Variance only</option><option value="false">No variance</option></select></label>
+        <Field label="From" type="date" value={filters.dateFrom} set={(v) => setFilters({ ...filters, dateFrom: v })} />
+        <Field label="To" type="date" value={filters.dateTo} set={(v) => setFilters({ ...filters, dateTo: v })} />
+      </div>
+    </section>
 
     <div className="mb-6 grid gap-4 md:grid-cols-4">
       <Card label="Farmers" value={trace.summary.farmer_count} />
@@ -152,4 +194,17 @@ function SummaryList({ title, rows, footer }: { title: string; rows: string[]; f
 }
 function Empty({ colSpan, label }: { colSpan: number; label: string }) {
   return <tr><td colSpan={colSpan} className="p-8 text-center text-gray-400">{label}</td></tr>;
+}
+
+function Field({ label, value, set, type = "text", placeholder }: { label: string; value: string; set: (value: string) => void; type?: string; placeholder?: string }) {
+  return <label className="text-xs text-gray-500">{label}<input type={type} value={value} placeholder={placeholder} onChange={(e) => set(e.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>;
+}
+
+function cleanFilters(filters: Record<string, string>) {
+  const cleaned: Record<string, string | number> = {};
+  Object.entries(filters).forEach(([key, value]) => {
+    if (!value) return;
+    cleaned[key] = key === "limit" ? Number(value) : value;
+  });
+  return cleaned;
 }
