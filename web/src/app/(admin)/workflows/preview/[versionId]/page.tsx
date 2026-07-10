@@ -413,6 +413,16 @@ export default function WorkflowPreviewPage() {
 }
 
 
+function scrollToStageEditor(stageCode: string, intent: "stage" | "recommendation" = "stage") {
+  const element = document.getElementById(`stage-editor-${stageCode}`);
+  if (!element) return;
+  if (element instanceof HTMLDetailsElement) element.open = true;
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => {
+    document.getElementById(`stage-${intent}-${stageCode}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 250);
+}
+
 function VisualWorkflowBuilder({
   stages,
   selectedStageCode,
@@ -463,6 +473,7 @@ function VisualWorkflowBuilder({
                       key={stage.code}
                       type="button"
                       onClick={() => onSelectStage(stage.code)}
+                      onDoubleClick={() => scrollToStageEditor(stage.code)}
                       className={`group relative flex w-56 flex-col rounded-xl border p-4 text-left transition ${selected ? "border-green-500 bg-green-50 shadow-md ring-2 ring-green-100" : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/40"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -487,7 +498,7 @@ function VisualWorkflowBuilder({
               </div>
             </div>
 
-            {selectedStage ? <StageInspector stage={selectedStage} draftEditable={draftEditable} /> : null}
+            {selectedStage ? <StageInspector stage={selectedStage} draftEditable={draftEditable} onEditStage={() => scrollToStageEditor(selectedStage.code, "stage")} onAddRecommendation={() => scrollToStageEditor(selectedStage.code, "recommendation")} /> : null}
           </div>
         )}
       </div>
@@ -499,7 +510,17 @@ function MiniMetric({ label, value }: { label: string; value: string | number })
   return <div className="rounded bg-white/80 p-2"><p className="text-[10px] uppercase text-gray-400">{label}</p><p className="font-semibold text-gray-900">{value}</p></div>;
 }
 
-function StageInspector({ stage, draftEditable }: { stage: WorkflowStage; draftEditable: boolean }) {
+function StageInspector({
+  stage,
+  draftEditable,
+  onEditStage,
+  onAddRecommendation,
+}: {
+  stage: WorkflowStage;
+  draftEditable: boolean;
+  onEditStage: () => void;
+  onAddRecommendation: () => void;
+}) {
   const recs = stage.recommended_activities || [];
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -512,7 +533,7 @@ function StageInspector({ stage, draftEditable }: { stage: WorkflowStage; draftE
           <div><dt className="text-xs uppercase text-gray-400">Recommendations</dt><dd className="font-semibold text-gray-900">{recs.length}</dd></div>
           <div><dt className="text-xs uppercase text-gray-400">Mode</dt><dd className="font-semibold text-gray-900">{draftEditable ? "Editable draft" : "Read only"}</dd></div>
         </dl>
-        <p className="mt-4 text-xs text-gray-500">Use the detailed editor below to rename stages, change duration, or edit recommendations. This canvas is the visual navigation layer.</p>
+        <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={onEditStage} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">Edit selected stage</button><button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Add recommendation</button></div><p className="mt-3 text-xs text-gray-500">Double-click any stage card or use these shortcuts to jump to the detailed editor below.</p>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -952,10 +973,10 @@ function StagePreview({
   };
 
   return (
-    <details open={stage.order === 1}>
+    <details id={`stage-editor-${stage.code}`} open={stage.order === 1}>
       <summary className="cursor-pointer list-none p-5 hover:bg-gray-50">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div id={`stage-stage-${stage.code}`}>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Stage {stage.order} ? {stage.code}</p>
             <h3 className="mt-1 font-semibold text-gray-900">{labelText(stage.name)}</h3>
             <p className="mt-1 text-sm text-gray-500">{stage.duration_days} days ? {recs.length} recommendations</p>
@@ -1033,7 +1054,7 @@ function StagePreview({
         ) : null}
 
         {projectScoped || draftEditable ? (
-          <details className="mb-4 rounded-lg border border-dashed bg-white p-3">
+          <details id={`stage-recommendation-${stage.code}`} className="mb-4 rounded-lg border border-dashed bg-white p-3">
             <summary className="cursor-pointer text-sm font-semibold text-gray-800">Add custom recommendation</summary>
             <div className="mt-3 rounded-lg bg-gray-50 p-3">
               <div className="mb-3 flex gap-2">
