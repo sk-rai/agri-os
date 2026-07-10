@@ -79,6 +79,9 @@ def main():
         row = payload["activities"][0]
         check(row["activity_id"] == str(activity.id), "report row includes activity id")
         check(row["product_code"] == PRODUCT and row["package_sku"] == SKU, "report row includes product/package")
+        check(row["stage_instance_id"] == str(stage.id) and row["stage_status"] == "ACTIVE", "report row includes stage traceability")
+        check(row["crop_cycle_status"] == "ACTIVE" and row["workflow_template_version_id"] == str(workflow_version.id), "report row includes cycle traceability")
+        check(row["logged_by"] == str(admin.id) and row["logging_method"] == "MANUAL", "report row includes logging traceability")
         check(row["recommended_quantity"] == "36.000" and row["actual_quantity"] == "38.000", "report row includes quantities")
         check(payload["summary"]["activity_count"] == 1, "summary activity count is correct")
         check(payload["summary"]["total_cost"] == "1200.00", "summary total cost is correct")
@@ -94,6 +97,8 @@ def main():
         check(len(csv_rows) == 1, "CSV export returns one row")
         check(csv_rows[0]["activity_id"] == str(activity.id), "CSV row includes activity id")
         check(csv_rows[0]["product_code"] == PRODUCT and csv_rows[0]["package_sku"] == SKU, "CSV row includes product/package")
+        check(csv_rows[0]["stage_instance_id"] == str(stage.id), "CSV row includes stage instance id")
+        check(csv_rows[0]["workflow_template_version_id"] == str(workflow_version.id), "CSV row includes workflow version id")
         check(csv_rows[0]["actual_quantity"] == "38.000", "CSV row includes actual quantity")
 
         options_response = client.get("/api/v1/reports/activity-usage/filter-options")

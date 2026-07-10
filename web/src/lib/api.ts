@@ -98,15 +98,22 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
 export interface ActivityUsageRow {
   activity_id: string;
   activity_date?: string | null;
+  tenant_id?: string | null;
   project_id?: string | null;
   farmer_id?: string | null;
   farmer_name?: string | null;
   parcel_id?: string | null;
   parcel_label?: string | null;
   crop_cycle_id: string;
+  crop_cycle_status?: string | null;
+  workflow_template_version_id?: string | null;
   crop_code: string;
   season_code: string;
   stage_code?: string | null;
+  stage_instance_id?: string | null;
+  stage_name?: string | null;
+  stage_order?: number | null;
+  stage_status?: string | null;
   activity_type: string;
   input_code?: string | null;
   input_name?: string | null;
@@ -126,6 +133,12 @@ export interface ActivityUsageRow {
   area_unit?: string | null;
   cost_amount?: string | null;
   cost_currency?: string | null;
+  gps_lat?: string | null;
+  gps_lng?: string | null;
+  logged_by?: string | null;
+  logging_method?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   notes?: string | null;
 }
 

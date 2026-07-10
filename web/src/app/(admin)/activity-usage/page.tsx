@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { reportsApi, type ActivityUsageFilterOptionsResponse, type ActivityUsageReportResponse } from "@/lib/api";
+import { reportsApi, type ActivityUsageFilterOptionsResponse, type ActivityUsageReportResponse, type ActivityUsageRow } from "@/lib/api";
 
 const EMPTY_FILTERS = {
   projectId: "",
@@ -40,6 +40,7 @@ export default function ActivityUsagePage() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [options, setOptions] = useState<ActivityUsageFilterOptionsResponse | null>(null);
   const [report, setReport] = useState<ActivityUsageReportResponse | null>(null);
+  const [selectedRow, setSelectedRow] = useState<ActivityUsageRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -121,11 +122,12 @@ export default function ActivityUsagePage() {
       <SummaryList title="Quantity by input" rows={(summary?.quantity_by_input || []).map(row => `${row.input_code}: ${row.quantity} ${row.unit}`)} />
       <SummaryList title="Quantity by product" rows={(summary?.quantity_by_product || []).map(row => `${row.product_code}${row.package_sku ? ` / ${row.package_sku}` : ""}: ${row.quantity} ${row.unit}`)} />
     </div>
+    <p className="mb-2 text-xs text-gray-400">Click any activity row to inspect full traceability.</p>
     <div className="overflow-hidden rounded bg-white shadow">
       <table className="w-full text-sm">
         <thead className="bg-gray-50"><tr>{["Date","Crop/stage","Activity","Input","Product/package","Qty","Cost","Farmer/parcel"].map(h => <th key={h} className="p-3 text-left">{h}</th>)}</tr></thead>
         <tbody className="divide-y">
-          {(report?.activities || []).map(row => <tr key={row.activity_id}>
+          {(report?.activities || []).map(row => <tr key={row.activity_id} onClick={() => setSelectedRow(row)} className="cursor-pointer hover:bg-blue-50">
             <td className="p-3 whitespace-nowrap">{row.activity_date || "-"}</td>
             <td className="p-3"><div>{row.crop_code} · {row.season_code}</div><div className="text-xs text-gray-500">{row.stage_code || "-"}</div></td>
             <td className="p-3">{row.activity_type}</td>
@@ -139,6 +141,7 @@ export default function ActivityUsagePage() {
         </tbody>
       </table>
     </div>
+    {selectedRow && <ActivityUsageDetailPanel row={selectedRow} onClose={() => setSelectedRow(null)} />}
   </div>;
 }
 
@@ -150,3 +153,93 @@ function Field({ label, value, set, type = "text" }: { label: string; value: str
 }
 function Card({ label, value }: { label: string; value: string | number }) { return <div className="rounded bg-white p-5 shadow"><p className="text-xs uppercase text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900">{value}</p></div>; }
 function SummaryList({ title, rows }: { title: string; rows: string[] }) { return <div className="rounded bg-white p-5 shadow"><h2 className="font-semibold text-gray-900">{title}</h2>{rows.length ? <ul className="mt-3 space-y-1 text-sm text-gray-700">{rows.slice(0, 8).map(row => <li key={row}>{row}</li>)}</ul> : <p className="mt-3 text-sm text-gray-400">No quantities yet.</p>}</div>; }
+function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onClose: () => void }) {
+  return <div className="fixed inset-0 z-40 flex justify-end bg-black/20" onClick={onClose}>
+    <aside className="h-full w-full max-w-2xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Activity traceability</h2>
+          <p className="mt-1 text-sm text-gray-500">{row.activity_type} · {row.activity_date || "No date"}</p>
+        </div>
+        <button onClick={onClose} className="rounded border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div className="space-y-4">
+        <TraceSection title="Activity payload" rows={[
+          ["Activity ID", row.activity_id],
+          ["Activity date", row.activity_date],
+          ["Type", row.activity_type],
+          ["Input", [row.input_code, row.input_name].filter(Boolean).join(" - ")],
+          ["Quantity", formatQuantity(row.quantity, row.quantity_unit)],
+          ["Area applied", formatQuantity(row.area_applied, row.area_unit)],
+          ["Cost", row.cost_amount ? `${row.cost_currency || "INR"} ${row.cost_amount}` : null],
+          ["Notes", row.notes],
+        ]} />
+        <TraceSection title="Recommendation / rule linkage" rows={[
+          ["Input rule ID", row.input_rule_id],
+          ["Recommended quantity", formatQuantity(row.recommended_quantity, row.recommended_quantity_unit)],
+          ["Actual quantity", formatQuantity(row.actual_quantity, row.actual_quantity_unit)],
+          ["Variance reason", row.dosage_variance_reason],
+        ]} />
+        <TraceSection title="Product / package linkage" rows={[
+          ["Product ID", row.product_id],
+          ["Product code", row.product_code],
+          ["Package ID", row.package_id],
+          ["Package SKU", row.package_sku],
+        ]} />
+        <TraceSection title="Crop cycle / stage" rows={[
+          ["Crop cycle ID", row.crop_cycle_id],
+          ["Cycle status", row.crop_cycle_status],
+          ["Workflow version ID", row.workflow_template_version_id],
+          ["Crop", row.crop_code],
+          ["Season", row.season_code],
+          ["Stage code", row.stage_code],
+          ["Stage instance ID", row.stage_instance_id],
+          ["Stage name", row.stage_name],
+          ["Stage order", row.stage_order != null ? String(row.stage_order) : null],
+          ["Stage status", row.stage_status],
+        ]} />
+        <TraceSection title="Farmer / parcel" rows={[
+          ["Farmer ID", row.farmer_id],
+          ["Farmer name", row.farmer_name],
+          ["Parcel ID", row.parcel_id],
+          ["Parcel label", row.parcel_label],
+          ["Project ID", row.project_id],
+          ["Tenant", row.tenant_id],
+        ]} />
+        <TraceSection title="Logging / GPS" rows={[
+          ["Logged by", row.logged_by],
+          ["Logging method", row.logging_method],
+          ["GPS", row.gps_lat && row.gps_lng ? `${row.gps_lat}, ${row.gps_lng}` : null],
+          ["Created at", row.created_at],
+          ["Updated at", row.updated_at],
+        ]} />
+        <div className="rounded border bg-gray-50 p-4">
+          <h3 className="mb-2 font-semibold text-gray-900">Raw row payload</h3>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(row, null, 2)}</pre>
+        </div>
+      </div>
+    </aside>
+  </div>;
+}
+
+function TraceSection({ title, rows }: { title: string; rows: Array<[string, string | number | null | undefined]> }) {
+  return <section className="rounded border p-4">
+    <h3 className="mb-3 font-semibold text-gray-900">{title}</h3>
+    <dl className="grid gap-2 text-sm md:grid-cols-2">
+      {rows.map(([label, value]) => <div key={label}>
+        <dt className="text-xs uppercase text-gray-400">{label}</dt>
+        <dd className="break-words font-mono text-gray-800">{valueLabel(value)}</dd>
+      </div>)}
+    </dl>
+  </section>;
+}
+
+function formatQuantity(quantity?: string | null, unit?: string | null) {
+  if (!quantity) return null;
+  return `${quantity}${unit ? ` ${unit}` : ""}`;
+}
+
+function valueLabel(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
