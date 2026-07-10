@@ -72,7 +72,7 @@ export default function InputRuleTracePage({ params }: { params: { ruleId: strin
       <div className="grid gap-3 md:grid-cols-2">
         {trace.products.map((product) => <div key={product.id} className="rounded border p-4">
           <div className="font-semibold text-gray-900">{String(product.brand_name || product.code)}</div>
-          <div className="font-mono text-xs text-gray-500">{product.code}</div>
+          <Link href={`/product-trace/${encodeURIComponent(product.code)}`} className="font-mono text-xs text-blue-600">{product.code}</Link>
           <div className="mt-2 text-sm text-gray-600">Status: {String(product.status || "-")}</div>
           <div className="mt-1 text-sm text-gray-600">Approval: {product.approval ? JSON.stringify(product.approval) : "No project approval"}</div>
         </div>)}
@@ -98,7 +98,7 @@ export default function InputRuleTracePage({ params }: { params: { ruleId: strin
             <td className="p-3 whitespace-nowrap">{activity.activity_date || "-"}</td>
             <td className="p-3"><Link href={`/crop-cycle-trace/${activity.crop_cycle_id}`} className="font-mono text-xs text-blue-600">{activity.crop_cycle_id}</Link></td>
             <td className="p-3">{activity.stage_name || activity.stage_code || "-"}</td>
-            <td className="p-3"><div className="font-mono text-xs">{activity.product_code || "-"}</div><div className="font-mono text-xs text-gray-500">{activity.package_sku || ""}</div></td>
+            <td className="p-3">{activity.product_code ? <Link href={`/product-trace/${encodeURIComponent(activity.product_code)}`} className="font-mono text-xs text-blue-600">{activity.product_code}</Link> : <span>-</span>}<div className="font-mono text-xs text-gray-500">{activity.package_sku || ""}</div></td>
             <td className="p-3">{activity.actual_quantity || activity.quantity || "-"} {activity.actual_quantity_unit || activity.quantity_unit || ""}</td>
             <td className="p-3">{activity.cost_amount ? `₹${activity.cost_amount}` : "-"}</td>
             <td className="p-3">{activity.dosage_variance_reason || "-"}</td>

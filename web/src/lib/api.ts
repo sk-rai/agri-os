@@ -157,6 +157,26 @@ export interface ActivityUsageReportResponse {
   activities: ActivityUsageRow[];
 }
 
+export interface ProductTraceResponse {
+  schema_version: string;
+  tenant_id: string;
+  product: Record<string, string | number | null> & { id: string; code: string; brand_name: string; status: string };
+  manufacturer?: Record<string, string | null> | null;
+  input?: Record<string, string | null> | null;
+  packages: Array<Record<string, string | number | null> & { id: string; sku: string; pack_label: string; status: string; activity_count: number }>;
+  project_approvals: Array<Record<string, string | number | boolean | null>>;
+  input_rules: Array<Record<string, string | number | boolean | string[] | null> & { id: string; crop_code: string; stage_code: string; activity_type: string }>;
+  summary: {
+    activity_count: number;
+    total_cost: string;
+    variance_count: number;
+    quantity_by_package: Array<{ package_sku: string; unit: string; quantity: string }>;
+    quantity_by_crop: Array<{ crop_code: string; unit: string; quantity: string }>;
+    quantity_by_stage: Array<{ stage_code: string; unit: string; quantity: string }>;
+    quantity_by_project: Array<{ project_id: string; unit: string; quantity: string }>;
+  };
+  activities: ActivityUsageRow[];
+}
 export interface InputRuleTraceResponse {
   schema_version: string;
   tenant_id: string;
@@ -235,6 +255,7 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
 }
 
 export const reportsApi = {
+  productTrace: (productCode: string) => api<ProductTraceResponse>(`/api/v1/reports/products/${encodeURIComponent(productCode)}/trace`),
   inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),

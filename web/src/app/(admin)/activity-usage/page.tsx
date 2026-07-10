@@ -185,7 +185,7 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Product code", row.product_code],
           ["Package ID", row.package_id],
           ["Package SKU", row.package_sku],
-        ]} />
+        ]} action={row.product_code ? <a href={`/product-trace/${encodeURIComponent(row.product_code)}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open product trace</a> : undefined} />
         <TraceSection title="Crop cycle / stage" rows={[
           ["Crop cycle ID", row.crop_cycle_id],
           ["Cycle status", row.crop_cycle_status],

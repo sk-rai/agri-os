@@ -19,7 +19,9 @@ from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
+    AgriculturalProductPackage,
     CropStageInputRule,
+    Manufacturer,
     InputCategory,
     ProjectInputAssignment,
     ProjectProductApproval,
@@ -318,6 +320,169 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
     }
 
 
+
+
+@router.get("/products/{product_code}/trace")
+def product_trace_report(
+    product_code: str,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    product = db.query(AgriculturalProduct).filter(AgriculturalProduct.code == product_code).first()
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    agri_input = db.query(AgriculturalInput).filter(AgriculturalInput.id == product.canonical_input_id).first()
+    category = db.query(InputCategory).filter(InputCategory.id == agri_input.category_id).first() if agri_input else None
+    manufacturer = db.query(Manufacturer).filter(Manufacturer.id == product.manufacturer_id).first()
+    packages = (
+        db.query(AgriculturalProductPackage)
+        .filter(AgriculturalProductPackage.product_id == product.id)
+        .order_by(AgriculturalProductPackage.sku.asc())
+        .all()
+    )
+    approvals = (
+        db.query(ProjectProductApproval, Project)
+        .outerjoin(Project, Project.id == ProjectProductApproval.project_id)
+        .filter(ProjectProductApproval.tenant_id == x_tenant_id, ProjectProductApproval.product_id == product.id)
+        .order_by(ProjectProductApproval.display_order.asc())
+        .all()
+    )
+
+    candidate_rules = (
+        db.query(CropStageInputRule, Project)
+        .outerjoin(Project, Project.id == CropStageInputRule.project_id)
+        .filter(CropStageInputRule.tenant_id == x_tenant_id, CropStageInputRule.input_id == product.canonical_input_id)
+        .order_by(CropStageInputRule.crop_code.asc(), CropStageInputRule.stage_code.asc(), CropStageInputRule.priority.asc())
+        .all()
+    )
+    rule_rows = []
+    for rule, project in candidate_rules:
+        allowed_codes = rule.allowed_product_codes or []
+        if allowed_codes and product.code not in allowed_codes:
+            continue
+        rule_rows.append({
+            "id": str(rule.id),
+            "project_id": str(rule.project_id) if rule.project_id else None,
+            "project_name": project.name if project else None,
+            "crop_code": rule.crop_code,
+            "season_code": rule.season_code,
+            "stage_code": rule.stage_code,
+            "activity_type": rule.activity_type,
+            "input_code": rule.input_code,
+            "enabled": rule.enabled,
+            "priority": rule.priority,
+            "dosage_quantity": _decimal_text(rule.dosage_quantity),
+            "dosage_unit": rule.dosage_unit,
+            "dosage_area_unit": rule.dosage_area_unit,
+            "allowed_product_codes": allowed_codes,
+        })
+
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropActivity.product_code == product.code)
+        .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
+        .all()
+    )
+    activities = [_activity_trace_row(activity, cycle, stage, farmer, parcel) for activity, cycle, stage, farmer, parcel in activity_rows_raw]
+
+    quantity_by_package = defaultdict(Decimal)
+    quantity_by_crop = defaultdict(Decimal)
+    quantity_by_stage = defaultdict(Decimal)
+    quantity_by_project = defaultdict(Decimal)
+    package_activity_count = defaultdict(int)
+    for row in activities:
+        quantity_value = row.get("actual_quantity") or row.get("quantity")
+        unit = row.get("actual_quantity_unit") or row.get("quantity_unit") or "UNKNOWN"
+        if quantity_value is not None:
+            if row.get("package_sku"):
+                quantity_by_package[(row["package_sku"], unit)] += Decimal(str(quantity_value))
+            if row.get("crop_code"):
+                quantity_by_crop[(row["crop_code"], unit)] += Decimal(str(quantity_value))
+            if row.get("stage_code"):
+                quantity_by_stage[(row["stage_code"], unit)] += Decimal(str(quantity_value))
+            project_key = row.get("project_id") or "NO_PROJECT"
+            quantity_by_project[(project_key, unit)] += Decimal(str(quantity_value))
+        if row.get("package_sku"):
+            package_activity_count[row["package_sku"]] += 1
+
+    return {
+        "schema_version": "product_trace.v1",
+        "tenant_id": x_tenant_id,
+        "product": {
+            "id": str(product.id),
+            "code": product.code,
+            "canonical_input_id": str(product.canonical_input_id),
+            "manufacturer_id": str(product.manufacturer_id),
+            "brand_name": product.brand_name,
+            "composition": product.composition,
+            "registration_number": product.registration_number,
+            "registration_authority": product.registration_authority,
+            "registration_expiry_date": product.registration_expiry_date.isoformat() if product.registration_expiry_date else None,
+            "country": product.country,
+            "status": product.status,
+            "created_at": product.created_at.isoformat() if product.created_at else None,
+            "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+        },
+        "manufacturer": {
+            "id": str(manufacturer.id),
+            "code": manufacturer.code,
+            "canonical_name": manufacturer.canonical_name,
+            "short_name": manufacturer.short_name,
+            "country": manufacturer.country,
+        } if manufacturer else None,
+        "input": {
+            "id": str(agri_input.id),
+            "code": agri_input.code,
+            "canonical_name": agri_input.canonical_name,
+            "category_code": category.code if category else None,
+            "category_name": category.canonical_name if category else None,
+            "composition": agri_input.composition,
+            "unit": agri_input.unit,
+            "catalog_status": agri_input.catalog_status,
+        } if agri_input else None,
+        "packages": [
+            {
+                "id": str(package.id),
+                "sku": package.sku,
+                "quantity": _decimal_text(package.quantity),
+                "unit": package.unit,
+                "pack_label": package.pack_label,
+                "barcode": package.barcode,
+                "status": package.status,
+                "activity_count": package_activity_count.get(package.sku, 0),
+            }
+            for package in packages
+        ],
+        "project_approvals": [
+            {
+                "id": str(approval.id),
+                "project_id": str(approval.project_id),
+                "project_name": project.name if project else None,
+                "enabled": approval.enabled,
+                "preferred": approval.preferred,
+                "display_order": approval.display_order,
+                "reason": approval.reason,
+            }
+            for approval, project in approvals
+        ],
+        "input_rules": rule_rows,
+        "summary": {
+            "activity_count": len(activities),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
+            "variance_count": sum(1 for row in activities if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None and Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"]))),
+            "quantity_by_package": [{"package_sku": key[0], "unit": key[1], "quantity": str(value)} for key, value in sorted(quantity_by_package.items())],
+            "quantity_by_crop": [{"crop_code": key[0], "unit": key[1], "quantity": str(value)} for key, value in sorted(quantity_by_crop.items())],
+            "quantity_by_stage": [{"stage_code": key[0], "unit": key[1], "quantity": str(value)} for key, value in sorted(quantity_by_stage.items())],
+            "quantity_by_project": [{"project_id": key[0], "unit": key[1], "quantity": str(value)} for key, value in sorted(quantity_by_project.items())],
+        },
+        "activities": activities,
+    }
 
 @router.get("/input-rules/{rule_id}/trace")
 def input_rule_trace_report(
