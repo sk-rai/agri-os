@@ -179,7 +179,7 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Recommended quantity", formatQuantity(row.recommended_quantity, row.recommended_quantity_unit)],
           ["Actual quantity", formatQuantity(row.actual_quantity, row.actual_quantity_unit)],
           ["Variance reason", row.dosage_variance_reason],
-        ]} />
+        ]} action={row.input_rule_id ? <a href={`/input-rule-trace/${row.input_rule_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open rule trace</a> : undefined} />
         <TraceSection title="Product / package linkage" rows={[
           ["Product ID", row.product_id],
           ["Product code", row.product_code],

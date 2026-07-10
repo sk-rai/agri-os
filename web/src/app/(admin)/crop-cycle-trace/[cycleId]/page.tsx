@@ -97,7 +97,7 @@ export default function CropCycleTracePage({ params }: { params: { cycleId: stri
             <td className="p-3 whitespace-nowrap">{activity.activity_date || "-"}</td>
             <td className="p-3"><div>{activity.stage_name || activity.stage_code || "-"}</div><div className="font-mono text-xs text-gray-500">{activity.stage_instance_id || ""}</div></td>
             <td className="p-3">{activity.activity_type}</td>
-            <td className="p-3"><div>{activity.input_name || activity.input_code || "-"}</div><div className="font-mono text-xs text-gray-500">{activity.input_rule_id || ""}</div></td>
+            <td className="p-3"><div>{activity.input_name || activity.input_code || "-"}</div>{activity.input_rule_id && <Link href={`/input-rule-trace/${activity.input_rule_id}`} className="font-mono text-xs text-blue-600">{activity.input_rule_id}</Link>}</td>
             <td className="p-3"><div className="font-mono text-xs">{activity.product_code || "-"}</div><div className="font-mono text-xs text-gray-500">{activity.package_sku || ""}</div></td>
             <td className="p-3">{activity.actual_quantity || activity.quantity || "-"} {activity.actual_quantity_unit || activity.quantity_unit || ""}</td>
             <td className="p-3">{activity.cost_amount ? `₹${activity.cost_amount}` : "-"}</td>

@@ -16,6 +16,14 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel, Project
+from app.modules.master_data.models import (
+    AgriculturalInput,
+    AgriculturalProduct,
+    CropStageInputRule,
+    InputCategory,
+    ProjectInputAssignment,
+    ProjectProductApproval,
+)
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -309,6 +317,148 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
         "notes": activity.notes,
     }
 
+
+
+@router.get("/input-rules/{rule_id}/trace")
+def input_rule_trace_report(
+    rule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    rule = db.query(CropStageInputRule).filter(CropStageInputRule.id == rule_id, CropStageInputRule.tenant_id == x_tenant_id).first()
+    if not rule:
+        raise HTTPException(404, "Input rule not found")
+
+    agri_input = db.query(AgriculturalInput).filter(AgriculturalInput.id == rule.input_id).first()
+    category = db.query(InputCategory).filter(InputCategory.id == agri_input.category_id).first() if agri_input else None
+    project = db.query(Project).filter(Project.id == rule.project_id).first() if rule.project_id else None
+    assignment = (
+        db.query(ProjectInputAssignment)
+        .filter(
+            ProjectInputAssignment.tenant_id == x_tenant_id,
+            ProjectInputAssignment.project_id == rule.project_id,
+            ProjectInputAssignment.input_code == rule.input_code,
+        )
+        .first()
+        if rule.project_id
+        else None
+    )
+
+    product_query = db.query(AgriculturalProduct).filter(AgriculturalProduct.canonical_input_id == rule.input_id)
+    if rule.allowed_product_codes:
+        product_query = product_query.filter(AgriculturalProduct.code.in_(rule.allowed_product_codes))
+    products = product_query.order_by(AgriculturalProduct.code.asc()).all()
+    approvals_by_product = {}
+    if rule.project_id and products:
+        approvals = (
+            db.query(ProjectProductApproval)
+            .filter(
+                ProjectProductApproval.tenant_id == x_tenant_id,
+                ProjectProductApproval.project_id == rule.project_id,
+                ProjectProductApproval.product_id.in_([product.id for product in products]),
+            )
+            .all()
+        )
+        approvals_by_product = {approval.product_id: approval for approval in approvals}
+
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropActivity.input_rule_id == rule.id)
+        .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
+        .all()
+    )
+    activities = [_activity_trace_row(activity, cycle, stage, farmer, parcel) for activity, cycle, stage, farmer, parcel in activity_rows_raw]
+    quantity_by_product = defaultdict(Decimal)
+    for row in activities:
+        quantity_value = row.get("actual_quantity") or row.get("quantity")
+        if row.get("product_code") and quantity_value is not None:
+            unit = row.get("actual_quantity_unit") or row.get("quantity_unit") or "UNKNOWN"
+            quantity_by_product[(row["product_code"], unit)] += Decimal(str(quantity_value))
+
+    return {
+        "schema_version": "input_rule_trace.v1",
+        "tenant_id": x_tenant_id,
+        "rule": {
+            "id": str(rule.id),
+            "project_id": str(rule.project_id) if rule.project_id else None,
+            "crop_code": rule.crop_code,
+            "season_code": rule.season_code,
+            "stage_code": rule.stage_code,
+            "activity_type": rule.activity_type,
+            "input_id": str(rule.input_id),
+            "input_code": rule.input_code,
+            "enabled": rule.enabled,
+            "priority": rule.priority,
+            "dosage_quantity": _decimal_text(rule.dosage_quantity),
+            "dosage_unit": rule.dosage_unit,
+            "dosage_area_unit": rule.dosage_area_unit,
+            "min_quantity": _decimal_text(rule.min_quantity),
+            "max_quantity": _decimal_text(rule.max_quantity),
+            "application_method": rule.application_method,
+            "timing_note": rule.timing_note,
+            "safety_note": rule.safety_note,
+            "allowed_product_codes": rule.allowed_product_codes or [],
+            "reason": rule.reason,
+            "created_at": rule.created_at.isoformat() if rule.created_at else None,
+            "updated_at": rule.updated_at.isoformat() if rule.updated_at else None,
+        },
+        "project": {"id": str(project.id), "name": project.name, "status": project.status} if project else None,
+        "input": {
+            "id": str(agri_input.id),
+            "code": agri_input.code,
+            "canonical_name": agri_input.canonical_name,
+            "category_code": category.code if category else None,
+            "category_name": category.canonical_name if category else None,
+            "composition": agri_input.composition,
+            "unit": agri_input.unit,
+            "catalog_status": agri_input.catalog_status,
+            "applicable_crops": agri_input.applicable_crops or [],
+        } if agri_input else None,
+        "project_assignment": {
+            "id": str(assignment.id),
+            "enabled": assignment.enabled,
+            "display_order": assignment.display_order,
+            "reason": assignment.reason,
+            "effective_from": assignment.effective_from.isoformat() if assignment.effective_from else None,
+            "effective_to": assignment.effective_to.isoformat() if assignment.effective_to else None,
+        } if assignment else None,
+        "products": [
+            {
+                "id": str(product.id),
+                "code": product.code,
+                "brand_name": product.brand_name,
+                "composition": product.composition,
+                "registration_number": product.registration_number,
+                "status": product.status,
+                "approval": (
+                    {
+                        "enabled": approvals_by_product[product.id].enabled,
+                        "preferred": approvals_by_product[product.id].preferred,
+                        "display_order": approvals_by_product[product.id].display_order,
+                        "reason": approvals_by_product[product.id].reason,
+                    }
+                    if product.id in approvals_by_product
+                    else None
+                ),
+            }
+            for product in products
+        ],
+        "summary": {
+            "activity_count": len(activities),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
+            "variance_count": sum(1 for row in activities if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None and Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"]))),
+            "quantity_by_product": [
+                {"product_code": key[0], "unit": key[1], "quantity": str(value)}
+                for key, value in sorted(quantity_by_product.items())
+            ],
+        },
+        "activities": activities,
+    }
 
 @router.get("/crop-cycles/{cycle_id}/trace")
 def crop_cycle_trace_report(

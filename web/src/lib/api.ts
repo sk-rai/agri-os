@@ -157,6 +157,17 @@ export interface ActivityUsageReportResponse {
   activities: ActivityUsageRow[];
 }
 
+export interface InputRuleTraceResponse {
+  schema_version: string;
+  tenant_id: string;
+  rule: Record<string, string | number | boolean | string[] | null> & { id: string; input_code: string; crop_code: string; stage_code: string; activity_type: string };
+  project?: Record<string, string | null> | null;
+  input?: Record<string, string | string[] | null> | null;
+  project_assignment?: Record<string, string | number | boolean | null> | null;
+  products: Array<Record<string, unknown> & { id: string; code: string; brand_name: string; status: string }>;
+  summary: { activity_count: number; total_cost: string; variance_count: number; quantity_by_product: Array<{ product_code: string; unit: string; quantity: string }> };
+  activities: ActivityUsageRow[];
+}
 export interface CropCycleTraceStage {
   stage_instance_id: string;
   stage_code: string;
@@ -224,6 +235,7 @@ function activityUsageQuery(params?: ActivityUsageParams): string {
 }
 
 export const reportsApi = {
+  inputRuleTrace: (ruleId: string) => api<InputRuleTraceResponse>(`/api/v1/reports/input-rules/${ruleId}/trace`),
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
