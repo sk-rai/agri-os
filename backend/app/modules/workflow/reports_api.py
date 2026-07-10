@@ -27,6 +27,7 @@ from app.modules.master_data.models import (
     ProjectProductApproval,
 )
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
+from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessedEvent
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
@@ -392,6 +393,148 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
         "created_at": activity.created_at.isoformat() if activity.created_at else None,
         "updated_at": activity.updated_at.isoformat() if activity.updated_at else None,
         "notes": activity.notes,
+    }
+
+
+
+def _sync_event_entity_type(value):
+    return (value or "UNKNOWN").upper()
+
+
+def _sync_materialization_status(entity_type: str, entity_id, farmers_by_id, parcels_by_id):
+    normalized_type = _sync_event_entity_type(entity_type)
+    if normalized_type == "FARMER":
+        return entity_id in farmers_by_id
+    if normalized_type == "PARCEL":
+        return entity_id in parcels_by_id
+    if normalized_type in {"PARCEL_GEOMETRY", "PARCELGEOMETRY"}:
+        parcel = parcels_by_id.get(entity_id)
+        return bool(parcel and parcel.geometry_source and parcel.geometry_source != "NONE")
+    return None
+
+
+@router.get("/sync-health")
+def sync_materialization_health_report(
+    project_id: Optional[uuid.UUID] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    event_query = db.query(SyncProcessedEvent).filter(SyncProcessedEvent.tenant_id == x_tenant_id)
+    if entity_type:
+        event_query = event_query.filter(SyncProcessedEvent.entity_type.ilike(entity_type))
+    if status:
+        event_query = event_query.filter(SyncProcessedEvent.status == status.upper())
+
+    events = event_query.order_by(SyncProcessedEvent.processed_at.desc()).all()
+    farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id)
+    if project_id:
+        farmer_query = farmer_query.filter(Farmer.project_id == project_id)
+        parcel_query = parcel_query.filter(Parcel.project_id == project_id)
+        project_farmer_ids = {row.id for row in farmer_query.all()}
+        project_parcel_ids = {row.id for row in parcel_query.all()}
+        events = [
+            event for event in events
+            if (event.entity_type or "").upper() not in {"FARMER", "PARCEL", "PARCEL_GEOMETRY", "PARCELGEOMETRY"}
+            or event.entity_id in project_farmer_ids
+            or event.entity_id in project_parcel_ids
+        ]
+        farmers = list(project_farmer_ids)
+        parcels = list(project_parcel_ids)
+    else:
+        farmers = farmer_query.all()
+        parcels = parcel_query.all()
+        project_farmer_ids = {farmer.id for farmer in farmers}
+        project_parcel_ids = {parcel.id for parcel in parcels}
+
+    farmers_by_id = {farmer.id: farmer for farmer in db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id).all()}
+    parcels_by_id = {parcel.id: parcel for parcel in db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id).all()}
+    status_counts = defaultdict(int)
+    entity_counts = defaultdict(int)
+    committed_counts = defaultdict(int)
+    materialized_counts = defaultdict(int)
+    unmaterialized_counts = defaultdict(int)
+    recent_rows = []
+
+    for event in events:
+        event_entity_type = _sync_event_entity_type(event.entity_type)
+        status_counts[event.status or "UNKNOWN"] += 1
+        entity_counts[event_entity_type] += 1
+        materialized = _sync_materialization_status(event_entity_type, event.entity_id, farmers_by_id, parcels_by_id)
+        if event.status == "COMMITTED":
+            committed_counts[event_entity_type] += 1
+            if materialized is True:
+                materialized_counts[event_entity_type] += 1
+            elif materialized is False:
+                unmaterialized_counts[event_entity_type] += 1
+        if len(recent_rows) < limit:
+            recent_rows.append({
+                "event_id": str(event.event_id),
+                "entity_type": event_entity_type,
+                "entity_id": str(event.entity_id) if event.entity_id else None,
+                "operation": event.operation,
+                "status": event.status,
+                "server_version": event.server_version,
+                "processed_at": event.processed_at.isoformat() if event.processed_at else None,
+                "materialized": materialized,
+                "trace_url": (
+                    f"/farmer-trace/{event.entity_id}" if event_entity_type == "FARMER" and event.entity_id in farmers_by_id else
+                    f"/parcel-trace/{event.entity_id}" if event_entity_type in {"PARCEL", "PARCEL_GEOMETRY", "PARCELGEOMETRY"} and event.entity_id in parcels_by_id else
+                    None
+                ),
+            })
+
+    conflicts = db.query(SyncConflict).filter(SyncConflict.tenant_id == x_tenant_id).all()
+    audit_count = db.query(AuditChainEntry).filter(AuditChainEntry.tenant_id == x_tenant_id).count()
+    latest_audit = (
+        db.query(AuditChainEntry)
+        .filter(AuditChainEntry.tenant_id == x_tenant_id)
+        .order_by(AuditChainEntry.id.desc())
+        .first()
+    )
+    real_farmers = farmer_query.count()
+    real_parcels = parcel_query.count()
+    geometry_captured_count = parcel_query.filter(Parcel.geometry_source.isnot(None), Parcel.geometry_source != "NONE").count()
+    geometry_missing_count = parcel_query.filter((Parcel.geometry_source.is_(None)) | (Parcel.geometry_source == "NONE")).count()
+
+    return {
+        "schema_version": "sync_materialization_health.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "entity_type": entity_type.upper() if entity_type else None,
+            "status": status.upper() if status else None,
+            "limit": limit,
+        },
+        "summary": {
+            "event_count": len(events),
+            "committed_count": status_counts.get("COMMITTED", 0),
+            "failed_count": status_counts.get("FAILED", 0),
+            "conflict_count": len(conflicts),
+            "dependency_missing_count": status_counts.get("DEPENDENCY_MISSING", 0),
+            "farmer_count": real_farmers,
+            "parcel_count": real_parcels,
+            "geometry_captured_count": geometry_captured_count,
+            "geometry_missing_count": geometry_missing_count,
+            "audit_chain_count": audit_count,
+            "latest_audit_at": latest_audit.created_at.isoformat() if latest_audit and latest_audit.created_at else None,
+        },
+        "status_counts": [{"status": key, "event_count": value} for key, value in sorted(status_counts.items())],
+        "entity_counts": [{"entity_type": key, "event_count": value} for key, value in sorted(entity_counts.items())],
+        "materialization": [
+            {
+                "entity_type": key,
+                "committed_count": committed_counts.get(key, 0),
+                "materialized_count": materialized_counts.get(key, 0),
+                "unmaterialized_count": unmaterialized_counts.get(key, 0),
+            }
+            for key in sorted(set(committed_counts) | set(materialized_counts) | set(unmaterialized_counts))
+        ],
+        "recent_events": recent_rows,
     }
 
 

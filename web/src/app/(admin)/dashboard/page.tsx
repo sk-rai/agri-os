@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { reportsApi, type AdminDashboardResponse } from "@/lib/api";
+import { reportsApi, type AdminDashboardResponse, type SyncMaterializationHealthResponse } from "@/lib/api";
 
 type DashboardFilters = {
   projectId: string;
@@ -55,6 +55,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<AdminDashboardResponse | null>(null);
   const [filters, setFilters] = useState(initialFilters);
   const [loading, setLoading] = useState(true);
+  const [syncHealth, setSyncHealth] = useState<SyncMaterializationHealthResponse | null>(null);
+  const [syncLoading, setSyncLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = (nextFilters = filters) => {
@@ -70,6 +72,12 @@ export default function DashboardPage() {
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+    setSyncLoading(true);
+    reportsApi
+      .syncHealth({ projectId: nextFilters.projectId.trim() || undefined, limit: 8 })
+      .then(setSyncHealth)
+      .catch((e) => setError(e.message))
+      .finally(() => setSyncLoading(false));
   };
 
   useEffect(() => {
@@ -159,6 +167,8 @@ export default function DashboardPage() {
             <StatCard label="Activities" value={summary.activity_count} tone="blue" href={dashboardActivityHref(data)} />
             <StatCard label="Activity cost" value={`INR ${summary.total_cost}`} tone="slate" href={dashboardActivityHref(data)} />
           </div>
+
+          <SyncHealthPanel data={syncHealth} loading={syncLoading} />
 
           <div className="grid gap-4 lg:grid-cols-3">
             <SummaryList title="Crop distribution" empty="No crop cycles yet" rows={data.crop_distribution.map((row) => ({ label: row.crop_code, value: row.crop_cycle_count, href: data.filters.project_id ? dashboardProjectTraceHref(data, { cropCode: row.crop_code }) : dashboardActivityHref(data, { cropCode: row.crop_code }) }))} />
@@ -292,4 +302,70 @@ function TableSection({ title, empty, children }: { title: string; empty: string
       ) : null}
     </section>
   );
+}
+
+
+function SyncHealthPanel({ data, loading }: { data: SyncMaterializationHealthResponse | null; loading: boolean }) {
+  const summary = data?.summary;
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Sync & materialization health</h2>
+          <p className="text-sm text-gray-500">Accepted mobile events compared with operational farmer, parcel, and geometry rows.</p>
+        </div>
+        <Link href="/conflicts" className="text-sm font-medium text-blue-700 hover:underline">Open conflicts</Link>
+      </div>
+      {loading && !data ? <p className="mt-4 text-sm text-gray-500">Loading sync health...</p> : null}
+      {summary ? (
+        <>
+          <div className="mt-4 grid gap-3 md:grid-cols-5">
+            <MiniStat label="Committed" value={summary.committed_count} />
+            <MiniStat label="Failed" value={summary.failed_count} />
+            <MiniStat label="Conflicts" value={summary.conflict_count} />
+            <MiniStat label="Dependency missing" value={summary.dependency_missing_count} />
+            <MiniStat label="Audit entries" value={summary.audit_chain_count} />
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="overflow-hidden rounded-md border border-gray-100">
+              <table className="min-w-full divide-y divide-gray-100 text-sm">
+                <thead className="bg-gray-50"><tr>{["Entity", "Committed", "Materialized", "Gap"].map((head) => <th key={head} className="px-3 py-2 text-left font-medium text-gray-600">{head}</th>)}</tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.materialization.map((row) => (
+                    <tr key={row.entity_type}>
+                      <td className="px-3 py-2 font-medium text-gray-800">{row.entity_type}</td>
+                      <td className="px-3 py-2">{row.committed_count}</td>
+                      <td className="px-3 py-2">{row.materialized_count}</td>
+                      <td className={row.unmaterialized_count ? "px-3 py-2 font-semibold text-red-700" : "px-3 py-2 text-green-700"}>{row.unmaterialized_count}</td>
+                    </tr>
+                  ))}
+                  {data.materialization.length === 0 ? <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">No sync events yet.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+            <div className="overflow-hidden rounded-md border border-gray-100">
+              <table className="min-w-full divide-y divide-gray-100 text-sm">
+                <thead className="bg-gray-50"><tr>{["Event", "Entity", "Status", "Materialized"].map((head) => <th key={head} className="px-3 py-2 text-left font-medium text-gray-600">{head}</th>)}</tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.recent_events.map((event) => (
+                    <tr key={event.event_id}>
+                      <td className="px-3 py-2 font-mono text-xs text-gray-600">{event.processed_at || event.event_id.slice(0, 8)}</td>
+                      <td className="px-3 py-2">{event.trace_url ? <Link className="text-blue-700 hover:underline" href={event.trace_url}>{event.entity_type}</Link> : event.entity_type}</td>
+                      <td className="px-3 py-2">{event.status || "-"}</td>
+                      <td className="px-3 py-2">{event.materialized === null || event.materialized === undefined ? "n/a" : event.materialized ? "yes" : "no"}</td>
+                    </tr>
+                  ))}
+                  {data.recent_events.length === 0 ? <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">No recent sync events.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-md bg-gray-50 px-3 py-2"><p className="text-xs text-gray-500">{label}</p><p className="text-xl font-bold text-gray-900">{value}</p></div>;
 }

@@ -415,6 +415,42 @@ export interface ProjectTraceResponse {
   activities: ActivityUsageRow[];
 }
 
+
+export interface SyncHealthEventRow {
+  event_id: string;
+  entity_type: string;
+  entity_id?: string | null;
+  operation?: string | null;
+  status?: string | null;
+  server_version?: number | null;
+  processed_at?: string | null;
+  materialized?: boolean | null;
+  trace_url?: string | null;
+}
+
+export interface SyncMaterializationHealthResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: { project_id?: string | null; entity_type?: string | null; status?: string | null; limit: number };
+  summary: {
+    event_count: number;
+    committed_count: number;
+    failed_count: number;
+    conflict_count: number;
+    dependency_missing_count: number;
+    farmer_count: number;
+    parcel_count: number;
+    geometry_captured_count: number;
+    geometry_missing_count: number;
+    audit_chain_count: number;
+    latest_audit_at?: string | null;
+  };
+  status_counts: Array<{ status: string; event_count: number }>;
+  entity_counts: Array<{ entity_type: string; event_count: number }>;
+  materialization: Array<{ entity_type: string; committed_count: number; materialized_count: number; unmaterialized_count: number }>;
+  recent_events: SyncHealthEventRow[];
+}
+
 export interface AdminDashboardResponse {
   schema_version: string;
   tenant_id: string;
@@ -462,11 +498,22 @@ export interface ActivityUsageFilterOptionsResponse {
   products: ActivityUsageFilterOption[];
 }
 type AdminDashboardParams = { projectId?: string; dateFrom?: string; dateTo?: string; limit?: number };
+type SyncHealthParams = { projectId?: string; entityType?: string; status?: string; limit?: number };
 type AdminLookupParams = { query?: string; projectId?: string; geometryStatus?: string; geometrySource?: string; limit?: number };
 type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
 type ProjectTraceParams = { farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; cycleStatus?: string; hasVariance?: string; dateFrom?: string; dateTo?: string; limit?: number };
 
 
+
+
+function syncHealthQuery(params?: SyncHealthParams): string {
+  const query = new URLSearchParams();
+  if (params?.projectId) query.set("project_id", params.projectId);
+  if (params?.entityType) query.set("entity_type", params.entityType);
+  if (params?.status) query.set("status", params.status);
+  if (params?.limit) query.set("limit", String(params.limit));
+  return query.toString() ? `?${query.toString()}` : "";
+}
 
 function adminLookupQuery(params?: AdminLookupParams): string {
   const query = new URLSearchParams();
@@ -524,6 +571,7 @@ function projectTraceQuery(params?: ProjectTraceParams): string {
 
 export const reportsApi = {
   adminDashboard: (params?: AdminDashboardParams) => api<AdminDashboardResponse>(`/api/v1/reports/admin-dashboard${adminDashboardQuery(params)}`),
+  syncHealth: (params?: SyncHealthParams) => api<SyncMaterializationHealthResponse>(`/api/v1/reports/sync-health${syncHealthQuery(params)}`),
   projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
   projectTrace: (projectId: string, params?: ProjectTraceParams) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace${projectTraceQuery(params)}`),
   projectTraceFilterOptions: (projectId: string) => api<ProjectTraceFilterOptionsResponse>(`/api/v1/reports/projects/${projectId}/trace/filter-options`),

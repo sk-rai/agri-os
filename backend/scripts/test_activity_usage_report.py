@@ -11,6 +11,7 @@ from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.master_data.models import AgriculturalInput, AgriculturalProduct, AgriculturalProductPackage, CropStageInputRule, Manufacturer, ProjectProductApproval
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance, WorkflowTemplate, WorkflowTemplateVersion
+from app.modules.sync.models import SyncProcessedEvent
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 TENANT = "default"
@@ -28,6 +29,7 @@ def check(value, label, detail=None):
 
 def cleanup(db, *, admin=None, farmer_id, parcel_id, project_id, cycle_id=None):
     db.rollback()
+    db.query(SyncProcessedEvent).filter(SyncProcessedEvent.entity_id.in_([farmer_id, parcel_id])).delete(synchronize_session=False)
     if cycle_id:
         db.query(CropActivity).filter(CropActivity.crop_cycle_id == cycle_id).delete(synchronize_session=False)
         db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == cycle_id).delete(synchronize_session=False)
@@ -70,6 +72,10 @@ def main():
         cycle = CropCycle(id=cycle_id, tenant_id=TENANT, farmer_id=farmer_id, parcel_id=parcel_id, project_id=project_id, crop_code="RICE", season_code="KHARIF", lifecycle_template_id=workflow_template.lifecycle_template_id, workflow_template_version_id=workflow_version.id, planned_sowing_date=date(2027,6,15), status="ACTIVE", created_at=now(), updated_at=now())
         stage = CropStageInstance(id=uuid.uuid4(), crop_cycle_id=cycle_id, tenant_id=TENANT, stage_code="TILLERING", stage_name="Tillering", stage_order=3, expected_duration_days=30, status="ACTIVE", created_at=now(), updated_at=now())
         activity = CropActivity(id=uuid.uuid4(), crop_cycle_id=cycle_id, stage_instance_id=stage.id, tenant_id=TENANT, farmer_id=farmer_id, activity_type="FERTILIZER", input_code="UREA_46_N", input_name="Urea", quantity="38", quantity_unit="KG", input_rule_id=rule.id, product_id=product.id, product_code=PRODUCT, package_id=package.id, package_sku=SKU, recommended_quantity="36", recommended_quantity_unit="KG", actual_quantity="38", actual_quantity_unit="KG", dosage_variance_reason="Field adjustment", cost_amount="1200", activity_date=date(2027,7,20), logged_by=admin.id, created_at=now(), updated_at=now())
+        farmer_sync_event = SyncProcessedEvent(event_id=uuid.uuid4(), tenant_id=TENANT, actor_id=admin.id, entity_type="FARMER", entity_id=farmer_id, operation="CREATE", server_version=1, status="COMMITTED", processed_at=now())
+        parcel_sync_event = SyncProcessedEvent(event_id=uuid.uuid4(), tenant_id=TENANT, actor_id=admin.id, entity_type="PARCEL", entity_id=parcel_id, operation="CREATE", server_version=1, status="COMMITTED", processed_at=now())
+        geometry_sync_event = SyncProcessedEvent(event_id=uuid.uuid4(), tenant_id=TENANT, actor_id=admin.id, entity_type="PARCEL_GEOMETRY", entity_id=parcel_id, operation="UPDATE", server_version=1, status="COMMITTED", processed_at=now())
+        db.add_all([farmer_sync_event, parcel_sync_event, geometry_sync_event])
         db.add_all([package, approval, rule, cycle, stage, activity]); db.commit()
 
         client = TestClient(app, headers=headers)
@@ -241,6 +247,15 @@ def main():
         geometry_csv_rows = list(csv.DictReader(io.StringIO(geometry_csv_response.text)))
         check(any(row["entity_type"] == "PARCEL" and row["id"] == str(parcel_id) for row in geometry_csv_rows), "lookup geometry CSV includes parcel row")
 
+        sync_health_response = client.get(f"/api/v1/reports/sync-health?project_id={project_id}")
+        check(sync_health_response.status_code == 200, "sync health returns 200", sync_health_response.text[:300])
+        sync_health = sync_health_response.json()
+        check(sync_health["schema_version"] == "sync_materialization_health.v1", "sync health schema version is correct")
+        check(sync_health["summary"]["committed_count"] >= 3, "sync health includes committed events")
+        check(any(item["entity_type"] == "FARMER" and item["materialized_count"] >= 1 for item in sync_health["materialization"]), "sync health shows materialized farmer")
+        check(any(item["entity_type"] == "PARCEL" and item["materialized_count"] >= 1 for item in sync_health["materialization"]), "sync health shows materialized parcel")
+        check(any(item["entity_type"] == "PARCEL_GEOMETRY" and item["unmaterialized_count"] >= 1 for item in sync_health["materialization"]), "sync health shows unmaterialized parcel geometry")
+        check(any(item["entity_id"] == str(parcel_id) and item["trace_url"] == f"/parcel-trace/{parcel_id}" for item in sync_health["recent_events"]), "sync health includes parcel trace link")
         dashboard_response = client.get("/api/v1/reports/admin-dashboard")
         check(dashboard_response.status_code == 200, "admin dashboard returns 200", dashboard_response.text[:300])
         dashboard = dashboard_response.json()
