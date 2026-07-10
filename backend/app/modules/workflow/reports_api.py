@@ -1111,6 +1111,136 @@ def crop_cycle_trace_report(
         "activities": activity_rows,
     }
 
+
+def _safe_uuid(value: Optional[str]):
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
+@router.get("/lookup")
+def admin_lookup_report(
+    q: Optional[str] = Query(None, description="Search projects, farmers, and parcels by name, mobile, survey number, or ID"),
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    term = (q or "").strip()
+    like = f"%{term}%" if term else None
+    uuid_value = _safe_uuid(term)
+
+    project_query = db.query(Project).filter(Project.tenant_id == x_tenant_id)
+    farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id)
+    # SQLAlchemy boolean OR is kept inline to avoid expanding imports in this legacy report module.
+    if term:
+        project_condition = Project.name.ilike(like) | Project.status.ilike(like)
+        farmer_condition = Farmer.display_name.ilike(like) | Farmer.mobile_number.ilike(like) | Farmer.village_name_manual.ilike(like) | Farmer.primary_crop_code.ilike(like)
+        parcel_condition = Parcel.survey_number.ilike(like) | Parcel.local_name.ilike(like) | Parcel.village_name_manual.ilike(like) | Parcel.ownership_type.ilike(like)
+        if uuid_value:
+            project_condition = project_condition | (Project.id == uuid_value)
+            farmer_condition = farmer_condition | (Farmer.id == uuid_value)
+            parcel_condition = parcel_condition | (Parcel.id == uuid_value) | (Parcel.farmer_id == uuid_value)
+        project_query = db.query(Project).filter(Project.tenant_id == x_tenant_id, project_condition)
+        farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, farmer_condition)
+        parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, parcel_condition)
+
+    projects = project_query.order_by(Project.updated_at.desc()).limit(limit).all()
+    farmers = farmer_query.order_by(Farmer.updated_at.desc()).limit(limit).all()
+    parcels = parcel_query.order_by(Parcel.updated_at.desc()).limit(limit).all()
+
+    project_ids = [project.id for project in projects]
+    farmer_ids = [farmer.id for farmer in farmers]
+    parcel_ids = [parcel.id for parcel in parcels]
+    farmers_by_id = {farmer.id: farmer for farmer in db.query(Farmer).filter(Farmer.id.in_([parcel.farmer_id for parcel in parcels])).all()} if parcels else {}
+    cycle_count_by_project = defaultdict(int)
+    cycle_count_by_farmer = defaultdict(int)
+    cycle_count_by_parcel = defaultdict(int)
+    activity_count_by_farmer = defaultdict(int)
+    activity_count_by_parcel = defaultdict(int)
+
+    if project_ids:
+        for cycle in db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.project_id.in_(project_ids)).all():
+            cycle_count_by_project[cycle.project_id] += 1
+    if farmer_ids:
+        for cycle in db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.farmer_id.in_(farmer_ids)).all():
+            cycle_count_by_farmer[cycle.farmer_id] += 1
+        for activity in db.query(CropActivity).filter(CropActivity.tenant_id == x_tenant_id, CropActivity.farmer_id.in_(farmer_ids)).all():
+            activity_count_by_farmer[activity.farmer_id] += 1
+    if parcel_ids:
+        for cycle in db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.parcel_id.in_(parcel_ids)).all():
+            cycle_count_by_parcel[cycle.parcel_id] += 1
+        parcel_cycle_ids = [cycle.id for cycle in db.query(CropCycle.id).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.parcel_id.in_(parcel_ids)).all()]
+        if parcel_cycle_ids:
+            cycles_by_id = {cycle.id: cycle for cycle in db.query(CropCycle).filter(CropCycle.id.in_(parcel_cycle_ids)).all()}
+            for activity in db.query(CropActivity).filter(CropActivity.tenant_id == x_tenant_id, CropActivity.crop_cycle_id.in_(parcel_cycle_ids)).all():
+                cycle = cycles_by_id.get(activity.crop_cycle_id)
+                if cycle:
+                    activity_count_by_parcel[cycle.parcel_id] += 1
+
+    return {
+        "schema_version": "admin_lookup.v1",
+        "tenant_id": x_tenant_id,
+        "query": term,
+        "limit": limit,
+        "projects": [
+            {
+                "id": str(project.id),
+                "label": project.name,
+                "name": project.name,
+                "status": project.status,
+                "crop_scope": project.crop_scope or [],
+                "start_date": project.start_date.isoformat() if project.start_date else None,
+                "end_date": project.end_date.isoformat() if project.end_date else None,
+                "crop_cycle_count": cycle_count_by_project.get(project.id, 0),
+                "trace_url": f"/project-compliance/{project.id}",
+            }
+            for project in projects
+        ],
+        "farmers": [
+            {
+                "id": str(farmer.id),
+                "label": farmer.display_name or farmer.mobile_number or str(farmer.id),
+                "display_name": farmer.display_name,
+                "mobile_number": farmer.mobile_number,
+                "village_name": farmer.village_name_manual,
+                "primary_crop_code": farmer.primary_crop_code,
+                "project_id": str(farmer.project_id) if farmer.project_id else None,
+                "status": farmer.status,
+                "crop_cycle_count": cycle_count_by_farmer.get(farmer.id, 0),
+                "activity_count": activity_count_by_farmer.get(farmer.id, 0),
+                "trace_url": f"/farmer-trace/{farmer.id}",
+            }
+            for farmer in farmers
+        ],
+        "parcels": [
+            {
+                "id": str(parcel.id),
+                "label": parcel.local_name or parcel.survey_number or str(parcel.id),
+                "survey_number": parcel.survey_number,
+                "local_name": parcel.local_name,
+                "farmer_id": str(parcel.farmer_id),
+                "farmer_name": farmers_by_id.get(parcel.farmer_id).display_name if farmers_by_id.get(parcel.farmer_id) else None,
+                "project_id": str(parcel.project_id) if parcel.project_id else None,
+                "reported_area": _decimal_text(parcel.reported_area),
+                "reported_area_unit": parcel.reported_area_unit,
+                "ownership_type": parcel.ownership_type,
+                "village_name": parcel.village_name_manual,
+                "geometry_source": parcel.geometry_source,
+                "status": parcel.status,
+                "crop_cycle_count": cycle_count_by_parcel.get(parcel.id, 0),
+                "activity_count": activity_count_by_parcel.get(parcel.id, 0),
+                "trace_url": f"/parcel-trace/{parcel.id}",
+            }
+            for parcel in parcels
+        ],
+    }
+
+
 @router.get("/activity-usage/filter-options")
 def activity_usage_filter_options(
     db: Session = Depends(get_db),

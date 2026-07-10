@@ -320,6 +320,57 @@ export interface ParcelTraceResponse {
   crop_cycles: FarmerTraceCycle[];
   activities: ActivityUsageRow[];
 }
+export interface AdminLookupProject {
+  id: string;
+  label: string;
+  name: string;
+  status?: string | null;
+  crop_scope: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  crop_cycle_count: number;
+  trace_url: string;
+}
+export interface AdminLookupFarmer {
+  id: string;
+  label: string;
+  display_name?: string | null;
+  mobile_number?: string | null;
+  village_name?: string | null;
+  primary_crop_code?: string | null;
+  project_id?: string | null;
+  status?: string | null;
+  crop_cycle_count: number;
+  activity_count: number;
+  trace_url: string;
+}
+export interface AdminLookupParcel {
+  id: string;
+  label: string;
+  survey_number?: string | null;
+  local_name?: string | null;
+  farmer_id: string;
+  farmer_name?: string | null;
+  project_id?: string | null;
+  reported_area?: string | null;
+  reported_area_unit?: string | null;
+  ownership_type?: string | null;
+  village_name?: string | null;
+  geometry_source?: string | null;
+  status?: string | null;
+  crop_cycle_count: number;
+  activity_count: number;
+  trace_url: string;
+}
+export interface AdminLookupResponse {
+  schema_version: string;
+  tenant_id: string;
+  query: string;
+  limit: number;
+  projects: AdminLookupProject[];
+  farmers: AdminLookupFarmer[];
+  parcels: AdminLookupParcel[];
+}
 export interface ActivityUsageFilterOption {
   id?: string;
   code?: string;
@@ -365,6 +416,7 @@ export const reportsApi = {
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   farmerTrace: (farmerId: string) => api<FarmerTraceResponse>(`/api/v1/reports/farmers/${farmerId}/trace`),
   parcelTrace: (parcelId: string) => api<ParcelTraceResponse>(`/api/v1/reports/parcels/${parcelId}/trace`),
+  lookup: (query?: string, limit = 25) => api<AdminLookupResponse>(`/api/v1/reports/lookup?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),

@@ -14,6 +14,7 @@ const navItems = [
   { href: "/products", label: "Products & Brands", icon: "📦" },
   { href: "/project-inputs", label: "Project Inputs", icon: "🎛️" },
   { href: "/activity-usage", label: "Activity Usage", icon: "📈" },
+  { href: "/lookup", label: "Lookup", icon: "Search" },
   { href: "/conflicts", label: "Conflicts", icon: "⚠️" },
 ];
 
