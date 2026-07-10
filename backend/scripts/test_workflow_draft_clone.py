@@ -184,6 +184,76 @@ def main():
         )
         check(patch_negative.status_code == 400, "Draft stage rejects negative duration", f"Status: {patch_negative.status_code}")
 
+        create_stage = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages",
+            headers=headers,
+            json={
+                "after_stage_code": "NURSERY",
+                "stage_code": "CODEX_TEST_STAGE",
+                "stage_name": {"en": "Codex Test Stage"},
+                "duration_days": 2,
+                "description": {"en": "Regression-created draft stage"},
+                "farmer_actions": ["CHECK_FIELD"],
+                "typical_inputs": ["LABOR"],
+                "key_observations": ["FIELD_READY"],
+                "phase": "TEST",
+                "stage_type": "CUSTOM",
+            },
+        )
+        check(create_stage.status_code == 200, "Draft stage create returns 200", f"Status: {create_stage.status_code}")
+        create_stage_payload = create_stage.json()
+        created_stage = next(stage for stage in create_stage_payload["android_preview"]["stages"] if stage["code"] == "CODEX_TEST_STAGE")
+        nursery_index = next(index for index, stage in enumerate(create_stage_payload["android_preview"]["stages"]) if stage["code"] == "NURSERY")
+        created_index = next(index for index, stage in enumerate(create_stage_payload["android_preview"]["stages"]) if stage["code"] == "CODEX_TEST_STAGE")
+        check(created_index == nursery_index + 1, "Created draft stage is inserted after requested stage")
+        check(created_stage["duration_days"] == 2, "Created draft stage keeps duration")
+        check(created_stage["farmer_actions"] == ["CHECK_FIELD"], "Created draft stage keeps farmer actions")
+
+        create_duplicate_stage = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages",
+            headers=headers,
+            json={
+                "after_stage_code": "NURSERY",
+                "stage_code": "CODEX_TEST_STAGE",
+                "stage_name": {"en": "Duplicate Code Stage"},
+            },
+        )
+        check(create_duplicate_stage.status_code == 409, "Draft stage create rejects duplicate code", f"Status: {create_duplicate_stage.status_code}")
+
+        create_stage_published = client.post(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/stages",
+            headers=headers,
+            json={"stage_code": "PUBLISHED_EDIT", "stage_name": {"en": "Published Edit"}},
+        )
+        check(create_stage_published.status_code == 404, "Published version cannot create draft stages", f"Status: {create_stage_published.status_code}")
+
+        duplicate_stage = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/NURSERY/duplicate",
+            headers=headers,
+            json={
+                "after_stage_code": "NURSERY",
+                "stage_code": "NURSERY_COPY_CODEX",
+                "stage_name": {"en": "Nursery Copy Codex"},
+            },
+        )
+        check(duplicate_stage.status_code == 200, "Draft stage duplicate returns 200", f"Status: {duplicate_stage.status_code}")
+        duplicate_stage_payload = duplicate_stage.json()
+        duplicated_stage = next(stage for stage in duplicate_stage_payload["android_preview"]["stages"] if stage["code"] == "NURSERY_COPY_CODEX")
+        source_nursery_after_duplicate = next(stage for stage in duplicate_stage_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
+        check(duplicated_stage["name"]["en"] == "Nursery Copy Codex", "Duplicated draft stage uses requested name")
+        check(duplicated_stage["duration_days"] == source_nursery_after_duplicate["duration_days"], "Duplicated draft stage copies duration")
+        check(
+            len(duplicated_stage.get("recommended_activities", [])) == len(source_nursery_after_duplicate.get("recommended_activities", [])),
+            "Duplicated draft stage copies active recommendations",
+        )
+
+        duplicate_stage_published = client.post(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/stages/NURSERY/duplicate",
+            headers=headers,
+            json={"stage_code": "PUBLISHED_DUPLICATE"},
+        )
+        check(duplicate_stage_published.status_code == 404, "Published version cannot duplicate draft stages", f"Status: {duplicate_stage_published.status_code}")
+
         nursery_recs = patched_nursery.get("recommended_activities", [])
         check(len(nursery_recs) > 0, "Draft nursery has recommendations to edit")
         editable_rec = nursery_recs[0]
@@ -384,6 +454,8 @@ def main():
         for action in [
             "CLONE_DRAFT",
             "UPDATE_STAGE",
+            "CREATE_DRAFT_STAGE",
+            "DUPLICATE_DRAFT_STAGE",
             "UPDATE_RECOMMENDATION",
             "CREATE_RECOMMENDATION",
             "DELETE_RECOMMENDATION",

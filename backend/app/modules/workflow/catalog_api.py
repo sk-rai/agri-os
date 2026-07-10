@@ -129,6 +129,27 @@ class WorkflowDraftPublishRequest(BaseModel):
     archive_previous: bool = True
 
 
+class WorkflowDraftStageCreate(BaseModel):
+    after_stage_code: Optional[str] = None
+    stage_code: str
+    stage_name: dict[str, str]
+    duration_days: int = 1
+    description: Optional[dict[str, str]] = None
+    farmer_actions: Optional[list[str]] = None
+    typical_inputs: Optional[list[str]] = None
+    key_observations: Optional[list[str]] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    phase: Optional[str] = None
+    stage_type: Optional[str] = None
+
+
+class WorkflowDraftStageDuplicate(BaseModel):
+    after_stage_code: Optional[str] = None
+    stage_code: Optional[str] = None
+    stage_name: Optional[dict[str, str]] = None
+
+
 class WorkflowDraftStageUpdate(BaseModel):
     stage_name: Optional[dict[str, str]] = None
     duration_days: Optional[int] = None
@@ -1319,6 +1340,202 @@ def _apply_recommendation_changes(rec: WorkflowTemplateRecommendation, changes: 
         rec.is_critical = bool(changes["is_critical"])
     if "description" in changes:
         rec.description = changes["description"] or None
+
+
+
+
+def _normalize_stage_code(value: str) -> str:
+    code = re.sub(r"[^A-Z0-9_]+", "_", (value or "").upper()).strip("_")
+    if not code:
+        raise HTTPException(400, "stage_code cannot be empty")
+    return code[:50]
+
+
+def _draft_insert_order(db: Session, version_id, after_stage_code: Optional[str]) -> int:
+    if after_stage_code:
+        after_stage = _get_draft_stage(db, version_id, after_stage_code)
+        return int(after_stage.stage_order) + 1
+    max_order = (
+        db.query(WorkflowTemplateStage.stage_order)
+        .filter(WorkflowTemplateStage.template_version_id == version_id, WorkflowTemplateStage.is_active == True)
+        .order_by(WorkflowTemplateStage.stage_order.desc())
+        .first()
+    )
+    return int(max_order[0]) + 1 if max_order else 1
+
+
+def _shift_draft_stage_orders(db: Session, version_id, insert_order: int) -> None:
+    rows = (
+        db.query(WorkflowTemplateStage)
+        .filter(
+            WorkflowTemplateStage.template_version_id == version_id,
+            WorkflowTemplateStage.is_active == True,
+            WorkflowTemplateStage.stage_order >= insert_order,
+        )
+        .order_by(WorkflowTemplateStage.stage_order.desc())
+        .all()
+    )
+    if not rows:
+        return
+    # The database has a unique (template_version_id, stage_order) constraint.
+    # Move rows to a temporary high range first so the final +1 shift never
+    # creates transient duplicate orders during flush/commit.
+    now = datetime.now(timezone.utc)
+    offset = 10000
+    for row in rows:
+        row.stage_order += offset
+        row.updated_at = now
+    db.flush()
+    for row in rows:
+        row.stage_order = row.stage_order - offset + 1
+        row.updated_at = now
+
+
+def _refresh_workflow_total_duration(db: Session, version: WorkflowTemplateVersion) -> None:
+    stages = db.query(WorkflowTemplateStage).filter(
+        WorkflowTemplateStage.template_version_id == version.id,
+        WorkflowTemplateStage.is_active == True,
+    ).all()
+    version.total_duration_days = sum(int(stage.duration_days or 0) for stage in stages)
+    version.updated_at = datetime.now(timezone.utc)
+
+
+@router.post("/drafts/{workflow_template_version_id}/stages")
+def create_draft_workflow_stage(
+    workflow_template_version_id: uuid.UUID,
+    body: WorkflowDraftStageCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Create a stage inside a DRAFT workflow version and shift following stages."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    stage_code = _normalize_stage_code(body.stage_code)
+    if db.query(WorkflowTemplateStage).filter(WorkflowTemplateStage.template_version_id == version.id, WorkflowTemplateStage.stage_code == stage_code, WorkflowTemplateStage.is_active == True).first():
+        raise HTTPException(409, "Stage code already exists in draft")
+    if not body.stage_name:
+        raise HTTPException(400, "stage_name is required")
+    duration_days = int(body.duration_days or 0)
+    if duration_days < 0:
+        raise HTTPException(400, "duration_days cannot be negative")
+    insert_order = _draft_insert_order(db, version.id, body.after_stage_code)
+    _shift_draft_stage_orders(db, version.id, insert_order)
+    now = datetime.now(timezone.utc)
+    stage = WorkflowTemplateStage(
+        id=uuid.uuid4(),
+        template_version_id=version.id,
+        stage_code=stage_code,
+        stage_name=body.stage_name,
+        stage_order=insert_order,
+        duration_days=duration_days,
+        stage_type=body.stage_type,
+        phase=body.phase,
+        description=body.description,
+        farmer_actions=body.farmer_actions or [],
+        typical_inputs=body.typical_inputs or [],
+        key_observations=body.key_observations or [],
+        icon=body.icon,
+        color=body.color,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(stage)
+    _refresh_workflow_total_duration(db, version)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id) or principal.user_id,
+        action="CREATE_DRAFT_STAGE",
+        target_type="STAGE",
+        target_id=str(stage.id),
+        target_code=stage.stage_code,
+        after=_stage_audit_snapshot(stage),
+        reason=f"Create draft stage {stage.stage_code}",
+    )
+    db.commit()
+    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+
+
+@router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/duplicate")
+def duplicate_draft_workflow_stage(
+    workflow_template_version_id: uuid.UUID,
+    stage_code: str,
+    body: WorkflowDraftStageDuplicate = WorkflowDraftStageDuplicate(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Duplicate a DRAFT workflow stage and its active recommendations."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    source_stage = _get_draft_stage(db, version.id, stage_code)
+    new_code = _normalize_stage_code(body.stage_code or f"{source_stage.stage_code}_COPY")
+    if db.query(WorkflowTemplateStage).filter(WorkflowTemplateStage.template_version_id == version.id, WorkflowTemplateStage.stage_code == new_code, WorkflowTemplateStage.is_active == True).first():
+        raise HTTPException(409, "Duplicate stage code already exists in draft")
+    insert_order = _draft_insert_order(db, version.id, body.after_stage_code or source_stage.stage_code)
+    _shift_draft_stage_orders(db, version.id, insert_order)
+    now = datetime.now(timezone.utc)
+    new_stage = WorkflowTemplateStage(
+        id=uuid.uuid4(),
+        template_version_id=version.id,
+        stage_code=new_code,
+        stage_name=body.stage_name or {**(source_stage.stage_name or {}), "en": f"{(source_stage.stage_name or {}).get('en', source_stage.stage_code)} Copy"},
+        stage_order=insert_order,
+        duration_days=source_stage.duration_days,
+        stage_type=source_stage.stage_type,
+        phase=source_stage.phase,
+        bbch_range=deepcopy(source_stage.bbch_range),
+        propagation_step=bool(source_stage.propagation_step),
+        description=deepcopy(source_stage.description),
+        farmer_actions=deepcopy(source_stage.farmer_actions or []),
+        typical_inputs=deepcopy(source_stage.typical_inputs or []),
+        key_observations=deepcopy(source_stage.key_observations or []),
+        icon=source_stage.icon,
+        color=source_stage.color,
+        metadata_=deepcopy(source_stage.metadata_ or {}),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(new_stage)
+    db.flush()
+    source_recs = db.query(WorkflowTemplateRecommendation).filter(WorkflowTemplateRecommendation.template_stage_id == source_stage.id, WorkflowTemplateRecommendation.is_active == True).order_by(WorkflowTemplateRecommendation.sort_order.asc()).all()
+    for rec in source_recs:
+        db.add(WorkflowTemplateRecommendation(
+            id=uuid.uuid4(),
+            template_stage_id=new_stage.id,
+            sort_order=rec.sort_order,
+            day_offset=rec.day_offset,
+            activity_type=rec.activity_type,
+            input_code=rec.input_code,
+            input_name=rec.input_name,
+            typical_quantity=rec.typical_quantity,
+            typical_cost_per_acre=rec.typical_cost_per_acre,
+            is_critical=bool(rec.is_critical),
+            description=deepcopy(rec.description),
+            metadata_=deepcopy(rec.metadata_ or {}),
+            created_at=now,
+            updated_at=now,
+        ))
+    _refresh_workflow_total_duration(db, version)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id) or principal.user_id,
+        action="DUPLICATE_DRAFT_STAGE",
+        target_type="STAGE",
+        target_id=str(new_stage.id),
+        target_code=new_stage.stage_code,
+        before=_stage_audit_snapshot(source_stage),
+        after={**_stage_audit_snapshot(new_stage), "recommendation_count": len(source_recs)},
+        reason=f"Duplicate draft stage {source_stage.stage_code} as {new_stage.stage_code}",
+    )
+    db.commit()
+    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
 
 
 @router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/recommendations")

@@ -960,6 +960,27 @@ export interface WorkflowDraftStageUpdateRequest {
   stage_type?: string | null;
 }
 
+export interface WorkflowDraftStageCreateRequest {
+  after_stage_code?: string | null;
+  stage_code: string;
+  stage_name: Record<string, string>;
+  duration_days?: number;
+  description?: Record<string, string> | null;
+  farmer_actions?: string[];
+  typical_inputs?: string[];
+  key_observations?: string[];
+  icon?: string | null;
+  color?: string | null;
+  phase?: string | null;
+  stage_type?: string | null;
+}
+
+export interface WorkflowDraftStageDuplicateRequest {
+  after_stage_code?: string | null;
+  stage_code?: string | null;
+  stage_name?: Record<string, string> | null;
+}
+
 export interface WorkflowDraftRecommendationRequest {
   day_offset?: number;
   input_source?: "CATALOG" | "CUSTOM";
@@ -1176,6 +1197,16 @@ export const workflowCatalogApi = {
   updateDraftStage: (versionId: string, stageCode: string, data: WorkflowDraftStageUpdateRequest) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}`, {
       method: "PATCH",
+      body: data,
+    }),
+  createDraftStage: (versionId: string, data: WorkflowDraftStageCreateRequest) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages`, {
+      method: "POST",
+      body: data,
+    }),
+  duplicateDraftStage: (versionId: string, stageCode: string, data: WorkflowDraftStageDuplicateRequest = {}) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${encodeURIComponent(stageCode)}/duplicate`, {
+      method: "POST",
       body: data,
     }),
   createDraftRecommendation: (versionId: string, stageCode: string, data: WorkflowDraftRecommendationRequest) =>

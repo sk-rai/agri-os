@@ -8,6 +8,8 @@ import {
   workflowCatalogApi,
   type AgriInputDto,
   type WorkflowDraftRecommendationRequest,
+  type WorkflowDraftStageCreateRequest,
+  type WorkflowDraftStageDuplicateRequest,
   type WorkflowDraftStageUpdateRequest,
   type WorkflowDraftValidationResponse,
   type WorkflowOverrideHistoryResponse,
@@ -33,6 +35,10 @@ function activityTypeFromCategory(categoryCode?: string | null) {
     return category;
   }
   return "OTHER";
+}
+
+function normalizeStageCode(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
 }
 
 export default function WorkflowPreviewPage() {
@@ -208,6 +214,48 @@ export default function WorkflowPreviewPage() {
     }
   };
 
+  const createDraftStage = async (afterStageCode: string, data: WorkflowDraftStageCreateRequest) => {
+    if (!preview) return;
+    const nextCode = normalizeStageCode(data.stage_code);
+    setBusyTarget(`DRAFT_STAGE:${afterStageCode}:CREATE`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.createDraftStage(preview.workflow_template_version_id, {
+        ...data,
+        after_stage_code: afterStageCode,
+        stage_code: nextCode,
+      });
+      setPreview(updated);
+      setSelectedStageCode(nextCode);
+      setDraftValidation(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create draft stage");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
+  const duplicateDraftStage = async (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => {
+    if (!preview) return;
+    const nextCode = data.stage_code ? normalizeStageCode(data.stage_code) : undefined;
+    setBusyTarget(`DRAFT_STAGE:${stageCode}:DUPLICATE`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.duplicateDraftStage(preview.workflow_template_version_id, stageCode, {
+        ...data,
+        after_stage_code: data.after_stage_code || stageCode,
+        stage_code: nextCode,
+      });
+      setPreview(updated);
+      if (nextCode) setSelectedStageCode(nextCode);
+      setDraftValidation(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to duplicate draft stage");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
   const updateDraftRecommendation = async (recommendationId: string, data: WorkflowDraftRecommendationRequest) => {
     if (!preview) return;
     setBusyTarget(`DRAFT_REC:${recommendationId}`);
@@ -358,6 +406,9 @@ export default function WorkflowPreviewPage() {
         onSelectStage={setSelectedStageCode}
         draftEditable={isDraftPreview}
         projectScoped={Boolean(preview.project_id)}
+        busyTarget={busyTarget}
+        onCreateDraftStage={createDraftStage}
+        onDuplicateDraftStage={duplicateDraftStage}
       />
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -429,12 +480,18 @@ function VisualWorkflowBuilder({
   onSelectStage,
   draftEditable,
   projectScoped,
+  busyTarget,
+  onCreateDraftStage,
+  onDuplicateDraftStage,
 }: {
   stages: WorkflowStage[];
   selectedStageCode: string | null;
   onSelectStage: (stageCode: string) => void;
   draftEditable: boolean;
   projectScoped: boolean;
+  busyTarget: string | null;
+  onCreateDraftStage: (afterStageCode: string, data: WorkflowDraftStageCreateRequest) => void;
+  onDuplicateDraftStage: (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => void;
 }) {
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
   const totalDuration = stages.reduce((sum, stage) => sum + (stage.duration_days || 0), 0);
@@ -498,7 +555,48 @@ function VisualWorkflowBuilder({
               </div>
             </div>
 
-            {selectedStage ? <StageInspector stage={selectedStage} draftEditable={draftEditable} onEditStage={() => scrollToStageEditor(selectedStage.code, "stage")} onAddRecommendation={() => scrollToStageEditor(selectedStage.code, "recommendation")} /> : null}
+            {selectedStage ? (
+              <StageInspector
+                stage={selectedStage}
+                draftEditable={draftEditable}
+                busyTarget={busyTarget}
+                onEditStage={() => scrollToStageEditor(selectedStage.code, "stage")}
+                onAddRecommendation={() => scrollToStageEditor(selectedStage.code, "recommendation")}
+                onCreateStageAfter={() => {
+                  const defaultCode = normalizeStageCode(`${selectedStage.code}_NEXT`);
+                  const code = window.prompt("New stage code", defaultCode);
+                  if (!code) return;
+                  const normalizedCode = normalizeStageCode(code);
+                  if (!normalizedCode) return;
+                  const name = window.prompt("Stage display name", "New stage");
+                  if (!name) return;
+                  const durationInput = window.prompt("Duration in days", "1") || "1";
+                  const duration = Number.parseInt(durationInput, 10);
+                  onCreateDraftStage(selectedStage.code, {
+                    after_stage_code: selectedStage.code,
+                    stage_code: normalizedCode,
+                    stage_name: { en: name },
+                    duration_days: Number.isFinite(duration) ? Math.max(0, duration) : 1,
+                    stage_type: selectedStage.stage_type || undefined,
+                    phase: selectedStage.phase || undefined,
+                  });
+                }}
+                onDuplicateStage={() => {
+                  const defaultCode = normalizeStageCode(`${selectedStage.code}_COPY`);
+                  const code = window.prompt("Duplicate stage code", defaultCode);
+                  if (!code) return;
+                  const normalizedCode = normalizeStageCode(code);
+                  if (!normalizedCode) return;
+                  const defaultName = `${labelText(selectedStage.name) || selectedStage.code} Copy`;
+                  const name = window.prompt("Duplicate stage display name", defaultName);
+                  onDuplicateDraftStage(selectedStage.code, {
+                    after_stage_code: selectedStage.code,
+                    stage_code: normalizedCode,
+                    stage_name: name ? { en: name } : undefined,
+                  });
+                }}
+              />
+            ) : null}
           </div>
         )}
       </div>
@@ -513,13 +611,19 @@ function MiniMetric({ label, value }: { label: string; value: string | number })
 function StageInspector({
   stage,
   draftEditable,
+  busyTarget,
   onEditStage,
   onAddRecommendation,
+  onCreateStageAfter,
+  onDuplicateStage,
 }: {
   stage: WorkflowStage;
   draftEditable: boolean;
+  busyTarget: string | null;
   onEditStage: () => void;
   onAddRecommendation: () => void;
+  onCreateStageAfter: () => void;
+  onDuplicateStage: () => void;
 }) {
   const recs = stage.recommended_activities || [];
   return (
@@ -533,7 +637,16 @@ function StageInspector({
           <div><dt className="text-xs uppercase text-gray-400">Recommendations</dt><dd className="font-semibold text-gray-900">{recs.length}</dd></div>
           <div><dt className="text-xs uppercase text-gray-400">Mode</dt><dd className="font-semibold text-gray-900">{draftEditable ? "Editable draft" : "Read only"}</dd></div>
         </dl>
-        <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={onEditStage} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">Edit selected stage</button><button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Add recommendation</button></div><p className="mt-3 text-xs text-gray-500">Double-click any stage card or use these shortcuts to jump to the detailed editor below.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" onClick={onEditStage} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">Edit selected stage</button>
+          <button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Add recommendation</button>
+          {draftEditable ? (
+            <>
+              <button type="button" disabled={Boolean(busyTarget)} onClick={onCreateStageAfter} className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60">Add stage after</button>
+              <button type="button" disabled={Boolean(busyTarget)} onClick={onDuplicateStage} className="rounded border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:cursor-wait disabled:opacity-60">Duplicate stage</button>
+            </>
+          ) : null}
+        </div><p className="mt-3 text-xs text-gray-500">Double-click any stage card or use these shortcuts to jump to the detailed editor below.</p>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white p-4">
