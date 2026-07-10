@@ -445,6 +445,10 @@ export const reportsApi = {
   farmerTrace: (farmerId: string) => api<FarmerTraceResponse>(`/api/v1/reports/farmers/${farmerId}/trace`),
   parcelTrace: (parcelId: string) => api<ParcelTraceResponse>(`/api/v1/reports/parcels/${parcelId}/trace`),
   lookup: (query?: string, limit = 25) => api<AdminLookupResponse>(`/api/v1/reports/lookup?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`),
+  downloadLookupCsv: (query?: string, limit = 100) =>
+    apiDownload(`/api/v1/reports/lookup.csv?${new URLSearchParams({ q: query || "", limit: String(limit) }).toString()}`, "admin_lookup.csv"),
+  downloadProjectTraceCsv: (projectId: string, limit = 5000) =>
+    apiDownload(`/api/v1/reports/projects/${projectId}/trace.csv?limit=${limit}`, "project_trace.csv"),
   activityUsageFilterOptions: () => api<ActivityUsageFilterOptionsResponse>("/api/v1/reports/activity-usage/filter-options"),
   activityUsage: (params?: ActivityUsageParams) =>
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),

@@ -78,6 +78,63 @@ ACTIVITY_USAGE_CSV_COLUMNS = [
     "notes",
 ]
 
+LOOKUP_CSV_COLUMNS = [
+    "entity_type",
+    "id",
+    "label",
+    "project_id",
+    "farmer_id",
+    "status",
+    "village",
+    "crop",
+    "crop_scope",
+    "mobile_number",
+    "survey_number",
+    "area",
+    "ownership_type",
+    "geometry_source",
+    "crop_cycle_count",
+    "activity_count",
+    "trace_url",
+    "compliance_url",
+]
+
+PROJECT_TRACE_CSV_COLUMNS = [
+    "project_id",
+    "project_name",
+    "activity_id",
+    "activity_date",
+    "farmer_id",
+    "farmer_name",
+    "parcel_id",
+    "parcel_label",
+    "crop_cycle_id",
+    "crop_cycle_status",
+    "workflow_template_version_id",
+    "crop_code",
+    "season_code",
+    "stage_code",
+    "stage_name",
+    "activity_type",
+    "input_code",
+    "input_name",
+    "input_rule_id",
+    "product_code",
+    "package_sku",
+    "recommended_quantity",
+    "recommended_quantity_unit",
+    "actual_quantity",
+    "actual_quantity_unit",
+    "quantity",
+    "quantity_unit",
+    "cost_amount",
+    "cost_currency",
+    "dosage_variance_reason",
+    "logged_by",
+    "logging_method",
+    "notes",
+]
+
 
 def _decimal_text(value):
     return str(value) if value is not None else None
@@ -268,6 +325,24 @@ def _activity_usage_csv(rows):
         writer.writerow({column: row.get(column) for column in ACTIVITY_USAGE_CSV_COLUMNS})
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def _rows_csv(rows, columns):
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: row.get(column) for column in columns})
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def _csv_stream(csv_text: str, filename: str):
+    return StreamingResponse(
+        iter([csv_text]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 
@@ -719,6 +794,37 @@ def project_trace_report(
         "crop_cycles": [_farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle) for cycle in cycles[:limit]],
         "activities": activities[:limit],
     }
+
+
+@router.get("/projects/{project_id}/trace.csv")
+def project_trace_report_csv(
+    project_id: uuid.UUID,
+    limit: int = Query(5000, ge=1, le=10000),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    activity_rows_raw = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.project_id == project.id)
+        .order_by(CropActivity.activity_date.desc(), CropActivity.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    rows = []
+    for activity, cycle, stage, farmer, parcel in activity_rows_raw:
+        row = _activity_trace_row(activity, cycle, stage, farmer, parcel)
+        row["project_name"] = project.name
+        rows.append(row)
+    return _csv_stream(_rows_csv(rows, PROJECT_TRACE_CSV_COLUMNS), f"project_trace_{project.id}.csv")
 
 @router.get("/projects/{project_id}/input-compliance")
 def project_input_compliance_report(
@@ -1397,6 +1503,64 @@ def admin_lookup_report(
         ],
     }
 
+
+
+@router.get("/lookup.csv")
+def admin_lookup_report_csv(
+    q: Optional[str] = Query(None, description="Search projects, farmers, and parcels by name, mobile, survey number, or ID"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    payload = admin_lookup_report(q=q, limit=limit, db=db, x_tenant_id=x_tenant_id, principal=principal)
+    rows = []
+    for project in payload["projects"]:
+        rows.append({
+            "entity_type": "PROJECT",
+            "id": project.get("id"),
+            "label": project.get("label"),
+            "project_id": project.get("id"),
+            "status": project.get("status"),
+            "crop_scope": ",".join(project.get("crop_scope") or []),
+            "crop_cycle_count": project.get("crop_cycle_count"),
+            "trace_url": project.get("trace_url"),
+            "compliance_url": project.get("compliance_url"),
+        })
+    for farmer in payload["farmers"]:
+        rows.append({
+            "entity_type": "FARMER",
+            "id": farmer.get("id"),
+            "label": farmer.get("label"),
+            "project_id": farmer.get("project_id"),
+            "farmer_id": farmer.get("id"),
+            "status": farmer.get("status"),
+            "village": farmer.get("village_name"),
+            "crop": farmer.get("primary_crop_code"),
+            "mobile_number": farmer.get("mobile_number"),
+            "crop_cycle_count": farmer.get("crop_cycle_count"),
+            "activity_count": farmer.get("activity_count"),
+            "trace_url": farmer.get("trace_url"),
+        })
+    for parcel in payload["parcels"]:
+        rows.append({
+            "entity_type": "PARCEL",
+            "id": parcel.get("id"),
+            "label": parcel.get("label"),
+            "project_id": parcel.get("project_id"),
+            "farmer_id": parcel.get("farmer_id"),
+            "status": parcel.get("status"),
+            "village": parcel.get("village_name"),
+            "survey_number": parcel.get("survey_number"),
+            "area": " ".join(str(value) for value in [parcel.get("reported_area"), parcel.get("reported_area_unit")] if value),
+            "ownership_type": parcel.get("ownership_type"),
+            "geometry_source": parcel.get("geometry_source"),
+            "crop_cycle_count": parcel.get("crop_cycle_count"),
+            "activity_count": parcel.get("activity_count"),
+            "trace_url": parcel.get("trace_url"),
+        })
+    filename = "admin_lookup.csv" if not (q or "").strip() else "admin_lookup_search.csv"
+    return _csv_stream(_rows_csv(rows, LOOKUP_CSV_COLUMNS), filename)
 
 @router.get("/activity-usage/filter-options")
 def activity_usage_filter_options(

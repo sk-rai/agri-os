@@ -9,6 +9,7 @@ export default function AdminLookupPage() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [result, setResult] = useState<AdminLookupResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (search: string) => {
@@ -32,6 +33,18 @@ export default function AdminLookupPage() {
     load(next);
   }
 
+  async function exportCsv() {
+    setExporting(true);
+    setError(null);
+    try {
+      await reportsApi.downloadLookupCsv(submittedQuery, 500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export lookup CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const total = (result?.projects.length || 0) + (result?.farmers.length || 0) + (result?.parcels.length || 0);
 
   return <div>
@@ -40,7 +53,7 @@ export default function AdminLookupPage() {
         <h1 className="text-2xl font-bold text-gray-900">Admin Lookup</h1>
         <p className="mt-1 text-sm text-gray-500">Find projects, farmers, and parcels, then jump directly into traceability views.</p>
       </div>
-      <button onClick={() => load(submittedQuery)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button>
+      <div className="flex gap-2"><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
     </div>
 
     <form onSubmit={submit} className="mb-6 rounded bg-white p-5 shadow">

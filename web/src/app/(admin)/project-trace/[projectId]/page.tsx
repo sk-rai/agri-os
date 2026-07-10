@@ -7,6 +7,7 @@ import { reportsApi, type ProjectTraceResponse } from "@/lib/api";
 export default function ProjectTracePage({ params }: { params: { projectId: string } }) {
   const [trace, setTrace] = useState<ProjectTraceResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,6 +18,18 @@ export default function ProjectTracePage({ params }: { params: { projectId: stri
       .finally(() => setLoading(false));
   }, [params.projectId]);
 
+  async function exportCsv() {
+    setExporting(true);
+    setError(null);
+    try {
+      await reportsApi.downloadProjectTraceCsv(params.projectId, 5000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export project trace CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) return <div className="text-gray-500">Loading project trace...</div>;
   if (error) return <div className="text-red-600">Error: {error}</div>;
   if (!trace) return <div className="text-gray-500">No project trace found.</div>;
@@ -26,11 +39,14 @@ export default function ProjectTracePage({ params }: { params: { projectId: stri
       <div>
         <Link href="/lookup" className="text-sm text-blue-600">&lt; Back to Lookup</Link>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Project Trace</h1>
-        <p className="mt-1 text-sm text-gray-500">{trace.project.name} ? {trace.project.status || "-"}</p>
+        <p className="mt-1 text-sm text-gray-500">{trace.project.name} - {trace.project.status || "-"}</p>
       </div>
       <div className="rounded bg-white p-4 text-sm shadow">
         <div className="font-mono text-xs text-gray-500">{trace.project.id}</div>
-        <div className="mt-1"><Link href={`/project-compliance/${trace.project.id}`} className="text-blue-600">Open input compliance</Link></div>
+        <div className="mt-2 flex flex-col gap-2">
+          <button onClick={exportCsv} disabled={exporting} className="rounded border px-3 py-1 text-xs disabled:opacity-50">{exporting ? "Exporting..." : "Export activities CSV"}</button>
+          <Link href={`/project-compliance/${trace.project.id}`} className="text-blue-600">Open input compliance</Link>
+        </div>
       </div>
     </div>
 
