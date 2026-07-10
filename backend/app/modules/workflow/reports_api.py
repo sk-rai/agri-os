@@ -396,6 +396,208 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
 
 
 
+def _admin_project_row(project, cycles_by_project):
+    project_cycles = cycles_by_project.get(project.id, [])
+    return {
+        "id": str(project.id),
+        "label": project.name,
+        "name": project.name,
+        "status": project.status,
+        "crop_scope": project.crop_scope or [],
+        "start_date": project.start_date.isoformat() if project.start_date else None,
+        "end_date": project.end_date.isoformat() if project.end_date else None,
+        "crop_cycle_count": len(project_cycles),
+        "trace_url": f"/project-trace/{project.id}",
+        "compliance_url": f"/project-compliance/{project.id}",
+    }
+
+
+def _admin_farmer_row(farmer, cycles_by_farmer, activities_by_farmer):
+    label = farmer.display_name or farmer.mobile_number or str(farmer.id)
+    return {
+        "id": str(farmer.id),
+        "label": label,
+        "display_name": farmer.display_name,
+        "mobile_number": farmer.mobile_number,
+        "village_name": farmer.village_name_manual,
+        "primary_crop_code": farmer.primary_crop_code,
+        "project_id": str(farmer.project_id) if farmer.project_id else None,
+        "status": farmer.status,
+        "crop_cycle_count": len(cycles_by_farmer.get(farmer.id, [])),
+        "activity_count": len(activities_by_farmer.get(farmer.id, [])),
+        "trace_url": f"/farmer-trace/{farmer.id}",
+    }
+
+
+def _admin_parcel_row(parcel, farmer, cycles_by_parcel, activities_by_parcel):
+    label = parcel.local_name or parcel.survey_number or str(parcel.id)
+    return {
+        "id": str(parcel.id),
+        "label": label,
+        "survey_number": parcel.survey_number,
+        "local_name": parcel.local_name,
+        "farmer_id": str(parcel.farmer_id),
+        "farmer_name": farmer.display_name if farmer else None,
+        "project_id": str(parcel.project_id) if parcel.project_id else None,
+        "reported_area": _decimal_text(parcel.reported_area),
+        "reported_area_unit": parcel.reported_area_unit,
+        "ownership_type": parcel.ownership_type,
+        "village_name": parcel.village_name_manual,
+        "geometry_source": parcel.geometry_source,
+        "status": parcel.status,
+        "crop_cycle_count": len(cycles_by_parcel.get(parcel.id, [])),
+        "activity_count": len(activities_by_parcel.get(parcel.id, [])),
+        "trace_url": f"/parcel-trace/{parcel.id}",
+    }
+
+
+def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities):
+    cycles_by_project = defaultdict(list)
+    cycles_by_farmer = defaultdict(list)
+    cycles_by_parcel = defaultdict(list)
+    activities_by_farmer = defaultdict(list)
+    activities_by_parcel = defaultdict(list)
+    crop_distribution = defaultdict(int)
+    cycle_status_distribution = defaultdict(int)
+    geometry_coverage = defaultdict(int)
+    activity_count_by_type = defaultdict(int)
+    variance_count = 0
+
+    farmers_by_id = {farmer.id: farmer for farmer in farmers}
+    for cycle in cycles:
+        if cycle.project_id:
+            cycles_by_project[cycle.project_id].append(cycle)
+        if cycle.farmer_id:
+            cycles_by_farmer[cycle.farmer_id].append(cycle)
+        if cycle.parcel_id:
+            cycles_by_parcel[cycle.parcel_id].append(cycle)
+        crop_distribution[cycle.crop_code or "UNKNOWN"] += 1
+        cycle_status_distribution[cycle.status or "UNKNOWN"] += 1
+
+    for parcel in parcels:
+        geometry_coverage[parcel.geometry_source or "MISSING"] += 1
+
+    for row in activities:
+        if row.get("farmer_id"):
+            activities_by_farmer[uuid.UUID(row["farmer_id"])].append(row)
+        if row.get("parcel_id"):
+            activities_by_parcel[uuid.UUID(row["parcel_id"])].append(row)
+        activity_count_by_type[row.get("activity_type") or "UNKNOWN"] += 1
+        if row.get("recommended_quantity") is not None and row.get("actual_quantity") is not None:
+            if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
+                variance_count += 1
+
+    return {
+        "schema_version": "admin_dashboard.v1",
+        "tenant_id": tenant_id,
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "limit": limit,
+        },
+        "summary": {
+            "project_count": len(projects),
+            "farmer_count": len(farmers),
+            "parcel_count": len(parcels),
+            "crop_cycle_count": len(cycles),
+            "active_cycle_count": sum(1 for cycle in cycles if cycle.status == "ACTIVE"),
+            "completed_cycle_count": sum(1 for cycle in cycles if cycle.status == "COMPLETED"),
+            "activity_count": len(activities),
+            "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
+            "variance_count": variance_count,
+            "geometry_captured_count": sum(1 for parcel in parcels if parcel.geometry_source and parcel.geometry_source != "NONE"),
+            "geometry_missing_count": sum(1 for parcel in parcels if not parcel.geometry_source or parcel.geometry_source == "NONE"),
+        },
+        "crop_distribution": [
+            {"crop_code": key, "crop_cycle_count": value}
+            for key, value in sorted(crop_distribution.items())
+        ],
+        "cycle_status_distribution": [
+            {"status": key, "crop_cycle_count": value}
+            for key, value in sorted(cycle_status_distribution.items())
+        ],
+        "geometry_coverage": [
+            {"geometry_source": key, "parcel_count": value}
+            for key, value in sorted(geometry_coverage.items())
+        ],
+        "activity_count_by_type": [
+            {"activity_type": key, "activity_count": value}
+            for key, value in sorted(activity_count_by_type.items())
+        ],
+        "projects": [_admin_project_row(project, cycles_by_project) for project in projects[:limit]],
+        "farmers": [_admin_farmer_row(farmer, cycles_by_farmer, activities_by_farmer) for farmer in farmers[:limit]],
+        "parcels": [
+            _admin_parcel_row(parcel, farmers_by_id.get(parcel.farmer_id), cycles_by_parcel, activities_by_parcel)
+            for parcel in parcels[:limit]
+        ],
+        "activities": activities[:limit],
+    }
+
+
+@router.get("/admin-dashboard")
+def admin_dashboard_report(
+    project_id: Optional[uuid.UUID] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    project_query = db.query(Project).filter(Project.tenant_id == x_tenant_id)
+    farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id)
+    cycle_query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id)
+
+    if project_id:
+        project = project_query.filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+        project_query = project_query.filter(Project.id == project_id)
+        farmer_query = farmer_query.filter(Farmer.project_id == project_id)
+        parcel_query = parcel_query.filter(Parcel.project_id == project_id)
+        cycle_query = cycle_query.filter(CropCycle.project_id == project_id)
+
+    activity_query = (
+        db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
+        .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
+        .outerjoin(CropStageInstance, CropStageInstance.id == CropActivity.stage_instance_id)
+        .outerjoin(Farmer, Farmer.id == CropActivity.farmer_id)
+        .outerjoin(Parcel, Parcel.id == CropCycle.parcel_id)
+        .filter(CropActivity.tenant_id == x_tenant_id, CropCycle.tenant_id == x_tenant_id)
+    )
+    if project_id:
+        activity_query = activity_query.filter(CropCycle.project_id == project_id)
+    if date_from:
+        activity_query = activity_query.filter(CropActivity.activity_date >= date_from)
+    if date_to:
+        activity_query = activity_query.filter(CropActivity.activity_date <= date_to)
+
+    projects = project_query.order_by(Project.updated_at.desc(), Project.created_at.desc()).all()
+    farmers = farmer_query.order_by(Farmer.updated_at.desc(), Farmer.created_at.desc()).all()
+    parcels = parcel_query.order_by(Parcel.updated_at.desc(), Parcel.created_at.desc()).all()
+    cycles = cycle_query.order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc()).all()
+    activity_rows_raw = activity_query.order_by(CropActivity.activity_date.desc(), CropActivity.created_at.desc()).all()
+    activities = [
+        _activity_trace_row(activity, cycle, stage, farmer, parcel)
+        for activity, cycle, stage, farmer, parcel in activity_rows_raw
+    ]
+
+    return _admin_dashboard_payload(
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        projects=projects,
+        farmers=farmers,
+        parcels=parcels,
+        cycles=cycles,
+        activities=activities,
+    )
+
+
 def _farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel):
     parcel_cycles = cycles_by_parcel.get(parcel.id, [])
     parcel_activities = activities_by_parcel.get(parcel.id, [])

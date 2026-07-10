@@ -413,6 +413,34 @@ export interface ProjectTraceResponse {
   crop_cycles: FarmerTraceCycle[];
   activities: ActivityUsageRow[];
 }
+
+export interface AdminDashboardResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: { project_id?: string | null; date_from?: string | null; date_to?: string | null; limit: number };
+  summary: {
+    project_count: number;
+    farmer_count: number;
+    parcel_count: number;
+    crop_cycle_count: number;
+    active_cycle_count: number;
+    completed_cycle_count: number;
+    activity_count: number;
+    total_cost: string;
+    variance_count: number;
+    geometry_captured_count: number;
+    geometry_missing_count: number;
+  };
+  crop_distribution: Array<{ crop_code: string; crop_cycle_count: number }>;
+  cycle_status_distribution: Array<{ status: string; crop_cycle_count: number }>;
+  geometry_coverage: Array<{ geometry_source: string; parcel_count: number }>;
+  activity_count_by_type: Array<{ activity_type: string; activity_count: number }>;
+  projects: AdminLookupProject[];
+  farmers: AdminLookupFarmer[];
+  parcels: AdminLookupParcel[];
+  activities: ActivityUsageRow[];
+}
+
 export interface ActivityUsageFilterOption {
   id?: string;
   code?: string;
@@ -432,8 +460,19 @@ export interface ActivityUsageFilterOptionsResponse {
   inputs: ActivityUsageFilterOption[];
   products: ActivityUsageFilterOption[];
 }
+type AdminDashboardParams = { projectId?: string; dateFrom?: string; dateTo?: string; limit?: number };
 type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
 type ProjectTraceParams = { farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; cycleStatus?: string; hasVariance?: string; dateFrom?: string; dateTo?: string; limit?: number };
+
+
+function adminDashboardQuery(params?: AdminDashboardParams): string {
+  const query = new URLSearchParams();
+  if (params?.projectId) query.set("project_id", params.projectId);
+  if (params?.dateFrom) query.set("date_from", params.dateFrom);
+  if (params?.dateTo) query.set("date_to", params.dateTo);
+  if (params?.limit) query.set("limit", String(params.limit));
+  return query.toString() ? `?${query.toString()}` : "";
+}
 
 function activityUsageQuery(params?: ActivityUsageParams): string {
   const query = new URLSearchParams();
@@ -471,6 +510,7 @@ function projectTraceQuery(params?: ProjectTraceParams): string {
 }
 
 export const reportsApi = {
+  adminDashboard: (params?: AdminDashboardParams) => api<AdminDashboardResponse>(`/api/v1/reports/admin-dashboard${adminDashboardQuery(params)}`),
   projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
   projectTrace: (projectId: string, params?: ProjectTraceParams) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace${projectTraceQuery(params)}`),
   projectTraceFilterOptions: (projectId: string) => api<ProjectTraceFilterOptionsResponse>(`/api/v1/reports/projects/${projectId}/trace/filter-options`),
