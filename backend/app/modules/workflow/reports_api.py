@@ -100,6 +100,18 @@ LOOKUP_CSV_COLUMNS = [
     "compliance_url",
 ]
 
+SYNC_HEALTH_CSV_COLUMNS = [
+    "event_id",
+    "entity_type",
+    "entity_id",
+    "operation",
+    "status",
+    "server_version",
+    "processed_at",
+    "materialized",
+    "trace_url",
+]
+
 PROJECT_TRACE_CSV_COLUMNS = [
     "project_id",
     "project_name",
@@ -418,6 +430,7 @@ def sync_materialization_health_report(
     project_id: Optional[uuid.UUID] = Query(None),
     entity_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    gap_only: bool = Query(False),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
@@ -460,11 +473,16 @@ def sync_materialization_health_report(
     unmaterialized_counts = defaultdict(int)
     recent_rows = []
 
+    filtered_events = []
     for event in events:
         event_entity_type = _sync_event_entity_type(event.entity_type)
+        materialized = _sync_materialization_status(event_entity_type, event.entity_id, farmers_by_id, parcels_by_id)
+        is_gap = event.status == "COMMITTED" and materialized is False
+        if gap_only and not is_gap:
+            continue
+        filtered_events.append(event)
         status_counts[event.status or "UNKNOWN"] += 1
         entity_counts[event_entity_type] += 1
-        materialized = _sync_materialization_status(event_entity_type, event.entity_id, farmers_by_id, parcels_by_id)
         if event.status == "COMMITTED":
             committed_counts[event_entity_type] += 1
             if materialized is True:
@@ -508,10 +526,11 @@ def sync_materialization_health_report(
             "project_id": str(project_id) if project_id else None,
             "entity_type": entity_type.upper() if entity_type else None,
             "status": status.upper() if status else None,
+            "gap_only": gap_only,
             "limit": limit,
         },
         "summary": {
-            "event_count": len(events),
+            "event_count": len(filtered_events),
             "committed_count": status_counts.get("COMMITTED", 0),
             "failed_count": status_counts.get("FAILED", 0),
             "conflict_count": len(conflicts),
@@ -537,6 +556,32 @@ def sync_materialization_health_report(
         "recent_events": recent_rows,
     }
 
+
+
+@router.get("/sync-health.csv")
+def sync_materialization_health_report_csv(
+    project_id: Optional[uuid.UUID] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    gap_only: bool = Query(False),
+    limit: int = Query(500, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    payload = sync_materialization_health_report(
+        project_id=project_id,
+        entity_type=entity_type,
+        status=status,
+        gap_only=gap_only,
+        limit=min(limit, 100),
+        db=db,
+        x_tenant_id=x_tenant_id,
+        principal=principal,
+    )
+    rows = payload["recent_events"]
+    filename = "sync_health_gaps.csv" if gap_only else "sync_health.csv"
+    return _csv_stream(_rows_csv(rows, SYNC_HEALTH_CSV_COLUMNS), filename)
 
 
 def _admin_project_row(project, cycles_by_project):

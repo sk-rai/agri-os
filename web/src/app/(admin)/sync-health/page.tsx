@@ -4,8 +4,8 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { reportsApi, type SyncMaterializationHealthResponse } from "@/lib/api";
 
-type Filters = { projectId: string; entityType: string; status: string };
-const EMPTY_FILTERS: Filters = { projectId: "", entityType: "", status: "" };
+type Filters = { projectId: string; entityType: string; status: string; gapOnly: boolean };
+const EMPTY_FILTERS: Filters = { projectId: "", entityType: "", status: "", gapOnly: false };
 
 function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
   for (const key of keys) {
@@ -21,6 +21,7 @@ function filtersFromSearchParams(searchParams?: Record<string, string | string[]
     projectId: paramValue(searchParams, "projectId", "project_id"),
     entityType: paramValue(searchParams, "entityType", "entity_type"),
     status: paramValue(searchParams, "status"),
+    gapOnly: paramValue(searchParams, "gapOnly", "gap_only") === "true",
   };
 }
 
@@ -29,6 +30,7 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
   const [appliedFilters, setAppliedFilters] = useState<Filters>(() => filtersFromSearchParams(searchParams));
   const [data, setData] = useState<SyncMaterializationHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -39,6 +41,7 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
         projectId: appliedFilters.projectId || undefined,
         entityType: appliedFilters.entityType || undefined,
         status: appliedFilters.status || undefined,
+        gapOnly: appliedFilters.gapOnly,
         limit: 100,
       }));
     } catch (e) {
@@ -60,6 +63,24 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
     setAppliedFilters(EMPTY_FILTERS);
   }
 
+  async function exportCsv() {
+    setExporting(true);
+    setError(null);
+    try {
+      await reportsApi.downloadSyncHealthCsv({
+        projectId: appliedFilters.projectId || undefined,
+        entityType: appliedFilters.entityType || undefined,
+        status: appliedFilters.status || undefined,
+        gapOnly: appliedFilters.gapOnly,
+        limit: 1000,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export sync health CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const summary = data?.summary;
 
   return (
@@ -70,16 +91,18 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
           <p className="mt-1 text-sm text-gray-500">Inspect mobile sync events, materialization gaps, conflicts, and audit-chain coverage.</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button>
           <Link href="/dashboard" className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Dashboard</Link>
           <Link href="/conflicts" className="rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800">Open conflicts</Link>
         </div>
       </div>
 
       <form onSubmit={submit} className="rounded bg-white p-5 shadow">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <label className="text-xs text-gray-500">Project ID<input value={filters.projectId} onChange={(event) => setFilters({ ...filters, projectId: event.target.value })} placeholder="Optional project UUID" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
           <label className="text-xs text-gray-500">Entity type<select value={filters.entityType} onChange={(event) => setFilters({ ...filters, entityType: event.target.value })} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option><option value="FARMER">FARMER</option><option value="PARCEL">PARCEL</option><option value="PARCEL_GEOMETRY">PARCEL_GEOMETRY</option></select></label>
           <label className="text-xs text-gray-500">Status<select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All</option><option value="COMMITTED">COMMITTED</option><option value="FAILED">FAILED</option><option value="CONFLICT">CONFLICT</option><option value="DEPENDENCY_MISSING">DEPENDENCY_MISSING</option></select></label>
+          <label className="flex items-end gap-2 rounded border p-2 text-sm text-gray-700"><input type="checkbox" checked={filters.gapOnly} onChange={(event) => setFilters({ ...filters, gapOnly: event.target.checked })} /> Gap only</label>
           <div className="flex items-end gap-2"><button type="submit" disabled={loading} className="rounded bg-green-700 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Apply"}</button><button type="button" onClick={clearFilters} className="rounded border px-4 py-2 text-sm">Clear</button></div>
         </div>
       </form>
@@ -112,7 +135,7 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
             </Panel>
           </div>
 
-          <Panel title="Recent sync events" subtitle="Most recent events with materialization state and trace links where possible.">
+          <Panel title={appliedFilters.gapOnly ? "Unmaterialized sync gaps" : "Recent sync events"} subtitle={appliedFilters.gapOnly ? "Committed events that have not materialized into the expected operational record/state." : "Most recent events with materialization state and trace links where possible."}>
             <table className="w-full text-sm">
               <thead className="bg-gray-50"><tr>{["Processed", "Entity", "Operation", "Status", "Materialized", "Open"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
               <tbody className="divide-y">

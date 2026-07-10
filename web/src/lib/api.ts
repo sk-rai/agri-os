@@ -431,7 +431,7 @@ export interface SyncHealthEventRow {
 export interface SyncMaterializationHealthResponse {
   schema_version: string;
   tenant_id: string;
-  filters: { project_id?: string | null; entity_type?: string | null; status?: string | null; limit: number };
+  filters: { project_id?: string | null; entity_type?: string | null; status?: string | null; gap_only?: boolean; limit: number };
   summary: {
     event_count: number;
     committed_count: number;
@@ -498,7 +498,7 @@ export interface ActivityUsageFilterOptionsResponse {
   products: ActivityUsageFilterOption[];
 }
 type AdminDashboardParams = { projectId?: string; dateFrom?: string; dateTo?: string; limit?: number };
-type SyncHealthParams = { projectId?: string; entityType?: string; status?: string; limit?: number };
+type SyncHealthParams = { projectId?: string; entityType?: string; status?: string; gapOnly?: boolean; limit?: number };
 type AdminLookupParams = { query?: string; projectId?: string; geometryStatus?: string; geometrySource?: string; limit?: number };
 type ActivityUsageParams = { projectId?: string; farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; dateFrom?: string; dateTo?: string; limit?: number };
 type ProjectTraceParams = { farmerId?: string; parcelId?: string; cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; productCode?: string; cycleStatus?: string; hasVariance?: string; dateFrom?: string; dateTo?: string; limit?: number };
@@ -511,6 +511,7 @@ function syncHealthQuery(params?: SyncHealthParams): string {
   if (params?.projectId) query.set("project_id", params.projectId);
   if (params?.entityType) query.set("entity_type", params.entityType);
   if (params?.status) query.set("status", params.status);
+  if (params?.gapOnly) query.set("gap_only", "true");
   if (params?.limit) query.set("limit", String(params.limit));
   return query.toString() ? `?${query.toString()}` : "";
 }
@@ -572,6 +573,8 @@ function projectTraceQuery(params?: ProjectTraceParams): string {
 export const reportsApi = {
   adminDashboard: (params?: AdminDashboardParams) => api<AdminDashboardResponse>(`/api/v1/reports/admin-dashboard${adminDashboardQuery(params)}`),
   syncHealth: (params?: SyncHealthParams) => api<SyncMaterializationHealthResponse>(`/api/v1/reports/sync-health${syncHealthQuery(params)}`),
+  downloadSyncHealthCsv: (params?: SyncHealthParams) =>
+    apiDownload(`/api/v1/reports/sync-health.csv${syncHealthQuery(params)}`, params?.gapOnly ? "sync_health_gaps.csv" : "sync_health.csv"),
   projectInputCompliance: (projectId: string) => api<ProjectInputComplianceResponse>(`/api/v1/reports/projects/${projectId}/input-compliance`),
   projectTrace: (projectId: string, params?: ProjectTraceParams) => api<ProjectTraceResponse>(`/api/v1/reports/projects/${projectId}/trace${projectTraceQuery(params)}`),
   projectTraceFilterOptions: (projectId: string) => api<ProjectTraceFilterOptionsResponse>(`/api/v1/reports/projects/${projectId}/trace/filter-options`),
