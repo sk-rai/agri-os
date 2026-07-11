@@ -24,6 +24,7 @@ import {
 type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
 type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION";
 type StageActionMode = "CREATE" | "DUPLICATE";
+type StageDesignHint = { level: "ERROR" | "WARN" | "INFO"; message: string };
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -53,6 +54,34 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   const [moved] = next.splice(fromIndex, 1);
   next.splice(toIndex, 0, moved);
   return next;
+}
+
+function stageDesignHints(stage: WorkflowStage): StageDesignHint[] {
+  const hints: StageDesignHint[] = [];
+  const recs = stage.recommended_activities || [];
+  const duration = stage.duration_days || 0;
+  if (!labelText(stage.name).trim()) hints.push({ level: "ERROR", message: "Stage display name is missing." });
+  if (duration <= 0) hints.push({ level: "ERROR", message: "Stage duration should be greater than zero." });
+  if ((stage.day_offset ?? 0) < 0) hints.push({ level: "ERROR", message: "Stage starts before crop-cycle day zero." });
+  if (recs.length === 0) hints.push({ level: "WARN", message: "No recommendations configured for this stage." });
+  if (recs.length > 0 && !recs.some((rec) => rec.is_critical)) hints.push({ level: "INFO", message: "No critical recommendation is marked for this stage." });
+  const seenKeys = new Set<string>();
+  recs.forEach((rec, index) => {
+    if (!rec.input_name?.trim()) hints.push({ level: "ERROR", message: `Recommendation ${index + 1} is missing an input name.` });
+    if (!rec.activity_type?.trim()) hints.push({ level: "ERROR", message: `Recommendation ${index + 1} is missing an activity type.` });
+    if (rec.day_offset < 0) hints.push({ level: "ERROR", message: `${rec.input_name || `Recommendation ${index + 1}`} has a negative day offset.` });
+    if (duration > 0 && rec.day_offset > duration) hints.push({ level: "WARN", message: `${rec.input_name || `Recommendation ${index + 1}`} is scheduled after this stage duration.` });
+    const key = `${rec.day_offset}:${(rec.input_code || rec.input_name || "").toUpperCase()}`;
+    if (seenKeys.has(key)) hints.push({ level: "INFO", message: `${rec.input_name || `Recommendation ${index + 1}`} looks duplicated on the same day.` });
+    seenKeys.add(key);
+  });
+  return hints;
+}
+
+function hintClasses(level: StageDesignHint["level"]) {
+  if (level === "ERROR") return "border-red-200 bg-red-50 text-red-800";
+  if (level === "WARN") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-blue-200 bg-blue-50 text-blue-800";
 }
 
 export default function WorkflowPreviewPage() {
@@ -706,6 +735,9 @@ function VisualWorkflowBuilder({
     setDraggedStageCode(null);
   };
   const maxRecommendations = Math.max(1, ...stages.map((stage) => stage.recommended_activities?.length || 0));
+  const stageHintMap = new Map(stages.map((stage) => [stage.code, stageDesignHints(stage)]));
+  const totalDesignHints = Array.from(stageHintMap.values()).reduce((sum, hints) => sum + hints.length, 0);
+  const blockingDesignHints = Array.from(stageHintMap.values()).reduce((sum, hints) => sum + hints.filter((hint) => hint.level === "ERROR").length, 0);
 
   return (
     <div className="mb-6 rounded-xl border border-green-100 bg-white shadow">
@@ -719,6 +751,7 @@ function VisualWorkflowBuilder({
             <Badge>{stages.length} stages</Badge>
             <Badge>{totalDuration} days</Badge>
             <Badge>{draftEditable ? "Draft editable" : "Read-only published"}</Badge>
+            {totalDesignHints ? <Badge>{blockingDesignHints ? `${blockingDesignHints} blocking hints` : `${totalDesignHints} design hints`}</Badge> : <Badge>No design hints</Badge>}
             {projectScoped ? <Badge>Project overrides visible</Badge> : null}
           </div>
         </div>
@@ -735,6 +768,9 @@ function VisualWorkflowBuilder({
                   const recCount = stage.recommended_activities?.length || 0;
                   const selected = stage.code === selectedStage?.code;
                   const recIntensity = Math.max(8, Math.round((recCount / maxRecommendations) * 36));
+                  const hints = stageHintMap.get(stage.code) || [];
+                  const errorCount = hints.filter((hint) => hint.level === "ERROR").length;
+                  const warnCount = hints.filter((hint) => hint.level === "WARN").length;
                   return (
                     <button
                       key={stage.code}
@@ -768,6 +804,13 @@ function VisualWorkflowBuilder({
                         </div>
                         <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">{stage.code}</span>
                       </div>
+                      {hints.length ? (
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {errorCount ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">{errorCount} error</span> : null}
+                          {warnCount ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">{warnCount} warn</span> : null}
+                          {!errorCount && !warnCount ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{hints.length} info</span> : null}
+                        </div>
+                      ) : null}
                       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
                         <MiniMetric label="Start" value={`D+${stage.day_offset ?? 0}`} />
                         <MiniMetric label="Days" value={stage.duration_days || 0} />
@@ -787,6 +830,7 @@ function VisualWorkflowBuilder({
               <div className="space-y-4">
                 <StageInspector
                   stage={selectedStage}
+                  hints={stageHintMap.get(selectedStage.code) || []}
                   cropCode={cropCode}
                   projectId={projectId}
                   draftEditable={draftEditable}
@@ -848,6 +892,7 @@ function MiniMetric({ label, value }: { label: string; value: string | number })
 
 function StageInspector({
   stage,
+  hints,
   cropCode,
   projectId,
   draftEditable,
@@ -874,6 +919,7 @@ function StageInspector({
   onDeleteDraftRecommendation,
 }: {
   stage: WorkflowStage;
+  hints: StageDesignHint[];
   cropCode: string;
   projectId?: string;
   draftEditable: boolean;
@@ -920,6 +966,7 @@ function StageInspector({
           <div><dt className="text-xs uppercase text-gray-400">Recommendations</dt><dd className="font-semibold text-gray-900">{recs.length}</dd></div>
           <div><dt className="text-xs uppercase text-gray-400">Mode</dt><dd className="font-semibold text-gray-900">{draftEditable ? "Editable draft" : "Read only"}</dd></div>
         </dl>
+        <StageDesignHintsPanel hints={hints} />
         {draftEditable ? (
           <div className="mt-4 rounded border border-green-100 bg-white p-3">
             <p className="text-xs font-semibold uppercase text-gray-400">Quick edit</p>
@@ -1000,6 +1047,23 @@ function StageInspector({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function StageDesignHintsPanel({ hints }: { hints: StageDesignHint[] }) {
+  if (hints.length === 0) {
+    return <p className="mt-4 rounded border border-green-100 bg-green-50 p-2 text-xs font-medium text-green-700">No obvious design hints for this stage.</p>;
+  }
+  return (
+    <div className="mt-4 space-y-2">
+      <p className="text-xs font-semibold uppercase text-gray-400">Design hints</p>
+      {hints.slice(0, 5).map((hint, index) => (
+        <p key={`${hint.level}-${index}`} className={`rounded border px-2 py-1 text-xs ${hintClasses(hint.level)}`}>
+          {hint.level}: {hint.message}
+        </p>
+      ))}
+      {hints.length > 5 ? <p className="text-xs text-gray-400">+{hints.length - 5} more hints. Run publish validation for the full report.</p> : null}
     </div>
   );
 }
