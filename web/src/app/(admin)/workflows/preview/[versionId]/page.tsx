@@ -905,16 +905,25 @@ function WorkflowTimeline({
   selectedStageCode: string | null;
   onSelectStage: (stageCode: string) => void;
 }) {
+  const [showRecommendations, setShowRecommendations] = useState(true);
+  const [criticalOnly, setCriticalOnly] = useState(false);
+  const [stageFilter, setStageFilter] = useState<"ALL" | "HINTS" | "ERRORS">("ALL");
   const stageEndDays = stages.map((stage) => (stage.day_offset ?? 0) + Math.max(1, stage.duration_days || 1));
   const recommendationDays = stages.flatMap((stage) =>
     (stage.recommended_activities || []).map((rec) => (stage.day_offset ?? 0) + rec.day_offset),
   );
   const timelineEndDay = Math.max(1, ...stageEndDays, ...recommendationDays);
   const toPercent = (day: number) => `${Math.min(100, Math.max(0, (day / timelineEndDay) * 100))}%`;
+  const visibleStages = stages.filter((stage) => {
+    const hints = stageDesignHints(stage);
+    if (stageFilter === "ERRORS") return hints.some((hint) => hint.level === "ERROR");
+    if (stageFilter === "HINTS") return hints.length > 0;
+    return true;
+  });
 
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="font-semibold text-gray-900">Workflow timing timeline</h3>
           <p className="text-xs text-gray-500">Stage spans use cycle day offsets; dots show recommendation timing inside each stage.</p>
@@ -922,7 +931,15 @@ function WorkflowTimeline({
         <div className="flex flex-wrap gap-2 text-xs">
           <Badge>D0</Badge>
           <Badge>D+{timelineEndDay}</Badge>
+          <Badge>{visibleStages.length}/{stages.length} stages</Badge>
         </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2 rounded-lg border border-gray-200 bg-white p-2 text-xs">
+        <button type="button" onClick={() => setShowRecommendations((value) => !value)} className={`rounded px-3 py-1.5 font-medium ${showRecommendations ? "bg-green-700 text-white" : "border text-gray-700"}`}>{showRecommendations ? "Dots on" : "Dots off"}</button>
+        <button type="button" disabled={!showRecommendations} onClick={() => setCriticalOnly((value) => !value)} className={`rounded px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-50 ${criticalOnly ? "bg-red-600 text-white" : "border text-gray-700"}`}>Critical only</button>
+        <button type="button" onClick={() => setStageFilter("ALL")} className={`rounded px-3 py-1.5 font-medium ${stageFilter === "ALL" ? "bg-gray-900 text-white" : "border text-gray-700"}`}>All stages</button>
+        <button type="button" onClick={() => setStageFilter("HINTS")} className={`rounded px-3 py-1.5 font-medium ${stageFilter === "HINTS" ? "bg-amber-600 text-white" : "border text-gray-700"}`}>With hints</button>
+        <button type="button" onClick={() => setStageFilter("ERRORS")} className={`rounded px-3 py-1.5 font-medium ${stageFilter === "ERRORS" ? "bg-red-600 text-white" : "border text-gray-700"}`}>Errors only</button>
       </div>
       <div className="mt-4 min-w-[760px] space-y-2 overflow-x-auto pb-1">
         <div className="relative h-7 rounded bg-white">
@@ -932,39 +949,48 @@ function WorkflowTimeline({
             </div>
           ))}
         </div>
-        {stages.map((stage, index) => {
+        {visibleStages.length === 0 ? <p className="rounded bg-white p-3 text-sm text-gray-500">No stages match the selected timeline filter.</p> : null}
+        {visibleStages.map((stage) => {
+          const originalIndex = stages.findIndex((candidate) => candidate.code === stage.code);
           const startDay = stage.day_offset ?? 0;
           const duration = Math.max(1, stage.duration_days || 1);
           const selected = selectedStageCode === stage.code;
+          const hints = stageDesignHints(stage);
+          const hasError = hints.some((hint) => hint.level === "ERROR");
+          const hasWarn = hints.some((hint) => hint.level === "WARN");
+          const visibleRecommendations = showRecommendations
+            ? (stage.recommended_activities || []).filter((rec) => !criticalOnly || rec.is_critical)
+            : [];
           return (
             <button
               key={stage.code}
               type="button"
               onClick={() => onSelectStage(stage.code)}
-              className={`relative block h-14 w-full rounded-lg border bg-white text-left transition hover:border-green-300 hover:bg-green-50/40 ${selected ? "border-green-500 ring-2 ring-green-100" : "border-gray-200"}`}
+              className={`relative block h-14 w-full rounded-lg border bg-white text-left transition hover:border-green-300 hover:bg-green-50/40 ${selected ? "border-green-500 ring-2 ring-green-100" : hasError ? "border-red-200" : hasWarn ? "border-amber-200" : "border-gray-200"}`}
             >
               <div
-                className={`absolute top-3 h-8 rounded ${selected ? "bg-green-600" : "bg-green-500"}`}
+                className={`absolute top-3 h-8 rounded ${selected ? "bg-green-600" : hasError ? "bg-red-500" : hasWarn ? "bg-amber-500" : "bg-green-500"}`}
                 style={{ left: toPercent(startDay), width: `max(32px, ${Math.max(2, (duration / timelineEndDay) * 100)}%)` }}
               />
               <div className="absolute left-3 top-1 z-10 flex items-center gap-2 text-[11px]">
-                <span className="rounded bg-white/90 px-2 py-0.5 font-semibold text-gray-800">{index + 1}. {labelText(stage.name) || stage.code}</span>
+                <span className="rounded bg-white/90 px-2 py-0.5 font-semibold text-gray-800">{originalIndex + 1}. {labelText(stage.name) || stage.code}</span>
                 <span className="rounded bg-white/80 px-2 py-0.5 font-mono text-gray-500">{stage.code}</span>
                 <span className="rounded bg-white/80 px-2 py-0.5 text-gray-500">D+{startDay} / {duration}d</span>
+                {hints.length ? <span className={`rounded px-2 py-0.5 ${hasError ? "bg-red-100 text-red-700" : hasWarn ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>{hints.length} hint</span> : null}
               </div>
-              {(stage.recommended_activities || []).slice(0, 18).map((rec, recIndex) => {
+              {visibleRecommendations.slice(0, 18).map((rec, recIndex) => {
                 const recDay = startDay + rec.day_offset;
                 return (
                   <span
                     key={`${stage.code}-${rec.input_code || rec.input_name}-${recIndex}`}
-                    title={`${rec.input_name || rec.activity_type} ? D+${recDay}`}
+                    title={`${rec.input_name || rec.activity_type} - D+${recDay}`}
                     className={`absolute top-8 z-20 h-3 w-3 rounded-full border-2 border-white shadow ${rec.is_critical ? "bg-red-500" : "bg-blue-500"}`}
                     style={{ left: toPercent(recDay) }}
                   />
                 );
               })}
-              {(stage.recommended_activities || []).length > 18 ? (
-                <span className="absolute right-2 top-8 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">+{(stage.recommended_activities || []).length - 18}</span>
+              {visibleRecommendations.length > 18 ? (
+                <span className="absolute right-2 top-8 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">+{visibleRecommendations.length - 18}</span>
               ) : null}
             </button>
           );
@@ -973,6 +999,7 @@ function WorkflowTimeline({
       <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-gray-500">
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Recommendation</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Critical recommendation</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-amber-500" /> Stage with warning</span>
         <span>Click a row to inspect that stage.</span>
       </div>
     </div>
