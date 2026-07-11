@@ -826,6 +826,12 @@ function VisualWorkflowBuilder({
               </div>
             </div>
 
+            <WorkflowTimeline
+              stages={stages}
+              selectedStageCode={selectedStage?.code || null}
+              onSelectStage={onSelectStage}
+            />
+
             {selectedStage ? (
               <div className="space-y-4">
                 <StageInspector
@@ -888,6 +894,89 @@ function VisualWorkflowBuilder({
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded bg-white/80 p-2"><p className="text-[10px] uppercase text-gray-400">{label}</p><p className="font-semibold text-gray-900">{value}</p></div>;
+}
+
+function WorkflowTimeline({
+  stages,
+  selectedStageCode,
+  onSelectStage,
+}: {
+  stages: WorkflowStage[];
+  selectedStageCode: string | null;
+  onSelectStage: (stageCode: string) => void;
+}) {
+  const stageEndDays = stages.map((stage) => (stage.day_offset ?? 0) + Math.max(1, stage.duration_days || 1));
+  const recommendationDays = stages.flatMap((stage) =>
+    (stage.recommended_activities || []).map((rec) => (stage.day_offset ?? 0) + rec.day_offset),
+  );
+  const timelineEndDay = Math.max(1, ...stageEndDays, ...recommendationDays);
+  const toPercent = (day: number) => `${Math.min(100, Math.max(0, (day / timelineEndDay) * 100))}%`;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900">Workflow timing timeline</h3>
+          <p className="text-xs text-gray-500">Stage spans use cycle day offsets; dots show recommendation timing inside each stage.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge>D0</Badge>
+          <Badge>D+{timelineEndDay}</Badge>
+        </div>
+      </div>
+      <div className="mt-4 min-w-[760px] space-y-2 overflow-x-auto pb-1">
+        <div className="relative h-7 rounded bg-white">
+          {[0, 25, 50, 75, 100].map((tick) => (
+            <div key={tick} className="absolute top-0 h-7 border-l border-gray-200" style={{ left: `${tick}%` }}>
+              <span className="ml-1 text-[10px] text-gray-400">D+{Math.round((tick / 100) * timelineEndDay)}</span>
+            </div>
+          ))}
+        </div>
+        {stages.map((stage, index) => {
+          const startDay = stage.day_offset ?? 0;
+          const duration = Math.max(1, stage.duration_days || 1);
+          const selected = selectedStageCode === stage.code;
+          return (
+            <button
+              key={stage.code}
+              type="button"
+              onClick={() => onSelectStage(stage.code)}
+              className={`relative block h-14 w-full rounded-lg border bg-white text-left transition hover:border-green-300 hover:bg-green-50/40 ${selected ? "border-green-500 ring-2 ring-green-100" : "border-gray-200"}`}
+            >
+              <div
+                className={`absolute top-3 h-8 rounded ${selected ? "bg-green-600" : "bg-green-500"}`}
+                style={{ left: toPercent(startDay), width: `max(32px, ${Math.max(2, (duration / timelineEndDay) * 100)}%)` }}
+              />
+              <div className="absolute left-3 top-1 z-10 flex items-center gap-2 text-[11px]">
+                <span className="rounded bg-white/90 px-2 py-0.5 font-semibold text-gray-800">{index + 1}. {labelText(stage.name) || stage.code}</span>
+                <span className="rounded bg-white/80 px-2 py-0.5 font-mono text-gray-500">{stage.code}</span>
+                <span className="rounded bg-white/80 px-2 py-0.5 text-gray-500">D+{startDay} / {duration}d</span>
+              </div>
+              {(stage.recommended_activities || []).slice(0, 18).map((rec, recIndex) => {
+                const recDay = startDay + rec.day_offset;
+                return (
+                  <span
+                    key={`${stage.code}-${rec.input_code || rec.input_name}-${recIndex}`}
+                    title={`${rec.input_name || rec.activity_type} ? D+${recDay}`}
+                    className={`absolute top-8 z-20 h-3 w-3 rounded-full border-2 border-white shadow ${rec.is_critical ? "bg-red-500" : "bg-blue-500"}`}
+                    style={{ left: toPercent(recDay) }}
+                  />
+                );
+              })}
+              {(stage.recommended_activities || []).length > 18 ? (
+                <span className="absolute right-2 top-8 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">+{(stage.recommended_activities || []).length - 18}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-gray-500">
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Recommendation</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Critical recommendation</span>
+        <span>Click a row to inspect that stage.</span>
+      </div>
+    </div>
+  );
 }
 
 function StageInspector({
