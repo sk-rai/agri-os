@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { projectsApi, type Project } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -12,6 +13,8 @@ export default function ProjectsPage() {
     name: "", start_date: "", end_date: "", crop_scope: "",
   });
   const [error, setError] = useState("");
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canCreateProjects = hasAdminPermission(adminProfile, "PROJECT_EDIT") || hasAdminPermission(adminProfile, "EDIT");
 
   const loadProjects = () => {
     projectsApi.list().then(setProjects).catch(() => {}).finally(() => setLoading(false));
@@ -21,6 +24,10 @@ export default function ProjectsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateProjects) {
+      setError("Your current role can view projects but cannot create project configuration.");
+      return;
+    }
     setError("");
     try {
       await projectsApi.create({
@@ -50,12 +57,21 @@ export default function ProjectsPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
         <button
+          disabled={!canCreateProjects}
+          title={canCreateProjects ? undefined : "Your role cannot create projects."}
           onClick={() => setShowForm(!showForm)}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm"
+          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm disabled:opacity-50"
         >
           + New Project
         </button>
       </div>
+
+      {!adminProfileLoading && !canCreateProjects ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Projects are read-only for your role</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)} can browse project records and compliance, but cannot create project configuration.</p>
+        </div>
+      ) : null}
 
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -75,7 +91,7 @@ export default function ProjectsPage() {
             <input type="date" value={formData.end_date}
               onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
               className="px-3 py-2 border rounded-lg" required />
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 md:col-span-2">
+            <button type="submit" disabled={!canCreateProjects} title={canCreateProjects ? undefined : "Your role cannot create projects."} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 md:col-span-2 disabled:opacity-50">
               Create Project
             </button>
           </form>
