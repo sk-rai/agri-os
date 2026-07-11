@@ -441,7 +441,9 @@ export default function WorkflowPreviewPage() {
   if (!preview) return null;
 
   const isDraftPreview = preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft";
-  const publishBlocked = Boolean(draftValidation && !draftValidation.can_publish);
+  const validationMissing = isDraftPreview && !draftValidation;
+  const publishBlocked = isDraftPreview && (!draftValidation || !draftValidation.can_publish);
+  const publishBlockedReason = validationMissing ? "Run validation before opening publish confirmation" : "Fix blocking validation errors before publishing";
   const stages = preview.android_preview.stages || [];
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0] || null;
   const recommendations = stages.flatMap((stage) => stage.recommended_activities || []);
@@ -475,6 +477,13 @@ export default function WorkflowPreviewPage() {
         <Stat label="Duration days" value={preview.total_duration_days} />
         <Stat label="Warnings" value={preview.warnings.length} tone={preview.warnings.length ? "warn" : "ok"} />
       </div>
+
+      {validationMissing ? (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800 shadow-sm">
+          <p className="font-semibold">Draft validation is missing or stale.</p>
+          <p className="mt-1">Recent draft edits clear validation. Run validation again before publishing this workflow to Android.</p>
+        </div>
+      ) : null}
 
       <div className="mb-6 rounded-lg bg-white p-5 shadow">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -521,9 +530,9 @@ export default function WorkflowPreviewPage() {
                   setShowPublishConfirm(true);
                 }}
                 className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
-                title={publishBlocked ? "Fix blocking validation errors before publishing" : undefined}
+                title={publishBlocked ? publishBlockedReason : undefined}
               >
-                {draftPublishing ? "Publishing..." : "Publish draft"}
+                {draftPublishing ? "Publishing..." : validationMissing ? "Validate before publish" : "Publish draft"}
               </button>
             </div>
           </div>
@@ -1789,8 +1798,8 @@ function PublishConfirmationModal({
   const activePinned = impact?.counts.active_pinned_cycles_impacted ?? 0;
   const pinned = impact?.counts.pinned_cycles_impacted ?? 0;
   const previousVersions = impact?.counts.published_versions_impacted ?? 0;
-  const validationStatus = !validation ? "Not validated in this view" : validation.can_publish ? "Validation passed" : `${validation.counts.errors} validation error(s)`;
-  const canConfirm = confirmed && !publishing && (!validation || validation.can_publish);
+  const validationStatus = !validation ? "Missing/stale validation - run validation first" : validation.can_publish ? "Validation passed" : `${validation.counts.errors} validation error(s)`;
+  const canConfirm = confirmed && !publishing && Boolean(validation?.can_publish);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1812,6 +1821,12 @@ function PublishConfirmationModal({
           <ReadinessItem title="Android effect" detail="New crop cycles will use the newly published version; existing pinned cycles remain on their stored version." status="warn" />
         </div>
 
+        {!validation ? (
+          <div className="mt-4 rounded border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+            Run validation before confirming publish. The final publish call will validate again, but this confirmation requires a visible passing validation result.
+          </div>
+        ) : null}
+
         {impact?.blocking_reasons?.length ? (
           <div className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             <p className="font-semibold">Publish impact blockers</p>
@@ -1828,7 +1843,7 @@ function PublishConfirmationModal({
             onChange={(event) => onConfirmedChange(event.target.checked)}
             className="mt-1"
           />
-          <span>I understand this publishes the draft workflow to the Android catalog for future crop-cycle creation.</span>
+          <span>I understand this publishes the currently validated draft workflow to the Android catalog for future crop-cycle creation.</span>
         </label>
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
@@ -1887,7 +1902,7 @@ function PublishReadinessChecklist({
       <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <ReadinessItem
           title="Backend validation"
-          detail={validation ? `${validationErrors} errors, ${validationWarnings} warnings` : "Run validation after recent edits."}
+          detail={validation ? `${validationErrors} errors, ${validationWarnings} warnings` : "Missing/stale after edits. Run validation before publish."}
           status={!validation ? "pending" : validation.can_publish ? "ok" : "error"}
         />
         <ReadinessItem
@@ -2038,7 +2053,7 @@ function DraftValidationPanel({
       </div>
 
       {!validation ? (
-        <p className="rounded bg-yellow-50 p-3 text-sm text-yellow-700">Draft has not been validated since the last edit.</p>
+        <p className="rounded bg-yellow-50 p-3 text-sm text-yellow-700">Draft has not been validated, or validation was cleared after the latest edit.</p>
       ) : validation.issues.length === 0 ? (
         <p className="rounded bg-green-50 p-3 text-sm text-green-700">No validation issues. Draft can be published.</p>
       ) : (
