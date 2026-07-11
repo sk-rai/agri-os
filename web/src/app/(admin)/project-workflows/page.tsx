@@ -3,23 +3,18 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  authApi,
   projectsApi,
   workflowCatalogApi,
-  type AdminProfileResponse,
   type Project,
   type ProjectWorkflowAssignmentAuditResponse,
   type ProjectWorkflowEnablementItem,
   type ProjectWorkflowEnablementsResponse,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 type WorkflowVisibilityFilter = "ALL" | "ANDROID_VISIBLE" | "ENABLED" | "DISABLED" | "BLOCKED" | "OVERRIDDEN";
 type WorkflowChangeIntent = "ENABLE" | "DISABLE" | "SAVE_METADATA";
 
-function canEditProjectWorkflowsFromProfile(profile: AdminProfileResponse | null, fallbackRole: string | null): boolean {
-  if (profile) return profile.permissions.includes("PROJECT_EDIT");
-  return ["ENTERPRISE_ADMIN", "MANAGER", "AGRONOMIST"].includes((fallbackRole || "").toUpperCase());
-}
 type PendingWorkflowChange = { workflow: ProjectWorkflowEnablementItem; enabled: boolean; intent: WorkflowChangeIntent };
 
 function labelText(value: Record<string, string> | string | undefined | null) {
@@ -42,24 +37,8 @@ export default function ProjectWorkflowsPage() {
   const [visibilityFilter, setVisibilityFilter] = useState<WorkflowVisibilityFilter>("ALL");
   const [pendingChange, setPendingChange] = useState<PendingWorkflowChange | null>(null);
   const [pendingChangeReason, setPendingChangeReason] = useState("");
-  const [adminRole, setAdminRole] = useState<string | null>(null);
-  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setAdminRole(localStorage.getItem("agrios_role"));
-    }
-    authApi.me()
-      .then((profile) => {
-        setAdminProfile(profile);
-        setAdminRole(profile.role);
-      })
-      .catch(() => {
-        // Backend permissions remain authoritative. Local role is only a friendly UI fallback.
-      });
-  }, []);
-
-  const canEditProjectWorkflows = canEditProjectWorkflowsFromProfile(adminProfile, adminRole);
+  const { profile: adminProfile } = useAdminProfile();
+  const canEditProjectWorkflows = hasAdminPermission(adminProfile, "PROJECT_EDIT");
 
   useEffect(() => {
     projectsApi
@@ -189,7 +168,7 @@ export default function ProjectWorkflowsPage() {
           onVisibilityFilterChange={setVisibilityFilter}
           assignmentAudit={assignmentAudit}
           canEditProjectWorkflows={canEditProjectWorkflows}
-          adminRole={adminProfile?.role || adminRole}
+          adminRoleLabel={adminRoleLabel(adminProfile)}
         />
       )}
       {summary && pendingChange ? (
@@ -220,7 +199,7 @@ function ProjectWorkflowSummary({
   onVisibilityFilterChange,
   assignmentAudit,
   canEditProjectWorkflows,
-  adminRole,
+  adminRoleLabel,
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   updatingWorkflowId: string | null;
@@ -233,12 +212,11 @@ function ProjectWorkflowSummary({
   onVisibilityFilterChange: (value: WorkflowVisibilityFilter) => void;
   assignmentAudit: ProjectWorkflowAssignmentAuditResponse | null;
   canEditProjectWorkflows: boolean;
-  adminRole: string | null;
+  adminRoleLabel: string;
 }) {
   const lifecycle = summary.safe_edit_lifecycle;
   const lifecycleAllowsEdit = lifecycle.can_edit_project_workflows;
   const canEdit = lifecycleAllowsEdit && canEditProjectWorkflows;
-  const roleLabel = (adminRole || "UNASSIGNED").replaceAll("_", " ");
   const normalizedSearch = search.trim().toUpperCase();
   const filteredWorkflows = useMemo(() => {
     return summary.workflows.filter((workflow) => {
@@ -297,7 +275,7 @@ function ProjectWorkflowSummary({
               {canEdit
                 ? "This project has no enrolled field data yet. Enablement and override changes are still allowed."
                 : !canEditProjectWorkflows
-                  ? `Your current role (${roleLabel}) can view project workflow assignments, but cannot edit them.`
+                  ? `Your current role (${adminRoleLabel}) can view project workflow assignments, but cannot edit them.`
                   : lifecycle.suggested_action || "Create a new workflow version for future cycles instead of editing this project in-place."}
             </p>
             {!canEditProjectWorkflows ? (

@@ -2,9 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  authApi,
   inputCatalogApi,
-  type AdminProfileResponse,
   type AgriInputAuditEvent,
   type AgriInputCreateRequest,
   type AgriInputDto,
@@ -15,6 +13,7 @@ import {
   type InputGovernanceResponse,
   type InputReferencesResponse,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 type InputDraft = {
   canonical_name: string;
@@ -135,17 +134,12 @@ export default function InputsPage() {
   const [csvHistory, setCsvHistory] = useState<InputCsvImportHistory | null>(null);
   const [csvReason, setCsvReason] = useState("Input catalog CSV import");
   const [csvBusy, setCsvBusy] = useState(false);
-  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
 
-  const canEditInputs = adminProfile?.permissions.includes("EDIT") ?? false;
-  const canPublishInputs = adminProfile?.permissions.includes("PUBLISH") ?? false;
+  const canEditInputs = hasAdminPermission(adminProfile, "EDIT");
+  const canPublishInputs = hasAdminPermission(adminProfile, "PUBLISH");
 
   useEffect(() => {
-    authApi.me()
-      .then(setAdminProfile)
-      .catch(() => setAdminProfile(null))
-      .finally(() => setLoadingProfile(false));
     inputCatalogApi
       .categories()
       .then((data) => setCategories(data.categories))
@@ -428,7 +422,7 @@ export default function InputsPage() {
       {!loadingProfile && !canEditInputs ? (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-semibold">Input catalog is read-only for your role</p>
-          <p className="mt-1">Role {(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}: catalog edits {canEditInputs ? "allowed" : "read-only"}; publishing {canPublishInputs ? "allowed" : "read-only"}. You can still browse inputs, usage references, and audit history.</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)}: catalog edits {canEditInputs ? "allowed" : "read-only"}; publishing {canPublishInputs ? "allowed" : "read-only"}. You can still browse inputs, usage references, and audit history.</p>
         </div>
       ) : null}
 

@@ -2,16 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  authApi,
   inputCatalogApi,
   projectsApi,
-  type AdminProfileResponse,
   type InputCategoryDto,
   type Project,
   type ProjectInputAssignmentAuditEvent,
   type ProjectInputAssignmentDto,
   type ProjectInputAssignmentsResponse,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 function statusClass(rule: string) {
   switch (rule) {
@@ -76,19 +75,16 @@ export default function ProjectInputsPage() {
   const [auditInputCode, setAuditInputCode] = useState("");
   const [auditAction, setAuditAction] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { reason: string; displayOrder: string }>>({});
-  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
 
-  const canEditProjectInputs = adminProfile?.permissions.includes("PROJECT_EDIT") ?? false;
+  const canEditProjectInputs = hasAdminPermission(adminProfile, "PROJECT_EDIT");
 
   useEffect(() => {
     Promise.all([
-      authApi.me().catch(() => null),
       projectsApi.list(),
       inputCatalogApi.categories(),
     ])
-      .then(([profile, projectItems, categoryPayload]) => {
-        setAdminProfile(profile);
+      .then(([projectItems, categoryPayload]) => {
         setProjects(projectItems);
         setSelectedProjectId(projectItems[0]?.id || "");
         setCategories(categoryPayload.categories);
@@ -96,7 +92,6 @@ export default function ProjectInputsPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load project inputs"))
       .finally(() => {
         setLoadingProjects(false);
-        setLoadingProfile(false);
       });
   }, []);
 
@@ -224,7 +219,7 @@ export default function ProjectInputsPage() {
           {!loadingProfile && !canEditProjectInputs ? (
             <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">Project input assignments are read-only for your role</p>
-              <p className="mt-1">Your current role ({(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}) does not include PROJECT_EDIT. You can inspect visibility and audit history, but cannot enable, disable, or reorder project inputs.</p>
+              <p className="mt-1">Your current role ({adminRoleLabel(adminProfile)}) does not include PROJECT_EDIT. You can inspect visibility and audit history, but cannot enable, disable, or reorder project inputs.</p>
             </div>
           ) : null}
 

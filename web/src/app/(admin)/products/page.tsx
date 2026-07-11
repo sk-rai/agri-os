@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  authApi,
   inputCatalogApi,
   productCatalogApi,
-  type AdminProfileResponse,
   type AgriculturalProductDto,
   type CropStageInputRuleDto,
   type ManufacturerDto,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProductsPage() {
   const [manufacturers, setManufacturers] = useState<ManufacturerDto[]>([]);
@@ -18,14 +17,13 @@ export default function ProductsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
   const [mfg, setMfg] = useState({ code: "", canonical_name: "", short_name: "", country: "India", reason: "Created in admin" });
   const [product, setProduct] = useState({ code: "", canonical_input_code: "", manufacturer_code: "", brand_name: "", composition: "", registration_number: "", registration_authority: "", sku: "", quantity: "", unit: "kg", pack_label: "", barcode: "", reason: "Created in admin" });
   const [approval, setApproval] = useState({ project_id: "", product_code: "", enabled: true, preferred: false, display_order: "1000", reason: "Project product approval" });
   const [ruleFilter, setRuleFilter] = useState({ crop_code: "RICE", stage_code: "", activity_type: "", project_id: "" });
-  const canEditCatalog = adminProfile?.permissions.includes("EDIT") ?? false;
-  const canEditProjectApprovals = adminProfile?.permissions.includes("PROJECT_EDIT") ?? false;
+  const canEditCatalog = hasAdminPermission(adminProfile, "EDIT");
+  const canEditProjectApprovals = hasAdminPermission(adminProfile, "PROJECT_EDIT");
   const [ruleDraft, setRuleDraft] = useState({ project_id: "", crop_code: "RICE", season_code: "KHARIF", stage_code: "TILLERING", activity_type: "FERTILIZER", input_code: "UREA_46_N", dosage_quantity: "45", dosage_unit: "kg", dosage_area_unit: "ACRE", min_quantity: "", max_quantity: "", priority: "1000", application_method: "", timing_note: "", safety_note: "", enabled: true, reason: "Stage dosage rule" });
 
   const load = async () => {
@@ -42,10 +40,6 @@ export default function ProductsPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Rule load failed"); }
   };
   useEffect(() => {
-    authApi.me()
-      .then(setAdminProfile)
-      .catch(() => setAdminProfile(null))
-      .finally(() => setLoadingProfile(false));
     void load();
     void loadRules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,7 +55,7 @@ export default function ProductsPage() {
     <h1 className="text-2xl font-bold">Products, Manufacturers & Dosage Rules</h1>
     <p className="mt-1 text-sm text-gray-500">Map branded products to canonical inputs, approve products per project, and define crop-stage dosage guidance.</p>
     {error && <p className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{notice}</p>}
-    {!loadingProfile && (!canEditCatalog || !canEditProjectApprovals) && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-semibold">Product catalog permissions</p><p className="mt-1">Role {(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}: catalog edits {canEditCatalog ? "allowed" : "read-only"}; project approvals {canEditProjectApprovals ? "allowed" : "read-only"}. Browsing remains available.</p></div>}
+    {!loadingProfile && (!canEditCatalog || !canEditProjectApprovals) && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-semibold">Product catalog permissions</p><p className="mt-1">Role {adminRoleLabel(adminProfile)}: catalog edits {canEditCatalog ? "allowed" : "read-only"}; project approvals {canEditProjectApprovals ? "allowed" : "read-only"}. Browsing remains available.</p></div>}
     <div className="mt-6 grid gap-5 xl:grid-cols-3">
       <Panel title="New manufacturer"><Field label="Code" value={mfg.code} set={v => setMfg({ ...mfg, code: v })} /><Field label="Name" value={mfg.canonical_name} set={v => setMfg({ ...mfg, canonical_name: v })} /><Field label="Short name" value={mfg.short_name} set={v => setMfg({ ...mfg, short_name: v })} /><button disabled={busy || !canEditCatalog || !mfg.code || !mfg.canonical_name} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={createMfg} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create manufacturer</button></Panel>
       <Panel title="New branded product"><Field label="Product code" value={product.code} set={v => setProduct({ ...product, code: v })} /><Field label="Canonical input code" value={product.canonical_input_code} set={v => setProduct({ ...product, canonical_input_code: v })} /><label className="text-xs text-gray-500">Manufacturer<select value={product.manufacturer_code} onChange={e => setProduct({ ...product, manufacturer_code: e.target.value })} className="mt-1 w-full rounded border p-2 text-sm"><option value="">Select</option>{manufacturers.map(x => <option key={x.code}>{x.code}</option>)}</select></label><Field label="Brand name" value={product.brand_name} set={v => setProduct({ ...product, brand_name: v })} /><Field label="Composition" value={product.composition} set={v => setProduct({ ...product, composition: v })} /><Field label="Registration number" value={product.registration_number} set={v => setProduct({ ...product, registration_number: v })} /><div className="grid grid-cols-2 gap-2"><Field label="SKU" value={product.sku} set={v => setProduct({ ...product, sku: v })} /><Field label="Pack label" value={product.pack_label} set={v => setProduct({ ...product, pack_label: v })} /><Field label="Quantity" value={product.quantity} set={v => setProduct({ ...product, quantity: v })} /><Field label="Unit" value={product.unit} set={v => setProduct({ ...product, unit: v })} /></div><button disabled={busy || !canEditCatalog || !product.code || !product.manufacturer_code || !product.sku} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={createProduct} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create product</button></Panel>

@@ -2,22 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  authApi,
   projectsApi,
   tenantAdminUsersApi,
-  type AdminProfileResponse,
   type Project,
   type TenantAdminUser,
   type UserAccessAuditEvent,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function TenantUsersPage() {
   const [users, setUsers] = useState<TenantAdminUser[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [projectRoles, setProjectRoles] = useState<string[]>([]);
-  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  const { profile: adminProfile, loading: loadingProfile, error: profileError } = useAdminProfile();
   const [selectedId, setSelectedId] = useState("");
   const [audit, setAudit] = useState<UserAccessAuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +31,7 @@ export default function TenantUsersPage() {
   const [roleDraft, setRoleDraft] = useState({ role: "", display_name: "", reason: "" });
   const [projectDraft, setProjectDraft] = useState({ project_id: "", role: "ADMIN_VIEWER", reason: "" });
 
-  const canManageUsers = adminProfile?.permissions.includes("MANAGE_USERS") ?? false;
+  const canManageUsers = hasAdminPermission(adminProfile, "MANAGE_USERS");
 
   const selected = useMemo(
     () => users.find((user) => user.id === selectedId) || null,
@@ -66,21 +64,16 @@ export default function TenantUsersPage() {
   };
 
   useEffect(() => {
-    authApi.me()
-      .then((profile) => {
-        setAdminProfile(profile);
-        if (profile.permissions.includes("MANAGE_USERS")) {
-          void load();
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load admin profile");
-        setLoading(false);
-      })
-      .finally(() => setLoadingProfile(false));
-  }, []);
+    if (loadingProfile) return;
+    if (profileError) {
+      setError(profileError);
+      setLoading(false);
+      return;
+    }
+    if (canManageUsers) void load();
+    else setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingProfile, profileError, canManageUsers]);
 
   useEffect(() => {
     if (!selected) {
@@ -183,7 +176,7 @@ export default function TenantUsersPage() {
       ) : !canManageUsers ? (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
           <p className="font-semibold">User management is read-only for your role</p>
-          <p className="mt-1">Your current role ({(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}) does not include MANAGE_USERS. Ask an Enterprise Admin to invite users, change roles, or assign project access.</p>
+          <p className="mt-1">Your current role ({adminRoleLabel(adminProfile)}) does not include MANAGE_USERS. Ask an Enterprise Admin to invite users, change roles, or assign project access.</p>
         </div>
       ) : null}
 
