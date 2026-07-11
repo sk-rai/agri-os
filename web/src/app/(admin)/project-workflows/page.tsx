@@ -11,6 +11,8 @@ import {
 } from "@/lib/api";
 
 type WorkflowVisibilityFilter = "ALL" | "ANDROID_VISIBLE" | "ENABLED" | "DISABLED" | "BLOCKED" | "OVERRIDDEN";
+type WorkflowChangeIntent = "ENABLE" | "DISABLE" | "SAVE_METADATA";
+type PendingWorkflowChange = { workflow: ProjectWorkflowEnablementItem; enabled: boolean; intent: WorkflowChangeIntent };
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -29,6 +31,7 @@ export default function ProjectWorkflowsPage() {
   const [drafts, setDrafts] = useState<Record<string, { label: string; displayOrder: string }>>({});
   const [search, setSearch] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<WorkflowVisibilityFilter>("ALL");
+  const [pendingChange, setPendingChange] = useState<PendingWorkflowChange | null>(null);
 
   useEffect(() => {
     projectsApi
@@ -86,6 +89,17 @@ export default function ProjectWorkflowsPage() {
     }
   };
 
+  const requestWorkflowChange = (workflow: ProjectWorkflowEnablementItem, enabled: boolean, intent: WorkflowChangeIntent) => {
+    setPendingChange({ workflow, enabled, intent });
+  };
+
+  const confirmPendingChange = async () => {
+    if (!pendingChange) return;
+    const change = pendingChange;
+    setPendingChange(null);
+    await updateWorkflow(change.workflow, change.enabled);
+  };
+
   const updateDraft = (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => {
     setDrafts((current) => ({
       ...current,
@@ -128,7 +142,7 @@ export default function ProjectWorkflowsPage() {
         <ProjectWorkflowSummary
           summary={summary}
           updatingWorkflowId={updatingWorkflowId}
-          onUpdateWorkflow={updateWorkflow}
+          onRequestWorkflowChange={requestWorkflowChange}
           drafts={drafts}
           onUpdateDraft={updateDraft}
           search={search}
@@ -137,6 +151,16 @@ export default function ProjectWorkflowsPage() {
           onVisibilityFilterChange={setVisibilityFilter}
         />
       )}
+      {summary && pendingChange ? (
+        <WorkflowChangeImpactModal
+          summary={summary}
+          change={pendingChange}
+          draft={drafts[pendingChange.workflow.workflow_template_id] || { label: labelText(pendingChange.workflow.label), displayOrder: pendingChange.workflow.display_order != null ? String(pendingChange.workflow.display_order) : "" }}
+          updating={updatingWorkflowId === pendingChange.workflow.workflow_template_id}
+          onCancel={() => setPendingChange(null)}
+          onConfirm={confirmPendingChange}
+        />
+      ) : null}
     </div>
   );
 }
@@ -144,7 +168,7 @@ export default function ProjectWorkflowsPage() {
 function ProjectWorkflowSummary({
   summary,
   updatingWorkflowId,
-  onUpdateWorkflow,
+  onRequestWorkflowChange,
   drafts,
   onUpdateDraft,
   search,
@@ -154,7 +178,7 @@ function ProjectWorkflowSummary({
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   updatingWorkflowId: string | null;
-  onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
+  onRequestWorkflowChange: (workflow: ProjectWorkflowEnablementItem, enabled: boolean, intent: WorkflowChangeIntent) => void;
   drafts: Record<string, { label: string; displayOrder: string }>;
   onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
   search: string;
@@ -269,7 +293,7 @@ function ProjectWorkflowSummary({
             workflow={workflow}
             projectId={summary.project.id}
             isUpdating={updatingWorkflowId === workflow.workflow_template_id}
-            onUpdateWorkflow={onUpdateWorkflow}
+            onRequestWorkflowChange={onRequestWorkflowChange}
             draft={drafts[workflow.workflow_template_id] || { label: labelText(workflow.label), displayOrder: workflow.display_order != null ? String(workflow.display_order) : "" }}
             onUpdateDraft={onUpdateDraft}
             canEdit={canEdit}
@@ -354,7 +378,7 @@ function WorkflowVisibilityCard({
   workflow,
   projectId,
   isUpdating,
-  onUpdateWorkflow,
+  onRequestWorkflowChange,
   draft,
   onUpdateDraft,
   canEdit,
@@ -362,7 +386,7 @@ function WorkflowVisibilityCard({
   workflow: ProjectWorkflowEnablementItem;
   projectId: string;
   isUpdating: boolean;
-  onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
+  onRequestWorkflowChange: (workflow: ProjectWorkflowEnablementItem, enabled: boolean, intent: WorkflowChangeIntent) => void;
   draft: { label: string; displayOrder: string };
   onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
   canEdit: boolean;
@@ -401,7 +425,7 @@ function WorkflowVisibilityCard({
           </p>
           <p className="mt-2 font-mono text-xs text-gray-400">{workflow.workflow_template_code} · v{workflow.version}</p>
           <p className="mt-2 text-xs text-gray-500">
-            Rule: <span className="font-medium text-gray-700">{workflow.assignment_rule || "?"}</span>{workflow.assignment_reason ? ` ? ${workflow.assignment_reason}` : ""}
+            Rule: <span className="font-medium text-gray-700">{workflow.assignment_rule || "?"}</span>{workflow.assignment_reason ? ` - ${workflow.assignment_reason}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
@@ -410,7 +434,7 @@ function WorkflowVisibilityCard({
               type="button"
               disabled={isUpdating || !canEdit}
               title={editDisabledReason}
-              onClick={() => onUpdateWorkflow(workflow, false)}
+              onClick={() => onRequestWorkflowChange(workflow, false, "DISABLE")}
               className="rounded-lg border border-red-200 px-3 py-2 font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
             >
               {isUpdating ? "Updating..." : "Disable"}
@@ -420,7 +444,7 @@ function WorkflowVisibilityCard({
               type="button"
               disabled={isUpdating || !canEdit || blockedByCrop}
               title={editDisabledReason}
-              onClick={() => onUpdateWorkflow(workflow, true)}
+              onClick={() => onRequestWorkflowChange(workflow, true, "ENABLE")}
               className="rounded-lg border border-green-200 px-3 py-2 font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
             >
               {isUpdating ? "Updating..." : "Enable"}
@@ -471,7 +495,7 @@ function WorkflowVisibilityCard({
           <button
             type="button"
             disabled={isUpdating || !canEdit}
-            onClick={() => onUpdateWorkflow(workflow, workflow.enabled)}
+            onClick={() => onRequestWorkflowChange(workflow, workflow.enabled, "SAVE_METADATA")}
             className="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
           >
             {isUpdating ? "Saving..." : "Save metadata"}
@@ -491,6 +515,88 @@ function WorkflowVisibilityCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+function WorkflowChangeImpactModal({
+  summary,
+  change,
+  draft,
+  updating,
+  onCancel,
+  onConfirm,
+}: {
+  summary: ProjectWorkflowEnablementsResponse;
+  change: PendingWorkflowChange;
+  draft: { label: string; displayOrder: string };
+  updating: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const workflow = change.workflow;
+  const currentlyAndroidVisible = workflow.assignment_rule === "ANDROID_VISIBLE";
+  const willBeAndroidVisible = change.enabled && workflow.crop_scope_allowed !== false;
+  const visibilityChange = currentlyAndroidVisible === willBeAndroidVisible ? "No Android visibility change" : willBeAndroidVisible ? "Will become Android visible" : "Will be hidden from Android";
+  const intentLabel = change.intent === "ENABLE" ? "Enable workflow" : change.intent === "DISABLE" ? "Disable workflow" : "Save workflow metadata";
+  const activeCycles = workflow.active_usage_count ?? 0;
+  const totalCycles = workflow.usage_count ?? 0;
+  const blockedByCrop = workflow.crop_scope_allowed === false || workflow.visibility_status === "CROP_SCOPE_BLOCKED";
+  const labelChanged = draft.label.trim() && draft.label.trim() !== labelText(workflow.label);
+  const orderChanged = draft.displayOrder.trim() !== String(workflow.display_order ?? "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-5 shadow-2xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Confirm project workflow change</h2>
+            <p className="mt-1 text-sm text-gray-500">Review Android visibility and existing usage before changing this project assignment.</p>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">{intentLabel}</span>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <p className="font-semibold text-gray-900">{labelText(workflow.label)}</p>
+          <p className="mt-1 text-xs font-mono text-gray-500">{workflow.workflow_template_code} ? v{workflow.version} ? {workflow.workflow_template_version_id}</p>
+          <p className="mt-2 text-sm text-gray-600">{workflow.crop_name} ? {workflow.crop_code} ? {workflow.season_code} ? {workflow.propagation_type_code || "?"}</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <ImpactItem title="Android visibility" detail={`${currentlyAndroidVisible ? "Currently visible" : "Currently hidden"} ? ${willBeAndroidVisible ? "visible" : "hidden"}`} tone={willBeAndroidVisible ? "ok" : currentlyAndroidVisible ? "warn" : "neutral"} />
+          <ImpactItem title="Change result" detail={visibilityChange} tone={currentlyAndroidVisible && !willBeAndroidVisible ? "warn" : willBeAndroidVisible ? "ok" : "neutral"} />
+          <ImpactItem title="Existing crop cycles" detail={`${totalCycles} total, ${activeCycles} active using this workflow/template.`} tone={activeCycles ? "warn" : "neutral"} />
+          <ImpactItem title="Crop scope" detail={blockedByCrop ? "Blocked by project crop scope" : "Allowed by project crop scope"} tone={blockedByCrop ? "error" : "ok"} />
+          <ImpactItem title="Project lifecycle" detail={summary.safe_edit_lifecycle.can_edit_project_workflows ? "Project workflow assignments are editable." : "Project is locked for in-place workflow assignment edits."} tone={summary.safe_edit_lifecycle.can_edit_project_workflows ? "ok" : "warn"} />
+          <ImpactItem title="Metadata changes" detail={`${labelChanged ? "Label changed" : "Label unchanged"}; ${orderChanged ? "order changed" : "order unchanged"}.`} tone={labelChanged || orderChanged ? "warn" : "neutral"} />
+        </div>
+
+        {summary.safe_edit_lifecycle.reasons.length ? (
+          <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-semibold">Lifecycle notes</p>
+            <ul className="mt-2 list-disc pl-5">
+              {summary.safe_edit_lifecycle.reasons.map((reason) => <li key={reason.code}>{reason.message}</li>)}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={updating} onClick={onCancel} className="rounded border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60">Cancel</button>
+          <button type="button" disabled={updating || blockedByCrop && change.enabled} onClick={onConfirm} className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
+            {updating ? "Applying..." : "Confirm change"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImpactItem({ title, detail, tone = "neutral" }: { title: string; detail: string; tone?: "neutral" | "ok" | "warn" | "error" }) {
+  const toneClass = tone === "ok" ? "border-green-200 bg-green-50 text-green-800" : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-900" : tone === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-gray-200 bg-white text-gray-700";
+  return (
+    <div className={`rounded border p-3 text-sm ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase opacity-70">{title}</p>
+      <p className="mt-1 font-medium">{detail}</p>
     </div>
   );
 }
