@@ -155,6 +155,8 @@ export default function DashboardPage() {
         {error ? <p className="mt-3 text-sm text-red-600">Latest refresh failed: {error}</p> : null}
       </form>
 
+      <CommandCenterPanel data={data} syncHealth={syncHealth} />
+
       {summary ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -183,6 +185,82 @@ export default function DashboardPage() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse | null; syncHealth: SyncMaterializationHealthResponse | null }) {
+  const summary = data?.summary;
+  const syncSummary = syncHealth?.summary;
+  const projectQuery = data?.filters.project_id ? `?projectId=${data.filters.project_id}` : "";
+  const cards = [
+    {
+      title: "Workflow setup",
+      description: "Design, validate, publish, and assign crop workflows.",
+      href: "/workflows",
+      metric: summary ? `${summary.crop_cycle_count} cycles` : "Templates",
+      accent: "border-green-200 bg-green-50 text-green-900",
+    },
+    {
+      title: "Input catalog",
+      description: "Manage inputs, products, dosage rules, and project input visibility.",
+      href: "/inputs",
+      metric: summary ? `${summary.activity_count} activities` : "Catalog",
+      accent: "border-blue-200 bg-blue-50 text-blue-900",
+    },
+    {
+      title: "Project setup",
+      description: "Review tenants, projects, users, workflow enablement, and project inputs.",
+      href: "/projects",
+      metric: summary ? `${summary.project_count} projects` : "Projects",
+      accent: "border-indigo-200 bg-indigo-50 text-indigo-900",
+    },
+    {
+      title: "Activity traceability",
+      description: "Inspect logged activities, cost, variance, crop stages, inputs, and products.",
+      href: `/activity-usage${projectQuery}`,
+      metric: summary ? `${summary.variance_count} variance` : "Trace",
+      accent: "border-purple-200 bg-purple-50 text-purple-900",
+    },
+    {
+      title: "Farmer / parcel lookup",
+      description: "Search farmers, parcels, projects, geometry status, and trace records.",
+      href: `/lookup${projectQuery}`,
+      metric: summary ? `${summary.geometry_missing_count} missing GPS` : "Search",
+      accent: "border-amber-200 bg-amber-50 text-amber-900",
+    },
+    {
+      title: "Sync operations",
+      description: "Monitor materialization health, conflicts, failures, and recent sync events.",
+      href: "/sync-health",
+      metric: syncSummary ? `${syncSummary.failed_count + syncSummary.conflict_count} attention` : "Health",
+      accent: syncSummary && syncSummary.failed_count + syncSummary.conflict_count > 0 ? "border-red-200 bg-red-50 text-red-900" : "border-slate-200 bg-slate-50 text-slate-900",
+    },
+  ];
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Command center</h2>
+          <p className="mt-1 text-sm text-gray-500">Quick entry points aligned with the admin navigation groups.</p>
+        </div>
+        <Link href="/my-access" className="text-sm font-medium text-blue-700 hover:underline">Check my permissions</Link>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => (
+          <Link key={card.title} href={card.href} className={`rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${card.accent}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{card.title}</p>
+                <p className="mt-1 text-sm opacity-80">{card.description}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-white/70 px-2.5 py-1 text-xs font-semibold">{card.metric}</span>
+            </div>
+            <p className="mt-3 text-xs font-medium opacity-75">Open area &rarr;</p>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
