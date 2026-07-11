@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   projectsApi,
   workflowCatalogApi,
@@ -9,6 +9,8 @@ import {
   type ProjectWorkflowEnablementItem,
   type ProjectWorkflowEnablementsResponse,
 } from "@/lib/api";
+
+type WorkflowVisibilityFilter = "ALL" | "ANDROID_VISIBLE" | "ENABLED" | "DISABLED" | "BLOCKED" | "OVERRIDDEN";
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -25,6 +27,8 @@ export default function ProjectWorkflowsPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingWorkflowId, setUpdatingWorkflowId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { label: string; displayOrder: string }>>({});
+  const [search, setSearch] = useState("");
+  const [visibilityFilter, setVisibilityFilter] = useState<WorkflowVisibilityFilter>("ALL");
 
   useEffect(() => {
     projectsApi
@@ -127,6 +131,10 @@ export default function ProjectWorkflowsPage() {
           onUpdateWorkflow={updateWorkflow}
           drafts={drafts}
           onUpdateDraft={updateDraft}
+          search={search}
+          onSearchChange={setSearch}
+          visibilityFilter={visibilityFilter}
+          onVisibilityFilterChange={setVisibilityFilter}
         />
       )}
     </div>
@@ -139,15 +147,49 @@ function ProjectWorkflowSummary({
   onUpdateWorkflow,
   drafts,
   onUpdateDraft,
+  search,
+  onSearchChange,
+  visibilityFilter,
+  onVisibilityFilterChange,
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   updatingWorkflowId: string | null;
   onUpdateWorkflow: (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => void;
   drafts: Record<string, { label: string; displayOrder: string }>;
   onUpdateDraft: (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => void;
+  search: string;
+  onSearchChange: (value: string) => void;
+  visibilityFilter: WorkflowVisibilityFilter;
+  onVisibilityFilterChange: (value: WorkflowVisibilityFilter) => void;
 }) {
   const lifecycle = summary.safe_edit_lifecycle;
   const canEdit = lifecycle.can_edit_project_workflows;
+  const normalizedSearch = search.trim().toUpperCase();
+  const filteredWorkflows = useMemo(() => {
+    return summary.workflows.filter((workflow) => {
+      const haystack = [
+        labelText(workflow.label),
+        workflow.workflow_template_code,
+        workflow.crop_code,
+        workflow.crop_name,
+        workflow.season_code,
+        workflow.propagation_type_code || "",
+        workflow.visibility_status,
+        workflow.assignment_rule || "",
+      ].join(" ").toUpperCase();
+      const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
+      const matchesFilter =
+        visibilityFilter === "ALL" ||
+        (visibilityFilter === "ANDROID_VISIBLE" && workflow.assignment_rule === "ANDROID_VISIBLE") ||
+        (visibilityFilter === "ENABLED" && workflow.enabled) ||
+        (visibilityFilter === "DISABLED" && workflow.visibility_status === "DISABLED") ||
+        (visibilityFilter === "BLOCKED" && workflow.visibility_status === "CROP_SCOPE_BLOCKED") ||
+        (visibilityFilter === "OVERRIDDEN" && workflow.override_count > 0);
+      return matchesSearch && matchesFilter;
+    });
+  }, [summary.workflows, normalizedSearch, visibilityFilter]);
+  const androidVisible = summary.workflows.filter((workflow) => workflow.assignment_rule === "ANDROID_VISIBLE");
+  const filteredAndroidVisible = filteredWorkflows.filter((workflow) => workflow.assignment_rule === "ANDROID_VISIBLE").length;
 
   return (
     <div>
@@ -206,8 +248,22 @@ function ProjectWorkflowSummary({
         <Stat label="Not visible" value={summary.counts.not_visible} />
       </div>
 
-      <div className="grid gap-4">
-        {summary.workflows.map((workflow) => (
+      <ProjectWorkflowControls
+        search={search}
+        onSearchChange={onSearchChange}
+        visibilityFilter={visibilityFilter}
+        onVisibilityFilterChange={onVisibilityFilterChange}
+        filteredCount={filteredWorkflows.length}
+        totalCount={summary.workflows.length}
+        androidVisibleCount={androidVisible.length}
+        filteredAndroidVisibleCount={filteredAndroidVisible}
+      />
+
+      {filteredWorkflows.length === 0 ? (
+        <div className="rounded-lg bg-white p-8 text-center text-sm text-gray-500 shadow">No workflows match the current project filters.</div>
+      ) : (
+        <div className="grid gap-4">
+        {filteredWorkflows.map((workflow) => (
           <WorkflowVisibilityCard
             key={workflow.workflow_template_version_id}
             workflow={workflow}
@@ -218,6 +274,66 @@ function ProjectWorkflowSummary({
             onUpdateDraft={onUpdateDraft}
             canEdit={canEdit}
           />
+        ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectWorkflowControls({
+  search,
+  onSearchChange,
+  visibilityFilter,
+  onVisibilityFilterChange,
+  filteredCount,
+  totalCount,
+  androidVisibleCount,
+  filteredAndroidVisibleCount,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  visibilityFilter: WorkflowVisibilityFilter;
+  onVisibilityFilterChange: (value: WorkflowVisibilityFilter) => void;
+  filteredCount: number;
+  totalCount: number;
+  androidVisibleCount: number;
+  filteredAndroidVisibleCount: number;
+}) {
+  const filters: Array<{ value: WorkflowVisibilityFilter; label: string }> = [
+    { value: "ALL", label: "All" },
+    { value: "ANDROID_VISIBLE", label: "Android visible" },
+    { value: "ENABLED", label: "Enabled" },
+    { value: "DISABLED", label: "Disabled" },
+    { value: "BLOCKED", label: "Crop blocked" },
+    { value: "OVERRIDDEN", label: "Overrides" },
+  ];
+  return (
+    <div className="mb-6 rounded-lg bg-white p-4 shadow">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Workflow assignment view</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Showing {filteredCount}/{totalCount} workflows - {filteredAndroidVisibleCount}/{androidVisibleCount} Android-visible in current filter.
+          </p>
+        </div>
+        <input
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          className="min-w-72 rounded-lg border px-3 py-2 text-sm"
+          placeholder="Search crop, season, workflow code..."
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        {filters.map((filter) => (
+          <button
+            key={filter.value}
+            type="button"
+            onClick={() => onVisibilityFilterChange(filter.value)}
+            className={`rounded-full px-3 py-1.5 font-medium ${visibilityFilter === filter.value ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+          >
+            {filter.label}
+          </button>
         ))}
       </div>
     </div>
@@ -258,6 +374,13 @@ function WorkflowVisibilityCard({
     NOT_VISIBLE: "bg-gray-100 text-gray-600",
     CROP_SCOPE_BLOCKED: "bg-orange-50 text-orange-700",
   };
+  const androidVisible = workflow.assignment_rule === "ANDROID_VISIBLE";
+  const blockedByCrop = workflow.visibility_status === "CROP_SCOPE_BLOCKED";
+  const editDisabledReason = !canEdit
+    ? "Project has enrolled/active field data; change future workflow versions instead."
+    : blockedByCrop
+      ? "Project crop scope does not include this workflow crop."
+      : undefined;
 
   return (
     <div className="rounded-lg bg-white p-5 shadow">
@@ -269,17 +392,24 @@ function WorkflowVisibilityCard({
               {workflow.visibility_status}
             </span>
             <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">{workflow.enablement_scope}</span>
+            <span className={`rounded-full px-2 py-1 text-xs font-medium ${androidVisible ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"}`}>
+              {androidVisible ? "Android visible" : "Hidden from Android"}
+            </span>
           </div>
           <p className="mt-1 text-sm text-gray-500">
             {workflow.crop_name} · {workflow.crop_code} · {workflow.season_code} · {workflow.propagation_type_code || "—"}
           </p>
           <p className="mt-2 font-mono text-xs text-gray-400">{workflow.workflow_template_code} · v{workflow.version}</p>
+          <p className="mt-2 text-xs text-gray-500">
+            Rule: <span className="font-medium text-gray-700">{workflow.assignment_rule || "?"}</span>{workflow.assignment_reason ? ` ? ${workflow.assignment_reason}` : ""}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
           {workflow.enabled ? (
             <button
               type="button"
               disabled={isUpdating || !canEdit}
+              title={editDisabledReason}
               onClick={() => onUpdateWorkflow(workflow, false)}
               className="rounded-lg border border-red-200 px-3 py-2 font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
             >
@@ -288,7 +418,8 @@ function WorkflowVisibilityCard({
           ) : (
             <button
               type="button"
-              disabled={isUpdating || !canEdit}
+              disabled={isUpdating || !canEdit || blockedByCrop}
+              title={editDisabledReason}
               onClick={() => onUpdateWorkflow(workflow, true)}
               className="rounded-lg border border-green-200 px-3 py-2 font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
             >
@@ -304,7 +435,9 @@ function WorkflowVisibilityCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
+      {editDisabledReason ? <p className="mt-4 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{editDisabledReason}</p> : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
         <Mini label="Duration" value={`${workflow.total_duration_days || 0} days`} />
         <Mini label="Display order" value={workflow.display_order ?? "—"} />
         <Mini label="Overrides" value={workflow.override_count} />
