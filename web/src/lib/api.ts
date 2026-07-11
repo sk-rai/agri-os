@@ -12,12 +12,47 @@ interface ApiOptions {
   noAuth?: boolean;
 }
 
+export type ApiErrorDetail =
+  | string
+  | {
+      error?: string;
+      message?: string;
+      required_permission?: string;
+      current_role?: string;
+      current_permissions?: string[];
+      tenant_id?: string;
+      project_id?: string;
+      [key: string]: unknown;
+    };
+
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  detail?: ApiErrorDetail;
+
+  constructor(message: string, status: number, detail?: ApiErrorDetail) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
+}
+
+function formatApiErrorMessage(detail: ApiErrorDetail | undefined, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (!detail || typeof detail !== "object") return fallback;
+
+  if (detail.error === "ADMIN_PERMISSION_DENIED") {
+    const parts = [detail.message || "Admin permission denied."];
+    if (detail.required_permission) parts.push(`Required: ${detail.required_permission}`);
+    if (detail.current_role) parts.push(`Current role: ${detail.current_role}`);
+    if (Array.isArray(detail.current_permissions)) {
+      parts.push(`Current permissions: ${detail.current_permissions.join(", ") || "none"}`);
+    }
+    if (detail.project_id) parts.push(`Project: ${detail.project_id}`);
+    return parts.join(" ");
+  }
+
+  if (typeof detail.message === "string") return detail.message;
+  return fallback;
 }
 
 function getAuthHeaders(): Record<string, string> {
@@ -58,14 +93,8 @@ export async function api<T = unknown>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    const detail = error.detail;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : detail && typeof detail === "object" && typeof detail.message === "string"
-          ? detail.message
-          : res.statusText;
-    throw new ApiError(message, res.status);
+    const detail = error.detail as ApiErrorDetail | undefined;
+    throw new ApiError(formatApiErrorMessage(detail, res.statusText), res.status, detail);
   }
 
   return res.json() as Promise<T>;
@@ -77,14 +106,19 @@ export async function apiUpload<T>(path: string, file: File): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: getAuthHeaders(), body: form });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(typeof error.detail === "string" ? error.detail : JSON.stringify(error.detail), res.status);
+    const detail = error.detail as ApiErrorDetail | undefined;
+    throw new ApiError(formatApiErrorMessage(detail, res.statusText), res.status, detail);
   }
   return res.json() as Promise<T>;
 }
 
 export async function apiDownload(path: string, fallbackName: string): Promise<void> {
   const res = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders() });
-  if (!res.ok) throw new ApiError(`Download failed: ${res.statusText}`, res.status);
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: `Download failed: ${res.statusText}` }));
+    const detail = error.detail as ApiErrorDetail | undefined;
+    throw new ApiError(formatApiErrorMessage(detail, `Download failed: ${res.statusText}`), res.status, detail);
+  }
   const disposition = res.headers.get("content-disposition") || "";
   const name = disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallbackName;
   const url = URL.createObjectURL(await res.blob());
