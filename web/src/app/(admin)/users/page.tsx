@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  authApi,
   projectsApi,
   tenantAdminUsersApi,
+  type AdminProfileResponse,
   type Project,
   type TenantAdminUser,
   type UserAccessAuditEvent,
@@ -14,6 +16,8 @@ export default function TenantUsersPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [projectRoles, setProjectRoles] = useState<string[]>([]);
+  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [selectedId, setSelectedId] = useState("");
   const [audit, setAudit] = useState<UserAccessAuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +32,8 @@ export default function TenantUsersPage() {
   });
   const [roleDraft, setRoleDraft] = useState({ role: "", display_name: "", reason: "" });
   const [projectDraft, setProjectDraft] = useState({ project_id: "", role: "ADMIN_VIEWER", reason: "" });
+
+  const canManageUsers = adminProfile?.permissions.includes("MANAGE_USERS") ?? false;
 
   const selected = useMemo(
     () => users.find((user) => user.id === selectedId) || null,
@@ -60,7 +66,20 @@ export default function TenantUsersPage() {
   };
 
   useEffect(() => {
-    load();
+    authApi.me()
+      .then((profile) => {
+        setAdminProfile(profile);
+        if (profile.permissions.includes("MANAGE_USERS")) {
+          void load();
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load admin profile");
+        setLoading(false);
+      })
+      .finally(() => setLoadingProfile(false));
   }, []);
 
   useEffect(() => {
@@ -77,6 +96,10 @@ export default function TenantUsersPage() {
   }, [selected]);
 
   const run = async (action: () => Promise<TenantAdminUser | string>, success: string) => {
+    if (!canManageUsers) {
+      setError("Your current role can view admin identity but cannot manage tenant users.");
+      return;
+    }
     setSaving(true);
     setError("");
     setNotice("");
@@ -155,7 +178,16 @@ export default function TenantUsersPage() {
       {error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {notice ? <div className="mb-4 rounded bg-green-50 p-3 text-sm text-green-700">{notice}</div> : null}
 
-      <section className="mb-6 rounded-lg bg-white p-5 shadow">
+      {loadingProfile ? (
+        <div className="mb-6 rounded-lg bg-white p-5 text-sm text-gray-500 shadow">Checking admin permissions...</div>
+      ) : !canManageUsers ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+          <p className="font-semibold">User management is read-only for your role</p>
+          <p className="mt-1">Your current role ({(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}) does not include MANAGE_USERS. Ask an Enterprise Admin to invite users, change roles, or assign project access.</p>
+        </div>
+      ) : null}
+
+      {canManageUsers ? <section className="mb-6 rounded-lg bg-white p-5 shadow">
         <h2 className="font-semibold text-gray-900">Invite or assign tenant user</h2>
         <p className="mb-4 mt-1 text-xs text-gray-500">Users can be invited before their first OTP login.</p>
         <div className="grid gap-3 md:grid-cols-4">
@@ -167,9 +199,9 @@ export default function TenantUsersPage() {
         <button type="button" disabled={saving || !invite.mobile_number || !invite.reason} onClick={inviteUser} className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
           Invite / assign
         </button>
-      </section>
+      </section> : null}
 
-      {loading ? <p className="text-sm text-gray-500">Loading tenant users...</p> : (
+      {!canManageUsers ? null : loading ? <p className="text-sm text-gray-500">Loading tenant users...</p> : (
         <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
           <section className="overflow-hidden rounded-lg bg-white shadow">
             <div className="border-b px-4 py-3 text-sm font-semibold text-gray-900">Users ({users.length})</div>
