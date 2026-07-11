@@ -1204,11 +1204,13 @@ export const workflowCatalogApi = {
       method: "POST",
       body: data,
     }),
-  templateAudit: (templateId: string, params?: { versionId?: string; action?: string; actorId?: string; limit?: number }) => {
+  templateAudit: (templateId: string, params?: { versionId?: string; action?: string; excludeAction?: string; actorId?: string; since?: string; limit?: number }) => {
     const query = new URLSearchParams();
     if (params?.versionId) query.set("version_id", params.versionId);
     if (params?.action) query.set("action", params.action);
+    if (params?.excludeAction) query.set("exclude_action", params.excludeAction);
     if (params?.actorId) query.set("actor_id", params.actorId);
+    if (params?.since) query.set("since", params.since);
     if (params?.limit) query.set("limit", String(params.limit));
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<WorkflowAuditResponse>(`/api/v1/workflow-catalog/templates/${templateId}/audit${suffix}`);

@@ -13,6 +13,7 @@ import {
   type WorkflowDraftStageDuplicateRequest,
   type WorkflowDraftStageUpdateRequest,
   type WorkflowDraftValidationResponse,
+  type WorkflowAuditResponse,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
   type WorkflowPublishImpactResponse,
@@ -113,6 +114,8 @@ export default function WorkflowPreviewPage() {
   const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
   const [draftValidating, setDraftValidating] = useState(false);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
+  const [postValidationAudit, setPostValidationAudit] = useState<WorkflowAuditResponse | null>(null);
+  const [postValidationAuditLoading, setPostValidationAuditLoading] = useState(false);
   const [deletedStages, setDeletedStages] = useState<WorkflowDeletedStagesResponse | null>(null);
   const [selectedStageCode, setSelectedStageCode] = useState<string | null>(null);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
@@ -149,6 +152,7 @@ export default function WorkflowPreviewPage() {
           loadDeletedStages(payload.workflow_template_version_id).catch(() => setDeletedStages(null));
         } else {
           setPublishImpact(null);
+          setPostValidationAudit(null);
           setDeletedStages(null);
         }
         if (payload.project_id) {
@@ -160,6 +164,29 @@ export default function WorkflowPreviewPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [params.versionId, searchParams]);
+
+  useEffect(() => {
+    if (!preview || preview.status !== "DRAFT" || preview.preview_source !== "workflow_template_draft") {
+      setPostValidationAudit(null);
+      return;
+    }
+    const freshness = draftValidation?.freshness ?? preview.draft_freshness ?? null;
+    if (!freshness?.last_validated_at) {
+      setPostValidationAudit(null);
+      return;
+    }
+    setPostValidationAuditLoading(true);
+    workflowCatalogApi
+      .templateAudit(preview.workflow_template_id, {
+        versionId: preview.workflow_template_version_id,
+        since: freshness.last_validated_at,
+        excludeAction: "VALIDATE_DRAFT",
+        limit: 25,
+      })
+      .then(setPostValidationAudit)
+      .catch(() => setPostValidationAudit(null))
+      .finally(() => setPostValidationAuditLoading(false));
+  }, [preview, draftValidation?.freshness]);
 
 
   const createOverride = async (
@@ -479,7 +506,14 @@ export default function WorkflowPreviewPage() {
         <Stat label="Warnings" value={preview.warnings.length} tone={preview.warnings.length ? "warn" : "ok"} />
       </div>
 
-      {isDraftPreview ? <DraftFreshnessCard freshness={draftFreshness} validation={draftValidation} /> : null}
+      {isDraftPreview ? (
+        <DraftFreshnessCard
+          freshness={draftFreshness}
+          validation={draftValidation}
+          postValidationAudit={postValidationAudit}
+          auditLoading={postValidationAuditLoading}
+        />
+      ) : null}
 
       {validationMissing ? (
         <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800 shadow-sm">
@@ -1864,12 +1898,17 @@ function PublishConfirmationModal({
 function DraftFreshnessCard({
   freshness,
   validation,
+  postValidationAudit,
+  auditLoading,
 }: {
   freshness: WorkflowPreviewResponse["draft_freshness"] | null;
   validation: WorkflowDraftValidationResponse | null;
+  postValidationAudit: WorkflowAuditResponse | null;
+  auditLoading: boolean;
 }) {
   const hasValidation = Boolean(freshness?.last_validated_at || validation);
   const current = Boolean(freshness?.validation_current && validation?.can_publish);
+  const editsSinceValidation = postValidationAudit?.events || [];
   const tone = current ? "border-green-200 bg-green-50 text-green-800" : "border-yellow-200 bg-yellow-50 text-yellow-800";
   return (
     <div className={`mb-6 rounded-lg border p-4 text-sm shadow-sm ${tone}`}>
@@ -1884,13 +1923,49 @@ function DraftFreshnessCard({
                 : "This draft has not been validated yet."}
           </p>
         </div>
-        <Badge>{current ? "Validation current" : "Validation required"}</Badge>
+        <div className="flex flex-wrap gap-2">
+          <Badge>{current ? "Validation current" : "Validation required"}</Badge>
+          {hasValidation ? <Badge>{auditLoading ? "Checking edits..." : `${editsSinceValidation.length} edit(s) since validation`}</Badge> : null}
+        </div>
       </div>
       <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
         <p><span className="font-medium">Draft created:</span> {formatDateTime(freshness?.draft_created_at)}</p>
         <p><span className="font-medium">Last edited:</span> {formatDateTime(freshness?.last_edited_at || freshness?.draft_updated_at)}</p>
         <p><span className="font-medium">Last validated:</span> {formatDateTime(freshness?.last_validated_at)}</p>
       </div>
+      {hasValidation ? (
+        <details className="mt-3 rounded border border-current/20 bg-white/50 p-3 text-xs">
+          <summary className="cursor-pointer font-medium">View edits since last validation</summary>
+          {auditLoading ? (
+            <p className="mt-2 opacity-80">Loading edit trace...</p>
+          ) : editsSinceValidation.length === 0 ? (
+            <p className="mt-2 opacity-80">No edit audit events after the last validation.</p>
+          ) : (
+            <div className="mt-3 max-h-72 space-y-2 overflow-auto">
+              {editsSinceValidation.map((event) => (
+                <details key={event.id} className="rounded border border-gray-200 bg-white p-2 text-gray-700">
+                  <summary className="cursor-pointer list-none">
+                    <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <span className="font-semibold">{event.action}</span>
+                        <span className="ml-2 font-mono text-gray-500">{event.target_code || event.target_id || event.target_type}</span>
+                        {event.reason ? <p className="mt-1 text-gray-600">{event.reason}</p> : null}
+                      </div>
+                      <div className="text-gray-500 md:text-right">
+                        <p>{formatDateTime(event.created_at)}</p>
+                        {event.actor_id ? <p>Actor {event.actor_id}</p> : null}
+                      </div>
+                    </div>
+                  </summary>
+                  <pre className="mt-2 max-h-48 overflow-auto rounded bg-gray-950 p-2 text-[11px] text-gray-100">
+                    {JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}
+                  </pre>
+                </details>
+              ))}
+            </div>
+          )}
+        </details>
+      ) : null}
     </div>
   );
 }

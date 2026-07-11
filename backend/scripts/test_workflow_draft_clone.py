@@ -535,6 +535,20 @@ def main():
         check(validation_payload.get("freshness") is not None, "Validation report includes freshness metadata")
         check(validation_payload["freshness"].get("last_validated_at") is not None, "Validation freshness includes last validated timestamp")
         check(validation_payload["freshness"].get("validation_current") is True, "Validation freshness marks current validation")
+        post_validation_audit = client.get(
+            f"/api/v1/workflow-catalog/templates/{rice.id}/audit",
+            headers=headers,
+            params={
+                "version_id": draft_version_id,
+                "since": validation_payload["freshness"]["last_validated_at"],
+                "exclude_action": "VALIDATE_DRAFT",
+            },
+        )
+        check(post_validation_audit.status_code == 200, "Post-validation audit filter returns 200", f"Status: {post_validation_audit.status_code}")
+        check(
+            all(event["action"] != "VALIDATE_DRAFT" for event in post_validation_audit.json()["events"]),
+            "Post-validation audit filter excludes validation events",
+        )
 
         publish = client.post(
             f"/api/v1/workflow-catalog/drafts/{draft_version_id}/publish",

@@ -2549,7 +2549,9 @@ def list_workflow_template_audit_events(
     template_id: uuid.UUID,
     version_id: Optional[uuid.UUID] = Query(None),
     action: Optional[str] = Query(None),
+    exclude_action: Optional[str] = Query(None),
     actor_id: Optional[uuid.UUID] = Query(None),
+    since: Optional[datetime] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
@@ -2572,8 +2574,14 @@ def list_workflow_template_audit_events(
         query = query.filter(WorkflowTemplateAuditEvent.template_version_id == version_id)
     if action:
         query = query.filter(WorkflowTemplateAuditEvent.action == action.upper())
+    if exclude_action:
+        excluded_actions = [item.strip().upper() for item in exclude_action.split(",") if item.strip()]
+        if excluded_actions:
+            query = query.filter(~WorkflowTemplateAuditEvent.action.in_(excluded_actions))
     if actor_id:
         query = query.filter(WorkflowTemplateAuditEvent.actor_id == actor_id)
+    if since:
+        query = query.filter(WorkflowTemplateAuditEvent.created_at > since)
 
     events = query.order_by(WorkflowTemplateAuditEvent.created_at.desc()).limit(limit).all()
     return {
