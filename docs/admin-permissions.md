@@ -76,3 +76,19 @@ For roles with only `VIEW`:
 - Prefer loading permissions via `useAdminProfile()` once per page/component instead of direct `authApi.me()` calls.
 - Do not rely on UI guards for security. Backend endpoints must continue to use `require_admin_permission(...)`.
 - When project lifecycle locks apply, UI must combine permission checks with lifecycle checks; having permission does not override safe-edit lifecycle rules.
+
+## Regression checks
+
+Run the lightweight backend permission suite after changing admin roles, permission dependencies, or guarded UI/API contracts:
+
+```bash
+cd backend
+../venv/bin/python scripts/run_admin_permission_regressions.py
+```
+
+The suite currently covers:
+
+- `/api/v1/admin/me` profile permission mapping.
+- Tenant user invitation, role changes, project access, audit, and revocation.
+- JWT-backed admin role and project-scope enforcement across representative protected endpoints.
+
