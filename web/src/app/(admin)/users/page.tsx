@@ -9,6 +9,7 @@ import {
   type UserAccessAuditEvent,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 export default function TenantUsersPage() {
   const [users, setUsers] = useState<TenantAdminUser[]>([]);
@@ -20,7 +21,7 @@ export default function TenantUsersPage() {
   const [audit, setAudit] = useState<UserAccessAuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [invite, setInvite] = useState({
     mobile_number: "",
@@ -40,7 +41,7 @@ export default function TenantUsersPage() {
 
   const load = async (preferredId?: string) => {
     setLoading(true);
-    setError("");
+    setError(null);
     try {
       const [userPayload, projectPayload] = await Promise.all([
         tenantAdminUsersApi.list(),
@@ -57,7 +58,7 @@ export default function TenantUsersPage() {
           : userPayload.users[0]?.id || "";
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load tenant users");
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -94,14 +95,14 @@ export default function TenantUsersPage() {
       return;
     }
     setSaving(true);
-    setError("");
+    setError(null);
     setNotice("");
     try {
       const result = await action();
       await load(typeof result === "string" ? result : result.id);
       setNotice(success);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Operation failed");
+      setError(err);
     } finally {
       setSaving(false);
     }
@@ -168,7 +169,11 @@ export default function TenantUsersPage() {
         <p className="mt-1 text-sm text-gray-500">Delegate view, edit, publish, and project-specific access.</p>
       </div>
 
-      {error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+      {isPermissionDenied(error) ? (
+        <PermissionErrorCard error={error} className="mb-4" />
+      ) : error ? (
+        <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{getErrorMessage(error)}</div>
+      ) : null}
       {notice ? <div className="mb-4 rounded bg-green-50 p-3 text-sm text-green-700">{notice}</div> : null}
 
       {loadingProfile ? (
