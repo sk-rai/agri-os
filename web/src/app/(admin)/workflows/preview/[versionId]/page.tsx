@@ -47,6 +47,14 @@ function recommendationId(rec: WorkflowRecommendation) {
   return typeof rec.metadata?.recommendation_id === "string" ? rec.metadata.recommendation_id : null;
 }
 
+function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
 export default function WorkflowPreviewPage() {
   const params = useParams<{ versionId: string }>();
   const searchParams = useSearchParams();
@@ -643,26 +651,41 @@ function VisualWorkflowBuilder({
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
   const selectedStageIndex = selectedStage ? stages.findIndex((stage) => stage.code === selectedStage.code) : -1;
   const [stageAction, setStageAction] = useState<StageActionMode | null>(null);
+  const [draggedStageCode, setDraggedStageCode] = useState<string | null>(null);
+  const [draggedRecommendationIndex, setDraggedRecommendationIndex] = useState<number | null>(null);
   const totalDuration = stages.reduce((sum, stage) => sum + (stage.duration_days || 0), 0);
+  const submitRecommendationOrder = (stage: WorkflowStage, recs: WorkflowRecommendation[]) => {
+    const ids = recs.map(recommendationId).filter((id): id is string => Boolean(id));
+    if (ids.length !== recs.length) return;
+    onReorderDraftRecommendations(stage.code, ids);
+  };
   const moveRecommendation = (stage: WorkflowStage, recommendationIndex: number, direction: -1 | 1) => {
     const recs = stage.recommended_activities || [];
     const targetIndex = recommendationIndex + direction;
     if (targetIndex < 0 || targetIndex >= recs.length) return;
-    const nextRecs = [...recs];
-    const [moved] = nextRecs.splice(recommendationIndex, 1);
-    nextRecs.splice(targetIndex, 0, moved);
-    const ids = nextRecs.map(recommendationId).filter((id): id is string => Boolean(id));
-    if (ids.length !== nextRecs.length) return;
-    onReorderDraftRecommendations(stage.code, ids);
+    submitRecommendationOrder(stage, moveItem(recs, recommendationIndex, targetIndex));
+  };
+  const dragRecommendationTo = (stage: WorkflowStage, toIndex: number) => {
+    const recs = stage.recommended_activities || [];
+    if (draggedRecommendationIndex === null || draggedRecommendationIndex === toIndex) return;
+    submitRecommendationOrder(stage, moveItem(recs, draggedRecommendationIndex, toIndex));
+    setDraggedRecommendationIndex(null);
+  };
+  const submitStageOrder = (orderedStages: WorkflowStage[]) => {
+    onReorderDraftStages(orderedStages.map((stage) => stage.code));
   };
   const moveSelectedStage = (direction: -1 | 1) => {
     if (!selectedStage || selectedStageIndex < 0) return;
     const targetIndex = selectedStageIndex + direction;
     if (targetIndex < 0 || targetIndex >= stages.length) return;
-    const nextStages = [...stages];
-    const [moved] = nextStages.splice(selectedStageIndex, 1);
-    nextStages.splice(targetIndex, 0, moved);
-    onReorderDraftStages(nextStages.map((stage) => stage.code));
+    submitStageOrder(moveItem(stages, selectedStageIndex, targetIndex));
+  };
+  const dragStageTo = (toIndex: number) => {
+    if (!draggedStageCode) return;
+    const fromIndex = stages.findIndex((stage) => stage.code === draggedStageCode);
+    if (fromIndex < 0 || fromIndex === toIndex) return;
+    submitStageOrder(moveItem(stages, fromIndex, toIndex));
+    setDraggedStageCode(null);
   };
   const maxRecommendations = Math.max(1, ...stages.map((stage) => stage.recommended_activities?.length || 0));
 
@@ -698,9 +721,27 @@ function VisualWorkflowBuilder({
                     <button
                       key={stage.code}
                       type="button"
+                      draggable={draftEditable && !busyTarget}
+                      onDragStart={(event) => {
+                        if (!draftEditable || busyTarget) return;
+                        setDraggedStageCode(stage.code);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", stage.code);
+                      }}
+                      onDragOver={(event) => {
+                        if (!draftEditable || !draggedStageCode || draggedStageCode === stage.code) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        dragStageTo(index);
+                      }}
+                      onDragEnd={() => setDraggedStageCode(null)}
                       onClick={() => onSelectStage(stage.code)}
                       onDoubleClick={() => scrollToStageEditor(stage.code)}
-                      className={`group relative flex w-56 flex-col rounded-xl border p-4 text-left transition ${selected ? "border-green-500 bg-green-50 shadow-md ring-2 ring-green-100" : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/40"}`}
+                      title={draftEditable ? "Drag to reorder; double-click to edit details" : "Double-click to inspect details"}
+                      className={`group relative flex w-56 flex-col rounded-xl border p-4 text-left transition ${selected ? "border-green-500 bg-green-50 shadow-md ring-2 ring-green-100" : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/40"} ${draggedStageCode === stage.code ? "opacity-50" : ""}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -717,7 +758,7 @@ function VisualWorkflowBuilder({
                       <div className="mt-4 h-2 rounded-full bg-gray-100">
                         <div className="h-2 rounded-full bg-green-500" style={{ width: `${recIntensity}%` }} />
                       </div>
-                      <p className="mt-2 text-[11px] text-gray-400">Recommendation density</p>
+                      <p className="mt-2 text-[11px] text-gray-400">{draftEditable ? "Drag to reorder" : "Recommendation density"}</p>
                     </button>
                   );
                 })}
@@ -739,6 +780,10 @@ function VisualWorkflowBuilder({
                   onMoveLater={() => moveSelectedStage(1)}
                   canMoveEarlier={draftEditable && selectedStageIndex > 0}
                   canMoveLater={draftEditable && selectedStageIndex >= 0 && selectedStageIndex < stages.length - 1}
+                  draggedRecommendationIndex={draggedRecommendationIndex}
+                  onRecommendationDragStart={setDraggedRecommendationIndex}
+                  onRecommendationDragEnd={() => setDraggedRecommendationIndex(null)}
+                  onRecommendationDrop={(recommendationIndex) => dragRecommendationTo(selectedStage, recommendationIndex)}
                   onMoveRecommendation={(recommendationIndex, direction) => moveRecommendation(selectedStage, recommendationIndex, direction)}
                   onDeleteStage={() => {
                     if (window.confirm(`Delete stage ${selectedStage.code} from this draft? Its recommendations will also be deactivated.`)) {
@@ -790,6 +835,10 @@ function StageInspector({
   onMoveLater,
   canMoveEarlier,
   canMoveLater,
+  draggedRecommendationIndex,
+  onRecommendationDragStart,
+  onRecommendationDragEnd,
+  onRecommendationDrop,
   onMoveRecommendation,
   onDeleteStage,
   canDeleteStage,
@@ -806,6 +855,10 @@ function StageInspector({
   onMoveLater: () => void;
   canMoveEarlier: boolean;
   canMoveLater: boolean;
+  draggedRecommendationIndex: number | null;
+  onRecommendationDragStart: (recommendationIndex: number) => void;
+  onRecommendationDragEnd: () => void;
+  onRecommendationDrop: (recommendationIndex: number) => void;
   onMoveRecommendation: (recommendationIndex: number, direction: -1 | 1) => void;
   onDeleteStage: () => void;
   canDeleteStage: boolean;
@@ -848,8 +901,12 @@ function StageInspector({
               index={index}
               draftEditable={draftEditable}
               busy={busyTarget === `DRAFT_REC_REORDER:${stage.code}`}
+              dragging={draggedRecommendationIndex === index}
               canMoveEarlier={draftEditable && index > 0 && Boolean(recommendationId(rec))}
               canMoveLater={draftEditable && index < recs.length - 1 && Boolean(recommendationId(rec))}
+              onDragStart={() => onRecommendationDragStart(index)}
+              onDragEnd={onRecommendationDragEnd}
+              onDrop={() => onRecommendationDrop(index)}
               onMoveEarlier={() => onMoveRecommendation(index, -1)}
               onMoveLater={() => onMoveRecommendation(index, 1)}
             />
@@ -961,8 +1018,12 @@ function RecommendationCanvasCard({
   index,
   draftEditable,
   busy,
+  dragging,
   canMoveEarlier,
   canMoveLater,
+  onDragStart,
+  onDragEnd,
+  onDrop,
   onMoveEarlier,
   onMoveLater,
 }: {
@@ -970,13 +1031,37 @@ function RecommendationCanvasCard({
   index: number;
   draftEditable: boolean;
   busy: boolean;
+  dragging: boolean;
   canMoveEarlier: boolean;
   canMoveLater: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
   onMoveEarlier: () => void;
   onMoveLater: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm">
+    <div
+      draggable={draftEditable && !busy && Boolean(recommendationId(recommendation))}
+      onDragStart={(event) => {
+        if (!draftEditable || busy || !recommendationId(recommendation)) return;
+        onDragStart();
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", recommendationId(recommendation) || "");
+      }}
+      onDragOver={(event) => {
+        if (!draftEditable || busy) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
+      title={draftEditable ? "Drag to reorder this recommendation" : undefined}
+      className={`rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm transition ${dragging ? "opacity-50 ring-2 ring-green-200" : ""}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div><p className="text-xs font-medium uppercase text-gray-400">Recommendation {index + 1}</p><h4 className="mt-1 font-semibold text-gray-900">{recommendation.input_name || recommendation.input_code || recommendation.activity_type}</h4></div>
         <div className="flex flex-col items-end gap-2">
