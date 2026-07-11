@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { conflictsApi, type Conflict } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ConflictsPage() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Conflict | null>(null);
   const [resolving, setResolving] = useState(false);
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canResolveConflicts = hasAdminPermission(adminProfile, "EDIT");
 
   const loadConflicts = () => {
     conflictsApi.list("PENDING_REVIEW").then(setConflicts).catch(() => {}).finally(() => setLoading(false));
@@ -16,6 +19,7 @@ export default function ConflictsPage() {
   useEffect(() => { loadConflicts(); }, []);
 
   const handleResolve = async (id: string, strategy: string) => {
+    if (!canResolveConflicts) return;
     setResolving(true);
     try {
       await conflictsApi.resolve(id, strategy, "Resolved via web admin");
@@ -40,6 +44,13 @@ export default function ConflictsPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
         Sync Conflicts ({conflicts.length} pending)
       </h1>
+
+      {!adminProfileLoading && !canResolveConflicts ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Conflict resolution is read-only for your role</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)} can inspect sync conflicts, but cannot accept client/server payloads.</p>
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="text-gray-500">Loading...</p>
@@ -100,17 +111,23 @@ export default function ConflictsPage() {
               </div>
             </div>
 
+            {!canResolveConflicts ? (
+              <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Your role can inspect this conflict but cannot resolve it.</div>
+            ) : null}
+
             <div className="flex gap-3">
               <button
                 onClick={() => handleResolve(selected.id, "ACCEPT_CLIENT")}
-                disabled={resolving}
+                disabled={resolving || !canResolveConflicts}
+                title={canResolveConflicts ? undefined : "Your role cannot resolve sync conflicts."}
                 className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 Accept Client
               </button>
               <button
                 onClick={() => handleResolve(selected.id, "ACCEPT_SERVER")}
-                disabled={resolving}
+                disabled={resolving || !canResolveConflicts}
+                title={canResolveConflicts ? undefined : "Your role cannot resolve sync conflicts."}
                 className="flex-1 bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50"
               >
                 Accept Server
