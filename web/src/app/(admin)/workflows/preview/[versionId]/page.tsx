@@ -502,6 +502,9 @@ export default function WorkflowPreviewPage() {
         onReorderDraftStages={reorderDraftStages}
         onDeleteDraftStage={deleteDraftStage}
         onReorderDraftRecommendations={reorderDraftRecommendations}
+        onUpdateDraftStage={updateDraftStage}
+        onUpdateDraftRecommendation={updateDraftRecommendation}
+        onDeleteDraftRecommendation={deleteDraftRecommendation}
       />
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -635,6 +638,9 @@ function VisualWorkflowBuilder({
   onReorderDraftStages,
   onDeleteDraftStage,
   onReorderDraftRecommendations,
+  onUpdateDraftStage,
+  onUpdateDraftRecommendation,
+  onDeleteDraftRecommendation,
 }: {
   stages: WorkflowStage[];
   selectedStageCode: string | null;
@@ -647,6 +653,9 @@ function VisualWorkflowBuilder({
   onReorderDraftStages: (stageCodes: string[]) => void;
   onDeleteDraftStage: (stageCode: string) => void;
   onReorderDraftRecommendations: (stageCode: string, recommendationIds: string[]) => void;
+  onUpdateDraftStage: (stageCode: string, data: WorkflowDraftStageUpdateRequest) => void;
+  onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
+  onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
   const selectedStageIndex = selectedStage ? stages.findIndex((stage) => stage.code === selectedStage.code) : -1;
@@ -791,6 +800,9 @@ function VisualWorkflowBuilder({
                     }
                   }}
                   canDeleteStage={draftEditable && stages.length > 1}
+                  onUpdateDraftStage={onUpdateDraftStage}
+                  onUpdateDraftRecommendation={onUpdateDraftRecommendation}
+                  onDeleteDraftRecommendation={onDeleteDraftRecommendation}
                 />
                 {draftEditable && stageAction ? (
                   <StageActionPanel
@@ -842,6 +854,9 @@ function StageInspector({
   onMoveRecommendation,
   onDeleteStage,
   canDeleteStage,
+  onUpdateDraftStage,
+  onUpdateDraftRecommendation,
+  onDeleteDraftRecommendation,
 }: {
   stage: WorkflowStage;
   draftEditable: boolean;
@@ -862,8 +877,18 @@ function StageInspector({
   onMoveRecommendation: (recommendationIndex: number, direction: -1 | 1) => void;
   onDeleteStage: () => void;
   canDeleteStage: boolean;
+  onUpdateDraftStage: (stageCode: string, data: WorkflowDraftStageUpdateRequest) => void;
+  onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
+  onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
   const recs = stage.recommended_activities || [];
+  const [stageNameDraft, setStageNameDraft] = useState(labelText(stage.name));
+  const [durationDraft, setDurationDraft] = useState(String(stage.duration_days || 0));
+
+  useEffect(() => {
+    setStageNameDraft(labelText(stage.name));
+    setDurationDraft(String(stage.duration_days || 0));
+  }, [stage.code, stage.name, stage.duration_days]);
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -875,8 +900,25 @@ function StageInspector({
           <div><dt className="text-xs uppercase text-gray-400">Recommendations</dt><dd className="font-semibold text-gray-900">{recs.length}</dd></div>
           <div><dt className="text-xs uppercase text-gray-400">Mode</dt><dd className="font-semibold text-gray-900">{draftEditable ? "Editable draft" : "Read only"}</dd></div>
         </dl>
+        {draftEditable ? (
+          <div className="mt-4 rounded border border-green-100 bg-white p-3">
+            <p className="text-xs font-semibold uppercase text-gray-400">Quick edit</p>
+            <div className="mt-2 grid gap-2 md:grid-cols-[1fr_90px_auto]">
+              <input value={stageNameDraft} onChange={(event) => setStageNameDraft(event.target.value)} className="rounded border px-2 py-1 text-xs text-gray-900" aria-label="Stage display name" />
+              <input type="number" min={0} value={durationDraft} onChange={(event) => setDurationDraft(event.target.value)} className="rounded border px-2 py-1 text-xs text-gray-900" aria-label="Stage duration days" />
+              <button
+                type="button"
+                disabled={Boolean(busyTarget) || !stageNameDraft.trim() || durationDraft === ""}
+                onClick={() => onUpdateDraftStage(stage.code, { stage_name: { en: stageNameDraft.trim() }, duration_days: Number(durationDraft) })}
+                className="rounded bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800 disabled:cursor-wait disabled:opacity-60"
+              >
+                Save stage
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" onClick={onEditStage} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">Edit selected stage</button>
+          <button type="button" onClick={onEditStage} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">Open full editor</button>
           <button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Add recommendation</button>
           {draftEditable ? (
             <>
@@ -909,6 +951,8 @@ function StageInspector({
               onDrop={() => onRecommendationDrop(index)}
               onMoveEarlier={() => onMoveRecommendation(index, -1)}
               onMoveLater={() => onMoveRecommendation(index, 1)}
+              onUpdateDraftRecommendation={onUpdateDraftRecommendation}
+              onDeleteDraftRecommendation={onDeleteDraftRecommendation}
             />
           ))}
         </div>
@@ -1026,6 +1070,8 @@ function RecommendationCanvasCard({
   onDrop,
   onMoveEarlier,
   onMoveLater,
+  onUpdateDraftRecommendation,
+  onDeleteDraftRecommendation,
 }: {
   recommendation: WorkflowRecommendation;
   index: number;
@@ -1039,7 +1085,20 @@ function RecommendationCanvasCard({
   onDrop: () => void;
   onMoveEarlier: () => void;
   onMoveLater: () => void;
+  onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
+  onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
+  const recId = recommendationId(recommendation);
+  const [inputNameDraft, setInputNameDraft] = useState(recommendation.input_name || "");
+  const [dayOffsetDraft, setDayOffsetDraft] = useState(String(recommendation.day_offset ?? 0));
+  const [quantityDraft, setQuantityDraft] = useState(recommendation.typical_quantity || "");
+
+  useEffect(() => {
+    setInputNameDraft(recommendation.input_name || "");
+    setDayOffsetDraft(String(recommendation.day_offset ?? 0));
+    setQuantityDraft(recommendation.typical_quantity || "");
+  }, [recommendation.input_name, recommendation.day_offset, recommendation.typical_quantity]);
+
   return (
     <div
       draggable={draftEditable && !busy && Boolean(recommendationId(recommendation))}
@@ -1078,6 +1137,34 @@ function RecommendationCanvasCard({
       {recommendation.typical_quantity ? <p className="mt-3 text-xs text-gray-600">Qty: {recommendation.typical_quantity}</p> : null}
       {recommendation.typical_cost_per_acre ? <p className="mt-1 text-xs text-gray-600">Cost/acre: {recommendation.typical_cost_per_acre}</p> : null}
       {recommendation.allowed_product_codes?.length ? <p className="mt-2 font-mono text-[11px] text-gray-500">Products: {recommendation.allowed_product_codes.slice(0, 3).join(", ")}{recommendation.allowed_product_codes.length > 3 ? "..." : ""}</p> : null}
+      {draftEditable ? (
+        <div className="mt-3 rounded border border-gray-200 bg-white p-2">
+          <p className="text-[10px] font-semibold uppercase text-gray-400">Quick edit recommendation</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-[1fr_70px]">
+            <input value={inputNameDraft} onChange={(event) => setInputNameDraft(event.target.value)} className="rounded border px-2 py-1 text-xs text-gray-900" aria-label="Recommendation name" />
+            <input type="number" value={dayOffsetDraft} onChange={(event) => setDayOffsetDraft(event.target.value)} className="rounded border px-2 py-1 text-xs text-gray-900" aria-label="Recommendation day offset" />
+          </div>
+          <input value={quantityDraft} onChange={(event) => setQuantityDraft(event.target.value)} className="mt-2 w-full rounded border px-2 py-1 text-xs text-gray-900" aria-label="Recommendation quantity" placeholder="Typical quantity" />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy || !recId || !inputNameDraft.trim() || dayOffsetDraft === ""}
+              onClick={() => recId && onUpdateDraftRecommendation(recId, { input_name: inputNameDraft.trim(), day_offset: Number(dayOffsetDraft), typical_quantity: quantityDraft.trim() || null })}
+              className="rounded border border-green-200 px-2 py-1 text-[10px] font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              disabled={busy || !recId}
+              onClick={() => recId && window.confirm(`Delete recommendation ${recommendation.input_name}?`) && onDeleteDraftRecommendation(recId)}
+              className="rounded border border-red-200 px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
