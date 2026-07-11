@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  authApi,
   inputCatalogApi,
   projectsApi,
+  type AdminProfileResponse,
   type InputCategoryDto,
   type Project,
   type ProjectInputAssignmentAuditEvent,
@@ -74,16 +76,28 @@ export default function ProjectInputsPage() {
   const [auditInputCode, setAuditInputCode] = useState("");
   const [auditAction, setAuditAction] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { reason: string; displayOrder: string }>>({});
+  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  const canEditProjectInputs = adminProfile?.permissions.includes("PROJECT_EDIT") ?? false;
 
   useEffect(() => {
-    Promise.all([projectsApi.list(), inputCatalogApi.categories()])
-      .then(([projectItems, categoryPayload]) => {
+    Promise.all([
+      authApi.me().catch(() => null),
+      projectsApi.list(),
+      inputCatalogApi.categories(),
+    ])
+      .then(([profile, projectItems, categoryPayload]) => {
+        setAdminProfile(profile);
         setProjects(projectItems);
         setSelectedProjectId(projectItems[0]?.id || "");
         setCategories(categoryPayload.categories);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load project inputs"))
-      .finally(() => setLoadingProjects(false));
+      .finally(() => {
+        setLoadingProjects(false);
+        setLoadingProfile(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -152,6 +166,10 @@ export default function ProjectInputsPage() {
 
   const updateAssignment = async (item: ProjectInputAssignmentDto, enabled: boolean) => {
     if (!selectedProjectId) return;
+    if (!canEditProjectInputs) {
+      setError("Your current role can view project inputs but cannot edit project input assignments.");
+      return;
+    }
     const draft = drafts[item.code] || { reason: item.reason || "", displayOrder: item.display_order != null ? String(item.display_order) : "" };
     const order = draft.displayOrder.trim() ? Number(draft.displayOrder) : undefined;
     setBusyCode(item.code);
@@ -203,6 +221,13 @@ export default function ProjectInputsPage() {
         <div className="rounded-lg bg-white p-10 text-center text-gray-400 shadow">No projects yet.</div>
       ) : (
         <>
+          {!loadingProfile && !canEditProjectInputs ? (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Project input assignments are read-only for your role</p>
+              <p className="mt-1">Your current role ({(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}) does not include PROJECT_EDIT. You can inspect visibility and audit history, but cannot enable, disable, or reorder project inputs.</p>
+            </div>
+          ) : null}
+
           <div className="mb-6 rounded-lg bg-white p-5 shadow">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
@@ -272,6 +297,7 @@ export default function ProjectInputsPage() {
                     isBusy={busyCode === item.code}
                     onDraft={updateDraft}
                     onUpdate={updateAssignment}
+                    canEdit={canEditProjectInputs}
                   />
                 ))}
                 {summary.inputs.length === 0 ? (
@@ -301,12 +327,14 @@ function InputAssignmentCard({
   isBusy,
   onDraft,
   onUpdate,
+  canEdit,
 }: {
   item: ProjectInputAssignmentDto;
   draft: { reason: string; displayOrder: string };
   isBusy: boolean;
   onDraft: (code: string, patch: Partial<{ reason: string; displayOrder: string }>) => void;
   onUpdate: (item: ProjectInputAssignmentDto, enabled: boolean) => void;
+  canEdit: boolean;
 }) {
   return (
     <div className="rounded-lg bg-white p-5 shadow">
@@ -332,7 +360,8 @@ function InputAssignmentCard({
         <div className="flex flex-wrap gap-2 text-sm">
           <button
             type="button"
-            disabled={isBusy}
+            disabled={isBusy || !canEdit}
+            title={canEdit ? undefined : "Your role cannot edit project input assignments."}
             onClick={() => onUpdate(item, true)}
             className="rounded-lg border border-green-200 px-3 py-2 font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
           >
@@ -340,7 +369,8 @@ function InputAssignmentCard({
           </button>
           <button
             type="button"
-            disabled={isBusy}
+            disabled={isBusy || !canEdit}
+            title={canEdit ? undefined : "Your role cannot edit project input assignments."}
             onClick={() => onUpdate(item, false)}
             className="rounded-lg border border-red-200 px-3 py-2 font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
           >
@@ -355,6 +385,7 @@ function InputAssignmentCard({
           <input
             type="number"
             value={draft.displayOrder}
+            disabled={!canEdit}
             onChange={(event) => onDraft(item.code, { displayOrder: event.target.value })}
             className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
             placeholder="1000"
@@ -364,6 +395,7 @@ function InputAssignmentCard({
           Reason
           <input
             value={draft.reason}
+            disabled={!canEdit}
             onChange={(event) => onDraft(item.code, { reason: event.target.value })}
             className="mt-1 w-full rounded border px-3 py-2 text-sm font-normal"
             placeholder="Why this input is enabled/disabled"
@@ -372,7 +404,8 @@ function InputAssignmentCard({
         <div className="flex items-end">
           <button
             type="button"
-            disabled={isBusy}
+            disabled={isBusy || !canEdit}
+            title={canEdit ? undefined : "Your role cannot edit project input assignments."}
             onClick={() => onUpdate(item, item.visible)}
             className="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
           >
