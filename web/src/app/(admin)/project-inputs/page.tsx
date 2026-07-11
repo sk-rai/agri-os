@@ -11,6 +11,7 @@ import {
   type ProjectInputAssignmentsResponse,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 function statusClass(rule: string) {
   switch (rule) {
@@ -65,7 +66,7 @@ export default function ProjectInputsPage() {
   const [summary, setSummary] = useState<ProjectInputAssignmentsResponse | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [category, setCategory] = useState("");
   const [cropCode, setCropCode] = useState("");
   const [query, setQuery] = useState("");
@@ -89,7 +90,7 @@ export default function ProjectInputsPage() {
         setSelectedProjectId(projectItems[0]?.id || "");
         setCategories(categoryPayload.categories);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load project inputs"))
+      .catch((e) => setError(e))
       .finally(() => {
         setLoadingProjects(false);
       });
@@ -106,7 +107,7 @@ export default function ProjectInputsPage() {
         q: query || undefined,
       })
       .then(setSummary)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load input assignments"))
+      .catch((e) => setError(e))
       .finally(() => setLoadingSummary(false));
   }, [selectedProjectId, category, cropCode, query]);
 
@@ -183,14 +184,14 @@ export default function ProjectInputsPage() {
       });
       setAuditEvents(audit.events);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update input assignment");
+      setError(e);
     } finally {
       setBusyCode(null);
     }
   };
 
   if (loadingProjects) return <div className="text-gray-500">Loading projects...</div>;
-  if (error && !summary) return <div className="text-red-500">Error: {error}</div>;
+  if (error && !summary) return isPermissionDenied(error) ? <PermissionErrorCard error={error} /> : <div className="text-red-500">Error: {getErrorMessage(error)}</div>;
 
   return (
     <div>
@@ -278,7 +279,7 @@ export default function ProjectInputsPage() {
             </button>
           </div>
 
-          {error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+          {isPermissionDenied(error) ? <PermissionErrorCard error={error} className="mb-4" /> : error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{getErrorMessage(error)}</div> : null}
           {loadingSummary || !summary ? (
             <p className="text-gray-500">Loading input assignments...</p>
           ) : (

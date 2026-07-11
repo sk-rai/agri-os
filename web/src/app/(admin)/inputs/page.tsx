@@ -14,6 +14,7 @@ import {
   type InputReferencesResponse,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 type InputDraft = {
   canonical_name: string;
@@ -121,7 +122,7 @@ export default function InputsPage() {
   const [governance, setGovernance] = useState<InputGovernanceResponse | null>(null);
   const [governanceBusy, setGovernanceBusy] = useState(false);
   const [changeReason, setChangeReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [cropCode, setCropCode] = useState("");
@@ -143,7 +144,7 @@ export default function InputsPage() {
     inputCatalogApi
       .categories()
       .then((data) => setCategories(data.categories))
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e));
   }, []);
 
   useEffect(() => {
@@ -163,7 +164,7 @@ export default function InputsPage() {
           return data.inputs.find((item) => item.code === current.code) || data.inputs[0] || null;
         });
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e))
       .finally(() => setLoading(false));
   }, [category, cropCode, query, showArchived, catalogRefresh]);
 
@@ -224,7 +225,7 @@ export default function InputsPage() {
     try {
       setCsvBatch(await inputCatalogApi.validateCsv(csvFile));
       await loadCsvHistory();
-    } catch (e) { setError(e instanceof Error ? e.message : "CSV validation failed"); }
+    } catch (e) { setError(e); }
     finally { setCsvBusy(false); }
   };
 
@@ -238,7 +239,7 @@ export default function InputsPage() {
       setCatalogRefresh((value) => value + 1);
       await loadCsvHistory();
       setNotice(`CSV applied: ${applied.report.applied_counts?.created || 0} created, ${applied.report.applied_counts?.updated || 0} updated.`);
-    } catch (e) { setError(e instanceof Error ? e.message : "CSV apply failed"); }
+    } catch (e) { setError(e); }
     finally { setCsvBusy(false); }
   };
 
@@ -279,7 +280,7 @@ export default function InputsPage() {
       setAuditEvents(audit.events);
       setNotice(`Input ${created.code} created.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create input");
+      setError(e);
     } finally {
       setCreating(false);
     }
@@ -303,7 +304,7 @@ export default function InputsPage() {
       setAuditEvents(audit.events);
       setNotice(`Input ${updated.code} archived.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to archive input");
+      setError(e);
     } finally {
       setSaving(false);
     }
@@ -324,7 +325,7 @@ export default function InputsPage() {
       setAuditEvents(audit.events);
       setNotice(`Input ${updated.code} restored.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to restore input");
+      setError(e);
     } finally {
       setSaving(false);
     }
@@ -351,7 +352,7 @@ export default function InputsPage() {
       setNotice(`Input ${result.input.code} is now ${result.input.catalog_status}.`);
       const audit = await inputCatalogApi.inputAudit(result.input.code, { limit: 10 });
       setAuditEvents(audit.events);
-    } catch (e) { setError(e instanceof Error ? e.message : "Lifecycle action failed"); }
+    } catch (e) { setError(e); }
     finally { setGovernanceBusy(false); }
   };
 
@@ -386,13 +387,13 @@ export default function InputsPage() {
       setGovernance(governanceResult);
       setNotice(updated.catalog_status === "PUBLISHED" ? "Published input metadata saved." : "Input saved as DRAFT; submit it for review when ready.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save input");
+      setError(e);
     } finally {
       setSaving(false);
     }
   };
 
-  if (error && inputs.length === 0) return <div className="text-red-500">Error: {error}</div>;
+  if (error && inputs.length === 0) return isPermissionDenied(error) ? <PermissionErrorCard error={error} /> : <div className="text-red-500">Error: {getErrorMessage(error)}</div>;
 
   return (
     <div>
@@ -504,7 +505,7 @@ export default function InputsPage() {
         ))}
       </div>
 
-      {error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+      {isPermissionDenied(error) ? <PermissionErrorCard error={error} className="mb-4" /> : error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{getErrorMessage(error)}</div> : null}
       {notice ? <div className="mb-4 rounded bg-green-50 p-3 text-sm text-green-700">{notice}</div> : null}
 
       {loading ? (

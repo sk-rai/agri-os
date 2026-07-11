@@ -3,30 +3,33 @@
 import { useEffect, useState } from "react";
 import { conflictsApi, type Conflict } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 export default function ConflictsPage() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Conflict | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<unknown>(null);
   const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
   const canResolveConflicts = hasAdminPermission(adminProfile, "EDIT");
 
   const loadConflicts = () => {
-    conflictsApi.list("PENDING_REVIEW").then(setConflicts).catch(() => {}).finally(() => setLoading(false));
+    conflictsApi.list("PENDING_REVIEW").then(setConflicts).catch((e) => setError(e)).finally(() => setLoading(false));
   };
 
   useEffect(() => { loadConflicts(); }, []);
 
   const handleResolve = async (id: string, strategy: string) => {
     if (!canResolveConflicts) return;
+    setError(null);
     setResolving(true);
     try {
       await conflictsApi.resolve(id, strategy, "Resolved via web admin");
       setSelected(null);
       loadConflicts();
-    } catch {
-      // Error handling
+    } catch (e) {
+      setError(e);
     } finally {
       setResolving(false);
     }
@@ -51,6 +54,8 @@ export default function ConflictsPage() {
           <p className="mt-1">Role {adminRoleLabel(adminProfile)} can inspect sync conflicts, but cannot accept client/server payloads.</p>
         </div>
       ) : null}
+
+      {isPermissionDenied(error) ? <PermissionErrorCard error={error} className="mb-4" /> : error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{getErrorMessage(error)}</div> : null}
 
       {loading ? (
         <p className="text-gray-500">Loading...</p>

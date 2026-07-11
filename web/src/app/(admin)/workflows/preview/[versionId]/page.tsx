@@ -22,6 +22,7 @@ import {
   type WorkflowPreviewWarning,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
 type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION";
@@ -137,7 +138,7 @@ export default function WorkflowPreviewPage() {
   const searchParams = useSearchParams();
   const [preview, setPreview] = useState<WorkflowPreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [busyTarget, setBusyTarget] = useState<string | null>(null);
   const [overrideHistory, setOverrideHistory] = useState<WorkflowOverrideHistoryResponse | null>(null);
   const [draftCloneMessage, setDraftCloneMessage] = useState<string | null>(null);
@@ -215,11 +216,11 @@ export default function WorkflowPreviewPage() {
         }
         if (payload.project_id) {
           return loadOverrideHistory(payload.project_id, payload.workflow_template_version_id).catch((e) => {
-            setError(e instanceof Error ? e.message : "Failed to load override history");
+            setError(e);
           });
         }
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e))
       .finally(() => setLoading(false));
   }, [params.versionId, searchParams]);
 
@@ -271,7 +272,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       await loadOverrideHistory(preview.project_id, preview.workflow_template_version_id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create override");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -286,7 +287,7 @@ export default function WorkflowPreviewPage() {
       setDraftValidation(validation);
       return validation;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to validate draft version");
+      setError(e);
       return null;
     } finally {
       setDraftValidating(false);
@@ -305,7 +306,7 @@ export default function WorkflowPreviewPage() {
       setDraftCloneId(draft.draft_version_id);
       setDraftCloneMessage(`Draft ${draft.version} created with ${draft.stage_count} stages and ${draft.recommendation_count} recommendations. ID: ${draft.draft_version_id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to clone draft version");
+      setError(e);
     } finally {
       setDraftCloning(false);
     }
@@ -337,7 +338,7 @@ export default function WorkflowPreviewPage() {
       setPublishConfirmChecked(false);
       setPublishMessage(`Published ${published.workflow_template_code} version ${published.version}. Android catalog will now serve this version.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to publish draft version");
+      setError(e);
     } finally {
       setDraftPublishing(false);
     }
@@ -353,7 +354,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update draft stage");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -369,7 +370,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add draft recommendation");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -391,7 +392,7 @@ export default function WorkflowPreviewPage() {
       setSelectedStageCode(nextCode);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create draft stage");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -413,7 +414,7 @@ export default function WorkflowPreviewPage() {
       if (nextCode) setSelectedStageCode(nextCode);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to duplicate draft stage");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -429,7 +430,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reorder draft stages");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -447,7 +448,7 @@ export default function WorkflowPreviewPage() {
       await loadDeletedStages(preview.workflow_template_version_id).catch(() => setDeletedStages(null));
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete draft stage");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -463,7 +464,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update draft recommendation");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -482,7 +483,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reorder draft recommendations");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -500,7 +501,7 @@ export default function WorkflowPreviewPage() {
       await loadDeletedStages(preview.workflow_template_version_id).catch(() => setDeletedStages(null));
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to restore draft stage");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -516,7 +517,7 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       setDraftValidation(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete draft recommendation");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
@@ -532,14 +533,14 @@ export default function WorkflowPreviewPage() {
       setPreview(updated);
       await loadOverrideHistory(preview.project_id, preview.workflow_template_version_id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove override");
+      setError(e);
     } finally {
       setBusyTarget(null);
     }
   };
 
   if (loading) return <div className="text-gray-500">Loading workflow preview...</div>;
-  if (error) return <div className="text-red-500">Error: {error}</div>;
+  if (error && !preview) return isPermissionDenied(error) ? <PermissionErrorCard error={error} /> : <div className="text-red-500">Error: {getErrorMessage(error)}</div>;
   if (!preview) return null;
 
   const isDraftPreview = preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft";
@@ -558,6 +559,7 @@ export default function WorkflowPreviewPage() {
 
   return (
     <div>
+      {isPermissionDenied(error) ? <PermissionErrorCard error={error} className="mb-4" /> : error ? <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{getErrorMessage(error)}</div> : null}
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href="/workflows" className="text-sm text-green-700 hover:underline">← Back to workflows</Link>

@@ -11,6 +11,7 @@ import {
   type ProjectWorkflowEnablementsResponse,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 type WorkflowVisibilityFilter = "ALL" | "ANDROID_VISIBLE" | "ENABLED" | "DISABLED" | "BLOCKED" | "OVERRIDDEN";
 type WorkflowChangeIntent = "ENABLE" | "DISABLE" | "SAVE_METADATA";
@@ -30,7 +31,7 @@ export default function ProjectWorkflowsPage() {
   const [assignmentAudit, setAssignmentAudit] = useState<ProjectWorkflowAssignmentAuditResponse | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [updatingWorkflowId, setUpdatingWorkflowId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { label: string; displayOrder: string }>>({});
   const [search, setSearch] = useState("");
@@ -47,7 +48,7 @@ export default function ProjectWorkflowsPage() {
         setProjects(items);
         setSelectedProjectId(items[0]?.id || "");
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e))
       .finally(() => setLoadingProjects(false));
   }, []);
 
@@ -63,7 +64,7 @@ export default function ProjectWorkflowsPage() {
       workflowCatalogApi.projectEnablements(selectedProjectId).then(setSummary),
       loadAssignmentAudit(selectedProjectId).catch(() => setAssignmentAudit(null)),
     ])
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e))
       .finally(() => setLoadingSummary(false));
   }, [selectedProjectId]);
 
@@ -98,7 +99,7 @@ export default function ProjectWorkflowsPage() {
       setSummary(updated);
       await loadAssignmentAudit(summary.project.id).catch(() => setAssignmentAudit(null));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update workflow enablement");
+      setError(e);
     } finally {
       setUpdatingWorkflowId(null);
     }
@@ -129,7 +130,7 @@ export default function ProjectWorkflowsPage() {
   };
 
   if (loadingProjects) return <div className="text-gray-500">Loading projects...</div>;
-  if (error) return <div className="text-red-500">Error: {error}</div>;
+  if (error) return isPermissionDenied(error) ? <PermissionErrorCard error={error} /> : <div className="text-red-500">Error: {getErrorMessage(error)}</div>;
 
   return (
     <div>

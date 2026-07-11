@@ -9,12 +9,13 @@ import {
   type ManufacturerDto,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
+import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
 
 export default function ProductsPage() {
   const [manufacturers, setManufacturers] = useState<ManufacturerDto[]>([]);
   const [products, setProducts] = useState<AgriculturalProductDto[]>([]);
   const [rules, setRules] = useState<CropStageInputRuleDto[]>([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
@@ -31,13 +32,13 @@ export default function ProductsPage() {
       const [m, p] = await Promise.all([productCatalogApi.manufacturers(), productCatalogApi.products({ includeInactive: true })]);
       setManufacturers(m.manufacturers);
       setProducts(p.products);
-    } catch (e) { setError(e instanceof Error ? e.message : "Load failed"); }
+    } catch (e) { setError(e); }
   };
   const loadRules = async () => {
     try {
       const data = await inputCatalogApi.inputRules({ cropCode: ruleFilter.crop_code || undefined, stageCode: ruleFilter.stage_code || undefined, activityType: ruleFilter.activity_type || undefined, projectId: ruleFilter.project_id || undefined, includeDisabled: true });
       setRules(data.rules);
-    } catch (e) { setError(e instanceof Error ? e.message : "Rule load failed"); }
+    } catch (e) { setError(e); }
   };
   useEffect(() => {
     void load();
@@ -45,16 +46,16 @@ export default function ProductsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const createMfg = async () => { if (!canEditCatalog) { setError("Your current role can view products but cannot edit the product catalog."); return; } setBusy(true); setError(""); try { await productCatalogApi.createManufacturer({ ...mfg, aliases: [] }); setMfg({ ...mfg, code: "", canonical_name: "", short_name: "" }); setNotice("Manufacturer created"); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Create failed"); } finally { setBusy(false); } };
-  const createProduct = async () => { if (!canEditCatalog) { setError("Your current role can view products but cannot edit the product catalog."); return; } setBusy(true); setError(""); try { await productCatalogApi.createProduct({ code: product.code, canonical_input_code: product.canonical_input_code, manufacturer_code: product.manufacturer_code, brand_name: product.brand_name, composition: product.composition || null, registration_number: product.registration_number || null, registration_authority: product.registration_authority || null, country: "India", packages: [{ sku: product.sku, quantity: product.quantity, unit: product.unit, pack_label: product.pack_label, barcode: product.barcode || null }], reason: product.reason }); setNotice("Product and package created"); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Create failed"); } finally { setBusy(false); } };
-  const approve = async () => { if (!canEditProjectApprovals) { setError("Your current role can view products but cannot change project product approvals."); return; } setBusy(true); setError(""); try { await productCatalogApi.approveProduct(approval.project_id, approval.product_code, { enabled: approval.enabled, preferred: approval.preferred, display_order: Number(approval.display_order), reason: approval.reason }); setNotice("Project approval saved"); } catch (e) { setError(e instanceof Error ? e.message : "Approval failed"); } finally { setBusy(false); } };
-  const createRule = async () => { if (!canEditCatalog) { setError("Your current role can view dosage rules but cannot edit input rules."); return; } setBusy(true); setError(""); try { await inputCatalogApi.createInputRule({ project_id: ruleDraft.project_id || null, crop_code: ruleDraft.crop_code, season_code: ruleDraft.season_code || null, stage_code: ruleDraft.stage_code, activity_type: ruleDraft.activity_type, input_code: ruleDraft.input_code, enabled: ruleDraft.enabled, priority: Number(ruleDraft.priority || 1000), dosage_quantity: ruleDraft.dosage_quantity || null, dosage_unit: ruleDraft.dosage_unit || null, dosage_area_unit: ruleDraft.dosage_area_unit || "ACRE", min_quantity: ruleDraft.min_quantity || null, max_quantity: ruleDraft.max_quantity || null, application_method: ruleDraft.application_method || null, timing_note: ruleDraft.timing_note || null, safety_note: ruleDraft.safety_note || null, allowed_product_codes: [], metadata: {}, reason: ruleDraft.reason }); setNotice("Input dosage rule saved"); await loadRules(); } catch (e) { setError(e instanceof Error ? e.message : "Rule save failed"); } finally { setBusy(false); } };
-  const toggleRule = async (rule: CropStageInputRuleDto) => { if (!canEditCatalog) { setError("Your current role can view dosage rules but cannot edit input rules."); return; } setBusy(true); setError(""); try { await inputCatalogApi.updateInputRule(rule.id, { enabled: !rule.enabled, reason: rule.enabled ? "Disabled from admin" : "Enabled from admin" }); await loadRules(); } catch (e) { setError(e instanceof Error ? e.message : "Rule update failed"); } finally { setBusy(false); } };
+  const createMfg = async () => { if (!canEditCatalog) { setError("Your current role can view products but cannot edit the product catalog."); return; } setBusy(true); setError(null); try { await productCatalogApi.createManufacturer({ ...mfg, aliases: [] }); setMfg({ ...mfg, code: "", canonical_name: "", short_name: "" }); setNotice("Manufacturer created"); await load(); } catch (e) { setError(e); } finally { setBusy(false); } };
+  const createProduct = async () => { if (!canEditCatalog) { setError("Your current role can view products but cannot edit the product catalog."); return; } setBusy(true); setError(null); try { await productCatalogApi.createProduct({ code: product.code, canonical_input_code: product.canonical_input_code, manufacturer_code: product.manufacturer_code, brand_name: product.brand_name, composition: product.composition || null, registration_number: product.registration_number || null, registration_authority: product.registration_authority || null, country: "India", packages: [{ sku: product.sku, quantity: product.quantity, unit: product.unit, pack_label: product.pack_label, barcode: product.barcode || null }], reason: product.reason }); setNotice("Product and package created"); await load(); } catch (e) { setError(e); } finally { setBusy(false); } };
+  const approve = async () => { if (!canEditProjectApprovals) { setError("Your current role can view products but cannot change project product approvals."); return; } setBusy(true); setError(null); try { await productCatalogApi.approveProduct(approval.project_id, approval.product_code, { enabled: approval.enabled, preferred: approval.preferred, display_order: Number(approval.display_order), reason: approval.reason }); setNotice("Project approval saved"); } catch (e) { setError(e); } finally { setBusy(false); } };
+  const createRule = async () => { if (!canEditCatalog) { setError("Your current role can view dosage rules but cannot edit input rules."); return; } setBusy(true); setError(null); try { await inputCatalogApi.createInputRule({ project_id: ruleDraft.project_id || null, crop_code: ruleDraft.crop_code, season_code: ruleDraft.season_code || null, stage_code: ruleDraft.stage_code, activity_type: ruleDraft.activity_type, input_code: ruleDraft.input_code, enabled: ruleDraft.enabled, priority: Number(ruleDraft.priority || 1000), dosage_quantity: ruleDraft.dosage_quantity || null, dosage_unit: ruleDraft.dosage_unit || null, dosage_area_unit: ruleDraft.dosage_area_unit || "ACRE", min_quantity: ruleDraft.min_quantity || null, max_quantity: ruleDraft.max_quantity || null, application_method: ruleDraft.application_method || null, timing_note: ruleDraft.timing_note || null, safety_note: ruleDraft.safety_note || null, allowed_product_codes: [], metadata: {}, reason: ruleDraft.reason }); setNotice("Input dosage rule saved"); await loadRules(); } catch (e) { setError(e); } finally { setBusy(false); } };
+  const toggleRule = async (rule: CropStageInputRuleDto) => { if (!canEditCatalog) { setError("Your current role can view dosage rules but cannot edit input rules."); return; } setBusy(true); setError(null); try { await inputCatalogApi.updateInputRule(rule.id, { enabled: !rule.enabled, reason: rule.enabled ? "Disabled from admin" : "Enabled from admin" }); await loadRules(); } catch (e) { setError(e); } finally { setBusy(false); } };
 
   return <div>
     <h1 className="text-2xl font-bold">Products, Manufacturers & Dosage Rules</h1>
     <p className="mt-1 text-sm text-gray-500">Map branded products to canonical inputs, approve products per project, and define crop-stage dosage guidance.</p>
-    {error && <p className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{notice}</p>}
+    {isPermissionDenied(error) ? <PermissionErrorCard error={error} className="mt-4" /> : error ? <p className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">{getErrorMessage(error)}</p> : null}{notice && <p className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{notice}</p>}
     {!loadingProfile && (!canEditCatalog || !canEditProjectApprovals) && <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-semibold">Product catalog permissions</p><p className="mt-1">Role {adminRoleLabel(adminProfile)}: catalog edits {canEditCatalog ? "allowed" : "read-only"}; project approvals {canEditProjectApprovals ? "allowed" : "read-only"}. Browsing remains available.</p></div>}
     <div className="mt-6 grid gap-5 xl:grid-cols-3">
       <Panel title="New manufacturer"><Field label="Code" value={mfg.code} set={v => setMfg({ ...mfg, code: v })} /><Field label="Name" value={mfg.canonical_name} set={v => setMfg({ ...mfg, canonical_name: v })} /><Field label="Short name" value={mfg.short_name} set={v => setMfg({ ...mfg, short_name: v })} /><button disabled={busy || !canEditCatalog || !mfg.code || !mfg.canonical_name} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={createMfg} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create manufacturer</button></Panel>
