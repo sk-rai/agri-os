@@ -115,6 +115,8 @@ export default function WorkflowPreviewPage() {
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
   const [deletedStages, setDeletedStages] = useState<WorkflowDeletedStagesResponse | null>(null);
   const [selectedStageCode, setSelectedStageCode] = useState<string | null>(null);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [publishConfirmChecked, setPublishConfirmChecked] = useState(false);
 
   const loadDeletedStages = async (templateVersionId: string) => {
     const deleted = await workflowCatalogApi.deletedDraftStages(templateVersionId);
@@ -240,6 +242,8 @@ export default function WorkflowPreviewPage() {
       setPreview(published);
       setDraftValidation(null);
       setPublishImpact(published.publish_impact || impact);
+      setShowPublishConfirm(false);
+      setPublishConfirmChecked(false);
       setPublishMessage(`Published ${published.workflow_template_code} version ${published.version}. Android catalog will now serve this version.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to publish draft version");
@@ -512,7 +516,10 @@ export default function WorkflowPreviewPage() {
               <button
                 type="button"
                 disabled={draftPublishing || draftValidating || !isDraftPreview || publishBlocked}
-                onClick={publishDraft}
+                onClick={() => {
+                  setPublishConfirmChecked(false);
+                  setShowPublishConfirm(true);
+                }}
                 className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
                 title={publishBlocked ? "Fix blocking validation errors before publishing" : undefined}
               >
@@ -522,6 +529,23 @@ export default function WorkflowPreviewPage() {
           </div>
         </div>
       </div>
+
+      {isDraftPreview && showPublishConfirm ? (
+        <PublishConfirmationModal
+          preview={preview}
+          stages={stages}
+          validation={draftValidation}
+          impact={publishImpact}
+          publishing={draftPublishing || draftValidating}
+          confirmed={publishConfirmChecked}
+          onConfirmedChange={setPublishConfirmChecked}
+          onCancel={() => {
+            setShowPublishConfirm(false);
+            setPublishConfirmChecked(false);
+          }}
+          onPublish={publishDraft}
+        />
+      ) : null}
 
       {isDraftPreview ? (
         <div className="space-y-4">
@@ -1739,6 +1763,84 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
   );
 }
 
+
+function PublishConfirmationModal({
+  preview,
+  stages,
+  validation,
+  impact,
+  publishing,
+  confirmed,
+  onConfirmedChange,
+  onCancel,
+  onPublish,
+}: {
+  preview: WorkflowPreviewResponse;
+  stages: WorkflowStage[];
+  validation: WorkflowDraftValidationResponse | null;
+  impact: WorkflowPublishImpactResponse | null;
+  publishing: boolean;
+  confirmed: boolean;
+  onConfirmedChange: (value: boolean) => void;
+  onCancel: () => void;
+  onPublish: () => void;
+}) {
+  const recommendations = stages.flatMap((stage) => stage.recommended_activities || []);
+  const activePinned = impact?.counts.active_pinned_cycles_impacted ?? 0;
+  const pinned = impact?.counts.pinned_cycles_impacted ?? 0;
+  const previousVersions = impact?.counts.published_versions_impacted ?? 0;
+  const validationStatus = !validation ? "Not validated in this view" : validation.can_publish ? "Validation passed" : `${validation.counts.errors} validation error(s)`;
+  const canConfirm = confirmed && !publishing && (!validation || validation.can_publish);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-5 shadow-2xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Confirm workflow publish</h2>
+            <p className="mt-1 text-sm text-gray-500">This publishes the draft to the Android-facing workflow catalog for new crop cycles.</p>
+          </div>
+          <Badge>{preview.workflow_template_code}</Badge>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <ReadinessItem title="Draft version" detail={`${preview.version} / ${preview.workflow_template_version_id}`} status="pending" />
+          <ReadinessItem title="Validation" detail={validationStatus} status={!validation ? "pending" : validation.can_publish ? "ok" : "error"} />
+          <ReadinessItem title="Rendered content" detail={`${stages.length} stages, ${recommendations.length} recommendations.`} status="ok" />
+          <ReadinessItem title="Previous published versions" detail={`${previousVersions} version(s) will be archived/replaced for Android catalog selection.`} status={previousVersions ? "warn" : "ok"} />
+          <ReadinessItem title="Pinned crop cycles" detail={`${pinned} total pinned cycle(s), ${activePinned} active pinned cycle(s).`} status={activePinned ? "warn" : "ok"} />
+          <ReadinessItem title="Android effect" detail="New crop cycles will use the newly published version; existing pinned cycles remain on their stored version." status="warn" />
+        </div>
+
+        {impact?.blocking_reasons?.length ? (
+          <div className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <p className="font-semibold">Publish impact blockers</p>
+            <ul className="mt-2 list-disc pl-5">
+              {impact.blocking_reasons.map((reason) => <li key={reason}>{reason}</li>)}
+            </ul>
+          </div>
+        ) : null}
+
+        <label className="mt-5 flex items-start gap-3 rounded border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => onConfirmedChange(event.target.checked)}
+            className="mt-1"
+          />
+          <span>I understand this publishes the draft workflow to the Android catalog for future crop-cycle creation.</span>
+        </label>
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={publishing} onClick={onCancel} className="rounded border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60">Cancel</button>
+          <button type="button" disabled={!canConfirm} onClick={onPublish} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
+            {publishing ? "Publishing..." : "Confirm publish"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function PublishReadinessChecklist({
   stages,
