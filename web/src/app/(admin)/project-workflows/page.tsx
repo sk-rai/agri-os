@@ -13,6 +13,12 @@ import {
 
 type WorkflowVisibilityFilter = "ALL" | "ANDROID_VISIBLE" | "ENABLED" | "DISABLED" | "BLOCKED" | "OVERRIDDEN";
 type WorkflowChangeIntent = "ENABLE" | "DISABLE" | "SAVE_METADATA";
+
+const PROJECT_WORKFLOW_EDIT_ROLES = new Set(["ENTERPRISE_ADMIN", "MANAGER", "AGRONOMIST"]);
+
+function canRoleEditProjectWorkflows(role: string | null): boolean {
+  return PROJECT_WORKFLOW_EDIT_ROLES.has((role || "").toUpperCase());
+}
 type PendingWorkflowChange = { workflow: ProjectWorkflowEnablementItem; enabled: boolean; intent: WorkflowChangeIntent };
 
 function labelText(value: Record<string, string> | string | undefined | null) {
@@ -35,6 +41,15 @@ export default function ProjectWorkflowsPage() {
   const [visibilityFilter, setVisibilityFilter] = useState<WorkflowVisibilityFilter>("ALL");
   const [pendingChange, setPendingChange] = useState<PendingWorkflowChange | null>(null);
   const [pendingChangeReason, setPendingChangeReason] = useState("");
+  const [adminRole, setAdminRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setAdminRole(localStorage.getItem("agrios_role"));
+    }
+  }, []);
+
+  const canEditProjectWorkflows = canRoleEditProjectWorkflows(adminRole);
 
   useEffect(() => {
     projectsApi
@@ -163,6 +178,8 @@ export default function ProjectWorkflowsPage() {
           visibilityFilter={visibilityFilter}
           onVisibilityFilterChange={setVisibilityFilter}
           assignmentAudit={assignmentAudit}
+          canEditProjectWorkflows={canEditProjectWorkflows}
+          adminRole={adminRole}
         />
       )}
       {summary && pendingChange ? (
@@ -192,6 +209,8 @@ function ProjectWorkflowSummary({
   visibilityFilter,
   onVisibilityFilterChange,
   assignmentAudit,
+  canEditProjectWorkflows,
+  adminRole,
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   updatingWorkflowId: string | null;
@@ -203,9 +222,13 @@ function ProjectWorkflowSummary({
   visibilityFilter: WorkflowVisibilityFilter;
   onVisibilityFilterChange: (value: WorkflowVisibilityFilter) => void;
   assignmentAudit: ProjectWorkflowAssignmentAuditResponse | null;
+  canEditProjectWorkflows: boolean;
+  adminRole: string | null;
 }) {
   const lifecycle = summary.safe_edit_lifecycle;
-  const canEdit = lifecycle.can_edit_project_workflows;
+  const lifecycleAllowsEdit = lifecycle.can_edit_project_workflows;
+  const canEdit = lifecycleAllowsEdit && canEditProjectWorkflows;
+  const roleLabel = (adminRole || "UNASSIGNED").replaceAll("_", " ");
   const normalizedSearch = search.trim().toUpperCase();
   const filteredWorkflows = useMemo(() => {
     return summary.workflows.filter((workflow) => {
@@ -258,13 +281,18 @@ function ProjectWorkflowSummary({
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
             <p className={`text-sm font-semibold ${canEdit ? "text-green-800" : "text-amber-900"}`}>
-              {canEdit ? "Workflow configuration editable" : "Workflow configuration locked"}
+              {canEdit ? "Workflow configuration editable" : !canEditProjectWorkflows ? "View-only project workflow access" : "Workflow configuration locked"}
             </p>
             <p className={`mt-1 text-sm ${canEdit ? "text-green-700" : "text-amber-800"}`}>
               {canEdit
                 ? "This project has no enrolled field data yet. Enablement and override changes are still allowed."
-                : lifecycle.suggested_action || "Create a new workflow version for future cycles instead of editing this project in-place."}
+                : !canEditProjectWorkflows
+                  ? `Your current role (${roleLabel}) can view project workflow assignments, but cannot edit them.`
+                  : lifecycle.suggested_action || "Create a new workflow version for future cycles instead of editing this project in-place."}
             </p>
+            {!canEditProjectWorkflows ? (
+              <p className="mt-2 rounded bg-white/70 p-2 text-sm text-amber-800">Ask an Enterprise Admin, Manager, or Agronomist to make assignment changes for this project.</p>
+            ) : null}
             {!canEdit && lifecycle.reasons.length > 0 ? (
               <ul className="mt-2 list-disc pl-5 text-sm text-amber-800">
                 {lifecycle.reasons.map((reason) => (
@@ -421,7 +449,7 @@ function WorkflowVisibilityCard({
   const androidVisible = workflow.assignment_rule === "ANDROID_VISIBLE";
   const blockedByCrop = workflow.visibility_status === "CROP_SCOPE_BLOCKED";
   const editDisabledReason = !canEdit
-    ? "Project has enrolled/active field data; change future workflow versions instead."
+    ? "Your role or project lifecycle does not allow project workflow assignment edits."
     : blockedByCrop
       ? "Project crop scope does not include this workflow crop."
       : undefined;
