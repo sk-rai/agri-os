@@ -21,6 +21,7 @@ import {
   type WorkflowStage,
   type WorkflowPreviewWarning,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
 type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION";
@@ -154,6 +155,11 @@ export default function WorkflowPreviewPage() {
   const [selectedStageCode, setSelectedStageCode] = useState<string | null>(null);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [publishConfirmChecked, setPublishConfirmChecked] = useState(false);
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+
+  const canEditDraft = hasAdminPermission(adminProfile, "EDIT");
+  const canPublishDraft = hasAdminPermission(adminProfile, "PUBLISH");
+  const canEditProjectOverrides = hasAdminPermission(adminProfile, "PROJECT_EDIT");
 
   const loadDeletedStages = async (templateVersionId: string) => {
     const deleted = await workflowCatalogApi.deletedDraftStages(templateVersionId);
@@ -166,6 +172,24 @@ export default function WorkflowPreviewPage() {
       includeInactive: true,
     });
     setOverrideHistory(history);
+  };
+
+  const requireDraftEdit = () => {
+    if (canEditDraft) return true;
+    setError("Your current role can preview workflows but cannot edit workflow drafts.");
+    return false;
+  };
+
+  const requirePublish = () => {
+    if (canPublishDraft) return true;
+    setError("Your current role can preview workflows but cannot publish workflow drafts.");
+    return false;
+  };
+
+  const requireProjectOverrideEdit = () => {
+    if (canEditProjectOverrides) return true;
+    setError("Your current role can preview project overrides but cannot edit them.");
+    return false;
   };
 
   useEffect(() => {
@@ -231,6 +255,7 @@ export default function WorkflowPreviewPage() {
     reason: string,
   ) => {
     if (!preview?.project_id) return;
+    if (!requireProjectOverrideEdit()) return;
     setBusyTarget(`${targetType}:${targetCode}`);
     setError(null);
     try {
@@ -270,6 +295,7 @@ export default function WorkflowPreviewPage() {
 
   const cloneDraft = async () => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setDraftCloning(true);
     setDraftCloneMessage(null);
     setDraftCloneId(null);
@@ -287,6 +313,7 @@ export default function WorkflowPreviewPage() {
 
   const publishDraft = async () => {
     if (!preview) return;
+    if (!requirePublish()) return;
     setDraftPublishing(true);
     setPublishMessage(null);
     setPublishOutcome(null);
@@ -318,6 +345,7 @@ export default function WorkflowPreviewPage() {
 
   const updateDraftStage = async (stageCode: string, data: WorkflowDraftStageUpdateRequest) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_STAGE:${stageCode}`);
     setError(null);
     try {
@@ -333,6 +361,7 @@ export default function WorkflowPreviewPage() {
 
   const createDraftRecommendation = async (stageCode: string, data: WorkflowDraftRecommendationRequest) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_STAGE:${stageCode}`);
     setError(null);
     try {
@@ -348,6 +377,7 @@ export default function WorkflowPreviewPage() {
 
   const createDraftStage = async (afterStageCode: string, data: WorkflowDraftStageCreateRequest) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     const nextCode = normalizeStageCode(data.stage_code);
     setBusyTarget(`DRAFT_STAGE:${afterStageCode}:CREATE`);
     setError(null);
@@ -369,6 +399,7 @@ export default function WorkflowPreviewPage() {
 
   const duplicateDraftStage = async (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     const nextCode = data.stage_code ? normalizeStageCode(data.stage_code) : undefined;
     setBusyTarget(`DRAFT_STAGE:${stageCode}:DUPLICATE`);
     setError(null);
@@ -390,6 +421,7 @@ export default function WorkflowPreviewPage() {
 
   const reorderDraftStages = async (stageCodes: string[]) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget("DRAFT_STAGE:REORDER");
     setError(null);
     try {
@@ -405,6 +437,7 @@ export default function WorkflowPreviewPage() {
 
   const deleteDraftStage = async (stageCode: string) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_STAGE:${stageCode}:DELETE`);
     setError(null);
     try {
@@ -422,6 +455,7 @@ export default function WorkflowPreviewPage() {
 
   const updateDraftRecommendation = async (recommendationId: string, data: WorkflowDraftRecommendationRequest) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_REC:${recommendationId}`);
     setError(null);
     try {
@@ -437,6 +471,7 @@ export default function WorkflowPreviewPage() {
 
   const reorderDraftRecommendations = async (stageCode: string, recommendationIds: string[]) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_REC_REORDER:${stageCode}`);
     setError(null);
     try {
@@ -455,6 +490,7 @@ export default function WorkflowPreviewPage() {
 
   const restoreDraftStage = async (stageCode: string) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_STAGE:${stageCode}:RESTORE`);
     setError(null);
     try {
@@ -472,6 +508,7 @@ export default function WorkflowPreviewPage() {
 
   const deleteDraftRecommendation = async (recommendationId: string) => {
     if (!preview) return;
+    if (!requireDraftEdit()) return;
     setBusyTarget(`DRAFT_REC:${recommendationId}`);
     setError(null);
     try {
@@ -487,6 +524,7 @@ export default function WorkflowPreviewPage() {
 
   const removeOverride = async (overrideId: string) => {
     if (!preview?.project_id) return;
+    if (!requireProjectOverrideEdit()) return;
     setBusyTarget(`OVERRIDE:${overrideId}`);
     setError(null);
     try {
@@ -544,6 +582,13 @@ export default function WorkflowPreviewPage() {
         <Stat label="Warnings" value={preview.warnings.length} tone={preview.warnings.length ? "warn" : "ok"} />
       </div>
 
+      {!adminProfileLoading && (!canEditDraft || !canPublishDraft || !canEditProjectOverrides) ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Workflow editor permissions</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)}: draft edits {canEditDraft ? "allowed" : "read-only"}; publishing {canPublishDraft ? "allowed" : "read-only"}; project overrides {canEditProjectOverrides ? "allowed" : "read-only"}. Preview, validation reports, usage impact, and audit history remain visible.</p>
+        </div>
+      ) : null}
+
       {isDraftPreview ? (
         <DraftFreshnessCard
           freshness={draftFreshness}
@@ -587,7 +632,8 @@ export default function WorkflowPreviewPage() {
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
-                disabled={draftCloning || preview.status !== "PUBLISHED"}
+                disabled={draftCloning || preview.status !== "PUBLISHED" || !canEditDraft}
+                title={!canEditDraft ? "Your role cannot clone/edit workflow drafts." : undefined}
                 onClick={cloneDraft}
                 className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:cursor-wait disabled:opacity-60"
               >
@@ -603,14 +649,14 @@ export default function WorkflowPreviewPage() {
               </button>
               <button
                 type="button"
-                disabled={draftPublishing || draftValidating || !isDraftPreview || publishBlocked}
+                disabled={draftPublishing || draftValidating || !isDraftPreview || publishBlocked || !canPublishDraft}
+                title={!canPublishDraft ? "Your role cannot publish workflow drafts." : publishBlocked ? publishBlockedReason : undefined}
                 onClick={() => {
                   setPublishConfirmChecked(false);
                   setShowPublishConfirm(true);
                 }}
                 className="rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
-                title={publishBlocked ? publishBlockedReason : undefined}
-              >
+                              >
                 {draftPublishing ? "Publishing..." : validationMissing ? "Validate before publish" : "Publish draft"}
               </button>
             </div>
@@ -659,8 +705,8 @@ export default function WorkflowPreviewPage() {
         onSelectStage={setSelectedStageCode}
         cropCode={preview.crop_code}
         projectId={preview.project_id || undefined}
-        draftEditable={isDraftPreview}
-        projectScoped={Boolean(preview.project_id)}
+        draftEditable={isDraftPreview && canEditDraft}
+        projectScoped={Boolean(preview.project_id) && canEditProjectOverrides}
         busyTarget={busyTarget}
         onCreateDraftStage={createDraftStage}
         onDuplicateDraftStage={duplicateDraftStage}
@@ -677,9 +723,10 @@ export default function WorkflowPreviewPage() {
         <WarningsPanel warnings={preview.warnings} warningCounts={warningCounts} />
         <OverridesPanel
           overrides={preview.applied_overrides}
-          projectScoped={Boolean(preview.project_id)}
+          projectScoped={Boolean(preview.project_id) && canEditProjectOverrides}
           busyTarget={busyTarget}
           onRemoveOverride={removeOverride}
+          canEditProjectOverrides={canEditProjectOverrides}
         />
       </div>
 
@@ -688,6 +735,7 @@ export default function WorkflowPreviewPage() {
           history={overrideHistory}
           busyTarget={busyTarget}
           onRemoveOverride={removeOverride}
+          canEditProjectOverrides={canEditProjectOverrides}
         />
       ) : null}
 
@@ -702,8 +750,8 @@ export default function WorkflowPreviewPage() {
               stage={stage}
               cropCode={preview.crop_code}
               projectId={preview.project_id || undefined}
-              projectScoped={Boolean(preview.project_id)}
-              draftEditable={preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft"}
+              projectScoped={Boolean(preview.project_id) && canEditProjectOverrides}
+              draftEditable={preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft" && canEditDraft}
               busyTarget={busyTarget}
               onCreateOverride={createOverride}
               onUpdateDraftStage={updateDraftStage}
@@ -2374,11 +2422,13 @@ function OverridesPanel({
   projectScoped,
   busyTarget,
   onRemoveOverride,
+  canEditProjectOverrides,
 }: {
   overrides: WorkflowPreviewResponse["applied_overrides"];
   projectScoped: boolean;
   busyTarget: string | null;
   onRemoveOverride: (overrideId: string) => void;
+  canEditProjectOverrides: boolean;
 }) {
   return (
     <div className="rounded-lg bg-white p-5 shadow">
@@ -2399,7 +2449,8 @@ function OverridesPanel({
               {projectScoped ? (
                 <button
                   type="button"
-                  disabled={busyTarget === `OVERRIDE:${override.id}`}
+                  disabled={busyTarget === `OVERRIDE:${override.id}` || !canEditProjectOverrides}
+                  title={canEditProjectOverrides ? undefined : "Your role cannot remove project overrides."}
                   onClick={() => onRemoveOverride(override.id)}
                   className="mt-3 rounded border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
                 >
@@ -2423,10 +2474,12 @@ function OverrideHistoryPanel({
   history,
   busyTarget,
   onRemoveOverride,
+  canEditProjectOverrides,
 }: {
   history: WorkflowOverrideHistoryResponse | null;
   busyTarget: string | null;
   onRemoveOverride: (overrideId: string) => void;
+  canEditProjectOverrides: boolean;
 }) {
   return (
     <div className="mb-6 rounded-lg bg-white p-5 shadow">
@@ -2470,7 +2523,8 @@ function OverrideHistoryPanel({
                     {override.is_active ? (
                       <button
                         type="button"
-                        disabled={busyTarget === `OVERRIDE:${override.id}`}
+                        disabled={busyTarget === `OVERRIDE:${override.id}` || !canEditProjectOverrides}
+                        title={canEditProjectOverrides ? undefined : "Your role cannot remove project overrides."}
                         onClick={(event) => {
                           event.preventDefault();
                           onRemoveOverride(override.id);
