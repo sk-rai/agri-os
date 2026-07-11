@@ -156,6 +156,7 @@ export default function DashboardPage() {
       </form>
 
       <CommandCenterPanel data={data} syncHealth={syncHealth} />
+      <AttentionQueuePanel data={data} syncHealth={syncHealth} />
 
       {summary ? (
         <>
@@ -185,6 +186,86 @@ export default function DashboardPage() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardResponse | null; syncHealth: SyncMaterializationHealthResponse | null }) {
+  const summary = data?.summary;
+  const syncSummary = syncHealth?.summary;
+  const attentionItems = [
+    {
+      label: "Failed sync events",
+      count: syncSummary?.failed_count || 0,
+      href: "/sync-health?status=FAILED",
+      tone: "red",
+      help: "Events accepted by sync but not successfully materialized.",
+    },
+    {
+      label: "Sync conflicts",
+      count: syncSummary?.conflict_count || 0,
+      href: "/conflicts",
+      tone: "red",
+      help: "Client/server conflicts waiting for admin resolution.",
+    },
+    {
+      label: "Missing GPS parcels",
+      count: summary?.geometry_missing_count || 0,
+      href: data ? geometryLookupHref(data, "MISSING") : "/lookup?geometryStatus=MISSING",
+      tone: "amber",
+      help: "Parcels without usable geometry or centroid data.",
+    },
+    {
+      label: "Activity variances",
+      count: summary?.variance_count || 0,
+      href: data ? dashboardActivityHref(data) : "/activity-usage",
+      tone: "purple",
+      help: "Logged activities where actual inputs differ from recommended rules.",
+    },
+    {
+      label: "Active crop cycles",
+      count: summary?.active_cycle_count || 0,
+      href: data ? dashboardProjectTraceHref(data, { cycleStatus: "ACTIVE" }) : "/lookup",
+      tone: "blue",
+      help: "Cycles currently in progress and likely to produce field activity.",
+    },
+  ];
+  const actionableCount = attentionItems.reduce((sum, item) => sum + item.count, 0);
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Attention queues</h2>
+          <p className="mt-1 text-sm text-gray-500">Operational signals that may need admin follow-up.</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${actionableCount > 0 ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>
+          {actionableCount > 0 ? `${actionableCount} open signals` : "No open signals"}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {attentionItems.map((item) => (
+          <AttentionItem key={item.label} {...item} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AttentionItem({ label, count, href, tone, help }: { label: string; count: number; href: string; tone: string; help: string }) {
+  const toneMap: Record<string, string> = {
+    red: "border-red-200 bg-red-50 text-red-900",
+    amber: "border-amber-200 bg-amber-50 text-amber-900",
+    purple: "border-purple-200 bg-purple-50 text-purple-900",
+    blue: "border-blue-200 bg-blue-50 text-blue-900",
+  };
+  return (
+    <Link href={href} className={`rounded-lg border p-3 transition hover:-translate-y-0.5 hover:shadow-md ${toneMap[tone] || "border-gray-200 bg-gray-50 text-gray-900"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold">{label}</p>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-bold">{count}</span>
+      </div>
+      <p className="mt-2 text-xs opacity-75">{help}</p>
+    </Link>
   );
 }
 
