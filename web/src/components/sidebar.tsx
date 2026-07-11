@@ -8,6 +8,7 @@ const navItems = [
   { href: "/tenants", label: "Tenants", icon: "🏢" },
   { href: "/projects", label: "Projects", icon: "📋" },
   { href: "/users", label: "Tenant Users", icon: "👥" },
+  { href: "/my-access", label: "My Access", icon: "Lock" },
   { href: "/workflows", label: "Workflows", icon: "🌱" },
   { href: "/project-workflows", label: "Project Workflows", icon: "🧭" },
   { href: "/inputs", label: "Inputs", icon: "🧪" },
