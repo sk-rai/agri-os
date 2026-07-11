@@ -74,15 +74,29 @@ def _unauthorized(detail: str) -> HTTPException:
     )
 
 
-def _forbidden(permission: AdminPermission, detail: str) -> HTTPException:
-    return HTTPException(
-        status_code=403,
-        detail={
-            "error": "ADMIN_PERMISSION_DENIED",
-            "required_permission": permission.value,
-            "message": detail,
-        },
-    )
+def _forbidden(
+    permission: AdminPermission,
+    detail: str,
+    *,
+    current_role: Optional[str] = None,
+    current_permissions: Optional[set[AdminPermission]] = None,
+    tenant_id: Optional[str] = None,
+    project_id: Optional[uuid.UUID] = None,
+) -> HTTPException:
+    payload = {
+        "error": "ADMIN_PERMISSION_DENIED",
+        "required_permission": permission.value,
+        "message": detail,
+    }
+    if current_role is not None:
+        payload["current_role"] = current_role or "UNASSIGNED"
+    if current_permissions is not None:
+        payload["current_permissions"] = sorted(permission.value for permission in current_permissions)
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
+    if project_id is not None:
+        payload["project_id"] = str(project_id)
+    return HTTPException(status_code=403, detail=payload)
 
 
 def optional_admin_viewer(
@@ -147,14 +161,32 @@ def require_admin_permission(permission: AdminPermission, *, project_scoped: boo
 
         token_tenant = str(claims.get("tenant_id") or "")
         tenant_id = x_tenant_id or token_tenant or user.tenant_id
-        if not tenant_id:
-            raise _forbidden(permission, "Admin user is not assigned to a tenant.")
-        if token_tenant and token_tenant != tenant_id:
-            raise _forbidden(permission, "Token tenant does not match X-Tenant-ID.")
-        if user.tenant_id and user.tenant_id != tenant_id:
-            raise _forbidden(permission, "User is not assigned to this tenant.")
-
         role = str(user.role or "").upper()
+        tenant_permissions = ROLE_PERMISSIONS.get(role, set())
+        if not tenant_id:
+            raise _forbidden(
+                permission,
+                "Admin user is not assigned to a tenant.",
+                current_role=role,
+                current_permissions=tenant_permissions,
+            )
+        if token_tenant and token_tenant != tenant_id:
+            raise _forbidden(
+                permission,
+                "Token tenant does not match X-Tenant-ID.",
+                current_role=role,
+                current_permissions=tenant_permissions,
+                tenant_id=tenant_id,
+            )
+        if user.tenant_id and user.tenant_id != tenant_id:
+            raise _forbidden(
+                permission,
+                "User is not assigned to this tenant.",
+                current_role=role,
+                current_permissions=tenant_permissions,
+                tenant_id=tenant_id,
+            )
+
         effective_role = role
         project_role_name: Optional[str] = None
         if project_scoped:
@@ -174,14 +206,26 @@ def require_admin_permission(permission: AdminPermission, *, project_scoped: boo
                     ProjectRole.is_active == True,
                 ).first()
                 if not project_role:
-                    raise _forbidden(permission, "User is not assigned to this project.")
+                    raise _forbidden(
+                        permission,
+                        "User is not assigned to this project.",
+                        current_role=role,
+                        current_permissions=tenant_permissions,
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                    )
                 project_role_name = str(project_role.role or "").upper()
                 effective_role = project_role_name
 
-        if permission not in ROLE_PERMISSIONS.get(effective_role, set()):
+        effective_permissions = ROLE_PERMISSIONS.get(effective_role, set())
+        if permission not in effective_permissions:
             raise _forbidden(
                 permission,
                 f"Role {effective_role or 'UNASSIGNED'} does not grant {permission.value}.",
+                current_role=effective_role,
+                current_permissions=effective_permissions,
+                tenant_id=tenant_id,
+                project_id=project_id if project_scoped else None,
             )
         return AdminPrincipal(
             user_id=user.id,

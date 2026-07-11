@@ -102,6 +102,10 @@ def main():
         check(invalid_token.status_code == 401, "Invalid bearer token is rejected", invalid_token.text)
         viewer_create = client.post("/api/v1/input-catalog/inputs", headers=viewer_headers, json=payload)
         check(viewer_create.status_code == 403, "Viewer cannot edit master inputs", viewer_create.text)
+        viewer_denial = viewer_create.json()["detail"]
+        check(viewer_denial["required_permission"] == "EDIT", "403 reports required permission", viewer_denial)
+        check(viewer_denial["current_role"] == "ADMIN_VIEWER", "403 reports current role", viewer_denial)
+        check(viewer_denial["current_permissions"] == ["VIEW"], "403 reports current permissions", viewer_denial)
         tenant_mismatch = client.post(
             "/api/v1/input-catalog/inputs",
             headers={**editor_headers, "X-Tenant-ID": "another-tenant"},
@@ -180,6 +184,10 @@ def main():
             json={"enabled": True},
         )
         check(unassigned_project.status_code == 403, "Project editor cannot edit unassigned project", unassigned_project.text)
+        unassigned_denial = unassigned_project.json()["detail"]
+        check(unassigned_denial["required_permission"] == "PROJECT_EDIT", "Project 403 reports required permission", unassigned_denial)
+        check(unassigned_denial["current_role"] == "AGRONOMIST", "Project 403 reports tenant role", unassigned_denial)
+        check(unassigned_denial["project_id"] == str(project_ids[1]), "Project 403 reports target project", unassigned_denial)
         enterprise_project = client.put(
             f"/api/v1/input-catalog/projects/{project_ids[1]}/input-assignments/{TEMP_CODE}",
             headers=enterprise_headers,
