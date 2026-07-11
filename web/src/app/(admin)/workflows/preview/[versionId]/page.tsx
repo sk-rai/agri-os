@@ -27,6 +27,7 @@ type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE
 type StageActionMode = "CREATE" | "DUPLICATE";
 type StageDesignHint = { level: "ERROR" | "WARN" | "INFO"; message: string };
 type DirtyTargets = { stageCodes: Set<string>; recommendationIds: Set<string> };
+type PublishOutcome = { published: WorkflowPreviewResponse; impact: WorkflowPublishImpactResponse | null };
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -146,6 +147,7 @@ export default function WorkflowPreviewPage() {
   const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
   const [draftValidating, setDraftValidating] = useState(false);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
+  const [publishOutcome, setPublishOutcome] = useState<PublishOutcome | null>(null);
   const [postValidationAudit, setPostValidationAudit] = useState<WorkflowAuditResponse | null>(null);
   const [postValidationAuditLoading, setPostValidationAuditLoading] = useState(false);
   const [deletedStages, setDeletedStages] = useState<WorkflowDeletedStagesResponse | null>(null);
@@ -287,6 +289,7 @@ export default function WorkflowPreviewPage() {
     if (!preview) return;
     setDraftPublishing(true);
     setPublishMessage(null);
+    setPublishOutcome(null);
     setError(null);
     try {
       const validation = await workflowCatalogApi.validateDraftVersion(preview.workflow_template_version_id);
@@ -300,7 +303,9 @@ export default function WorkflowPreviewPage() {
       const published = await workflowCatalogApi.publishDraftVersion(preview.workflow_template_version_id, { archive_previous: true });
       setPreview(published);
       setDraftValidation(null);
-      setPublishImpact(published.publish_impact || impact);
+      const finalImpact = published.publish_impact || impact;
+      setPublishImpact(finalImpact);
+      setPublishOutcome({ published, impact: finalImpact });
       setShowPublishConfirm(false);
       setPublishConfirmChecked(false);
       setPublishMessage(`Published ${published.workflow_template_code} version ${published.version}. Android catalog will now serve this version.`);
@@ -556,6 +561,8 @@ export default function WorkflowPreviewPage() {
           <p className="mt-1">Recent draft edits clear validation. Run validation again before publishing this workflow to Android.</p>
         </div>
       ) : null}
+
+      {publishOutcome ? <PublishOutcomeCard outcome={publishOutcome} /> : null}
 
       <div className="mb-6 rounded-lg bg-white p-5 shadow">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -1878,6 +1885,38 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
   );
 }
 
+
+function PublishOutcomeCard({ outcome }: { outcome: PublishOutcome }) {
+  const impact = outcome.impact;
+  const published = outcome.published;
+  const archivedCount = impact?.counts.published_versions_impacted ?? 0;
+  const pinnedCycles = impact?.counts.pinned_cycles_impacted ?? 0;
+  const activePinnedCycles = impact?.counts.active_pinned_cycles_impacted ?? 0;
+  return (
+    <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-5 text-sm text-green-900 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-base font-semibold">Workflow published successfully</p>
+          <p className="mt-1">
+            {published.workflow_template_code} version {published.version} is now the Android-facing catalog version for new crop cycles.
+          </p>
+        </div>
+        <Badge>{published.status}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <ReadinessItem title="Published version" detail={`${published.version} / ${published.workflow_template_version_id}`} status="ok" />
+        <ReadinessItem title="Previous versions" detail={`${archivedCount} published version(s) archived/replaced.`} status={archivedCount ? "warn" : "ok"} />
+        <ReadinessItem title="Pinned cycles" detail={`${pinnedCycles} pinned, ${activePinnedCycles} active pinned remain on stored versions.`} status={activePinnedCycles ? "warn" : "ok"} />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2 text-xs">
+        <Link href={`/workflows/preview/${published.workflow_template_version_id}`} className="rounded border border-green-300 bg-white/70 px-3 py-1.5 font-semibold text-green-800 hover:bg-white">Open published preview</Link>
+        <Link href="/workflows" className="rounded border border-green-300 bg-white/70 px-3 py-1.5 font-semibold text-green-800 hover:bg-white">Open workflow catalog</Link>
+        <button type="button" onClick={() => document.getElementById("visual-workflow-builder")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded border border-green-300 bg-white/70 px-3 py-1.5 font-semibold text-green-800 hover:bg-white">Review rendered workflow</button>
+      </div>
+      <p className="mt-3 text-xs text-green-800/80">Existing crop cycles pinned to older workflow versions remain renderable and read-only on their stored version.</p>
+    </div>
+  );
+}
 
 function PublishConfirmationModal({
   preview,
