@@ -26,6 +26,7 @@ type WorkflowTargetType = "STAGE" | "RECOMMENDATION";
 type WorkflowOverrideOperation = "HIDE" | "RENAME" | "CHANGE_DURATION" | "CHANGE_OFFSET" | "CHANGE_QUANTITY" | "ADD_RECOMMENDATION";
 type StageActionMode = "CREATE" | "DUPLICATE";
 type StageDesignHint = { level: "ERROR" | "WARN" | "INFO"; message: string };
+type DirtyTargets = { stageCodes: Set<string>; recommendationIds: Set<string> };
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -60,6 +61,37 @@ function recommendationSource(rec: WorkflowRecommendation): "CATALOG" | "CUSTOM"
   const code = (rec.input_code || "").toUpperCase();
   if (!code) return "UNCODED";
   return code.startsWith("CUSTOM") ? "CUSTOM" : "CATALOG";
+}
+
+
+function dirtyTargetsFromAudit(audit: WorkflowAuditResponse | null, stages: WorkflowStage[]): DirtyTargets {
+  const stageCodes = new Set<string>();
+  const recommendationIds = new Set<string>();
+  const recommendationStage = new Map<string, string>();
+  for (const stage of stages) {
+    for (const rec of stage.recommended_activities || []) {
+      const recId = recommendationId(rec);
+      if (recId) recommendationStage.set(recId, stage.code);
+    }
+  }
+  for (const event of audit?.events || []) {
+    const targetType = String(event.target_type || "").toUpperCase();
+    const action = String(event.action || "").toUpperCase();
+    const metadata = event.metadata || {};
+    if (targetType === "STAGE" && event.target_code) stageCodes.add(event.target_code);
+    if (targetType === "VERSION" && action.includes("REORDER_DRAFT_STAGES")) {
+      stages.forEach((stage) => stageCodes.add(stage.code));
+    }
+    if (targetType === "RECOMMENDATION") {
+      if (event.target_id) recommendationIds.add(event.target_id);
+      const stageFromMetadata = typeof metadata.stage_code === "string" ? metadata.stage_code : null;
+      const stageFromTarget = typeof event.target_code === "string" && event.target_code.includes("|") ? event.target_code.split("|")[0] : null;
+      const stageFromRecommendation = event.target_id ? recommendationStage.get(event.target_id) : null;
+      const stageCode = stageFromMetadata || stageFromTarget || stageFromRecommendation;
+      if (stageCode) stageCodes.add(stageCode);
+    }
+  }
+  return { stageCodes, recommendationIds };
 }
 
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
@@ -475,6 +507,7 @@ export default function WorkflowPreviewPage() {
   const stages = preview.android_preview.stages || [];
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0] || null;
   const recommendations = stages.flatMap((stage) => stage.recommended_activities || []);
+  const dirtyTargets = dirtyTargetsFromAudit(postValidationAudit, stages);
   const warningCounts = preview.warnings.reduce<Record<string, number>>((acc, warning) => {
     acc[warning.level] = (acc[warning.level] || 0) + 1;
     return acc;
@@ -612,6 +645,7 @@ export default function WorkflowPreviewPage() {
 
       <VisualWorkflowBuilder
         stages={stages}
+        dirtyTargets={dirtyTargets}
         selectedStageCode={selectedStage?.code || null}
         onSelectStage={setSelectedStageCode}
         cropCode={preview.crop_code}
@@ -767,6 +801,7 @@ function DeletedStagesPanel({
 
 function VisualWorkflowBuilder({
   stages,
+  dirtyTargets,
   selectedStageCode,
   onSelectStage,
   cropCode,
@@ -785,6 +820,7 @@ function VisualWorkflowBuilder({
   onDeleteDraftRecommendation,
 }: {
   stages: WorkflowStage[];
+  dirtyTargets: DirtyTargets;
   selectedStageCode: string | null;
   onSelectStage: (stageCode: string) => void;
   cropCode: string;
@@ -845,6 +881,8 @@ function VisualWorkflowBuilder({
   const stageHintMap = new Map(stages.map((stage) => [stage.code, stageDesignHints(stage)]));
   const totalDesignHints = Array.from(stageHintMap.values()).reduce((sum, hints) => sum + hints.length, 0);
   const blockingDesignHints = Array.from(stageHintMap.values()).reduce((sum, hints) => sum + hints.filter((hint) => hint.level === "ERROR").length, 0);
+  const dirtyStageCount = dirtyTargets.stageCodes.size;
+  const dirtyRecommendationCount = dirtyTargets.recommendationIds.size;
 
   return (
     <div id="visual-workflow-builder" className="mb-6 rounded-xl border border-green-100 bg-white shadow">
@@ -858,6 +896,7 @@ function VisualWorkflowBuilder({
             <Badge>{stages.length} stages</Badge>
             <Badge>{totalDuration} days</Badge>
             <Badge>{draftEditable ? "Draft editable" : "Read-only published"}</Badge>
+            {dirtyStageCount || dirtyRecommendationCount ? <Badge>{dirtyStageCount} dirty stage(s), {dirtyRecommendationCount} dirty rec(s)</Badge> : null}
             {totalDesignHints ? <Badge>{blockingDesignHints ? `${blockingDesignHints} blocking hints` : `${totalDesignHints} design hints`}</Badge> : <Badge>No design hints</Badge>}
             {projectScoped ? <Badge>Project overrides visible</Badge> : null}
           </div>
@@ -879,6 +918,11 @@ function VisualWorkflowBuilder({
                   const hints = stageHintMap.get(stage.code) || [];
                   const errorCount = hints.filter((hint) => hint.level === "ERROR").length;
                   const warnCount = hints.filter((hint) => hint.level === "WARN").length;
+                  const dirtyStage = dirtyTargets.stageCodes.has(stage.code);
+                  const dirtyRecCount = (stage.recommended_activities || []).filter((rec) => {
+                    const recId = recommendationId(rec);
+                    return recId ? dirtyTargets.recommendationIds.has(recId) : false;
+                  }).length;
                   return (
                     <button
                       key={stage.code}
@@ -903,7 +947,7 @@ function VisualWorkflowBuilder({
                       onClick={() => onSelectStage(stage.code)}
                       onDoubleClick={() => scrollToStageEditor(stage.code)}
                       title={draftEditable ? "Drag to reorder; double-click to edit details" : "Double-click to inspect details"}
-                      className={`group relative flex w-56 flex-col rounded-xl border p-4 text-left transition ${selected ? "border-green-500 bg-green-50 shadow-md ring-2 ring-green-100" : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/40"} ${draggedStageCode === stage.code ? "opacity-50" : ""}`}
+                      className={`group relative flex w-56 flex-col rounded-xl border p-4 text-left transition ${selected ? "border-green-500 bg-green-50 shadow-md ring-2 ring-green-100" : dirtyStage || dirtyRecCount ? "border-orange-300 bg-orange-50 hover:border-orange-400" : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/40"} ${draggedStageCode === stage.code ? "opacity-50" : ""}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -917,6 +961,12 @@ function VisualWorkflowBuilder({
                           {errorCount ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">{errorCount} error</span> : null}
                           {warnCount ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">{warnCount} warn</span> : null}
                           {!errorCount && !warnCount ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{hints.length} info</span> : null}
+                        </div>
+                      ) : null}
+                      {dirtyStage || dirtyRecCount ? (
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {dirtyStage ? <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">Edited after validation</span> : null}
+                          {dirtyRecCount ? <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{dirtyRecCount} dirty rec</span> : null}
                         </div>
                       ) : null}
                       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
@@ -936,6 +986,7 @@ function VisualWorkflowBuilder({
 
             <WorkflowTimeline
               stages={stages}
+              dirtyTargets={dirtyTargets}
               selectedStageCode={selectedStage?.code || null}
               onSelectStage={onSelectStage}
               onSelectRecommendation={(stageCode, anchorId) => {
@@ -949,6 +1000,7 @@ function VisualWorkflowBuilder({
                 <StageInspector
                   stage={selectedStage}
                   hints={stageHintMap.get(selectedStage.code) || []}
+                  dirtyTargets={dirtyTargets}
                   cropCode={cropCode}
                   projectId={projectId}
                   draftEditable={draftEditable}
@@ -1080,11 +1132,13 @@ function SummaryMetric({
 
 function WorkflowTimeline({
   stages,
+  dirtyTargets,
   selectedStageCode,
   onSelectStage,
   onSelectRecommendation,
 }: {
   stages: WorkflowStage[];
+  dirtyTargets: DirtyTargets;
   selectedStageCode: string | null;
   onSelectStage: (stageCode: string) => void;
   onSelectRecommendation: (stageCode: string, recommendationAnchor: string) => void;
@@ -1142,6 +1196,7 @@ function WorkflowTimeline({
           const hints = stageDesignHints(stage);
           const hasError = hints.some((hint) => hint.level === "ERROR");
           const hasWarn = hints.some((hint) => hint.level === "WARN");
+          const dirtyStage = dirtyTargets.stageCodes.has(stage.code);
           const visibleRecommendations = showRecommendations
             ? (stage.recommended_activities || [])
                 .map((rec, originalRecommendationIndex) => ({ rec, originalRecommendationIndex }))
@@ -1152,10 +1207,10 @@ function WorkflowTimeline({
               key={stage.code}
               type="button"
               onClick={() => onSelectStage(stage.code)}
-              className={`relative block h-14 w-full rounded-lg border bg-white text-left transition hover:border-green-300 hover:bg-green-50/40 ${selected ? "border-green-500 ring-2 ring-green-100" : hasError ? "border-red-200" : hasWarn ? "border-amber-200" : "border-gray-200"}`}
+              className={`relative block h-14 w-full rounded-lg border bg-white text-left transition hover:border-green-300 hover:bg-green-50/40 ${selected ? "border-green-500 ring-2 ring-green-100" : dirtyStage ? "border-orange-300" : hasError ? "border-red-200" : hasWarn ? "border-amber-200" : "border-gray-200"}`}
             >
               <div
-                className={`absolute top-3 h-8 rounded ${selected ? "bg-green-600" : hasError ? "bg-red-500" : hasWarn ? "bg-amber-500" : "bg-green-500"}`}
+                className={`absolute top-3 h-8 rounded ${selected ? "bg-green-600" : dirtyStage ? "bg-orange-500" : hasError ? "bg-red-500" : hasWarn ? "bg-amber-500" : "bg-green-500"}`}
                 style={{ left: toPercent(startDay), width: `max(32px, ${Math.max(2, (duration / timelineEndDay) * 100)}%)` }}
               />
               <div className="absolute left-3 top-1 z-10 flex items-center gap-2 text-[11px]">
@@ -1163,10 +1218,13 @@ function WorkflowTimeline({
                 <span className="rounded bg-white/80 px-2 py-0.5 font-mono text-gray-500">{stage.code}</span>
                 <span className="rounded bg-white/80 px-2 py-0.5 text-gray-500">D+{startDay} / {duration}d</span>
                 {hints.length ? <span className={`rounded px-2 py-0.5 ${hasError ? "bg-red-100 text-red-700" : hasWarn ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>{hints.length} hint</span> : null}
+                {dirtyStage ? <span className="rounded bg-orange-100 px-2 py-0.5 text-orange-700">dirty</span> : null}
               </div>
               {visibleRecommendations.slice(0, 18).map(({ rec, originalRecommendationIndex }) => {
                 const recDay = startDay + rec.day_offset;
                 const anchorId = recommendationAnchorId(stage.code, rec, originalRecommendationIndex);
+                const recId = recommendationId(rec);
+                const dirtyRec = recId ? dirtyTargets.recommendationIds.has(recId) : false;
                 return (
                   <span
                     key={`${stage.code}-${rec.input_code || rec.input_name}-${originalRecommendationIndex}`}
@@ -1184,7 +1242,7 @@ function WorkflowTimeline({
                         onSelectRecommendation(stage.code, anchorId);
                       }
                     }}
-                    className={`absolute top-8 z-20 h-3 w-3 rounded-full border-2 border-white shadow outline-none ring-offset-2 hover:ring-2 hover:ring-green-300 focus:ring-2 focus:ring-green-400 ${rec.is_critical ? "bg-red-500" : "bg-blue-500"}`}
+                    className={`absolute top-8 z-20 h-3 w-3 rounded-full border-2 border-white shadow outline-none ring-offset-2 hover:ring-2 hover:ring-green-300 focus:ring-2 focus:ring-green-400 ${dirtyRec ? "bg-orange-500 ring-2 ring-orange-200" : rec.is_critical ? "bg-red-500" : "bg-blue-500"}`}
                     style={{ left: toPercent(recDay) }}
                   />
                 );
@@ -1200,6 +1258,7 @@ function WorkflowTimeline({
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Recommendation</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Critical recommendation</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-amber-500" /> Stage with warning</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-orange-500" /> Edited after validation</span>
         <span>Click a row to inspect that stage.</span>
       </div>
     </div>
@@ -1209,6 +1268,7 @@ function WorkflowTimeline({
 function StageInspector({
   stage,
   hints,
+  dirtyTargets,
   cropCode,
   projectId,
   draftEditable,
@@ -1236,6 +1296,7 @@ function StageInspector({
 }: {
   stage: WorkflowStage;
   hints: StageDesignHint[];
+  dirtyTargets: DirtyTargets;
   cropCode: string;
   projectId?: string;
   draftEditable: boolean;
@@ -1262,6 +1323,7 @@ function StageInspector({
   onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
   const recs = stage.recommended_activities || [];
+  const dirtyStage = dirtyTargets.stageCodes.has(stage.code);
   const [stageNameDraft, setStageNameDraft] = useState(labelText(stage.name));
   const [durationDraft, setDurationDraft] = useState(String(stage.duration_days || 0));
   const [showInlineRecommendationForm, setShowInlineRecommendationForm] = useState(false);
@@ -1274,7 +1336,7 @@ function StageInspector({
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <div className="flex flex-wrap gap-2 text-xs"><Badge>{stage.code}</Badge><Badge>{stage.stage_type || "Stage"}</Badge><Badge>{stage.phase || "Phase ?"}</Badge></div>
+        <div className="flex flex-wrap gap-2 text-xs"><Badge>{stage.code}</Badge><Badge>{stage.stage_type || "Stage"}</Badge><Badge>{stage.phase || "Phase ?"}</Badge>{dirtyStage ? <Badge>Edited after validation</Badge> : null}</div>
         <h3 className="mt-3 text-xl font-bold text-gray-900">{labelText(stage.name)}</h3>
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div><dt className="text-xs uppercase text-gray-400">Day offset</dt><dd className="font-semibold text-gray-900">D+{stage.day_offset ?? 0}</dd></div>
@@ -1349,6 +1411,7 @@ function StageInspector({
               recommendation={rec}
               index={index}
               draftEditable={draftEditable}
+              dirty={Boolean(recommendationId(rec) && dirtyTargets.recommendationIds.has(recommendationId(rec) || ""))}
               busy={busyTarget === `DRAFT_REC_REORDER:${stage.code}`}
               dragging={draggedRecommendationIndex === index}
               canMoveEarlier={draftEditable && index > 0 && Boolean(recommendationId(rec))}
@@ -1686,6 +1749,7 @@ function RecommendationCanvasCard({
   recommendation,
   index,
   draftEditable,
+  dirty,
   busy,
   dragging,
   canMoveEarlier,
@@ -1702,6 +1766,7 @@ function RecommendationCanvasCard({
   recommendation: WorkflowRecommendation;
   index: number;
   draftEditable: boolean;
+  dirty: boolean;
   busy: boolean;
   dragging: boolean;
   canMoveEarlier: boolean;
@@ -1746,11 +1811,12 @@ function RecommendationCanvasCard({
       }}
       onDragEnd={onDragEnd}
       title={draftEditable ? "Drag to reorder this recommendation" : undefined}
-      className={`rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm transition ${dragging ? "opacity-50 ring-2 ring-green-200" : ""}`}
+      className={`rounded-lg border p-3 text-sm transition ${dirty ? "border-orange-200 bg-orange-50" : "border-gray-100 bg-gray-50"} ${dragging ? "opacity-50 ring-2 ring-green-200" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div><p className="text-xs font-medium uppercase text-gray-400">Recommendation {index + 1}</p><h4 className="mt-1 font-semibold text-gray-900">{recommendation.input_name || recommendation.input_code || recommendation.activity_type}</h4></div>
         <div className="flex flex-col items-end gap-2">
+          {dirty ? <span className="rounded bg-orange-100 px-2 py-1 text-[10px] font-semibold text-orange-700">Edited</span> : null}
           {recommendation.is_critical ? <span className="rounded bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700">Critical</span> : null}
           {draftEditable ? (
             <div className="flex gap-1">
