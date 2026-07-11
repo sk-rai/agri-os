@@ -7,6 +7,7 @@ import {
   inputCatalogApi,
   workflowCatalogApi,
   type AgriInputDto,
+  type WorkflowDeletedStagesResponse,
   type WorkflowDraftRecommendationRequest,
   type WorkflowDraftStageCreateRequest,
   type WorkflowDraftStageDuplicateRequest,
@@ -62,7 +63,13 @@ export default function WorkflowPreviewPage() {
   const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
   const [draftValidating, setDraftValidating] = useState(false);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
+  const [deletedStages, setDeletedStages] = useState<WorkflowDeletedStagesResponse | null>(null);
   const [selectedStageCode, setSelectedStageCode] = useState<string | null>(null);
+
+  const loadDeletedStages = async (templateVersionId: string) => {
+    const deleted = await workflowCatalogApi.deletedDraftStages(templateVersionId);
+    setDeletedStages(deleted);
+  };
 
   const loadOverrideHistory = async (projectId: string, templateVersionId: string) => {
     const history = await workflowCatalogApi.projectOverrideHistory(projectId, {
@@ -87,8 +94,10 @@ export default function WorkflowPreviewPage() {
             .draftPublishImpact(payload.workflow_template_version_id, { archivePrevious: true })
             .then(setPublishImpact)
             .catch(() => setPublishImpact(null));
+          loadDeletedStages(payload.workflow_template_version_id).catch(() => setDeletedStages(null));
         } else {
           setPublishImpact(null);
+          setDeletedStages(null);
         }
         if (payload.project_id) {
           return loadOverrideHistory(payload.project_id, payload.workflow_template_version_id).catch((e) => {
@@ -284,6 +293,7 @@ export default function WorkflowPreviewPage() {
       const updated = await workflowCatalogApi.deleteDraftStage(preview.workflow_template_version_id, stageCode);
       setPreview(updated);
       setSelectedStageCode(updated.android_preview.stages[0]?.code || null);
+      await loadDeletedStages(preview.workflow_template_version_id).catch(() => setDeletedStages(null));
       setDraftValidation(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete draft stage");
@@ -320,6 +330,23 @@ export default function WorkflowPreviewPage() {
       setDraftValidation(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to reorder draft recommendations");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
+  const restoreDraftStage = async (stageCode: string) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_STAGE:${stageCode}:RESTORE`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.restoreDraftStage(preview.workflow_template_version_id, stageCode);
+      setPreview(updated);
+      setSelectedStageCode(stageCode);
+      await loadDeletedStages(preview.workflow_template_version_id).catch(() => setDeletedStages(null));
+      setDraftValidation(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to restore draft stage");
     } finally {
       setBusyTarget(null);
     }
@@ -450,6 +477,7 @@ export default function WorkflowPreviewPage() {
         <div className="space-y-4">
           <PublishImpactPanel impact={publishImpact} />
           <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
+          <DeletedStagesPanel deletedStages={deletedStages} busyTarget={busyTarget} onRestoreStage={restoreDraftStage} />
         </div>
       ) : null}
 
@@ -529,6 +557,62 @@ function scrollToStageEditor(stageCode: string, intent: "stage" | "recommendatio
   window.setTimeout(() => {
     document.getElementById(`stage-${intent}-${stageCode}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, 250);
+}
+
+function DeletedStagesPanel({
+  deletedStages,
+  busyTarget,
+  onRestoreStage,
+}: {
+  deletedStages: WorkflowDeletedStagesResponse | null;
+  busyTarget: string | null;
+  onRestoreStage: (stageCode: string) => void;
+}) {
+  const rows = deletedStages?.deleted_stages || [];
+  return (
+    <div className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Deleted draft stages</h2>
+          <p className="text-sm text-gray-500">Soft-deleted stages can be restored before the draft is published.</p>
+        </div>
+        <Badge>{rows.length} deleted</Badge>
+      </div>
+      {rows.length === 0 ? (
+        <p className="mt-4 rounded bg-gray-50 p-3 text-sm text-gray-500">No deleted stages in this draft.</p>
+      ) : (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {rows.map((stage) => {
+            const restoring = busyTarget === `DRAFT_STAGE:${stage.stage_code}:RESTORE`;
+            return (
+              <div key={stage.template_stage_id} className="rounded border border-gray-200 bg-gray-50 p-4 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-gray-900">{labelText(stage.stage_name) || stage.stage_code}</p>
+                    <p className="mt-1 font-mono text-xs text-gray-500">{stage.stage_code}</p>
+                  </div>
+                  <Badge>{stage.recommendation_count} recs</Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
+                  <Badge>{stage.duration_days || 0} days</Badge>
+                  {stage.stage_type ? <Badge>{stage.stage_type}</Badge> : null}
+                  {stage.phase ? <Badge>{stage.phase}</Badge> : null}
+                </div>
+                <button
+                  type="button"
+                  disabled={Boolean(busyTarget)}
+                  onClick={() => onRestoreStage(stage.stage_code)}
+                  className="mt-4 rounded border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {restoring ? "Restoring..." : "Restore stage"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function VisualWorkflowBuilder({

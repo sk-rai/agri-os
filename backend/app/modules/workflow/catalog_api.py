@@ -154,6 +154,10 @@ class WorkflowDraftStageReorder(BaseModel):
     stage_codes: list[str]
 
 
+class WorkflowDraftStageRestore(BaseModel):
+    after_stage_code: Optional[str] = None
+
+
 class WorkflowDraftStageUpdate(BaseModel):
     stage_name: Optional[dict[str, str]] = None
     duration_days: Optional[int] = None
@@ -1100,6 +1104,48 @@ def validate_draft_workflow_template_version(
     }
 
 
+@router.get("/drafts/{workflow_template_version_id}/deleted-stages")
+def list_deleted_draft_workflow_stages(
+    workflow_template_version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """List soft-deleted stages in a DRAFT workflow version for admin restore UX."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    rows = (
+        db.query(WorkflowTemplateStage)
+        .filter(WorkflowTemplateStage.template_version_id == version.id, WorkflowTemplateStage.is_active == False)
+        .order_by(WorkflowTemplateStage.updated_at.desc(), WorkflowTemplateStage.stage_code.asc())
+        .all()
+    )
+    deleted_stages = []
+    for stage in rows:
+        rec_count = db.query(WorkflowTemplateRecommendation).filter(
+            WorkflowTemplateRecommendation.template_stage_id == stage.id,
+        ).count()
+        deleted_stages.append({
+            "template_stage_id": str(stage.id),
+            "stage_code": stage.stage_code,
+            "stage_name": deepcopy(stage.stage_name or {}),
+            "stage_order": stage.stage_order,
+            "duration_days": stage.duration_days,
+            "stage_type": stage.stage_type,
+            "phase": stage.phase,
+            "recommendation_count": rec_count,
+            "updated_at": stage.updated_at.isoformat() if stage.updated_at else None,
+        })
+    return {
+        "schema_version": "1.0.0",
+        "tenant_id": x_tenant_id,
+        "workflow_template_id": str(template.id),
+        "workflow_template_version_id": str(version.id),
+        "workflow_template_code": template.code,
+        "count": len(deleted_stages),
+        "deleted_stages": deleted_stages,
+    }
+
+
 @router.patch("/drafts/{workflow_template_version_id}/stages/reorder")
 def reorder_draft_workflow_stages(
     workflow_template_version_id: uuid.UUID,
@@ -1632,6 +1678,69 @@ def duplicate_draft_workflow_stage(
         before=_stage_audit_snapshot(source_stage),
         after={**_stage_audit_snapshot(new_stage), "recommendation_count": len(source_recs)},
         reason=f"Duplicate draft stage {source_stage.stage_code} as {new_stage.stage_code}",
+    )
+    db.commit()
+    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+
+
+@router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/restore")
+def restore_draft_workflow_stage(
+    workflow_template_version_id: uuid.UUID,
+    stage_code: str,
+    body: WorkflowDraftStageRestore = WorkflowDraftStageRestore(),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Restore a soft-deleted stage in a DRAFT workflow version and reactivate its recommendations."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    stage = (
+        db.query(WorkflowTemplateStage)
+        .filter(
+            WorkflowTemplateStage.template_version_id == version.id,
+            WorkflowTemplateStage.stage_code == stage_code,
+            WorkflowTemplateStage.is_active == False,
+        )
+        .first()
+    )
+    if not stage:
+        raise HTTPException(404, "Deleted draft workflow stage not found")
+    if db.query(WorkflowTemplateStage).filter(
+        WorkflowTemplateStage.template_version_id == version.id,
+        WorkflowTemplateStage.stage_code == stage.stage_code,
+        WorkflowTemplateStage.is_active == True,
+    ).first():
+        raise HTTPException(409, "An active stage with this code already exists")
+
+    before = _stage_audit_snapshot(stage)
+    insert_order = _draft_insert_order(db, version.id, body.after_stage_code)
+    _shift_draft_stage_orders(db, version.id, insert_order)
+    now = datetime.now(timezone.utc)
+    stage.is_active = True
+    stage.stage_order = insert_order
+    stage.updated_at = now
+    recs = db.query(WorkflowTemplateRecommendation).filter(
+        WorkflowTemplateRecommendation.template_stage_id == stage.id,
+    ).all()
+    for rec in recs:
+        rec.is_active = True
+        rec.updated_at = now
+    _refresh_workflow_total_duration(db, version)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id) or principal.user_id,
+        action="RESTORE_DRAFT_STAGE",
+        target_type="STAGE",
+        target_id=str(stage.id),
+        target_code=stage.stage_code,
+        before=before,
+        after={**_stage_audit_snapshot(stage), "reactivated_recommendation_count": len(recs)},
+        metadata={"after_stage_code": body.after_stage_code},
+        reason=f"Restore draft stage {stage.stage_code}",
     )
     db.commit()
     return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)

@@ -985,6 +985,28 @@ export interface WorkflowDraftStageReorderRequest {
   stage_codes: string[];
 }
 
+export interface WorkflowDeletedStageRow {
+  template_stage_id: string;
+  stage_code: string;
+  stage_name: Record<string, string>;
+  stage_order?: number | null;
+  duration_days?: number | null;
+  stage_type?: string | null;
+  phase?: string | null;
+  recommendation_count: number;
+  updated_at?: string | null;
+}
+
+export interface WorkflowDeletedStagesResponse {
+  schema_version: string;
+  tenant_id: string;
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  count: number;
+  deleted_stages: WorkflowDeletedStageRow[];
+}
+
 export interface WorkflowDraftRecommendationRequest {
   day_offset?: number;
   input_source?: "CATALOG" | "CUSTOM";
@@ -1192,6 +1214,8 @@ export const workflowCatalogApi = {
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
   validateDraftVersion: (versionId: string) =>
     api<WorkflowDraftValidationResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/validation`),
+  deletedDraftStages: (versionId: string) =>
+    api<WorkflowDeletedStagesResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/deleted-stages`),
   draftPublishImpact: (versionId: string, params?: { archivePrevious?: boolean }) => {
     const query = new URLSearchParams();
     if (params?.archivePrevious !== undefined) query.set("archive_previous", String(params.archivePrevious));
@@ -1226,6 +1250,11 @@ export const workflowCatalogApi = {
   deleteDraftStage: (versionId: string, stageCode: string) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${encodeURIComponent(stageCode)}`, {
       method: "DELETE",
+    }),
+  restoreDraftStage: (versionId: string, stageCode: string, data?: { after_stage_code?: string | null }) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${encodeURIComponent(stageCode)}/restore`, {
+      method: "POST",
+      body: data || {},
     }),
   createDraftRecommendation: (versionId: string, stageCode: string, data: WorkflowDraftRecommendationRequest) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}/recommendations`, {

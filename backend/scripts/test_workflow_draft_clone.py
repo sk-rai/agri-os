@@ -321,6 +321,46 @@ def main():
         ).first()
         check(deleted_stage_row is not None and deleted_stage_row.is_active is False, "Deleted draft stage is soft-deleted")
 
+        deleted_stage_list = client.get(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/deleted-stages",
+            headers=headers,
+        )
+        check(deleted_stage_list.status_code == 200, "Deleted draft stage list returns 200", f"Status: {deleted_stage_list.status_code}")
+        deleted_stage_list_payload = deleted_stage_list.json()
+        check(
+            any(stage["stage_code"] == "CODEX_TEST_STAGE" for stage in deleted_stage_list_payload["deleted_stages"]),
+            "Deleted draft stage appears in restore list",
+        )
+
+        restore_stage = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/CODEX_TEST_STAGE/restore",
+            headers=headers,
+            json={},
+        )
+        check(restore_stage.status_code == 200, "Draft stage restore returns 200", f"Status: {restore_stage.status_code}")
+        restore_stage_payload = restore_stage.json()
+        restored_stage_codes = [stage["code"] for stage in restore_stage_payload["android_preview"]["stages"]]
+        check("CODEX_TEST_STAGE" in restored_stage_codes, "Restored draft stage returns to preview")
+        db.expire_all()
+        restored_stage_row = db.query(WorkflowTemplateStage).filter(
+            WorkflowTemplateStage.template_version_id == draft_version_id,
+            WorkflowTemplateStage.stage_code == "CODEX_TEST_STAGE",
+        ).first()
+        check(restored_stage_row is not None and restored_stage_row.is_active is True, "Restored draft stage is active again")
+
+        restore_missing_stage = client.post(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/CODEX_TEST_STAGE/restore",
+            headers=headers,
+            json={},
+        )
+        check(restore_missing_stage.status_code == 404, "Restoring an active draft stage returns 404", f"Status: {restore_missing_stage.status_code}")
+
+        delete_stage_again = client.delete(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/CODEX_TEST_STAGE",
+            headers=headers,
+        )
+        check(delete_stage_again.status_code == 200, "Restored draft stage can be deleted again", f"Status: {delete_stage_again.status_code}")
+
         delete_missing_stage = client.delete(
             f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/CODEX_TEST_STAGE",
             headers=headers,
@@ -569,6 +609,7 @@ def main():
             "DUPLICATE_DRAFT_STAGE",
             "REORDER_DRAFT_STAGES",
             "DELETE_DRAFT_STAGE",
+            "RESTORE_DRAFT_STAGE",
             "REORDER_DRAFT_RECOMMENDATIONS",
             "UPDATE_RECOMMENDATION",
             "CREATE_RECOMMENDATION",
