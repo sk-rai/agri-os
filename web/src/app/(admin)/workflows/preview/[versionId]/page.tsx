@@ -53,6 +53,14 @@ function recommendationAnchorId(stageCode: string, rec: WorkflowRecommendation, 
   return raw.replace(/[^A-Za-z0-9_-]+/g, "_");
 }
 
+function recommendationSource(rec: WorkflowRecommendation): "CATALOG" | "CUSTOM" | "UNCODED" {
+  const metadataSource = typeof rec.metadata?.input_source === "string" ? rec.metadata.input_source.toUpperCase() : "";
+  if (metadataSource === "CATALOG" || metadataSource === "CUSTOM") return metadataSource;
+  const code = (rec.input_code || "").toUpperCase();
+  if (!code) return "UNCODED";
+  return code.startsWith("CUSTOM") ? "CUSTOM" : "CATALOG";
+}
+
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
   const next = [...items];
@@ -783,6 +791,7 @@ function VisualWorkflowBuilder({
           <p className="rounded bg-gray-50 p-4 text-sm text-gray-500">No stages are present in this workflow version.</p>
         ) : (
           <div className="space-y-5">
+            <WorkflowSummaryMetrics stages={stages} />
             <div className="overflow-x-auto pb-3">
               <div className="flex min-w-max items-stretch gap-3">
                 {stages.map((stage, index) => {
@@ -919,6 +928,76 @@ function VisualWorkflowBuilder({
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded bg-white/80 p-2"><p className="text-[10px] uppercase text-gray-400">{label}</p><p className="font-semibold text-gray-900">{value}</p></div>;
+}
+
+function WorkflowSummaryMetrics({ stages }: { stages: WorkflowStage[] }) {
+  const allRecommendations = stages.flatMap((stage) => stage.recommended_activities || []);
+  const totalRecommendations = allRecommendations.length;
+  const criticalCount = allRecommendations.filter((rec) => rec.is_critical).length;
+  const catalogCount = allRecommendations.filter((rec) => recommendationSource(rec) === "CATALOG").length;
+  const customCount = allRecommendations.filter((rec) => recommendationSource(rec) === "CUSTOM").length;
+  const uncodedCount = allRecommendations.filter((rec) => recommendationSource(rec) === "UNCODED").length;
+  const stageHints = stages.map((stage) => stageDesignHints(stage));
+  const stagesWithHints = stageHints.filter((hints) => hints.length > 0).length;
+  const stagesWithErrors = stageHints.filter((hints) => hints.some((hint) => hint.level === "ERROR")).length;
+  const stagesWithWarnings = stageHints.filter((hints) => hints.some((hint) => hint.level === "WARN")).length;
+  const totalHints = stageHints.reduce((sum, hints) => sum + hints.length, 0);
+  const catalogPercent = totalRecommendations ? Math.round((catalogCount / totalRecommendations) * 100) : 0;
+  const criticalPercent = totalRecommendations ? Math.round((criticalCount / totalRecommendations) * 100) : 0;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900">Workflow summary metrics</h3>
+          <p className="text-xs text-gray-500">At-a-glance draft health before publish validation.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge>{totalHints} total hints</Badge>
+          {stagesWithErrors ? <Badge>{stagesWithErrors} stages with errors</Badge> : <Badge>No stage errors</Badge>}
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <SummaryMetric label="Stages" value={stages.length} tone="neutral" />
+        <SummaryMetric label="Recommendations" value={totalRecommendations} tone="neutral" />
+        <SummaryMetric label="Critical" value={criticalCount} detail={`${criticalPercent}%`} tone={criticalCount ? "danger" : "muted"} />
+        <SummaryMetric label="Catalog" value={catalogCount} detail={`${catalogPercent}%`} tone="success" />
+        <SummaryMetric label="Custom" value={customCount} tone={customCount ? "warning" : "muted"} />
+        <SummaryMetric label="Uncoded" value={uncodedCount} tone={uncodedCount ? "warning" : "muted"} />
+        <SummaryMetric label="Hint stages" value={stagesWithHints} tone={stagesWithHints ? "warning" : "success"} />
+        <SummaryMetric label="Error stages" value={stagesWithErrors} detail={stagesWithWarnings ? `${stagesWithWarnings} warn` : undefined} tone={stagesWithErrors ? "danger" : "success"} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  detail?: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "muted";
+}) {
+  const toneClass = {
+    neutral: "border-gray-200 bg-white text-gray-900",
+    success: "border-green-200 bg-green-50 text-green-800",
+    warning: "border-amber-200 bg-amber-50 text-amber-800",
+    danger: "border-red-200 bg-red-50 text-red-800",
+    muted: "border-gray-200 bg-gray-100 text-gray-500",
+  }[tone];
+  return (
+    <div className={`rounded-lg border p-3 ${toneClass}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
+      <div className="mt-1 flex items-baseline gap-2">
+        <p className="text-xl font-bold">{value}</p>
+        {detail ? <p className="text-[11px] font-medium opacity-70">{detail}</p> : null}
+      </div>
+    </div>
+  );
 }
 
 function WorkflowTimeline({
