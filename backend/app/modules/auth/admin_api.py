@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
-from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
+from app.core.admin_auth import ROLE_PERMISSIONS, AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
 from app.modules.farmer.models import Project, ProjectRole
@@ -200,6 +200,41 @@ def _assert_not_last_enterprise_admin(db: Session, user: User, tenant_id: str) -
             "error": "LAST_ENTERPRISE_ADMIN",
             "message": "Assign another enterprise admin before changing or revoking this user.",
         })
+
+
+def _permissions_for_role(role: Optional[str]) -> list[str]:
+    return sorted(permission.value for permission in ROLE_PERMISSIONS.get(str(role or "").upper(), set()))
+
+
+def _project_access_with_permissions(db: Session, user_id: uuid.UUID, tenant_id: str) -> list[dict]:
+    access = _project_access_payload(db, user_id, tenant_id)
+    return [
+        {
+            **item,
+            "permissions": _permissions_for_role(item.get("role")),
+        }
+        for item in access
+    ]
+
+
+@router.get("/me")
+def get_current_admin_profile(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Return the authenticated admin identity and effective tenant/project permissions."""
+    user = _tenant_user(db, principal.user_id, x_tenant_id)
+    return {
+        "schema_version": "admin_profile.v1",
+        "user_id": str(user.id),
+        "tenant_id": x_tenant_id,
+        "mobile_number_masked": f"******{user.mobile_number[-4:]}",
+        "display_name": user.display_name,
+        "role": user.role,
+        "permissions": _permissions_for_role(user.role),
+        "project_access": _project_access_with_permissions(db, user.id, x_tenant_id),
+    }
 
 
 @router.get("/users")

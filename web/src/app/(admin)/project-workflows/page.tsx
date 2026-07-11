@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  authApi,
   projectsApi,
   workflowCatalogApi,
+  type AdminProfileResponse,
   type Project,
   type ProjectWorkflowAssignmentAuditResponse,
   type ProjectWorkflowEnablementItem,
@@ -14,10 +16,9 @@ import {
 type WorkflowVisibilityFilter = "ALL" | "ANDROID_VISIBLE" | "ENABLED" | "DISABLED" | "BLOCKED" | "OVERRIDDEN";
 type WorkflowChangeIntent = "ENABLE" | "DISABLE" | "SAVE_METADATA";
 
-const PROJECT_WORKFLOW_EDIT_ROLES = new Set(["ENTERPRISE_ADMIN", "MANAGER", "AGRONOMIST"]);
-
-function canRoleEditProjectWorkflows(role: string | null): boolean {
-  return PROJECT_WORKFLOW_EDIT_ROLES.has((role || "").toUpperCase());
+function canEditProjectWorkflowsFromProfile(profile: AdminProfileResponse | null, fallbackRole: string | null): boolean {
+  if (profile) return profile.permissions.includes("PROJECT_EDIT");
+  return ["ENTERPRISE_ADMIN", "MANAGER", "AGRONOMIST"].includes((fallbackRole || "").toUpperCase());
 }
 type PendingWorkflowChange = { workflow: ProjectWorkflowEnablementItem; enabled: boolean; intent: WorkflowChangeIntent };
 
@@ -42,14 +43,23 @@ export default function ProjectWorkflowsPage() {
   const [pendingChange, setPendingChange] = useState<PendingWorkflowChange | null>(null);
   const [pendingChangeReason, setPendingChangeReason] = useState("");
   const [adminRole, setAdminRole] = useState<string | null>(null);
+  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setAdminRole(localStorage.getItem("agrios_role"));
     }
+    authApi.me()
+      .then((profile) => {
+        setAdminProfile(profile);
+        setAdminRole(profile.role);
+      })
+      .catch(() => {
+        // Backend permissions remain authoritative. Local role is only a friendly UI fallback.
+      });
   }, []);
 
-  const canEditProjectWorkflows = canRoleEditProjectWorkflows(adminRole);
+  const canEditProjectWorkflows = canEditProjectWorkflowsFromProfile(adminProfile, adminRole);
 
   useEffect(() => {
     projectsApi
@@ -179,7 +189,7 @@ export default function ProjectWorkflowsPage() {
           onVisibilityFilterChange={setVisibilityFilter}
           assignmentAudit={assignmentAudit}
           canEditProjectWorkflows={canEditProjectWorkflows}
-          adminRole={adminRole}
+          adminRole={adminProfile?.role || adminRole}
         />
       )}
       {summary && pendingChange ? (

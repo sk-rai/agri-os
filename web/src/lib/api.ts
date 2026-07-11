@@ -650,11 +650,33 @@ export interface Conflict {
 }
 
 // Auth
+export interface AdminProjectAccessProfile {
+  project_role_id: string;
+  project_id: string;
+  project_name: string;
+  project_status: string;
+  role: string;
+  territory_scope: Record<string, unknown>;
+  permissions: string[];
+}
+
+export interface AdminProfileResponse {
+  schema_version: string;
+  user_id: string;
+  tenant_id: string;
+  mobile_number_masked: string;
+  display_name?: string | null;
+  role: string;
+  permissions: string[];
+  project_access: AdminProjectAccessProfile[];
+}
+
 export const authApi = {
   requestOtp: (mobile_number: string) =>
     api("/api/v1/auth/otp/request", { method: "POST", body: { mobile_number }, noAuth: true }),
   verifyOtp: (mobile_number: string, otp_code: string, device_id: string) =>
     api("/api/v1/auth/otp/verify", { method: "POST", body: { mobile_number, otp_code, device_id }, noAuth: true }),
+  me: () => api<AdminProfileResponse>("/api/v1/admin/me"),
 };
 
 // Tenants

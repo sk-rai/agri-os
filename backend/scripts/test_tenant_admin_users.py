@@ -90,6 +90,15 @@ def main():
         invited = db.query(User).filter(User.id == invited_id).first()
         viewer_headers = headers_for(invited)
 
+        viewer_profile = client.get("/api/v1/admin/me", headers=viewer_headers)
+        check(viewer_profile.status_code == 200, "Viewer can read own admin profile", viewer_profile.text)
+        check(viewer_profile.json()["role"] == "ADMIN_VIEWER", "Admin profile returns tenant role")
+        check(viewer_profile.json()["permissions"] == ["VIEW"], "Admin profile returns viewer permissions")
+
+        admin_profile = client.get("/api/v1/admin/me", headers=admin_headers)
+        check(admin_profile.status_code == 200, "Enterprise admin can read own admin profile", admin_profile.text)
+        check("MANAGE_USERS" in admin_profile.json()["permissions"], "Admin profile includes tenant permissions")
+
         viewer_list = client.get("/api/v1/admin/users", headers=viewer_headers)
         check(viewer_list.status_code == 403, "Viewer cannot manage tenant users", viewer_list.text)
         admin_list = client.get("/api/v1/admin/users", headers=admin_headers)
@@ -135,6 +144,12 @@ def main():
         check(project_grant.status_code == 200, "Enterprise admin can grant project access", project_grant.text)
         access_rows = project_grant.json()["user"]["project_access"]
         check(len(access_rows) == 1 and access_rows[0]["project_id"] == str(project_id), "Project access appears on user")
+
+        agronomist_profile = client.get("/api/v1/admin/me", headers=viewer_headers)
+        check(agronomist_profile.status_code == 200, "Promoted admin can read profile with project access", agronomist_profile.text)
+        project_access = agronomist_profile.json()["project_access"]
+        check(project_access[0]["role"] == "AGRONOMIST", "Admin profile returns project role")
+        check("PROJECT_EDIT" in project_access[0]["permissions"], "Admin profile returns project permissions")
 
         project_revoke = client.request(
             "DELETE",
