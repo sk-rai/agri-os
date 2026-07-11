@@ -48,6 +48,11 @@ function recommendationId(rec: WorkflowRecommendation) {
   return typeof rec.metadata?.recommendation_id === "string" ? rec.metadata.recommendation_id : null;
 }
 
+function recommendationAnchorId(stageCode: string, rec: WorkflowRecommendation, index: number) {
+  const raw = recommendationId(rec) || `${stageCode}-${rec.input_code || rec.input_name || rec.activity_type}-${index}`;
+  return raw.replace(/[^A-Za-z0-9_-]+/g, "_");
+}
+
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
   const next = [...items];
@@ -592,13 +597,29 @@ export default function WorkflowPreviewPage() {
 }
 
 
-function scrollToStageEditor(stageCode: string, intent: "stage" | "recommendation" = "stage") {
+function scrollToStageEditor(stageCode: string, intent: "stage" | "recommendation" = "stage", recommendationAnchor?: string) {
   const element = document.getElementById(`stage-editor-${stageCode}`);
-  if (!element) return;
   if (element instanceof HTMLDetailsElement) element.open = true;
+  if (recommendationAnchor) {
+    const canvasTarget = document.getElementById(`canvas-recommendation-${recommendationAnchor}`);
+    if (canvasTarget) {
+      canvasTarget.scrollIntoView({ behavior: "smooth", block: "center" });
+      canvasTarget.classList.add("ring-2", "ring-green-300");
+      window.setTimeout(() => canvasTarget.classList.remove("ring-2", "ring-green-300"), 1600);
+      return;
+    }
+  }
+  if (!element) return;
   element.scrollIntoView({ behavior: "smooth", block: "start" });
   window.setTimeout(() => {
-    document.getElementById(`stage-${intent}-${stageCode}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = recommendationAnchor
+      ? document.getElementById(`recommendation-${recommendationAnchor}`)
+      : document.getElementById(`stage-${intent}-${stageCode}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (target && recommendationAnchor) {
+      target.classList.add("ring-2", "ring-green-300");
+      window.setTimeout(() => target.classList.remove("ring-2", "ring-green-300"), 1600);
+    }
   }, 250);
 }
 
@@ -830,6 +851,10 @@ function VisualWorkflowBuilder({
               stages={stages}
               selectedStageCode={selectedStage?.code || null}
               onSelectStage={onSelectStage}
+              onSelectRecommendation={(stageCode, anchorId) => {
+                onSelectStage(stageCode);
+                window.setTimeout(() => scrollToStageEditor(stageCode, "recommendation", anchorId), 80);
+              }}
             />
 
             {selectedStage ? (
@@ -900,10 +925,12 @@ function WorkflowTimeline({
   stages,
   selectedStageCode,
   onSelectStage,
+  onSelectRecommendation,
 }: {
   stages: WorkflowStage[];
   selectedStageCode: string | null;
   onSelectStage: (stageCode: string) => void;
+  onSelectRecommendation: (stageCode: string, recommendationAnchor: string) => void;
 }) {
   const [showRecommendations, setShowRecommendations] = useState(true);
   const [criticalOnly, setCriticalOnly] = useState(false);
@@ -959,7 +986,9 @@ function WorkflowTimeline({
           const hasError = hints.some((hint) => hint.level === "ERROR");
           const hasWarn = hints.some((hint) => hint.level === "WARN");
           const visibleRecommendations = showRecommendations
-            ? (stage.recommended_activities || []).filter((rec) => !criticalOnly || rec.is_critical)
+            ? (stage.recommended_activities || [])
+                .map((rec, originalRecommendationIndex) => ({ rec, originalRecommendationIndex }))
+                .filter(({ rec }) => !criticalOnly || rec.is_critical)
             : [];
           return (
             <button
@@ -978,13 +1007,27 @@ function WorkflowTimeline({
                 <span className="rounded bg-white/80 px-2 py-0.5 text-gray-500">D+{startDay} / {duration}d</span>
                 {hints.length ? <span className={`rounded px-2 py-0.5 ${hasError ? "bg-red-100 text-red-700" : hasWarn ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>{hints.length} hint</span> : null}
               </div>
-              {visibleRecommendations.slice(0, 18).map((rec, recIndex) => {
+              {visibleRecommendations.slice(0, 18).map(({ rec, originalRecommendationIndex }) => {
                 const recDay = startDay + rec.day_offset;
+                const anchorId = recommendationAnchorId(stage.code, rec, originalRecommendationIndex);
                 return (
                   <span
-                    key={`${stage.code}-${rec.input_code || rec.input_name}-${recIndex}`}
+                    key={`${stage.code}-${rec.input_code || rec.input_name}-${originalRecommendationIndex}`}
+                    role="button"
+                    tabIndex={0}
                     title={`${rec.input_name || rec.activity_type} - D+${recDay}`}
-                    className={`absolute top-8 z-20 h-3 w-3 rounded-full border-2 border-white shadow ${rec.is_critical ? "bg-red-500" : "bg-blue-500"}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelectRecommendation(stage.code, anchorId);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSelectRecommendation(stage.code, anchorId);
+                      }
+                    }}
+                    className={`absolute top-8 z-20 h-3 w-3 rounded-full border-2 border-white shadow outline-none ring-offset-2 hover:ring-2 hover:ring-green-300 focus:ring-2 focus:ring-green-400 ${rec.is_critical ? "bg-red-500" : "bg-blue-500"}`}
                     style={{ left: toPercent(recDay) }}
                   />
                 );
@@ -1145,6 +1188,7 @@ function StageInspector({
           {recs.map((rec, index) => (
             <RecommendationCanvasCard
               key={`${stage.code}-${rec.input_code || rec.input_name}-${index}`}
+              stageCode={stage.code}
               recommendation={rec}
               index={index}
               draftEditable={draftEditable}
@@ -1481,6 +1525,7 @@ function QuickRecommendationCreateForm({
 }
 
 function RecommendationCanvasCard({
+  stageCode,
   recommendation,
   index,
   draftEditable,
@@ -1496,6 +1541,7 @@ function RecommendationCanvasCard({
   onUpdateDraftRecommendation,
   onDeleteDraftRecommendation,
 }: {
+  stageCode: string;
   recommendation: WorkflowRecommendation;
   index: number;
   draftEditable: boolean;
@@ -1524,6 +1570,7 @@ function RecommendationCanvasCard({
 
   return (
     <div
+      id={`canvas-recommendation-${recommendationAnchorId(stageCode, recommendation, index)}`}
       draggable={draftEditable && !busy && Boolean(recommendationId(recommendation))}
       onDragStart={(event) => {
         if (!draftEditable || busy || !recommendationId(recommendation)) return;
@@ -2245,6 +2292,7 @@ function StagePreview({
                   <RecommendationPreview
                     key={`${rec.input_name}-${index}`}
                     stageCode={stage.code}
+                    index={index}
                     rec={rec}
                     projectScoped={projectScoped}
                     draftEditable={draftEditable}
@@ -2265,6 +2313,7 @@ function StagePreview({
 
 function RecommendationPreview({
   stageCode,
+  index,
   rec,
   projectScoped,
   draftEditable,
@@ -2274,6 +2323,7 @@ function RecommendationPreview({
   onDeleteDraftRecommendation,
 }: {
   stageCode: string;
+  index: number;
   rec: WorkflowRecommendation;
   projectScoped: boolean;
   draftEditable: boolean;
@@ -2304,7 +2354,7 @@ function RecommendationPreview({
   const draftRecBusy = recId ? busyTarget === `DRAFT_REC:${recId}` : false;
 
   return (
-    <tr>
+    <tr id={`recommendation-${recommendationAnchorId(stageCode, rec, index)}`}>
       <td className="px-3 py-2 font-mono text-xs">+{rec.day_offset}</td>
       <td className="px-3 py-2"><span className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{rec.activity_type}</span></td>
       <td className="px-3 py-2">
