@@ -494,6 +494,8 @@ export default function WorkflowPreviewPage() {
         stages={stages}
         selectedStageCode={selectedStage?.code || null}
         onSelectStage={setSelectedStageCode}
+        cropCode={preview.crop_code}
+        projectId={preview.project_id || undefined}
         draftEditable={isDraftPreview}
         projectScoped={Boolean(preview.project_id)}
         busyTarget={busyTarget}
@@ -631,6 +633,8 @@ function VisualWorkflowBuilder({
   stages,
   selectedStageCode,
   onSelectStage,
+  cropCode,
+  projectId,
   draftEditable,
   projectScoped,
   busyTarget,
@@ -647,6 +651,8 @@ function VisualWorkflowBuilder({
   stages: WorkflowStage[];
   selectedStageCode: string | null;
   onSelectStage: (stageCode: string) => void;
+  cropCode: string;
+  projectId?: string;
   draftEditable: boolean;
   projectScoped: boolean;
   busyTarget: string | null;
@@ -781,6 +787,8 @@ function VisualWorkflowBuilder({
               <div className="space-y-4">
                 <StageInspector
                   stage={selectedStage}
+                  cropCode={cropCode}
+                  projectId={projectId}
                   draftEditable={draftEditable}
                   busyTarget={busyTarget}
                   activeStageAction={stageAction}
@@ -840,6 +848,8 @@ function MiniMetric({ label, value }: { label: string; value: string | number })
 
 function StageInspector({
   stage,
+  cropCode,
+  projectId,
   draftEditable,
   busyTarget,
   activeStageAction,
@@ -864,6 +874,8 @@ function StageInspector({
   onDeleteDraftRecommendation,
 }: {
   stage: WorkflowStage;
+  cropCode: string;
+  projectId?: string;
   draftEditable: boolean;
   busyTarget: string | null;
   activeStageAction: StageActionMode | null;
@@ -955,6 +967,8 @@ function StageInspector({
         {draftEditable && showInlineRecommendationForm ? (
           <QuickRecommendationCreateForm
             stageCode={stage.code}
+            cropCode={cropCode}
+            projectId={projectId}
             busy={Boolean(busyTarget)}
             onCancel={() => setShowInlineRecommendationForm(false)}
             onCreate={(payload) => {
@@ -1089,21 +1103,72 @@ function StageActionPanel({
 
 function QuickRecommendationCreateForm({
   stageCode,
+  cropCode,
+  projectId,
   busy,
   onCreate,
   onCancel,
 }: {
   stageCode: string;
+  cropCode: string;
+  projectId?: string;
   busy: boolean;
   onCreate: (data: WorkflowDraftRecommendationRequest) => void;
   onCancel: () => void;
 }) {
   const [dayOffset, setDayOffset] = useState("0");
   const [activityType, setActivityType] = useState("LABOR");
+  const [inputSource, setInputSource] = useState<"CATALOG" | "CUSTOM">("CATALOG");
+  const [selectedCatalogInput, setSelectedCatalogInput] = useState<AgriInputDto | null>(null);
+  const [inputSearch, setInputSearch] = useState("labour");
+  const [inputCategory, setInputCategory] = useState("");
+  const [inputResults, setInputResults] = useState<AgriInputDto[]>([]);
+  const [inputLoading, setInputLoading] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
   const [inputName, setInputName] = useState("Custom labour activity");
   const [quantity, setQuantity] = useState("1 labour-day/acre");
   const [cost, setCost] = useState("");
   const [isCritical, setIsCritical] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInputLoading(true);
+    setInputError(null);
+    inputCatalogApi
+      .inputs({
+        cropCode,
+        projectId,
+        category: inputCategory || undefined,
+        q: inputSearch.trim() || undefined,
+      })
+      .then((response) => {
+        if (!cancelled) setInputResults(response.inputs.slice(0, 8));
+      })
+      .catch((e) => {
+        if (!cancelled) setInputError(e instanceof Error ? e.message : "Failed to search inputs");
+      })
+      .finally(() => {
+        if (!cancelled) setInputLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cropCode, projectId, inputCategory, inputSearch]);
+
+  const selectCatalogInput = (input: AgriInputDto) => {
+    setInputSource("CATALOG");
+    setSelectedCatalogInput(input);
+    setInputName(input.canonical_name);
+    setActivityType(activityTypeFromCategory(input.category_code));
+    if (!quantity.trim() && input.unit) {
+      setQuantity(`1 ${input.unit}/acre`);
+    }
+  };
+  const switchToCustom = () => {
+    setInputSource("CUSTOM");
+    setSelectedCatalogInput(null);
+    if (!inputName.trim()) setInputName("Custom labour activity");
+  };
   const day = Number(dayOffset);
   const costValue = cost.trim() ? Number(cost) : null;
   const canSubmit = !busy
@@ -1111,17 +1176,76 @@ function QuickRecommendationCreateForm({
     && Number.isFinite(day)
     && inputName.trim().length > 0
     && activityType.trim().length > 0
-    && (!cost.trim() || Number.isFinite(Number(cost)));
+    && (!cost.trim() || Number.isFinite(Number(cost)))
+    && (inputSource === "CUSTOM" || Boolean(selectedCatalogInput));
 
   return (
     <div className="mb-4 rounded-lg border border-green-200 bg-green-50/50 p-3">
       <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="text-sm font-semibold text-gray-900">Add draft recommendation on canvas</p>
-          <p className="text-xs text-gray-500">Creates a CUSTOM recommendation for {stageCode}. Use the full form for catalog-backed input selection.</p>
+          <p className="text-xs text-gray-500">Select an eligible catalog input or enter a custom local input for {stageCode}.</p>
         </div>
-        <Badge>CUSTOM</Badge>
+        <Badge>{inputSource}</Badge>
       </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => setInputSource("CATALOG")} className={`rounded px-3 py-1.5 text-xs font-medium ${inputSource === "CATALOG" ? "bg-green-700 text-white" : "border bg-white text-gray-700"}`}>Catalog input</button>
+        <button type="button" onClick={switchToCustom} className={`rounded px-3 py-1.5 text-xs font-medium ${inputSource === "CUSTOM" ? "bg-amber-600 text-white" : "border bg-white text-gray-700"}`}>Custom / unlisted</button>
+      </div>
+
+      {inputSource === "CATALOG" ? (
+        <div className="mt-3 rounded-lg bg-white p-3">
+          <div className="grid gap-2 md:grid-cols-[150px_1fr]">
+            <label className="text-xs font-medium text-gray-500">
+              Category
+              <select value={inputCategory} onChange={(event) => setInputCategory(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900">
+                <option value="">All categories</option>
+                <option value="SEED">Seed</option>
+                <option value="FERTILIZER">Fertilizer</option>
+                <option value="ORGANIC_MANURE">Organic manure</option>
+                <option value="FUNGICIDE">Fungicide</option>
+                <option value="HERBICIDE">Herbicide</option>
+                <option value="PESTICIDE">Pesticide</option>
+                <option value="LABOR">Labor</option>
+                <option value="MACHINERY">Machinery</option>
+                <option value="IRRIGATION">Irrigation</option>
+              </select>
+            </label>
+            <label className="text-xs font-medium text-gray-500">
+              Search catalog
+              <input value={inputSearch} onChange={(event) => setInputSearch(event.target.value)} placeholder="Search seed, fertilizer, labour, pesticide..." className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" />
+            </label>
+          </div>
+          <div className="mt-3 max-h-40 overflow-auto rounded border bg-white">
+            {inputLoading ? <p className="p-3 text-xs text-gray-500">Searching input catalog...</p> : null}
+            {inputError ? <p className="p-3 text-xs text-red-600">{inputError}</p> : null}
+            {!inputLoading && !inputError && inputResults.length === 0 ? <p className="p-3 text-xs text-gray-500">No eligible catalog matches. Switch to custom if needed.</p> : null}
+            {inputResults.map((input) => (
+              <button
+                key={input.id}
+                type="button"
+                onClick={() => selectCatalogInput(input)}
+                className={`flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-xs hover:bg-green-50 last:border-b-0 ${selectedCatalogInput?.id === input.id ? "bg-green-50" : ""}`}
+              >
+                <span>
+                  <span className="font-semibold text-gray-900">{input.canonical_name}</span>
+                  <span className="ml-2 font-mono text-gray-400">{input.code}</span>
+                  <span className="ml-2 text-gray-400">{input.category_name || input.category_code || "Uncategorized"}</span>
+                  <span className="mt-1 block text-gray-400">{[input.composition, input.unit, input.applicable_crops.join(", ")].filter(Boolean).join(" / ")}</span>
+                </span>
+                <span className="rounded border border-green-200 px-2 py-0.5 font-medium text-green-700">{selectedCatalogInput?.id === input.id ? "Selected" : "Use"}</span>
+              </button>
+            ))}
+          </div>
+          {selectedCatalogInput ? (
+            <p className="mt-2 rounded border border-green-200 bg-green-50 p-2 text-xs text-green-800">Selected: {selectedCatalogInput.canonical_name} / {selectedCatalogInput.composition || "No composition"} / Unit {selectedCatalogInput.unit || "n/a"}</p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-700">Custom inputs are accepted for local practices; backend will assign a stable CUSTOM_* code for Android and audit.</p>
+      )}
+
       <div className="mt-3 grid gap-2 md:grid-cols-[80px_120px_1fr]">
         <label className="text-xs font-medium text-gray-500">
           Day
@@ -1133,7 +1257,7 @@ function QuickRecommendationCreateForm({
         </label>
         <label className="text-xs font-medium text-gray-500">
           Recommendation / input name
-          <input value={inputName} onChange={(event) => setInputName(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" />
+          <input value={inputName} onChange={(event) => setInputName(event.target.value)} readOnly={inputSource === "CATALOG"} className={`mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900 ${inputSource === "CATALOG" ? "bg-gray-50" : ""}`} />
         </label>
       </div>
       <div className="mt-2 grid gap-2 md:grid-cols-[1fr_120px_auto]">
@@ -1157,20 +1281,20 @@ function QuickRecommendationCreateForm({
           onClick={() => onCreate({
             day_offset: day,
             activity_type: activityType.trim().toUpperCase(),
-            input_source: "CUSTOM",
-            input_code: null,
+            input_source: inputSource,
+            input_code: inputSource === "CATALOG" ? selectedCatalogInput?.code || null : null,
             input_name: inputName.trim(),
             typical_quantity: quantity.trim() || null,
             typical_cost_per_acre: costValue,
             is_critical: isCritical,
-            description: { en: `Custom ${activityType.trim().toLowerCase()} recommendation for ${stageCode}` },
+            description: { en: `${inputSource === "CATALOG" ? "Catalog" : "Custom"} ${activityType.trim().toLowerCase()} recommendation for ${stageCode}` },
           })}
           className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:cursor-wait disabled:opacity-60"
         >
           {busy ? "Saving..." : "Add recommendation"}
         </button>
         <button type="button" disabled={busy} onClick={onCancel} className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-wait disabled:opacity-60">Cancel</button>
-        {!canSubmit ? <span className="self-center text-xs text-red-600">Day, activity and name are required; cost must be numeric.</span> : null}
+        {!canSubmit ? <span className="self-center text-xs text-red-600">Select a catalog item or enter a custom name; day/activity/cost must be valid.</span> : null}
       </div>
     </div>
   );
