@@ -525,6 +525,13 @@ export default function WorkflowPreviewPage() {
 
       {isDraftPreview ? (
         <div className="space-y-4">
+          <PublishReadinessChecklist
+            stages={stages}
+            validation={draftValidation}
+            validating={draftValidating}
+            impact={publishImpact}
+            onValidate={validateDraft}
+          />
           <PublishImpactPanel impact={publishImpact} />
           <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
           <DeletedStagesPanel deletedStages={deletedStages} busyTarget={busyTarget} onRestoreStage={restoreDraftStage} />
@@ -769,7 +776,7 @@ function VisualWorkflowBuilder({
   const blockingDesignHints = Array.from(stageHintMap.values()).reduce((sum, hints) => sum + hints.filter((hint) => hint.level === "ERROR").length, 0);
 
   return (
-    <div className="mb-6 rounded-xl border border-green-100 bg-white shadow">
+    <div id="visual-workflow-builder" className="mb-6 rounded-xl border border-green-100 bg-white shadow">
       <div className="border-b border-green-100 p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -1028,7 +1035,7 @@ function WorkflowTimeline({
   });
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+    <div id="workflow-timeline" className="rounded-xl border border-gray-200 bg-gray-50 p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="font-semibold text-gray-900">Workflow timing timeline</h3>
@@ -1733,10 +1740,123 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
 }
 
 
+function PublishReadinessChecklist({
+  stages,
+  validation,
+  validating,
+  impact,
+  onValidate,
+}: {
+  stages: WorkflowStage[];
+  validation: WorkflowDraftValidationResponse | null;
+  validating: boolean;
+  impact: WorkflowPublishImpactResponse | null;
+  onValidate: () => void;
+}) {
+  const allRecommendations = stages.flatMap((stage) => stage.recommended_activities || []);
+  const criticalCount = allRecommendations.filter((rec) => rec.is_critical).length;
+  const catalogCount = allRecommendations.filter((rec) => recommendationSource(rec) === "CATALOG").length;
+  const customCount = allRecommendations.filter((rec) => recommendationSource(rec) === "CUSTOM").length;
+  const uncodedCount = allRecommendations.filter((rec) => recommendationSource(rec) === "UNCODED").length;
+  const stagesWithoutRecommendations = stages.filter((stage) => (stage.recommended_activities || []).length === 0);
+  const stageHints = stages.map((stage) => stageDesignHints(stage));
+  const stagesWithErrors = stageHints.filter((hints) => hints.some((hint) => hint.level === "ERROR")).length;
+  const stagesWithWarnings = stageHints.filter((hints) => hints.some((hint) => hint.level === "WARN")).length;
+  const validationErrors = validation?.counts.errors || 0;
+  const validationWarnings = validation?.counts.warnings || 0;
+  const validationReady = Boolean(validation?.can_publish);
+  const localErrorCount = stagesWithErrors + stagesWithoutRecommendations.length;
+  const publishLooksReady = validationReady && Boolean(impact?.can_publish) && localErrorCount === 0;
+  const scrollToPanel = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  return (
+    <div className={`rounded-lg border p-5 shadow ${publishLooksReady ? "border-green-200 bg-green-50" : "border-blue-100 bg-white"}`}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Publish readiness checklist</h2>
+          <p className="mt-1 text-sm text-gray-500">Fast admin check before the backend publish gate. Validation remains the source of truth.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge>{publishLooksReady ? "Looks publish ready" : "Review before publish"}</Badge>
+          <Badge>{allRecommendations.length} recommendations</Badge>
+          <Badge>{criticalCount} critical</Badge>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        <ReadinessItem
+          title="Backend validation"
+          detail={validation ? `${validationErrors} errors, ${validationWarnings} warnings` : "Run validation after recent edits."}
+          status={!validation ? "pending" : validation.can_publish ? "ok" : "error"}
+        />
+        <ReadinessItem
+          title="Stage recommendation coverage"
+          detail={stagesWithoutRecommendations.length ? `${stagesWithoutRecommendations.length} stage(s) have no recommendations.` : "Every stage has at least one recommendation."}
+          status={stagesWithoutRecommendations.length ? "warn" : "ok"}
+        />
+        <ReadinessItem
+          title="Local design hints"
+          detail={stagesWithErrors || stagesWithWarnings ? `${stagesWithErrors} error stage(s), ${stagesWithWarnings} warning stage(s).` : "No local stage design errors or warnings."}
+          status={stagesWithErrors ? "error" : stagesWithWarnings ? "warn" : "ok"}
+        />
+        <ReadinessItem
+          title="Critical recommendations"
+          detail={criticalCount ? `${criticalCount} critical recommendation(s) marked.` : "No critical recommendations are marked."}
+          status={criticalCount ? "ok" : "warn"}
+        />
+        <ReadinessItem
+          title="Catalog/custom split"
+          detail={`${catalogCount} catalog, ${customCount} custom, ${uncodedCount} uncoded.`}
+          status={uncodedCount ? "warn" : "ok"}
+        />
+        <ReadinessItem
+          title="Publish impact"
+          detail={impact ? `${impact.counts.pinned_cycles_impacted} pinned cycle(s), ${impact.counts.active_pinned_cycles_impacted} active pinned.` : "Publish impact is still loading."}
+          status={!impact ? "pending" : impact.can_publish ? "ok" : "error"}
+        />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2 text-xs">
+        <button type="button" disabled={validating} onClick={onValidate} className="rounded border border-yellow-200 px-3 py-1.5 font-medium text-yellow-700 hover:bg-yellow-50 disabled:cursor-wait disabled:opacity-60">
+          {validating ? "Validating..." : validation ? "Revalidate" : "Run validation"}
+        </button>
+        <button type="button" onClick={() => scrollToPanel("draft-validation-panel")} className="rounded border border-gray-200 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50">Jump to validation</button>
+        <button type="button" onClick={() => scrollToPanel("visual-workflow-builder")} className="rounded border border-green-200 px-3 py-1.5 font-medium text-green-700 hover:bg-green-50">Jump to builder</button>
+        <button type="button" onClick={() => scrollToPanel("workflow-timeline")} className="rounded border border-blue-200 px-3 py-1.5 font-medium text-blue-700 hover:bg-blue-50">Jump to timeline</button>
+        <button type="button" onClick={() => scrollToPanel("publish-impact-panel")} className="rounded border border-amber-200 px-3 py-1.5 font-medium text-amber-700 hover:bg-amber-50">Jump to impact</button>
+      </div>
+    </div>
+  );
+}
+
+function ReadinessItem({
+  title,
+  detail,
+  status,
+}: {
+  title: string;
+  detail: string;
+  status: "ok" | "warn" | "error" | "pending";
+}) {
+  const tone = {
+    ok: { label: "OK", className: "border-green-200 bg-green-50 text-green-800" },
+    warn: { label: "Review", className: "border-amber-200 bg-amber-50 text-amber-800" },
+    error: { label: "Blocker", className: "border-red-200 bg-red-50 text-red-800" },
+    pending: { label: "Pending", className: "border-gray-200 bg-gray-50 text-gray-700" },
+  }[status];
+  return (
+    <div className={`rounded border p-3 ${tone.className}`}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <span className="rounded bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{tone.label}</span>
+      </div>
+      <p className="mt-2 text-xs opacity-80">{detail}</p>
+    </div>
+  );
+}
+
 function PublishImpactPanel({ impact }: { impact: WorkflowPublishImpactResponse | null }) {
   if (!impact) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div id="publish-impact-panel" className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="text-lg font-semibold text-gray-900">Publish Impact</h2>
         <p className="mt-1 text-sm text-gray-500">Loading impacted workflow version and pinned-cycle counts...</p>
       </div>
@@ -1744,7 +1864,7 @@ function PublishImpactPanel({ impact }: { impact: WorkflowPublishImpactResponse 
   }
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+    <div id="publish-impact-panel" className="rounded-lg border border-amber-200 bg-amber-50 p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-amber-950">Publish Impact</h2>
@@ -1789,7 +1909,7 @@ function DraftValidationPanel({
   const warnings = validation?.issues_by_level.WARN || [];
   const info = validation?.issues_by_level.INFO || [];
   return (
-    <div className="mb-6 rounded-lg bg-white p-5 shadow">
+    <div id="draft-validation-panel" className="mb-6 rounded-lg bg-white p-5 shadow">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Draft Validation</h2>
