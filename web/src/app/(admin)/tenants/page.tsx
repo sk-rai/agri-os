@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { tenantsApi, type Tenant } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -9,6 +10,8 @@ export default function TenantsPage() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ id: "", name: "", type: "ENTERPRISE" });
   const [error, setError] = useState("");
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canCreateTenants = hasAdminPermission(adminProfile, "MANAGE_USERS");
 
   const loadTenants = () => {
     tenantsApi.list().then(setTenants).catch(() => {}).finally(() => setLoading(false));
@@ -18,6 +21,10 @@ export default function TenantsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateTenants) {
+      setError("Your current role can view tenants but cannot create tenant records.");
+      return;
+    }
     setError("");
     try {
       await tenantsApi.create(formData);
@@ -34,12 +41,21 @@ export default function TenantsPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
         <button
+          disabled={!canCreateTenants}
+          title={canCreateTenants ? undefined : "Your role cannot create tenants."}
           onClick={() => setShowForm(!showForm)}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm"
+          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm disabled:opacity-50"
         >
           + New Tenant
         </button>
       </div>
+
+      {!adminProfileLoading && !canCreateTenants ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Tenant management is read-only for your role</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)} can browse tenants, but cannot create tenant records.</p>
+        </div>
+      ) : null}
 
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -73,7 +89,7 @@ export default function TenantsPage() {
               <option value="INSURER">Insurer</option>
               <option value="GOVERNMENT">Government</option>
             </select>
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+            <button type="submit" disabled={!canCreateTenants} title={canCreateTenants ? undefined : "Your role cannot create tenants."} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50">
               Create
             </button>
           </form>
