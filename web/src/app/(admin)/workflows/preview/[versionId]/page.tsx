@@ -503,6 +503,7 @@ export default function WorkflowPreviewPage() {
         onDeleteDraftStage={deleteDraftStage}
         onReorderDraftRecommendations={reorderDraftRecommendations}
         onUpdateDraftStage={updateDraftStage}
+        onCreateDraftRecommendation={createDraftRecommendation}
         onUpdateDraftRecommendation={updateDraftRecommendation}
         onDeleteDraftRecommendation={deleteDraftRecommendation}
       />
@@ -639,6 +640,7 @@ function VisualWorkflowBuilder({
   onDeleteDraftStage,
   onReorderDraftRecommendations,
   onUpdateDraftStage,
+  onCreateDraftRecommendation,
   onUpdateDraftRecommendation,
   onDeleteDraftRecommendation,
 }: {
@@ -654,6 +656,7 @@ function VisualWorkflowBuilder({
   onDeleteDraftStage: (stageCode: string) => void;
   onReorderDraftRecommendations: (stageCode: string, recommendationIds: string[]) => void;
   onUpdateDraftStage: (stageCode: string, data: WorkflowDraftStageUpdateRequest) => void;
+  onCreateDraftRecommendation: (stageCode: string, data: WorkflowDraftRecommendationRequest) => void;
   onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
   onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
@@ -801,6 +804,7 @@ function VisualWorkflowBuilder({
                   }}
                   canDeleteStage={draftEditable && stages.length > 1}
                   onUpdateDraftStage={onUpdateDraftStage}
+                  onCreateDraftRecommendation={onCreateDraftRecommendation}
                   onUpdateDraftRecommendation={onUpdateDraftRecommendation}
                   onDeleteDraftRecommendation={onDeleteDraftRecommendation}
                 />
@@ -855,6 +859,7 @@ function StageInspector({
   onDeleteStage,
   canDeleteStage,
   onUpdateDraftStage,
+  onCreateDraftRecommendation,
   onUpdateDraftRecommendation,
   onDeleteDraftRecommendation,
 }: {
@@ -878,16 +883,19 @@ function StageInspector({
   onDeleteStage: () => void;
   canDeleteStage: boolean;
   onUpdateDraftStage: (stageCode: string, data: WorkflowDraftStageUpdateRequest) => void;
+  onCreateDraftRecommendation: (stageCode: string, data: WorkflowDraftRecommendationRequest) => void;
   onUpdateDraftRecommendation: (recommendationId: string, data: WorkflowDraftRecommendationRequest) => void;
   onDeleteDraftRecommendation: (recommendationId: string) => void;
 }) {
   const recs = stage.recommended_activities || [];
   const [stageNameDraft, setStageNameDraft] = useState(labelText(stage.name));
   const [durationDraft, setDurationDraft] = useState(String(stage.duration_days || 0));
+  const [showInlineRecommendationForm, setShowInlineRecommendationForm] = useState(false);
 
   useEffect(() => {
     setStageNameDraft(labelText(stage.name));
     setDurationDraft(String(stage.duration_days || 0));
+    setShowInlineRecommendationForm(false);
   }, [stage.code, stage.name, stage.duration_days]);
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -919,7 +927,17 @@ function StageInspector({
         ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={onEditStage} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">Open full editor</button>
-          <button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Add recommendation</button>
+          {draftEditable ? (
+            <button
+              type="button"
+              disabled={Boolean(busyTarget)}
+              onClick={() => setShowInlineRecommendationForm((current) => !current)}
+              className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${showInlineRecommendationForm ? "border-green-500 bg-green-50 text-green-800" : "border-green-200 text-green-700 hover:bg-green-50"}`}
+            >
+              Add on canvas
+            </button>
+          ) : null}
+          <button type="button" onClick={onAddRecommendation} className="rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">Open full add form</button>
           {draftEditable ? (
             <>
               <button type="button" disabled={Boolean(busyTarget)} onClick={onCreateStageAfter} className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${activeStageAction === "CREATE" ? "border-blue-500 bg-blue-50 text-blue-800" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}>Add stage after</button>
@@ -934,6 +952,17 @@ function StageInspector({
 
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-gray-900">Recommendations in this stage</h3><span className="text-xs text-gray-400">{recs.length} items</span></div>
+        {draftEditable && showInlineRecommendationForm ? (
+          <QuickRecommendationCreateForm
+            stageCode={stage.code}
+            busy={Boolean(busyTarget)}
+            onCancel={() => setShowInlineRecommendationForm(false)}
+            onCreate={(payload) => {
+              onCreateDraftRecommendation(stage.code, payload);
+              setShowInlineRecommendationForm(false);
+            }}
+          />
+        ) : null}
         {recs.length === 0 ? <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">No recommendations configured for this stage.</p> : null}
         <div className="grid gap-3 md:grid-cols-2">
           {recs.map((rec, index) => (
@@ -1054,6 +1083,96 @@ function StageActionPanel({
         {!canSubmit ? <span className="text-xs text-red-600">Stage code and name are required; duration must be 0 or more.</span> : null}
       </div>
     </form>
+  );
+}
+
+
+function QuickRecommendationCreateForm({
+  stageCode,
+  busy,
+  onCreate,
+  onCancel,
+}: {
+  stageCode: string;
+  busy: boolean;
+  onCreate: (data: WorkflowDraftRecommendationRequest) => void;
+  onCancel: () => void;
+}) {
+  const [dayOffset, setDayOffset] = useState("0");
+  const [activityType, setActivityType] = useState("LABOR");
+  const [inputName, setInputName] = useState("Custom labour activity");
+  const [quantity, setQuantity] = useState("1 labour-day/acre");
+  const [cost, setCost] = useState("");
+  const [isCritical, setIsCritical] = useState(false);
+  const day = Number(dayOffset);
+  const costValue = cost.trim() ? Number(cost) : null;
+  const canSubmit = !busy
+    && dayOffset !== ""
+    && Number.isFinite(day)
+    && inputName.trim().length > 0
+    && activityType.trim().length > 0
+    && (!cost.trim() || Number.isFinite(Number(cost)));
+
+  return (
+    <div className="mb-4 rounded-lg border border-green-200 bg-green-50/50 p-3">
+      <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Add draft recommendation on canvas</p>
+          <p className="text-xs text-gray-500">Creates a CUSTOM recommendation for {stageCode}. Use the full form for catalog-backed input selection.</p>
+        </div>
+        <Badge>CUSTOM</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-[80px_120px_1fr]">
+        <label className="text-xs font-medium text-gray-500">
+          Day
+          <input type="number" value={dayOffset} onChange={(event) => setDayOffset(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" />
+        </label>
+        <label className="text-xs font-medium text-gray-500">
+          Activity
+          <input value={activityType} onChange={(event) => setActivityType(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" />
+        </label>
+        <label className="text-xs font-medium text-gray-500">
+          Recommendation / input name
+          <input value={inputName} onChange={(event) => setInputName(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" />
+        </label>
+      </div>
+      <div className="mt-2 grid gap-2 md:grid-cols-[1fr_120px_auto]">
+        <label className="text-xs font-medium text-gray-500">
+          Quantity
+          <input value={quantity} onChange={(event) => setQuantity(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" placeholder="e.g. 1 labour-day/acre" />
+        </label>
+        <label className="text-xs font-medium text-gray-500">
+          Cost/acre
+          <input type="number" value={cost} onChange={(event) => setCost(event.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-xs text-gray-900" />
+        </label>
+        <label className="flex items-center gap-2 self-end pb-1 text-xs font-medium text-gray-600">
+          <input type="checkbox" checked={isCritical} onChange={(event) => setIsCritical(event.target.checked)} />
+          Critical
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={() => onCreate({
+            day_offset: day,
+            activity_type: activityType.trim().toUpperCase(),
+            input_source: "CUSTOM",
+            input_code: null,
+            input_name: inputName.trim(),
+            typical_quantity: quantity.trim() || null,
+            typical_cost_per_acre: costValue,
+            is_critical: isCritical,
+            description: { en: `Custom ${activityType.trim().toLowerCase()} recommendation for ${stageCode}` },
+          })}
+          className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:cursor-wait disabled:opacity-60"
+        >
+          {busy ? "Saving..." : "Add recommendation"}
+        </button>
+        <button type="button" disabled={busy} onClick={onCancel} className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-wait disabled:opacity-60">Cancel</button>
+        {!canSubmit ? <span className="self-center text-xs text-red-600">Day, activity and name are required; cost must be numeric.</span> : null}
+      </div>
+    </div>
   );
 }
 
