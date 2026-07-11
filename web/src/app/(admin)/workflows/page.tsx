@@ -11,6 +11,7 @@ import {
   type WorkflowStage,
   type WorkflowTemplateVersionsResponse,
 } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 function labelText(value: Record<string, string> | string | undefined | null) {
   if (!value) return "";
@@ -134,6 +135,8 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canEditWorkflowCatalog = hasAdminPermission(adminProfile, "EDIT");
   const [versions, setVersions] = useState<WorkflowTemplateVersionsResponse | null>(null);
   const [versionLoading, setVersionLoading] = useState(false);
   const [versionError, setVersionError] = useState<string | null>(null);
@@ -190,6 +193,10 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
   }, [workflow.workflow_template_id]);
 
   const runLegacyBackfill = async (dryRun: boolean) => {
+    if (!canEditWorkflowCatalog) {
+      setLegacyError("Your current role can view workflow history but cannot run legacy pin backfill.");
+      return;
+    }
     setLegacyLoading(true);
     setLegacyError(null);
     setLegacyMessage(null);
@@ -213,6 +220,10 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
   };
 
   const restoreDraft = async (versionId: string) => {
+    if (!canEditWorkflowCatalog) {
+      setVersionError("Your current role can view workflow versions but cannot restore drafts.");
+      return;
+    }
     setBusyVersionId(versionId);
     setVersionError(null);
     setRestoreMessage(null);
@@ -230,6 +241,12 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
 
   return (
     <div className="space-y-6">
+      {!adminProfileLoading && !canEditWorkflowCatalog ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Workflow catalog is read-only for your role</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)} can browse workflow stages, version history, legacy pin reports, and audit history, but cannot restore drafts or run backfills.</p>
+        </div>
+      ) : null}
       <div className="rounded-lg bg-white shadow">
         <div className="border-b p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -313,7 +330,8 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
                     {version.status === "PUBLISHED" || version.status === "ARCHIVED" ? (
                       <button
                         type="button"
-                        disabled={busyVersionId === version.workflow_template_version_id}
+                        disabled={busyVersionId === version.workflow_template_version_id || !canEditWorkflowCatalog}
+                        title={canEditWorkflowCatalog ? undefined : "Your role cannot restore workflow drafts."}
                         onClick={() => restoreDraft(version.workflow_template_version_id)}
                         className="rounded border border-blue-200 px-3 py-1.5 font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
                       >
@@ -352,7 +370,8 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
             <div className="flex flex-wrap gap-2 text-xs">
               <button
                 type="button"
-                disabled={legacyLoading}
+                disabled={legacyLoading || !canEditWorkflowCatalog}
+                title={canEditWorkflowCatalog ? undefined : "Your role cannot run legacy pin backfill."}
                 onClick={() => runLegacyBackfill(true)}
                 className="rounded border border-gray-200 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
               >
@@ -360,7 +379,8 @@ function WorkflowDetail({ workflow }: { workflow: EnabledCropWorkflow }) {
               </button>
               <button
                 type="button"
-                disabled={legacyLoading || legacyPins.counts.eligible === 0}
+                disabled={legacyLoading || legacyPins.counts.eligible === 0 || !canEditWorkflowCatalog}
+                title={canEditWorkflowCatalog ? undefined : "Your role cannot run legacy pin backfill."}
                 onClick={() => runLegacyBackfill(false)}
                 className="rounded border border-amber-200 px-3 py-1.5 font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-wait disabled:opacity-60"
               >
