@@ -545,6 +545,8 @@ export default function WorkflowPreviewPage() {
           validation={draftValidation}
           postValidationAudit={postValidationAudit}
           auditLoading={postValidationAuditLoading}
+          validating={draftValidating}
+          onValidate={validateDraft}
         />
       ) : null}
 
@@ -1966,11 +1968,15 @@ function DraftFreshnessCard({
   validation,
   postValidationAudit,
   auditLoading,
+  validating,
+  onValidate,
 }: {
   freshness: WorkflowPreviewResponse["draft_freshness"] | null;
   validation: WorkflowDraftValidationResponse | null;
   postValidationAudit: WorkflowAuditResponse | null;
   auditLoading: boolean;
+  validating: boolean;
+  onValidate: () => void;
 }) {
   const hasValidation = Boolean(freshness?.last_validated_at || validation);
   const current = Boolean(freshness?.validation_current && validation?.can_publish);
@@ -1989,9 +1995,17 @@ function DraftFreshnessCard({
                 : "This draft has not been validated yet."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge>{current ? "Validation current" : "Validation required"}</Badge>
           {hasValidation ? <Badge>{auditLoading ? "Checking edits..." : `${editsSinceValidation.length} edit(s) since validation`}</Badge> : null}
+          <button
+            type="button"
+            disabled={validating}
+            onClick={onValidate}
+            className="rounded border border-current/30 bg-white/70 px-3 py-1 text-xs font-semibold hover:bg-white disabled:cursor-wait disabled:opacity-60"
+          >
+            {validating ? "Validating..." : current ? "Revalidate now" : "Validate now"}
+          </button>
         </div>
       </div>
       <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
