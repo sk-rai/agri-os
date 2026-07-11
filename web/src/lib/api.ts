@@ -1223,6 +1223,10 @@ export const workflowCatalogApi = {
       method: "PATCH",
       body: data,
     }),
+  deleteDraftStage: (versionId: string, stageCode: string) =>
+    api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${encodeURIComponent(stageCode)}`, {
+      method: "DELETE",
+    }),
   createDraftRecommendation: (versionId: string, stageCode: string, data: WorkflowDraftRecommendationRequest) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/stages/${stageCode}/recommendations`, {
       method: "POST",

@@ -296,6 +296,37 @@ def main():
         )
         check(reorder_published.status_code == 404, "Published version cannot reorder draft stages", f"Status: {reorder_published.status_code}")
 
+        delete_stage_published = client.delete(
+            f"/api/v1/workflow-catalog/drafts/{source_version.id}/stages/CODEX_TEST_STAGE",
+            headers=headers,
+        )
+        check(delete_stage_published.status_code == 404, "Published version cannot delete draft stages", f"Status: {delete_stage_published.status_code}")
+
+        delete_stage = client.delete(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/CODEX_TEST_STAGE",
+            headers=headers,
+        )
+        check(delete_stage.status_code == 200, "Draft stage delete returns 200", f"Status: {delete_stage.status_code}")
+        delete_stage_payload = delete_stage.json()
+        deleted_stage_codes = [stage["code"] for stage in delete_stage_payload["android_preview"]["stages"]]
+        check("CODEX_TEST_STAGE" not in deleted_stage_codes, "Deleted draft stage is removed from preview")
+        check(
+            [stage["order"] for stage in delete_stage_payload["android_preview"]["stages"]] == list(range(1, len(deleted_stage_codes) + 1)),
+            "Remaining draft stages are renumbered after delete",
+        )
+        db.expire_all()
+        deleted_stage_row = db.query(WorkflowTemplateStage).filter(
+            WorkflowTemplateStage.template_version_id == draft_version_id,
+            WorkflowTemplateStage.stage_code == "CODEX_TEST_STAGE",
+        ).first()
+        check(deleted_stage_row is not None and deleted_stage_row.is_active is False, "Deleted draft stage is soft-deleted")
+
+        delete_missing_stage = client.delete(
+            f"/api/v1/workflow-catalog/drafts/{draft_version_id}/stages/CODEX_TEST_STAGE",
+            headers=headers,
+        )
+        check(delete_missing_stage.status_code == 404, "Deleting an inactive draft stage returns 404", f"Status: {delete_missing_stage.status_code}")
+
         nursery_recs = patched_nursery.get("recommended_activities", [])
         check(len(nursery_recs) > 0, "Draft nursery has recommendations to edit")
         editable_rec = nursery_recs[0]
@@ -537,6 +568,7 @@ def main():
             "CREATE_DRAFT_STAGE",
             "DUPLICATE_DRAFT_STAGE",
             "REORDER_DRAFT_STAGES",
+            "DELETE_DRAFT_STAGE",
             "REORDER_DRAFT_RECOMMENDATIONS",
             "UPDATE_RECOMMENDATION",
             "CREATE_RECOMMENDATION",

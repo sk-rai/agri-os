@@ -276,6 +276,22 @@ export default function WorkflowPreviewPage() {
     }
   };
 
+  const deleteDraftStage = async (stageCode: string) => {
+    if (!preview) return;
+    setBusyTarget(`DRAFT_STAGE:${stageCode}:DELETE`);
+    setError(null);
+    try {
+      const updated = await workflowCatalogApi.deleteDraftStage(preview.workflow_template_version_id, stageCode);
+      setPreview(updated);
+      setSelectedStageCode(updated.android_preview.stages[0]?.code || null);
+      setDraftValidation(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete draft stage");
+    } finally {
+      setBusyTarget(null);
+    }
+  };
+
   const updateDraftRecommendation = async (recommendationId: string, data: WorkflowDraftRecommendationRequest) => {
     if (!preview) return;
     setBusyTarget(`DRAFT_REC:${recommendationId}`);
@@ -448,6 +464,7 @@ export default function WorkflowPreviewPage() {
         onCreateDraftStage={createDraftStage}
         onDuplicateDraftStage={duplicateDraftStage}
         onReorderDraftStages={reorderDraftStages}
+        onDeleteDraftStage={deleteDraftStage}
         onReorderDraftRecommendations={reorderDraftRecommendations}
       />
 
@@ -524,6 +541,7 @@ function VisualWorkflowBuilder({
   onCreateDraftStage,
   onDuplicateDraftStage,
   onReorderDraftStages,
+  onDeleteDraftStage,
   onReorderDraftRecommendations,
 }: {
   stages: WorkflowStage[];
@@ -535,6 +553,7 @@ function VisualWorkflowBuilder({
   onCreateDraftStage: (afterStageCode: string, data: WorkflowDraftStageCreateRequest) => void;
   onDuplicateDraftStage: (stageCode: string, data: WorkflowDraftStageDuplicateRequest) => void;
   onReorderDraftStages: (stageCodes: string[]) => void;
+  onDeleteDraftStage: (stageCode: string) => void;
   onReorderDraftRecommendations: (stageCode: string, recommendationIds: string[]) => void;
 }) {
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0];
@@ -637,6 +656,12 @@ function VisualWorkflowBuilder({
                   canMoveEarlier={draftEditable && selectedStageIndex > 0}
                   canMoveLater={draftEditable && selectedStageIndex >= 0 && selectedStageIndex < stages.length - 1}
                   onMoveRecommendation={(recommendationIndex, direction) => moveRecommendation(selectedStage, recommendationIndex, direction)}
+                  onDeleteStage={() => {
+                    if (window.confirm(`Delete stage ${selectedStage.code} from this draft? Its recommendations will also be deactivated.`)) {
+                      onDeleteDraftStage(selectedStage.code);
+                    }
+                  }}
+                  canDeleteStage={draftEditable && stages.length > 1}
                 />
                 {draftEditable && stageAction ? (
                   <StageActionPanel
@@ -682,6 +707,8 @@ function StageInspector({
   canMoveEarlier,
   canMoveLater,
   onMoveRecommendation,
+  onDeleteStage,
+  canDeleteStage,
 }: {
   stage: WorkflowStage;
   draftEditable: boolean;
@@ -696,6 +723,8 @@ function StageInspector({
   canMoveEarlier: boolean;
   canMoveLater: boolean;
   onMoveRecommendation: (recommendationIndex: number, direction: -1 | 1) => void;
+  onDeleteStage: () => void;
+  canDeleteStage: boolean;
 }) {
   const recs = stage.recommended_activities || [];
   return (
@@ -718,6 +747,7 @@ function StageInspector({
               <button type="button" disabled={Boolean(busyTarget)} onClick={onDuplicateStage} className={`rounded border px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-60 ${activeStageAction === "DUPLICATE" ? "border-purple-500 bg-purple-50 text-purple-800" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}>Duplicate stage</button>
               <button type="button" disabled={Boolean(busyTarget) || !canMoveEarlier} onClick={onMoveEarlier} className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">Move earlier</button>
               <button type="button" disabled={Boolean(busyTarget) || !canMoveLater} onClick={onMoveLater} className="rounded border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">Move later</button>
+              <button type="button" disabled={Boolean(busyTarget) || !canDeleteStage} onClick={onDeleteStage} className="rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">Delete stage</button>
             </>
           ) : null}
         </div><p className="mt-3 text-xs text-gray-500">Double-click any stage card or use these shortcuts to jump to the detailed editor below.</p>

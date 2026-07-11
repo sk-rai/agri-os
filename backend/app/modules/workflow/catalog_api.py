@@ -1479,6 +1479,26 @@ def _refresh_workflow_total_duration(db: Session, version: WorkflowTemplateVersi
     version.updated_at = datetime.now(timezone.utc)
 
 
+def _renumber_active_draft_stages(db: Session, version_id) -> None:
+    stages = (
+        db.query(WorkflowTemplateStage)
+        .filter(WorkflowTemplateStage.template_version_id == version_id, WorkflowTemplateStage.is_active == True)
+        .order_by(WorkflowTemplateStage.stage_order.asc())
+        .all()
+    )
+    if not stages:
+        return
+    now = datetime.now(timezone.utc)
+    offset = 10000
+    for index, stage in enumerate(stages, start=1):
+        stage.stage_order = offset + index
+        stage.updated_at = now
+    db.flush()
+    for index, stage in enumerate(stages, start=1):
+        stage.stage_order = index
+        stage.updated_at = now
+
+
 @router.post("/drafts/{workflow_template_version_id}/stages")
 def create_draft_workflow_stage(
     workflow_template_version_id: uuid.UUID,
@@ -1612,6 +1632,60 @@ def duplicate_draft_workflow_stage(
         before=_stage_audit_snapshot(source_stage),
         after={**_stage_audit_snapshot(new_stage), "recommendation_count": len(source_recs)},
         reason=f"Duplicate draft stage {source_stage.stage_code} as {new_stage.stage_code}",
+    )
+    db.commit()
+    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+
+
+@router.delete("/drafts/{workflow_template_version_id}/stages/{stage_code}")
+def delete_draft_workflow_stage(
+    workflow_template_version_id: uuid.UUID,
+    stage_code: str,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Soft-delete a stage from a DRAFT workflow version and deactivate its recommendations."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    active_stage_count = db.query(WorkflowTemplateStage).filter(
+        WorkflowTemplateStage.template_version_id == version.id,
+        WorkflowTemplateStage.is_active == True,
+    ).count()
+    if active_stage_count <= 1:
+        raise HTTPException(400, "Draft workflow must keep at least one active stage")
+    stage = _get_draft_stage(db, version.id, stage_code)
+    before = _stage_audit_snapshot(stage)
+    recs = db.query(WorkflowTemplateRecommendation).filter(
+        WorkflowTemplateRecommendation.template_stage_id == stage.id,
+        WorkflowTemplateRecommendation.is_active == True,
+    ).all()
+    now = datetime.now(timezone.utc)
+    for rec in recs:
+        rec.is_active = False
+        rec.updated_at = now
+    stage.is_active = False
+    # Inactive stages still participate in the unique stage_order constraint,
+    # so move the deleted stage out of the active order range before renumbering.
+    stage.stage_order = 90000 + int(stage.stage_order or 0)
+    stage.updated_at = now
+    db.flush()
+    _renumber_active_draft_stages(db, version.id)
+    _refresh_workflow_total_duration(db, version)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=_actor_uuid(x_actor_id) or principal.user_id,
+        action="DELETE_DRAFT_STAGE",
+        target_type="STAGE",
+        target_id=str(stage.id),
+        target_code=stage.stage_code,
+        before=before,
+        after={"stage_code": stage.stage_code, "is_active": False, "deactivated_recommendation_count": len(recs)},
+        metadata={"remaining_stage_count": active_stage_count - 1},
+        reason=f"Delete draft stage {stage.stage_code}",
     )
     db.commit()
     return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
