@@ -355,6 +355,24 @@ def _validate_override_payload(target_type: str, operation: str, payload: dict) 
             raise HTTPException(400, "CHANGE_QUANTITY requires typical_quantity")
 
 
+
+
+def _enablement_audit_snapshot(enablement: Optional[WorkflowTemplateEnablement]) -> Optional[dict]:
+    if not enablement:
+        return None
+    return {
+        "id": str(enablement.id),
+        "tenant_id": enablement.tenant_id,
+        "project_id": str(enablement.project_id) if enablement.project_id else None,
+        "workflow_template_id": str(enablement.template_id),
+        "enabled": bool(enablement.enabled),
+        "display_order": enablement.display_order,
+        "display_label": enablement.display_label,
+        "is_active": bool(enablement.is_active),
+        "created_at": enablement.created_at.isoformat() if enablement.created_at else None,
+        "updated_at": enablement.updated_at.isoformat() if enablement.updated_at else None,
+    }
+
 def _label(template, enablement):
     if enablement and enablement.display_label:
         return enablement.display_label
@@ -2694,6 +2712,40 @@ def get_project_workflow_enablements(
     return _project_workflow_enablement_summary(db, project_id, x_tenant_id)
 
 
+
+
+@router.get("/projects/{project_id}/workflow-enablements/audit")
+def list_project_workflow_enablement_audit(
+    project_id: uuid.UUID,
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Return project workflow assignment audit events for admin traceability."""
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    events = (
+        db.query(WorkflowTemplateAuditEvent)
+        .filter(
+            WorkflowTemplateAuditEvent.tenant_id == x_tenant_id,
+            WorkflowTemplateAuditEvent.action == "UPDATE_PROJECT_WORKFLOW_ENABLEMENT",
+            WorkflowTemplateAuditEvent.target_type == "WORKFLOW_ENABLEMENT",
+        )
+        .order_by(WorkflowTemplateAuditEvent.created_at.desc())
+        .limit(limit * 3)
+        .all()
+    )
+    rows = [event for event in events if str((event.metadata_ or {}).get("project_id")) == str(project_id)][:limit]
+    return {
+        "schema_version": "project_workflow_enablement_audit.v1",
+        "tenant_id": x_tenant_id,
+        "project": {"id": str(project.id), "name": project.name, "status": project.status},
+        "count": len(rows),
+        "events": [_audit_payload(event) for event in rows],
+    }
+
+
 @router.put("/projects/{project_id}/workflow-enablements/{workflow_template_id}")
 def upsert_project_workflow_enablement(
     project_id: uuid.UUID,
@@ -2747,6 +2799,7 @@ def upsert_project_workflow_enablement(
         )
         .first()
     )
+    before_snapshot = _enablement_audit_snapshot(enablement)
     if not enablement:
         enablement = WorkflowTemplateEnablement(
             id=uuid.uuid4(),
@@ -2763,6 +2816,27 @@ def upsert_project_workflow_enablement(
         enablement.display_label = body.display_label
     enablement.is_active = True
     enablement.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        actor_id=principal.user_id,
+        action="UPDATE_PROJECT_WORKFLOW_ENABLEMENT",
+        target_type="WORKFLOW_ENABLEMENT",
+        target_id=str(enablement.id),
+        target_code=template.code,
+        before=before_snapshot,
+        after=_enablement_audit_snapshot(enablement),
+        reason="Update project workflow assignment",
+        metadata={
+            "project_id": str(project_id),
+            "project_name": project.name,
+            "enabled": body.enabled,
+            "display_order_changed": before_snapshot is None or before_snapshot.get("display_order") != enablement.display_order,
+            "display_label_changed": before_snapshot is None or before_snapshot.get("display_label") != enablement.display_label,
+        },
+    )
     db.commit()
     return _project_workflow_enablement_summary(db, project_id, x_tenant_id)
 

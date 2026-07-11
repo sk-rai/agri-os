@@ -1117,6 +1117,19 @@ export interface ProjectWorkflowEnablementItem {
   overrides: AppliedWorkflowOverride[];
 }
 
+
+export interface ProjectWorkflowAssignmentAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: {
+    id: string;
+    name: string;
+    status: string;
+  };
+  count: number;
+  events: WorkflowAuditEvent[];
+}
+
 export interface ProjectWorkflowEnablementsResponse {
   schema_version: string;
   tenant_id: string;
@@ -1292,6 +1305,12 @@ export const workflowCatalogApi = {
     }),
   projectEnablements: (projectId: string) =>
     api<ProjectWorkflowEnablementsResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements`),
+  projectEnablementAudit: (projectId: string, params?: { limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<ProjectWorkflowAssignmentAuditResponse>(`/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements/audit${suffix}`);
+  },
   updateProjectEnablement: (
     projectId: string,
     workflowTemplateId: string,

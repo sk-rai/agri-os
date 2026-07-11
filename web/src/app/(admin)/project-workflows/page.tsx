@@ -6,6 +6,7 @@ import {
   projectsApi,
   workflowCatalogApi,
   type Project,
+  type ProjectWorkflowAssignmentAuditResponse,
   type ProjectWorkflowEnablementItem,
   type ProjectWorkflowEnablementsResponse,
 } from "@/lib/api";
@@ -24,6 +25,7 @@ export default function ProjectWorkflowsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [summary, setSummary] = useState<ProjectWorkflowEnablementsResponse | null>(null);
+  const [assignmentAudit, setAssignmentAudit] = useState<ProjectWorkflowAssignmentAuditResponse | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +46,18 @@ export default function ProjectWorkflowsPage() {
       .finally(() => setLoadingProjects(false));
   }, []);
 
+  const loadAssignmentAudit = async (projectId: string) => {
+    const audit = await workflowCatalogApi.projectEnablementAudit(projectId, { limit: 50 });
+    setAssignmentAudit(audit);
+  };
+
   useEffect(() => {
     if (!selectedProjectId) return;
     setLoadingSummary(true);
-    workflowCatalogApi
-      .projectEnablements(selectedProjectId)
-      .then(setSummary)
+    Promise.all([
+      workflowCatalogApi.projectEnablements(selectedProjectId).then(setSummary),
+      loadAssignmentAudit(selectedProjectId).catch(() => setAssignmentAudit(null)),
+    ])
       .catch((e) => setError(e.message))
       .finally(() => setLoadingSummary(false));
   }, [selectedProjectId]);
@@ -82,6 +90,7 @@ export default function ProjectWorkflowsPage() {
         display_label: label ? { en: label, hi: label } : undefined,
       });
       setSummary(updated);
+      await loadAssignmentAudit(summary.project.id).catch(() => setAssignmentAudit(null));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update workflow enablement");
     } finally {
@@ -149,6 +158,7 @@ export default function ProjectWorkflowsPage() {
           onSearchChange={setSearch}
           visibilityFilter={visibilityFilter}
           onVisibilityFilterChange={setVisibilityFilter}
+          assignmentAudit={assignmentAudit}
         />
       )}
       {summary && pendingChange ? (
@@ -175,6 +185,7 @@ function ProjectWorkflowSummary({
   onSearchChange,
   visibilityFilter,
   onVisibilityFilterChange,
+  assignmentAudit,
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   updatingWorkflowId: string | null;
@@ -185,6 +196,7 @@ function ProjectWorkflowSummary({
   onSearchChange: (value: string) => void;
   visibilityFilter: WorkflowVisibilityFilter;
   onVisibilityFilterChange: (value: WorkflowVisibilityFilter) => void;
+  assignmentAudit: ProjectWorkflowAssignmentAuditResponse | null;
 }) {
   const lifecycle = summary.safe_edit_lifecycle;
   const canEdit = lifecycle.can_edit_project_workflows;
@@ -301,6 +313,8 @@ function ProjectWorkflowSummary({
         ))}
         </div>
       )}
+
+      <AssignmentAuditPanel audit={assignmentAudit} />
     </div>
   );
 }
@@ -519,6 +533,63 @@ function WorkflowVisibilityCard({
   );
 }
 
+
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "?";
+  return new Date(value).toLocaleString();
+}
+
+function AssignmentAuditPanel({ audit }: { audit: ProjectWorkflowAssignmentAuditResponse | null }) {
+  const events = audit?.events || [];
+  return (
+    <div className="mt-6 rounded-lg bg-white p-5 shadow">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Assignment history</h2>
+          <p className="text-sm text-gray-500">Recent project workflow enablement and metadata changes.</p>
+        </div>
+        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">{events.length} event(s)</span>
+      </div>
+      {events.length === 0 ? (
+        <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">No project workflow assignment changes have been audited yet.</p>
+      ) : (
+        <div className="max-h-[520px] space-y-3 overflow-auto">
+          {events.map((event) => {
+            const before = event.before || {};
+            const after = event.after || {};
+            const metadata = event.metadata || {};
+            return (
+              <details key={event.id} className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded bg-white px-2 py-1 font-medium text-gray-700">{event.action}</span>
+                        <span className="rounded bg-white px-2 py-1 font-mono text-gray-600">{event.target_code}</span>
+                        {metadata.enabled !== undefined ? <span className="rounded bg-white px-2 py-1 text-gray-700">enabled: {String(metadata.enabled)}</span> : null}
+                      </div>
+                      <p className="mt-2 text-gray-700">{event.reason || "Project workflow assignment updated."}</p>
+                    </div>
+                    <div className="text-xs text-gray-500 md:text-right">
+                      <p>{formatDateTime(event.created_at)}</p>
+                      {event.actor_id ? <p>Actor {event.actor_id}</p> : null}
+                    </div>
+                  </div>
+                </summary>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <ImpactItem title="Before" detail={`enabled: ${String(before.enabled ?? "?")}; order: ${String(before.display_order ?? "?")}`} />
+                  <ImpactItem title="After" detail={`enabled: ${String(after.enabled ?? "?")}; order: ${String(after.display_order ?? "?")}`} tone={after.enabled ? "ok" : "warn"} />
+                </div>
+                <pre className="mt-3 max-h-56 overflow-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{JSON.stringify({ before, after, metadata }, null, 2)}</pre>
+              </details>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function WorkflowChangeImpactModal({
   summary,
