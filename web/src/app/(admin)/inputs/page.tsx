@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  authApi,
   inputCatalogApi,
+  type AdminProfileResponse,
   type AgriInputAuditEvent,
   type AgriInputCreateRequest,
   type AgriInputDto,
@@ -133,8 +135,17 @@ export default function InputsPage() {
   const [csvHistory, setCsvHistory] = useState<InputCsvImportHistory | null>(null);
   const [csvReason, setCsvReason] = useState("Input catalog CSV import");
   const [csvBusy, setCsvBusy] = useState(false);
+  const [adminProfile, setAdminProfile] = useState<AdminProfileResponse | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  const canEditInputs = adminProfile?.permissions.includes("EDIT") ?? false;
+  const canPublishInputs = adminProfile?.permissions.includes("PUBLISH") ?? false;
 
   useEffect(() => {
+    authApi.me()
+      .then(setAdminProfile)
+      .catch(() => setAdminProfile(null))
+      .finally(() => setLoadingProfile(false));
     inputCatalogApi
       .categories()
       .then((data) => setCategories(data.categories))
@@ -213,6 +224,7 @@ export default function InputsPage() {
   };
 
   const validateCsv = async () => {
+    if (!canEditInputs) { setError("Your current role can view input CSV tools but cannot validate catalog imports."); return; }
     if (!csvFile) return;
     setCsvBusy(true); setError(null); setNotice(null);
     try {
@@ -223,6 +235,7 @@ export default function InputsPage() {
   };
 
   const applyCsv = async () => {
+    if (!canEditInputs) { setError("Your current role can view input CSV tools but cannot apply catalog imports."); return; }
     if (!csvBatch) return;
     setCsvBusy(true); setError(null); setNotice(null);
     try {
@@ -244,6 +257,7 @@ export default function InputsPage() {
   };
 
   const createInput = async () => {
+    if (!canEditInputs) { setError("Your current role can view inputs but cannot create input catalog records."); return; }
     setCreating(true);
     setError(null);
     setNotice(null);
@@ -278,6 +292,7 @@ export default function InputsPage() {
   };
 
   const archiveSelected = async () => {
+    if (!canEditInputs) { setError("Your current role can view inputs but cannot archive input catalog records."); return; }
     if (!selected) return;
     setSaving(true);
     setError(null);
@@ -301,6 +316,7 @@ export default function InputsPage() {
   };
 
   const restoreSelected = async () => {
+    if (!canEditInputs) { setError("Your current role can view inputs but cannot restore input catalog records."); return; }
     if (!selected) return;
     setSaving(true);
     setError(null);
@@ -322,6 +338,10 @@ export default function InputsPage() {
 
   const transitionGovernance = async (action: "submit" | "publish" | "reject") => {
     if (!selected) return;
+    if (action === "publish" ? !canPublishInputs : !canEditInputs) {
+      setError(action === "publish" ? "Your current role cannot publish input catalog records." : "Your current role cannot submit or reject input catalog records.");
+      return;
+    }
     const reason = changeReason.trim() || `${action} input catalog item`;
     setGovernanceBusy(true); setError(null); setNotice(null);
     try {
@@ -342,6 +362,7 @@ export default function InputsPage() {
   };
 
   const saveSelected = async () => {
+    if (!canEditInputs) { setError("Your current role can view inputs but cannot edit input catalog records."); return; }
     if (!selected || !draft) return;
     setSaving(true);
     setError(null);
@@ -394,13 +415,22 @@ export default function InputsPage() {
           </button>
           <button
             type="button"
+            disabled={!canEditInputs}
+            title={canEditInputs ? undefined : "Your role cannot create input catalog records."}
             onClick={() => { setShowCreate((value) => !value); setNewDraft(emptyNewInputDraft(category)); }}
-            className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
           >
             {showCreate ? "Close new input" : "New input"}
           </button>
         </div>
       </div>
+
+      {!loadingProfile && !canEditInputs ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Input catalog is read-only for your role</p>
+          <p className="mt-1">Role {(adminProfile?.role || "UNASSIGNED").replaceAll("_", " ")}: catalog edits {canEditInputs ? "allowed" : "read-only"}; publishing {canPublishInputs ? "allowed" : "read-only"}. You can still browse inputs, usage references, and audit history.</p>
+        </div>
+      ) : null}
 
       {showCsv ? (
         <CsvCatalogPanel
@@ -413,6 +443,7 @@ export default function InputsPage() {
           onReason={setCsvReason}
           onValidate={validateCsv}
           onApply={applyCsv}
+          canEdit={canEditInputs}
         />
       ) : null}
 
@@ -424,6 +455,7 @@ export default function InputsPage() {
           onDraft={updateNewDraft}
           onCreate={createInput}
           onCancel={() => setShowCreate(false)}
+          canEdit={canEditInputs}
         />
       ) : null}
 
@@ -558,6 +590,8 @@ export default function InputsPage() {
             onArchive={archiveSelected}
             onRestore={restoreSelected}
             onReset={() => setDraft(selected ? toDraft(selected) : null)}
+            canEdit={canEditInputs}
+            canPublish={canPublishInputs}
           />
         </div>
       )}
@@ -565,7 +599,7 @@ export default function InputsPage() {
   );
 }
 
-function CsvCatalogPanel({ file, batch, history, reason, busy, onFile, onReason, onValidate, onApply }: {
+function CsvCatalogPanel({ file, batch, history, reason, busy, onFile, onReason, onValidate, onApply, canEdit }: {
   file: File | null;
   batch: InputCsvImportBatch | null;
   history: InputCsvImportHistory | null;
@@ -575,6 +609,7 @@ function CsvCatalogPanel({ file, batch, history, reason, busy, onFile, onReason,
   onReason: (value: string) => void;
   onValidate: () => void;
   onApply: () => void;
+  canEdit: boolean;
 }) {
   const counts = batch?.report.counts || {};
   return (
@@ -593,7 +628,7 @@ function CsvCatalogPanel({ file, batch, history, reason, busy, onFile, onReason,
         <label className="flex-1 text-xs font-medium text-gray-500">CSV file
           <input type="file" accept=".csv,text/csv" onChange={(e) => onFile(e.target.files?.[0] || null)} className="mt-1 block w-full rounded border p-2 text-sm" />
         </label>
-        <button type="button" disabled={!file || busy} onClick={onValidate} className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? "Working..." : "Validate dry run"}</button>
+        <button type="button" disabled={!file || busy || !canEdit} title={canEdit ? undefined : "Your role cannot validate catalog imports."} onClick={onValidate} className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? "Working..." : "Validate dry run"}</button>
       </div>
       {batch ? (
         <div className="mt-5">
@@ -609,7 +644,7 @@ function CsvCatalogPanel({ file, batch, history, reason, busy, onFile, onReason,
               <tbody className="divide-y">{batch.report.rows.map((row) => <tr key={`${row.row_number}-${row.code}`}><td className="p-2">{row.row_number}</td><td className="p-2 font-mono">{row.code || "-"}</td><td className="p-2">{row.action}</td><td className="p-2">{[...row.errors, ...row.warnings].map((d) => <p key={`${d.field}-${d.code}`} className={row.errors.includes(d) ? "text-red-600" : "text-amber-600"}>{d.field}: {d.message}</p>)}</td></tr>)}</tbody>
             </table>
           </div>
-          {batch.can_apply ? <div className="mt-3 flex flex-col gap-2 md:flex-row"><input value={reason} onChange={(e) => onReason(e.target.value)} placeholder="Reason for import" className="flex-1 rounded border px-3 py-2 text-sm" /><button type="button" disabled={busy || reason.trim().length < 3} onClick={onApply} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply validated changes</button></div> : null}
+          {batch.can_apply ? <div className="mt-3 flex flex-col gap-2 md:flex-row"><input value={reason} onChange={(e) => onReason(e.target.value)} placeholder="Reason for import" className="flex-1 rounded border px-3 py-2 text-sm" /><button type="button" disabled={busy || !canEdit || reason.trim().length < 3} title={canEdit ? undefined : "Your role cannot apply catalog imports."} onClick={onApply} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply validated changes</button></div> : null}
         </div>
       ) : null}
       {history?.imports.length ? <details className="mt-4 text-xs"><summary className="cursor-pointer font-medium text-gray-600">Recent imports ({history.count})</summary><div className="mt-2 space-y-1">{history.imports.slice(0, 8).map((item) => <p key={item.batch_id} className="rounded bg-gray-50 p-2">{new Date(item.created_at).toLocaleString()} · {item.file_name} · {item.status}</p>)}</div></details> : null}
@@ -624,6 +659,7 @@ function NewInputPanel({
   onDraft,
   onCreate,
   onCancel,
+  canEdit,
 }: {
   categories: InputCategoryDto[];
   draft: NewInputDraft;
@@ -631,6 +667,7 @@ function NewInputPanel({
   onDraft: (patch: Partial<NewInputDraft>) => void;
   onCreate: () => void;
   onCancel: () => void;
+  canEdit: boolean;
 }) {
   return (
     <div className="mb-6 rounded-lg bg-white p-5 shadow">
@@ -675,7 +712,8 @@ function NewInputPanel({
       <div className="mt-5 flex gap-2">
         <button
           type="button"
-          disabled={creating}
+          disabled={creating || !canEdit}
+          title={canEdit ? undefined : "Your role cannot create input catalog records."}
           onClick={onCreate}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
         >
@@ -712,6 +750,8 @@ function InputEditor({
   onArchive,
   onRestore,
   onReset,
+  canEdit,
+  canPublish,
 }: {
   item: AgriInputDto | null;
   draft: InputDraft | null;
@@ -730,6 +770,8 @@ function InputEditor({
   onArchive: () => void;
   onRestore: () => void;
   onReset: () => void;
+  canEdit: boolean;
+  canPublish: boolean;
 }) {
   if (!item || !draft) {
     return <div className="rounded-lg bg-white p-6 text-sm text-gray-400 shadow">Select an input to edit metadata.</div>;
@@ -766,7 +808,8 @@ function InputEditor({
       <div className="mt-5 flex gap-2">
         <button
           type="button"
-          disabled={saving}
+          disabled={saving || !canEdit}
+          title={canEdit ? undefined : "Your role cannot edit input catalog records."}
           onClick={onSave}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
         >
@@ -783,7 +826,8 @@ function InputEditor({
         {item.is_active === false ? (
           <button
             type="button"
-            disabled={saving}
+            disabled={saving || !canEdit}
+            title={canEdit ? undefined : "Your role cannot restore input catalog records."}
             onClick={onRestore}
             className="rounded-lg border border-green-200 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-60"
           >
@@ -792,7 +836,8 @@ function InputEditor({
         ) : (
           <button
             type="button"
-            disabled={saving}
+            disabled={saving || !canEdit}
+            title={canEdit ? undefined : "Your role cannot archive input catalog records."}
             onClick={onArchive}
             className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
           >
@@ -801,14 +846,14 @@ function InputEditor({
         )}
       </div>
 
-      <InputGovernancePanel governance={governance} busy={governanceBusy} onAction={onGovernance} />
+      <InputGovernancePanel governance={governance} busy={governanceBusy} onAction={onGovernance} canEdit={canEdit} canPublish={canPublish} />
       <InputUsagePanel references={references} loading={loadingReferences} />
       <InputAuditPanel events={auditEvents} loading={loadingAudit} />
     </div>
   );
 }
 
-function InputGovernancePanel({ governance, busy, onAction }: { governance: InputGovernanceResponse | null; busy: boolean; onAction: (action: "submit" | "publish" | "reject") => void }) {
+function InputGovernancePanel({ governance, busy, onAction, canEdit, canPublish }: { governance: InputGovernanceResponse | null; busy: boolean; onAction: (action: "submit" | "publish" | "reject") => void; canEdit: boolean; canPublish: boolean }) {
   if (!governance) return <div className="mt-6 border-t pt-4 text-xs text-gray-400">Loading governance report...</div>;
   const { input, validation } = governance;
   return <div className="mt-6 border-t pt-4">
@@ -816,7 +861,7 @@ function InputGovernancePanel({ governance, busy, onAction }: { governance: Inpu
     <div className="mt-3 flex gap-2 text-xs"><span className="rounded bg-red-50 px-2 py-1 text-red-700">{validation.counts.errors} errors</span><span className="rounded bg-amber-50 px-2 py-1 text-amber-700">{validation.counts.warnings} warnings</span><span className="rounded bg-gray-100 px-2 py-1">{validation.counts.duplicates} duplicates</span></div>
     {[...validation.errors, ...validation.warnings].length ? <div className="mt-2 space-y-1">{[...validation.errors, ...validation.warnings].map((finding) => <p key={`${finding.field}-${finding.code}`} className={`rounded p-2 text-xs ${validation.errors.includes(finding) ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{finding.field}: {finding.message}</p>)}</div> : <p className="mt-2 rounded bg-green-50 p-2 text-xs text-green-700">Validation is clear.</p>}
     {validation.duplicate_candidates.length ? <details className="mt-2 text-xs"><summary className="cursor-pointer text-gray-600">Possible duplicates</summary>{validation.duplicate_candidates.map((candidate) => <p key={candidate.code} className="mt-1 rounded bg-gray-50 p-2">{candidate.code} · {candidate.canonical_name} · {candidate.catalog_status}</p>)}</details> : null}
-    <div className="mt-3 flex flex-wrap gap-2">{input.catalog_status === "DRAFT" || input.catalog_status === "REJECTED" ? <button disabled={busy || !validation.can_submit} onClick={() => onAction("submit")} className="rounded bg-blue-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Submit for review</button> : null}{input.catalog_status === "REVIEW" ? <><button disabled={busy || !validation.can_publish} onClick={() => onAction("publish")} className="rounded bg-green-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Publish</button><button disabled={busy} onClick={() => onAction("reject")} className="rounded border border-red-200 px-3 py-2 text-xs font-medium text-red-700">Reject</button></> : null}</div>
+    <div className="mt-3 flex flex-wrap gap-2">{input.catalog_status === "DRAFT" || input.catalog_status === "REJECTED" ? <button disabled={busy || !canEdit || !validation.can_submit} title={canEdit ? undefined : "Your role cannot submit input catalog records."} onClick={() => onAction("submit")} className="rounded bg-blue-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Submit for review</button> : null}{input.catalog_status === "REVIEW" ? <><button disabled={busy || !canPublish || !validation.can_publish} title={canPublish ? undefined : "Your role cannot publish input catalog records."} onClick={() => onAction("publish")} className="rounded bg-green-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Publish</button><button disabled={busy || !canEdit} title={canEdit ? undefined : "Your role cannot reject input catalog records."} onClick={() => onAction("reject")} className="rounded border border-red-200 px-3 py-2 text-xs font-medium text-red-700">Reject</button></> : null}</div>
   </div>;
 }
 
