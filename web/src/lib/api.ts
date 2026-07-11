@@ -1314,7 +1314,7 @@ export const workflowCatalogApi = {
   updateProjectEnablement: (
     projectId: string,
     workflowTemplateId: string,
-    data: { enabled: boolean; display_order?: number | null; display_label?: Record<string, string> | null }
+    data: { enabled: boolean; display_order?: number | null; display_label?: Record<string, string> | null; reason?: string | null }
   ) =>
     api<ProjectWorkflowEnablementsResponse>(
       `/api/v1/workflow-catalog/projects/${projectId}/workflow-enablements/${workflowTemplateId}`,

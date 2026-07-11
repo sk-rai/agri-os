@@ -136,6 +136,7 @@ class WorkflowEnablementUpdate(BaseModel):
     enabled: bool
     display_order: Optional[int] = None
     display_label: Optional[dict[str, str]] = None
+    reason: Optional[str] = None
 
 
 class WorkflowOverrideCreate(BaseModel):
@@ -2828,9 +2829,10 @@ def upsert_project_workflow_enablement(
         target_code=template.code,
         before=before_snapshot,
         after=_enablement_audit_snapshot(enablement),
-        reason="Update project workflow assignment",
+        reason=body.reason or "Update project workflow assignment",
         metadata={
             "project_id": str(project_id),
+            "reason": body.reason,
             "project_name": project.name,
             "enabled": body.enabled,
             "display_order_changed": before_snapshot is None or before_snapshot.get("display_order") != enablement.display_order,

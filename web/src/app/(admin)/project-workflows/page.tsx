@@ -34,6 +34,7 @@ export default function ProjectWorkflowsPage() {
   const [search, setSearch] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<WorkflowVisibilityFilter>("ALL");
   const [pendingChange, setPendingChange] = useState<PendingWorkflowChange | null>(null);
+  const [pendingChangeReason, setPendingChangeReason] = useState("");
 
   useEffect(() => {
     projectsApi
@@ -76,7 +77,7 @@ export default function ProjectWorkflowsPage() {
     setDrafts(nextDrafts);
   }, [summary]);
 
-  const updateWorkflow = async (workflow: ProjectWorkflowEnablementItem, enabled: boolean) => {
+  const updateWorkflow = async (workflow: ProjectWorkflowEnablementItem, enabled: boolean, reason?: string) => {
     if (!summary) return;
     setUpdatingWorkflowId(workflow.workflow_template_id);
     setError(null);
@@ -88,6 +89,7 @@ export default function ProjectWorkflowsPage() {
         enabled,
         display_order: Number.isFinite(displayOrder) ? displayOrder : undefined,
         display_label: label ? { en: label, hi: label } : undefined,
+        reason: reason?.trim() || undefined,
       });
       setSummary(updated);
       await loadAssignmentAudit(summary.project.id).catch(() => setAssignmentAudit(null));
@@ -100,13 +102,15 @@ export default function ProjectWorkflowsPage() {
 
   const requestWorkflowChange = (workflow: ProjectWorkflowEnablementItem, enabled: boolean, intent: WorkflowChangeIntent) => {
     setPendingChange({ workflow, enabled, intent });
+    setPendingChangeReason("");
   };
 
   const confirmPendingChange = async () => {
     if (!pendingChange) return;
     const change = pendingChange;
     setPendingChange(null);
-    await updateWorkflow(change.workflow, change.enabled);
+    const reason = pendingChangeReason;
+    await updateWorkflow(change.workflow, change.enabled, reason);
   };
 
   const updateDraft = (workflowId: string, patch: Partial<{ label: string; displayOrder: string }>) => {
@@ -167,8 +171,10 @@ export default function ProjectWorkflowsPage() {
           change={pendingChange}
           draft={drafts[pendingChange.workflow.workflow_template_id] || { label: labelText(pendingChange.workflow.label), displayOrder: pendingChange.workflow.display_order != null ? String(pendingChange.workflow.display_order) : "" }}
           updating={updatingWorkflowId === pendingChange.workflow.workflow_template_id}
-          onCancel={() => setPendingChange(null)}
+          onCancel={() => { setPendingChange(null); setPendingChangeReason(""); }}
           onConfirm={confirmPendingChange}
+          reason={pendingChangeReason}
+          onReasonChange={setPendingChangeReason}
         />
       ) : null}
     </div>
@@ -598,6 +604,8 @@ function WorkflowChangeImpactModal({
   updating,
   onCancel,
   onConfirm,
+  reason,
+  onReasonChange,
 }: {
   summary: ProjectWorkflowEnablementsResponse;
   change: PendingWorkflowChange;
@@ -605,6 +613,8 @@ function WorkflowChangeImpactModal({
   updating: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  reason: string;
+  onReasonChange: (value: string) => void;
 }) {
   const workflow = change.workflow;
   const currentlyAndroidVisible = workflow.assignment_rule === "ANDROID_VISIBLE";
@@ -641,6 +651,16 @@ function WorkflowChangeImpactModal({
           <ImpactItem title="Project lifecycle" detail={summary.safe_edit_lifecycle.can_edit_project_workflows ? "Project workflow assignments are editable." : "Project is locked for in-place workflow assignment edits."} tone={summary.safe_edit_lifecycle.can_edit_project_workflows ? "ok" : "warn"} />
           <ImpactItem title="Metadata changes" detail={`${labelChanged ? "Label changed" : "Label unchanged"}; ${orderChanged ? "order changed" : "order unchanged"}.`} tone={labelChanged || orderChanged ? "warn" : "neutral"} />
         </div>
+
+        <label className="mt-4 block text-sm font-medium text-gray-700">
+          Change reason
+          <textarea
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            className="mt-1 min-h-20 w-full rounded border px-3 py-2 text-sm font-normal text-gray-900"
+            placeholder="Why is this project workflow assignment being changed?"
+          />
+        </label>
 
         {summary.safe_edit_lifecycle.reasons.length ? (
           <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
