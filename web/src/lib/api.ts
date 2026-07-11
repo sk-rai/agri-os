@@ -728,6 +728,15 @@ export interface WorkflowPreviewWarning {
   target?: string | null;
 }
 
+export interface WorkflowDraftFreshness {
+  draft_updated_at?: string | null;
+  draft_created_at?: string | null;
+  last_edited_at?: string | null;
+  last_validated_at?: string | null;
+  validation_current: boolean;
+  validation_stale: boolean;
+}
+
 export interface WorkflowDraftValidationResponse {
   schema_version: string;
   tenant_id: string;
@@ -747,6 +756,7 @@ export interface WorkflowDraftValidationResponse {
   };
   issues: WorkflowPreviewWarning[];
   issues_by_level: Record<string, WorkflowPreviewWarning[]>;
+  freshness?: WorkflowDraftFreshness | null;
 }
 
 export interface WorkflowPublishImpactVersion {
@@ -1046,6 +1056,9 @@ export interface WorkflowPreviewResponse {
   total_duration_days: number;
   applied_overrides: AppliedWorkflowOverride[];
   warnings: WorkflowPreviewWarning[];
+  version_created_at?: string | null;
+  version_updated_at?: string | null;
+  draft_freshness?: WorkflowDraftFreshness | null;
   publish_impact?: WorkflowPublishImpactResponse;
   android_preview: {
     crop_code: string;

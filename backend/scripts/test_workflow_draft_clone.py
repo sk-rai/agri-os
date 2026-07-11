@@ -517,6 +517,8 @@ def main():
         )
         check(delete_rec.status_code == 200, "Draft recommendation delete returns 200", f"Status: {delete_rec.status_code}")
         delete_rec_payload = delete_rec.json()
+        check(delete_rec_payload.get("draft_freshness") is not None, "Draft preview includes freshness metadata")
+        check(delete_rec_payload["draft_freshness"].get("last_edited_at") is not None, "Draft freshness includes last edited timestamp")
         delete_rec_nursery = next(stage for stage in delete_rec_payload["android_preview"]["stages"] if stage["code"] == "NURSERY")
         check(
             all(rec["metadata"]["recommendation_id"] != added_rec_id for rec in delete_rec_nursery["recommended_activities"]),
@@ -530,6 +532,9 @@ def main():
         check(validation_payload["can_publish"] is True, "Validation report allows publishable draft")
         check("ERROR" in validation_payload["issues_by_level"], "Validation report groups errors")
         check(validation_payload["counts"]["stages"] == len(delete_rec_payload["android_preview"]["stages"]), "Validation report includes stage count")
+        check(validation_payload.get("freshness") is not None, "Validation report includes freshness metadata")
+        check(validation_payload["freshness"].get("last_validated_at") is not None, "Validation freshness includes last validated timestamp")
+        check(validation_payload["freshness"].get("validation_current") is True, "Validation freshness marks current validation")
 
         publish = client.post(
             f"/api/v1/workflow-catalog/drafts/{draft_version_id}/publish",

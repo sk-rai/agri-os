@@ -441,8 +441,9 @@ export default function WorkflowPreviewPage() {
   if (!preview) return null;
 
   const isDraftPreview = preview.status === "DRAFT" && preview.preview_source === "workflow_template_draft";
-  const validationMissing = isDraftPreview && !draftValidation;
-  const publishBlocked = isDraftPreview && (!draftValidation || !draftValidation.can_publish);
+  const draftFreshness = draftValidation?.freshness ?? preview.draft_freshness ?? null;
+  const validationMissing = isDraftPreview && (!draftValidation || draftFreshness?.validation_current === false);
+  const publishBlocked = isDraftPreview && (!draftValidation || draftFreshness?.validation_current === false || !draftValidation.can_publish);
   const publishBlockedReason = validationMissing ? "Run validation before opening publish confirmation" : "Fix blocking validation errors before publishing";
   const stages = preview.android_preview.stages || [];
   const selectedStage = stages.find((stage) => stage.code === selectedStageCode) || stages[0] || null;
@@ -477,6 +478,8 @@ export default function WorkflowPreviewPage() {
         <Stat label="Duration days" value={preview.total_duration_days} />
         <Stat label="Warnings" value={preview.warnings.length} tone={preview.warnings.length ? "warn" : "ok"} />
       </div>
+
+      {isDraftPreview ? <DraftFreshnessCard freshness={draftFreshness} validation={draftValidation} /> : null}
 
       {validationMissing ? (
         <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800 shadow-sm">
@@ -561,6 +564,7 @@ export default function WorkflowPreviewPage() {
           <PublishReadinessChecklist
             stages={stages}
             validation={draftValidation}
+            freshness={draftFreshness}
             validating={draftValidating}
             impact={publishImpact}
             onValidate={validateDraft}
@@ -1857,15 +1861,51 @@ function PublishConfirmationModal({
   );
 }
 
+function DraftFreshnessCard({
+  freshness,
+  validation,
+}: {
+  freshness: WorkflowPreviewResponse["draft_freshness"] | null;
+  validation: WorkflowDraftValidationResponse | null;
+}) {
+  const hasValidation = Boolean(freshness?.last_validated_at || validation);
+  const current = Boolean(freshness?.validation_current && validation?.can_publish);
+  const tone = current ? "border-green-200 bg-green-50 text-green-800" : "border-yellow-200 bg-yellow-50 text-yellow-800";
+  return (
+    <div className={`mb-6 rounded-lg border p-4 text-sm shadow-sm ${tone}`}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="font-semibold">Draft freshness</p>
+          <p className="mt-1">
+            {current
+              ? "This draft has a current passing validation result."
+              : hasValidation
+                ? "This draft has changed since its last visible validation, or validation did not pass."
+                : "This draft has not been validated yet."}
+          </p>
+        </div>
+        <Badge>{current ? "Validation current" : "Validation required"}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
+        <p><span className="font-medium">Draft created:</span> {formatDateTime(freshness?.draft_created_at)}</p>
+        <p><span className="font-medium">Last edited:</span> {formatDateTime(freshness?.last_edited_at || freshness?.draft_updated_at)}</p>
+        <p><span className="font-medium">Last validated:</span> {formatDateTime(freshness?.last_validated_at)}</p>
+      </div>
+    </div>
+  );
+}
+
 function PublishReadinessChecklist({
   stages,
   validation,
+  freshness,
   validating,
   impact,
   onValidate,
 }: {
   stages: WorkflowStage[];
   validation: WorkflowDraftValidationResponse | null;
+  freshness: WorkflowPreviewResponse["draft_freshness"] | null;
   validating: boolean;
   impact: WorkflowPublishImpactResponse | null;
   onValidate: () => void;
@@ -1881,7 +1921,7 @@ function PublishReadinessChecklist({
   const stagesWithWarnings = stageHints.filter((hints) => hints.some((hint) => hint.level === "WARN")).length;
   const validationErrors = validation?.counts.errors || 0;
   const validationWarnings = validation?.counts.warnings || 0;
-  const validationReady = Boolean(validation?.can_publish);
+  const validationReady = Boolean(validation?.can_publish && freshness?.validation_current !== false);
   const localErrorCount = stagesWithErrors + stagesWithoutRecommendations.length;
   const publishLooksReady = validationReady && Boolean(impact?.can_publish) && localErrorCount === 0;
   const scrollToPanel = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1902,8 +1942,13 @@ function PublishReadinessChecklist({
       <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <ReadinessItem
           title="Backend validation"
-          detail={validation ? `${validationErrors} errors, ${validationWarnings} warnings` : "Missing/stale after edits. Run validation before publish."}
-          status={!validation ? "pending" : validation.can_publish ? "ok" : "error"}
+          detail={validation ? `${validationErrors} errors, ${validationWarnings} warnings - last validated ${formatDateTime(freshness?.last_validated_at)}` : "Missing/stale after edits. Run validation before publish."}
+          status={!validation || freshness?.validation_current === false ? "pending" : validation.can_publish ? "ok" : "error"}
+        />
+        <ReadinessItem
+          title="Draft freshness"
+          detail={`Last edited ${formatDateTime(freshness?.last_edited_at || freshness?.draft_updated_at)}`}
+          status={freshness?.validation_current && validation?.can_publish ? "ok" : "pending"}
         />
         <ReadinessItem
           title="Stage recommendation coverage"

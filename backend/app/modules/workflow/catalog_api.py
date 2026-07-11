@@ -105,6 +105,33 @@ def _audit_payload(event: WorkflowTemplateAuditEvent) -> dict:
     }
 
 
+def _latest_workflow_audit_event(db: Session, *, template_version_id, action: str) -> Optional[WorkflowTemplateAuditEvent]:
+    return (
+        db.query(WorkflowTemplateAuditEvent)
+        .filter(
+            WorkflowTemplateAuditEvent.template_version_id == template_version_id,
+            WorkflowTemplateAuditEvent.action == action,
+        )
+        .order_by(WorkflowTemplateAuditEvent.created_at.desc())
+        .first()
+    )
+
+
+def _draft_freshness_payload(db: Session, version: WorkflowTemplateVersion, *, validated_at: Optional[datetime] = None) -> dict:
+    latest_validation = _latest_workflow_audit_event(db, template_version_id=version.id, action="VALIDATE_DRAFT")
+    last_validated_at = validated_at or (latest_validation.created_at if latest_validation else None)
+    last_edited_at = version.updated_at or version.created_at
+    validation_current = bool(last_validated_at and (not last_edited_at or last_validated_at >= last_edited_at))
+    return {
+        "draft_updated_at": version.updated_at.isoformat() if version.updated_at else None,
+        "draft_created_at": version.created_at.isoformat() if version.created_at else None,
+        "last_edited_at": last_edited_at.isoformat() if last_edited_at else None,
+        "last_validated_at": last_validated_at.isoformat() if last_validated_at else None,
+        "validation_current": validation_current,
+        "validation_stale": bool(last_validated_at and last_edited_at and last_validated_at < last_edited_at),
+    }
+
+
 class WorkflowEnablementUpdate(BaseModel):
     enabled: bool
     display_order: Optional[int] = None
@@ -816,6 +843,7 @@ def _workflow_preview_payload(
     preview_source: str = "workflow_template",
     enablement_source: str = "implicit_default",
     enablement=None,
+    draft_freshness: Optional[dict] = None,
 ) -> dict:
     total_duration_days = sum(int(stage.get("duration_days") or 0) for stage in stages)
     return {
@@ -837,6 +865,9 @@ def _workflow_preview_payload(
         "total_duration_days": total_duration_days,
         "applied_overrides": [_override_payload(override) for override in overrides],
         "warnings": warnings,
+        "version_created_at": version.created_at.isoformat() if version.created_at else None,
+        "version_updated_at": version.updated_at.isoformat() if version.updated_at else None,
+        "draft_freshness": draft_freshness,
         "android_preview": {
             "crop_code": template.crop_code,
             "crop_name": crop.canonical_name if crop else template.crop_code,
@@ -984,6 +1015,7 @@ def _render_draft_preview(db: Session, workflow_template_version_id: uuid.UUID, 
         preview_source="workflow_template_draft",
         enablement_source="draft_admin_preview",
         enablement=None,
+        draft_freshness=_draft_freshness_payload(db, version),
     )
 
 
@@ -1081,6 +1113,7 @@ def validate_draft_workflow_template_version(
     """Return non-mutating validation report for a DRAFT workflow version."""
     template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
     _, report = _draft_validation(db, version.id)
+    validated_at = datetime.now(timezone.utc)
     _record_workflow_audit_event(
         db,
         tenant_id=x_tenant_id,
@@ -1101,6 +1134,7 @@ def validate_draft_workflow_template_version(
         "workflow_template_code": template.code,
         "version": version.version_number,
         "status": version.status,
+        "freshness": _draft_freshness_payload(db, version, validated_at=validated_at),
     }
 
 
