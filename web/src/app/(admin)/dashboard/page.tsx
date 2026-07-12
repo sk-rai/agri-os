@@ -169,6 +169,7 @@ export default function DashboardPage() {
       </form>
 
       <CommandCenterPanel data={data} syncHealth={syncHealth} />
+      <SystemReadinessPanel data={data} syncHealth={syncHealth} />
       <AttentionQueuePanel data={data} syncHealth={syncHealth} />
 
       {summary ? (
@@ -199,6 +200,83 @@ export default function DashboardPage() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function SystemReadinessPanel({ data, syncHealth }: { data: AdminDashboardResponse | null; syncHealth: SyncMaterializationHealthResponse | null }) {
+  const summary = data?.summary;
+  const backlog = summary?.admin_backlog;
+  const syncSummary = syncHealth?.summary;
+  const syncIssues = (syncSummary?.failed_count || 0) + (syncSummary?.conflict_count || 0) + (syncSummary?.dependency_missing_count || 0);
+  const materializationGaps = (syncHealth?.materialization || []).reduce((sum, row) => sum + row.unmaterialized_count, 0);
+  const readinessItems = [
+    {
+      label: "Project setup",
+      ready: (summary?.project_count || 0) > 0,
+      detail: `${summary?.project_count || 0} projects available`,
+      href: "/projects",
+    },
+    {
+      label: "Workflow runtime",
+      ready: (summary?.crop_cycle_count || 0) > 0 && (backlog?.workflow_validation_blocker_count || 0) === 0,
+      detail: `${summary?.crop_cycle_count || 0} crop cycles, ${backlog?.workflow_validation_blocker_count || 0} blockers`,
+      href: "/workflows?filter=validation-blockers",
+    },
+    {
+      label: "Farmer sync",
+      ready: (summary?.farmer_count || 0) > 0,
+      detail: `${summary?.farmer_count || 0} farmers restored/materialized`,
+      href: dashboardLookupHref(data || ({ filters: { limit: 10 } } as AdminDashboardResponse)),
+    },
+    {
+      label: "Parcel geometry",
+      ready: (summary?.parcel_count || 0) > 0 && (summary?.geometry_missing_count || 0) === 0,
+      detail: `${summary?.geometry_captured_count || 0} captured, ${summary?.geometry_missing_count || 0} missing`,
+      href: data ? geometryLookupHref(data, "MISSING") : "/lookup?geometryStatus=MISSING",
+    },
+    {
+      label: "Activity evidence",
+      ready: (summary?.activity_count || 0) > 0,
+      detail: `${summary?.activity_count || 0} logged activities, ${summary?.variance_count || 0} variances`,
+      href: data ? dashboardActivityHref(data) : "/activity-usage",
+    },
+    {
+      label: "Sync health",
+      ready: syncIssues === 0 && materializationGaps === 0,
+      detail: `${syncIssues} failed/conflict/dependency issues, ${materializationGaps} materialization gaps`,
+      href: syncIssues || materializationGaps ? "/sync-health?gapOnly=true" : "/sync-health",
+    },
+  ];
+  const readyCount = readinessItems.filter((item) => item.ready).length;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">System readiness</h2>
+          <p className="mt-1 text-sm text-gray-500">Quick sanity check for whether the tenant has usable configuration, synced field data, and clean operations signals.</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${readyCount === readinessItems.length ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>
+          {readyCount}/{readinessItems.length} ready
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {readinessItems.map((item) => <ReadinessItem key={item.label} {...item} />)}
+      </div>
+    </section>
+  );
+}
+
+function ReadinessItem({ label, ready, detail, href }: { label: string; ready: boolean; detail: string; href: string }) {
+  return (
+    <Link href={href} className={`rounded-lg border p-3 transition hover:-translate-y-0.5 hover:shadow-md ${ready ? "border-green-200 bg-green-50 text-green-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold">{label}</p>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-bold">{ready ? "Ready" : "Check"}</span>
+      </div>
+      <p className="mt-2 text-xs opacity-80">{detail}</p>
+      <p className="mt-3 text-xs font-medium opacity-75">Open detail -&gt;</p>
+    </Link>
   );
 }
 
