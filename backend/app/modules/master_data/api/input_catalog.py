@@ -861,6 +861,54 @@ def _input_reference_details(db: Session, input_code: str) -> dict:
     }
 
 
+@router.get("/inputs/review-queue")
+def list_input_review_queue(
+    status: str = Query("REVIEW", pattern="^(DRAFT|REVIEW|REJECTED)$"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """List input catalog records needing review/governance attention."""
+    rows = (
+        db.query(AgriculturalInput)
+        .filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == status.upper())
+        .order_by(AgriculturalInput.submitted_at.desc().nullslast(), AgriculturalInput.updated_at.desc().nullslast(), AgriculturalInput.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    items = []
+    for item in rows:
+        validation = _input_validation_report(db, item)
+        latest_audit = (
+            db.query(AgriculturalInputAuditEvent)
+            .filter(AgriculturalInputAuditEvent.input_id == item.id)
+            .order_by(AgriculturalInputAuditEvent.created_at.desc())
+            .first()
+        )
+        payload = input_payload(item)
+        payload.update({
+            "validation": {
+                "can_submit": validation.get("can_submit"),
+                "can_publish": validation.get("can_publish"),
+                "counts": {
+                    "errors": len(validation.get("errors") or []),
+                    "warnings": len(validation.get("warnings") or []),
+                    "duplicate_candidates": len(validation.get("duplicate_candidates") or []),
+                },
+            },
+            "latest_audit": _input_audit_payload(latest_audit) if latest_audit else None,
+        })
+        items.append(payload)
+    return {
+        "schema_version": "input_review_queue.v1",
+        "tenant_id": x_tenant_id,
+        "status": status.upper(),
+        "count": len(items),
+        "items": items,
+    }
+
+
 @router.get("/inputs/{input_code}/references")
 def get_input_references(input_code: str, db: Session = Depends(get_db)):
     item = (

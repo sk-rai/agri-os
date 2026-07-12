@@ -1546,6 +1546,23 @@ export interface AgriInputAuditResponse {
   events: AgriInputAuditEvent[];
 }
 
+export interface InputReviewQueueItem extends AgriInputDto {
+  validation?: {
+    can_submit?: boolean;
+    can_publish?: boolean;
+    counts: { errors: number; warnings: number; duplicate_candidates: number };
+  };
+  latest_audit?: AgriInputAuditEvent | null;
+}
+
+export interface InputReviewQueueResponse {
+  schema_version: string;
+  tenant_id: string;
+  status: string;
+  count: number;
+  items: InputReviewQueueItem[];
+}
+
 export interface ProjectInputAssignmentDto extends AgriInputDto {
   visible: boolean;
   assignment_rule: "ANDROID_VISIBLE" | "DISABLED_BY_PROJECT" | "BLOCKED_BY_CROP_SCOPE" | "NOT_ASSIGNED" | "IMPLICIT_CROP_SCOPE" | string;
@@ -1752,6 +1769,14 @@ export const inputCatalogApi = {
     if (params?.status) query.set("status", params.status);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<InputsResponse>(`/api/v1/input-catalog/inputs${suffix}`);
+  },
+
+  reviewQueue: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<InputReviewQueueResponse>(`/api/v1/input-catalog/inputs/review-queue${suffix}`);
   },
   get: (code: string) => api<AgriInputDto>(`/api/v1/input-catalog/inputs/${code}`),
   governance: (code: string) => api<InputGovernanceResponse>(`/api/v1/input-catalog/inputs/${code}/governance`),

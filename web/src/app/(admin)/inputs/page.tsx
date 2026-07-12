@@ -12,6 +12,7 @@ import {
   type InputCsvImportHistory,
   type InputGovernanceResponse,
   type InputReferencesResponse,
+  type InputReviewQueueResponse,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
@@ -136,6 +137,8 @@ export default function InputsPage() {
   const [csvHistory, setCsvHistory] = useState<InputCsvImportHistory | null>(null);
   const [csvReason, setCsvReason] = useState("Input catalog CSV import");
   const [csvBusy, setCsvBusy] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<InputReviewQueueResponse | null>(null);
+  const [reviewQueueLoading, setReviewQueueLoading] = useState(false);
   const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
 
   const canEditInputs = hasAdminPermission(adminProfile, "EDIT");
@@ -149,6 +152,14 @@ export default function InputsPage() {
     if (backlogFilter === "csv-pending") {
       setShowCsv(true);
       void loadCsvHistory();
+    }
+    if (["review", "draft", "rejected"].includes(backlogFilter)) {
+      setReviewQueueLoading(true);
+      inputCatalogApi
+        .reviewQueue({ status: backlogFilter.toUpperCase(), limit: 100 })
+        .then(setReviewQueue)
+        .catch(() => setReviewQueue(null))
+        .finally(() => setReviewQueueLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backlogFilter]);
@@ -466,6 +477,17 @@ export default function InputsPage() {
         </div>
       ) : null}
 
+      {statusFilter ? (
+        <InputReviewQueuePanel
+          data={reviewQueue}
+          loading={reviewQueueLoading}
+          onSelect={(code) => {
+            const item = inputs.find((candidate) => candidate.code === code);
+            if (item) setSelected(item);
+          }}
+        />
+      ) : null}
+
       {showCsv ? (
         <CsvCatalogPanel
           file={csvFile}
@@ -630,6 +652,39 @@ export default function InputsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function InputReviewQueuePanel({ data, loading, onSelect }: { data: InputReviewQueueResponse | null; loading: boolean; onSelect: (code: string) => void }) {
+  return (
+    <section className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="font-semibold">Input review queue</p>
+          <p className="mt-1">Catalog records with governance status {data?.status || "selected from dashboard"}.</p>
+        </div>
+        <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">{loading ? "Loading..." : `${data?.count || 0} items`}</span>
+      </div>
+      {loading ? <p className="mt-3 rounded bg-white/70 p-3 text-blue-800">Loading review queue...</p> : null}
+      {!loading && data?.items.length ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {data.items.map((item) => (
+            <button key={item.code} type="button" onClick={() => onSelect(item.code)} className="rounded-lg border border-blue-100 bg-white p-3 text-left shadow-sm hover:border-blue-300">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-gray-900">{item.canonical_name}</p>
+                  <p className="mt-1 text-xs text-gray-500">{item.code} ? {item.category_code || "UNCATEGORIZED"} ? {item.unit}</p>
+                </div>
+                <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{item.catalog_status}</span>
+              </div>
+              <p className="mt-2 text-xs text-gray-600">Errors: {item.validation?.counts.errors || 0} ? Warnings: {item.validation?.counts.warnings || 0} ? Duplicates: {item.validation?.counts.duplicate_candidates || 0}</p>
+              {item.submitted_at ? <p className="mt-1 text-xs text-gray-500">Submitted: {new Date(item.submitted_at).toLocaleString()}</p> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {!loading && data && data.items.length === 0 ? <p className="mt-3 rounded bg-white/70 p-3 text-blue-800">No input records found for this queue.</p> : null}
+    </section>
   );
 }
 
