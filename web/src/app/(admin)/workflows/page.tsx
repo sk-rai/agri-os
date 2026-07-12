@@ -9,6 +9,7 @@ import {
   type WorkflowLegacyCyclePinsResponse,
   type WorkflowRecommendation,
   type WorkflowStage,
+  type WorkflowDraftValidationBlockersResponse,
   type WorkflowTemplateVersionsResponse,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
@@ -33,6 +34,8 @@ export default function WorkflowsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cropFilter, setCropFilter] = useState("");
+  const [validationBlockers, setValidationBlockers] = useState<WorkflowDraftValidationBlockersResponse | null>(null);
+  const [loadingBlockers, setLoadingBlockers] = useState(false);
 
   useEffect(() => {
     workflowCatalogApi
@@ -59,6 +62,16 @@ export default function WorkflowsPage() {
   useEffect(() => {
     setBacklogFilter(new URLSearchParams(window.location.search).get("filter") || "");
   }, []);
+
+  useEffect(() => {
+    if (backlogFilter !== "validation-blockers") return;
+    setLoadingBlockers(true);
+    workflowCatalogApi
+      .draftValidationBlockers({ limit: 100 })
+      .then(setValidationBlockers)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load validation blockers"))
+      .finally(() => setLoadingBlockers(false));
+  }, [backlogFilter]);
 
   if (loading) return <div className="text-gray-500">Loading workflow catalog...</div>;
   if (error) return <div className="text-red-500">Error: {error}</div>;
@@ -88,10 +101,7 @@ export default function WorkflowsPage() {
       </div>
 
       {backlogFilter === "validation-blockers" ? (
-        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          <p className="font-semibold">Workflow backlog drill-down active</p>
-          <p className="mt-1">Dashboard reported draft workflow validation blockers. Use version history and draft preview to inspect DRAFT versions, run validation, fix blockers, then publish when ready.</p>
-        </div>
+        <ValidationBlockerQueue data={validationBlockers} loading={loadingBlockers} />
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
@@ -143,6 +153,42 @@ function Metric({ label, value }: { label: string; value: number }) {
       <p className="text-[10px] uppercase tracking-wide text-gray-400">{label}</p>
       <p className="font-semibold text-gray-900">{value}</p>
     </div>
+  );
+}
+
+function ValidationBlockerQueue({ data, loading }: { data: WorkflowDraftValidationBlockersResponse | null; loading: boolean }) {
+  return (
+    <section className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="font-semibold">Workflow validation blockers</p>
+          <p className="mt-1">Draft workflow versions that need validation, fixes, or publishing attention.</p>
+        </div>
+        <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">{loading ? "Loading..." : `${data?.count || 0} blockers`}</span>
+      </div>
+      {loading ? <p className="mt-3 rounded bg-white/70 p-3 text-blue-800">Loading blocker queue...</p> : null}
+      {!loading && data?.blockers.length ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {data.blockers.map((item) => (
+            <Link key={item.workflow_template_version_id} href={item.preview_url} className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm hover:border-blue-300">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-gray-900">{item.workflow_name}</p>
+                  <p className="mt-1 text-xs text-gray-500">{item.crop_code} ? {item.season_code} ? version {item.version}</p>
+                </div>
+                <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">DRAFT</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {item.reasons.map((reason) => <span key={reason} className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">{reason.replaceAll("_", " ")}</span>)}
+              </div>
+              <p className="mt-2 text-xs text-gray-600">Errors: {item.counts.errors || 0} ? Warnings: {item.counts.warnings || 0} ? Stages: {item.counts.stages || 0} ? Recommendations: {item.counts.recommendations || 0}</p>
+              <p className="mt-2 text-xs font-medium text-blue-700">Open draft preview and validation ?</p>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+      {!loading && data && data.blockers.length === 0 ? <p className="mt-3 rounded bg-white/70 p-3 text-blue-800">No draft validation blockers found.</p> : null}
+    </section>
   );
 }
 

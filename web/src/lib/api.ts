@@ -826,6 +826,32 @@ export interface WorkflowDraftValidationResponse {
   freshness?: WorkflowDraftFreshness | null;
 }
 
+export interface WorkflowDraftValidationBlocker {
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  workflow_name: string;
+  crop_code: string;
+  season_code: string;
+  propagation_type_code?: string | null;
+  version: string;
+  status: string;
+  reasons: string[];
+  can_publish: boolean;
+  counts: { total?: number; errors?: number; warnings?: number; info?: number; stages?: number; recommendations?: number };
+  freshness: WorkflowDraftFreshness;
+  preview_url: string;
+  updated_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface WorkflowDraftValidationBlockersResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  blockers: WorkflowDraftValidationBlocker[];
+}
+
 export interface WorkflowPublishImpactVersion {
   workflow_template_version_id: string;
   version: string;
@@ -1305,6 +1331,13 @@ export const workflowCatalogApi = {
       method: "POST",
       body: data || {},
     }),
+
+  draftValidationBlockers: (params?: { limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<WorkflowDraftValidationBlockersResponse>(`/api/v1/workflow-catalog/drafts/validation-blockers${suffix}`);
+  },
   draftPreview: (versionId: string) =>
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
   validateDraftVersion: (versionId: string) =>

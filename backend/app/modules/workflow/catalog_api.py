@@ -1108,6 +1108,68 @@ def _draft_validation(db: Session, version_id) -> tuple[list[dict], dict]:
     return stages, report
 
 
+@router.get("/drafts/validation-blockers")
+def list_workflow_draft_validation_blockers(
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """List draft workflow versions needing validation/publish attention."""
+    rows = (
+        db.query(WorkflowTemplate, WorkflowTemplateVersion)
+        .join(WorkflowTemplateVersion, WorkflowTemplateVersion.template_id == WorkflowTemplate.id)
+        .filter(
+            WorkflowTemplate.tenant_id == x_tenant_id,
+            WorkflowTemplateVersion.is_active == True,
+            WorkflowTemplateVersion.status == "DRAFT",
+        )
+        .order_by(WorkflowTemplateVersion.updated_at.desc().nullslast(), WorkflowTemplateVersion.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    blockers = []
+    for template, version in rows:
+        latest_validation = _latest_workflow_audit_event(db, template_version_id=version.id, action="VALIDATE_DRAFT")
+        freshness = _draft_freshness_payload(db, version)
+        _stages, validation = _draft_validation(db, version.id)
+        reasons = []
+        if not latest_validation:
+            reasons.append("UNVALIDATED")
+        if freshness.get("validation_stale"):
+            reasons.append("STALE_VALIDATION")
+        if int(validation.get("counts", {}).get("errors") or 0) > 0:
+            reasons.append("VALIDATION_ERRORS")
+        if validation.get("can_publish") is False and "VALIDATION_ERRORS" not in reasons:
+            reasons.append("PUBLISH_BLOCKED")
+        if not reasons:
+            continue
+        blockers.append({
+            "workflow_template_id": str(template.id),
+            "workflow_template_version_id": str(version.id),
+            "workflow_template_code": template.code,
+            "workflow_name": template.canonical_name,
+            "crop_code": template.crop_code,
+            "season_code": template.season_code,
+            "propagation_type_code": template.propagation_type_code,
+            "version": version.version_number,
+            "status": version.status,
+            "reasons": reasons,
+            "can_publish": validation.get("can_publish"),
+            "counts": validation.get("counts", {}),
+            "freshness": freshness,
+            "preview_url": f"/workflows/preview/{version.id}?draft=true",
+            "updated_at": version.updated_at.isoformat() if version.updated_at else None,
+            "created_at": version.created_at.isoformat() if version.created_at else None,
+        })
+    return {
+        "schema_version": "workflow_draft_validation_blockers.v1",
+        "tenant_id": x_tenant_id,
+        "count": len(blockers),
+        "blockers": blockers,
+    }
+
+
 @router.get("/draft-preview/{workflow_template_version_id}")
 def preview_draft_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
