@@ -135,7 +135,7 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
               <td className="p-3">{project.crop_scope?.join(", ") || "-"}</td>
               <td className="p-3"><div>{project.start_date || "-"}</div><div className="text-xs text-gray-500">{project.end_date || "-"}</div></td>
               <td className="p-3">{project.crop_cycle_count}</td>
-              <td className="p-3"><div className="flex flex-col gap-1"><Link href={project.trace_url} className="text-blue-600">Project trace</Link>{project.compliance_url && <Link href={project.compliance_url} className="text-xs text-blue-600">Compliance</Link>}</div></td>
+              <td className="p-3"><div className="flex flex-col gap-1"><TraceLinkActions href={project.trace_url} label="Project trace" />{project.compliance_url && <TraceLinkActions href={project.compliance_url} label="Compliance" small />}</div></td>
             </tr>)}
             {!loading && result?.projects.length === 0 && <Empty colSpan={6} label="No projects found." />}
           </tbody>
@@ -153,7 +153,7 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
               <td className="p-3"><div>{farmer.village_name || "-"}</div><div className="text-xs text-gray-500">{farmer.primary_crop_code || "-"}</div></td>
               <td className="p-3">{farmer.status || "-"}</td>
               <td className="p-3">{farmer.crop_cycle_count} cycles / {farmer.activity_count} activities</td>
-              <td className="p-3"><Link href={farmer.trace_url} className="text-blue-600">Farmer trace</Link></td>
+              <td className="p-3"><TraceLinkActions href={farmer.trace_url} label="Farmer trace" /></td>
             </tr>)}
             {!loading && result?.farmers.length === 0 && <Empty colSpan={6} label="No farmers found." />}
           </tbody>
@@ -171,13 +171,28 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
               <td className="p-3"><div>{[parcel.reported_area, parcel.reported_area_unit].filter(Boolean).join(" ") || "-"}</div><div className="text-xs text-gray-500">{parcel.ownership_type || "-"}</div></td>
               <td className="p-3">{parcel.geometry_source || "-"}</td>
               <td className="p-3">{parcel.crop_cycle_count} cycles / {parcel.activity_count} activities</td>
-              <td className="p-3"><Link href={parcel.trace_url} className="text-blue-600">Parcel trace</Link></td>
+              <td className="p-3"><TraceLinkActions href={parcel.trace_url} label="Parcel trace" /></td>
             </tr>)}
             {!loading && result?.parcels.length === 0 && <Empty colSpan={6} label="No parcels found." />}
           </tbody>
         </table>
       </section>
     </div>
+  </div>;
+}
+
+
+function TraceLinkActions({ href, label, small = false }: { href: string; label: string; small?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
+    await navigator.clipboard.writeText(target);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+  return <div className="flex flex-wrap items-center gap-2">
+    <Link href={href} className={small ? "text-xs text-blue-600" : "text-blue-600"}>{label}</Link>
+    <button type="button" onClick={copy} className="rounded border px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50">{copied ? "Copied" : "Copy"}</button>
   </div>;
 }
 
