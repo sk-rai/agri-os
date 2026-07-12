@@ -31,6 +31,8 @@ export default function ProjectWorkflowsPage() {
   const [assignmentAudit, setAssignmentAudit] = useState<ProjectWorkflowAssignmentAuditResponse | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [summaryRefresh, setSummaryRefresh] = useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [updatingWorkflowId, setUpdatingWorkflowId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { label: string; displayOrder: string }>>({});
@@ -65,8 +67,8 @@ export default function ProjectWorkflowsPage() {
       loadAssignmentAudit(selectedProjectId).catch(() => setAssignmentAudit(null)),
     ])
       .catch((e) => setError(e))
-      .finally(() => setLoadingSummary(false));
-  }, [selectedProjectId]);
+      .finally(() => { setLoadingSummary(false); setLastRefreshedAt(new Date()); });
+  }, [selectedProjectId, summaryRefresh]);
 
 
 
@@ -132,6 +134,8 @@ export default function ProjectWorkflowsPage() {
   if (loadingProjects) return <div className="text-gray-500">Loading projects...</div>;
   if (error) return isPermissionDenied(error) ? <PermissionErrorCard error={error} /> : <div className="text-red-500">Error: {getErrorMessage(error)}</div>;
 
+  const refreshLabel = lastRefreshedAt ? lastRefreshedAt.toLocaleString() : "Not refreshed yet";
+
   return (
     <div>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -141,15 +145,23 @@ export default function ProjectWorkflowsPage() {
             Effective project assignment rules: what Android can see, what is disabled, and what crop scope blocks.
           </p>
         </div>
-        <select
-          value={selectedProjectId}
-          onChange={(e) => setSelectedProjectId(e.target.value)}
-          className="min-w-72 rounded-lg border px-3 py-2 text-sm"
-        >
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>{project.name}</option>
-          ))}
-        </select>
+        <div className="flex flex-col items-start gap-2 md:items-end">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setSummaryRefresh((value) => value + 1)} disabled={loadingSummary || !selectedProjectId} className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {loadingSummary ? "Refreshing..." : "Refresh"}
+            </button>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className="min-w-72 rounded-lg border px-3 py-2 text-sm"
+            >
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-gray-500">Last refreshed: {refreshLabel}</p>
+        </div>
       </div>
 
       {projects.length === 0 ? (
