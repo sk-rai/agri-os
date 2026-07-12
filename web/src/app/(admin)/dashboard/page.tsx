@@ -303,6 +303,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       href: "/workflows",
       metric: summary ? `${summary.crop_cycle_count} cycles` : "Templates",
       accent: "border-green-200 bg-green-50 text-green-900",
+      destination: "Workflow catalog",
     },
     {
       title: "Input catalog",
@@ -310,6 +311,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       href: "/inputs",
       metric: summary ? `${summary.activity_count} activities` : "Catalog",
       accent: "border-blue-200 bg-blue-50 text-blue-900",
+      destination: "Input catalog",
     },
     {
       title: "Project setup",
@@ -317,6 +319,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       href: "/projects",
       metric: summary ? `${summary.project_count} projects` : "Projects",
       accent: "border-indigo-200 bg-indigo-50 text-indigo-900",
+      destination: "Project registry",
     },
     {
       title: "Activity traceability",
@@ -324,6 +327,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       href: `/activity-usage${projectQuery}`,
       metric: summary ? `${summary.variance_count} variance` : "Trace",
       accent: "border-purple-200 bg-purple-50 text-purple-900",
+      destination: "Activity usage trace",
     },
     {
       title: "Farmer / parcel lookup",
@@ -331,6 +335,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       href: `/lookup${projectQuery}`,
       metric: summary ? `${summary.geometry_missing_count} missing GPS` : "Search",
       accent: "border-amber-200 bg-amber-50 text-amber-900",
+      destination: "Farmer and parcel lookup",
     },
     {
       title: "Sync operations",
@@ -338,6 +343,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       href: "/sync-health",
       metric: syncSummary ? `${syncSummary.failed_count + syncSummary.conflict_count} attention` : "Health",
       accent: syncSummary && syncSummary.failed_count + syncSummary.conflict_count > 0 ? "border-red-200 bg-red-50 text-red-900" : "border-slate-200 bg-slate-50 text-slate-900",
+      destination: "Sync operations",
     },
   ];
 
@@ -360,7 +366,7 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
               </div>
               <span className="shrink-0 rounded-full bg-white/70 px-2.5 py-1 text-xs font-semibold">{card.metric}</span>
             </div>
-            <p className="mt-3 text-xs font-medium opacity-75">Open area &rarr;</p>
+            <p className="mt-3 text-xs font-medium opacity-75">Open {card.destination} &rarr;</p>
           </Link>
         ))}
       </div>
