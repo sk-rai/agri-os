@@ -106,6 +106,7 @@ function formatAction(action: string) {
 }
 
 export default function InputsPage() {
+  const [backlogFilter, setBacklogFilter] = useState("");
   const [categories, setCategories] = useState<InputCategoryDto[]>([]);
   const [inputs, setInputs] = useState<AgriInputDto[]>([]);
   const [selected, setSelected] = useState<AgriInputDto | null>(null);
@@ -139,6 +140,18 @@ export default function InputsPage() {
 
   const canEditInputs = hasAdminPermission(adminProfile, "EDIT");
   const canPublishInputs = hasAdminPermission(adminProfile, "PUBLISH");
+
+  useEffect(() => {
+    setBacklogFilter(new URLSearchParams(window.location.search).get("filter") || "");
+  }, []);
+
+  useEffect(() => {
+    if (backlogFilter === "csv-pending") {
+      setShowCsv(true);
+      void loadCsvHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backlogFilter]);
 
   useEffect(() => {
     inputCatalogApi
@@ -210,6 +223,21 @@ export default function InputsPage() {
     });
     return counts;
   }, [inputs]);
+
+
+  const statusFilter = ["review", "draft", "rejected"].includes(backlogFilter) ? backlogFilter.toUpperCase() : "";
+  const visibleInputs = useMemo(() => {
+    if (!statusFilter) return inputs;
+    return inputs.filter((item) => item.catalog_status === statusFilter);
+  }, [inputs, statusFilter]);
+
+  useEffect(() => {
+    if (!statusFilter) return;
+    setSelected((current) => {
+      if (current && visibleInputs.some((item) => item.code === current.code)) return current;
+      return visibleInputs[0] || null;
+    });
+  }, [statusFilter, visibleInputs]);
 
   const loadCsvHistory = () => inputCatalogApi.csvImportHistory().then(setCsvHistory).catch(() => setCsvHistory(null));
 
@@ -427,6 +455,17 @@ export default function InputsPage() {
         </div>
       ) : null}
 
+      {statusFilter || backlogFilter === "csv-pending" ? (
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <p className="font-semibold">Backlog drill-down active</p>
+          <p className="mt-1">
+            {backlogFilter === "csv-pending"
+              ? "Showing CSV import tools for validated batches waiting to be applied."
+              : `Showing ${statusFilter} input catalog records from the dashboard attention queue.`}
+          </p>
+        </div>
+      ) : null}
+
       {showCsv ? (
         <CsvCatalogPanel
           file={csvFile}
@@ -526,7 +565,7 @@ export default function InputsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {inputs.map((item) => (
+                {visibleInputs.map((item) => (
                   <tr
                     key={item.code}
                     onClick={() => setSelected(item)}
@@ -558,7 +597,7 @@ export default function InputsPage() {
                     </td>
                   </tr>
                 ))}
-                {inputs.length === 0 && (
+                {visibleInputs.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center text-gray-400">No inputs match this filter.</td>
                   </tr>

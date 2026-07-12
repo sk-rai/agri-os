@@ -27,6 +27,7 @@ function countRecommendations(workflow: EnabledCropWorkflow) {
 }
 
 export default function WorkflowsPage() {
+  const [backlogFilter, setBacklogFilter] = useState("");
   const [workflows, setWorkflows] = useState<EnabledCropWorkflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,10 @@ export default function WorkflowsPage() {
 
   const selected = filtered.find((w) => w.workflow_template_id === selectedId) || filtered[0];
 
+  useEffect(() => {
+    setBacklogFilter(new URLSearchParams(window.location.search).get("filter") || "");
+  }, []);
+
   if (loading) return <div className="text-gray-500">Loading workflow catalog...</div>;
   if (error) return <div className="text-red-500">Error: {error}</div>;
 
@@ -81,6 +86,13 @@ export default function WorkflowsPage() {
           ))}
         </select>
       </div>
+
+      {backlogFilter === "validation-blockers" ? (
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <p className="font-semibold">Workflow backlog drill-down active</p>
+          <p className="mt-1">Dashboard reported draft workflow validation blockers. Use version history and draft preview to inspect DRAFT versions, run validation, fix blockers, then publish when ready.</p>
+        </div>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <div className="space-y-3">
