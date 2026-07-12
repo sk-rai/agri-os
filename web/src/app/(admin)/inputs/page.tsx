@@ -151,7 +151,7 @@ export default function InputsPage() {
   useEffect(() => {
     if (backlogFilter === "csv-pending") {
       setShowCsv(true);
-      void loadCsvHistory();
+      void loadCsvHistory("VALIDATED");
     }
     if (["review", "draft", "rejected"].includes(backlogFilter)) {
       setReviewQueueLoading(true);
@@ -250,11 +250,11 @@ export default function InputsPage() {
     });
   }, [statusFilter, visibleInputs]);
 
-  const loadCsvHistory = () => inputCatalogApi.csvImportHistory().then(setCsvHistory).catch(() => setCsvHistory(null));
+  const loadCsvHistory = (status?: string) => inputCatalogApi.csvImportHistory({ status, limit: 30 }).then(setCsvHistory).catch(() => setCsvHistory(null));
 
   const openCsvPanel = () => {
     setShowCsv((value) => !value);
-    if (!showCsv) void loadCsvHistory();
+    if (!showCsv) void loadCsvHistory(backlogFilter === "csv-pending" ? "VALIDATED" : undefined);
   };
 
   const validateCsv = async () => {
@@ -263,7 +263,7 @@ export default function InputsPage() {
     setCsvBusy(true); setError(null); setNotice(null);
     try {
       setCsvBatch(await inputCatalogApi.validateCsv(csvFile));
-      await loadCsvHistory();
+      await loadCsvHistory(backlogFilter === "csv-pending" ? "VALIDATED" : undefined);
     } catch (e) { setError(e); }
     finally { setCsvBusy(false); }
   };
@@ -276,7 +276,7 @@ export default function InputsPage() {
       const applied = await inputCatalogApi.applyCsv(csvBatch.batch_id, csvReason.trim());
       setCsvBatch(applied);
       setCatalogRefresh((value) => value + 1);
-      await loadCsvHistory();
+      await loadCsvHistory(backlogFilter === "csv-pending" ? "VALIDATED" : undefined);
       setNotice(`CSV applied: ${applied.report.applied_counts?.created || 0} created, ${applied.report.applied_counts?.updated || 0} updated.`);
     } catch (e) { setError(e); }
     finally { setCsvBusy(false); }
@@ -477,6 +477,10 @@ export default function InputsPage() {
         </div>
       ) : null}
 
+      {backlogFilter === "csv-pending" ? (
+        <CsvPendingQueuePanel history={csvHistory} onApply={(batch) => { setCsvBatch(batch); setShowCsv(true); }} />
+      ) : null}
+
       {statusFilter ? (
         <InputReviewQueuePanel
           data={reviewQueue}
@@ -652,6 +656,44 @@ export default function InputsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function CsvPendingQueuePanel({ history, onApply }: { history: InputCsvImportHistory | null; onApply: (batch: InputCsvImportBatch) => void }) {
+  const pending = history?.imports || [];
+  return (
+    <section className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="font-semibold">Pending CSV imports</p>
+          <p className="mt-1">Validated input catalog batches that can still be applied.</p>
+        </div>
+        <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">{pending.length} pending</span>
+      </div>
+      {pending.length ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {pending.map((batch) => {
+            const counts = batch.report.counts || {};
+            return (
+              <button key={batch.batch_id} type="button" onClick={() => onApply(batch)} className="rounded-lg border border-blue-100 bg-white p-3 text-left shadow-sm hover:border-blue-300">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-gray-900">{batch.file_name || "Input catalog CSV"}</p>
+                    <p className="mt-1 text-xs text-gray-500">Created {new Date(batch.created_at).toLocaleString()}</p>
+                  </div>
+                  <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{batch.status}</span>
+                </div>
+                <p className="mt-2 text-xs text-gray-600">Create: {counts.create || 0} ? Update: {counts.update || 0} ? Errors: {counts.errors || 0}</p>
+                <p className="mt-1 text-xs text-gray-500">Expires: {new Date(batch.expires_at).toLocaleString()}</p>
+                <p className="mt-2 text-xs font-medium text-blue-700">Open CSV apply panel</p>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 rounded bg-white/70 p-3 text-blue-800">No pending validated CSV imports found.</p>
+      )}
+    </section>
   );
 }
 

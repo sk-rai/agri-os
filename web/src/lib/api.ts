@@ -1734,6 +1734,7 @@ export interface InputCsvImportBatch {
 export interface InputCsvImportHistory {
   schema_version: string;
   tenant_id: string;
+  status?: string | null;
   count: number;
   imports: InputCsvImportBatch[];
 }
@@ -1743,7 +1744,13 @@ export const inputCatalogApi = {
   exportCsv: (includeInactive = false) => apiDownload(`/api/v1/input-catalog/csv/export?include_inactive=${includeInactive}`, "agri-os-input-catalog.csv"),
   validateCsv: (file: File) => apiUpload<InputCsvImportBatch>("/api/v1/input-catalog/csv/validate", file),
   applyCsv: (batchId: string, reason: string) => api<InputCsvImportBatch>(`/api/v1/input-catalog/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
-  csvImportHistory: () => api<InputCsvImportHistory>("/api/v1/input-catalog/csv/imports"),
+  csvImportHistory: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<InputCsvImportHistory>(`/api/v1/input-catalog/csv/imports${suffix}`);
+  },
   inputRules: (params?: { cropCode?: string; seasonCode?: string; stageCode?: string; activityType?: string; inputCode?: string; projectId?: string; includeDisabled?: boolean }) => {
     const query = new URLSearchParams();
     if (params?.cropCode) query.set("crop_code", params.cropCode);

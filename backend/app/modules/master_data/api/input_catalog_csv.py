@@ -406,17 +406,22 @@ def apply_input_catalog_csv(
 @router.get("/imports")
 def list_input_catalog_imports(
     limit: int = Query(30, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(VALIDATED|INVALID|APPLIED|EXPIRED|STALE)$"),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
-    batches = db.query(InputCatalogImportBatch).filter(
+    query = db.query(InputCatalogImportBatch).filter(
         InputCatalogImportBatch.tenant_id == x_tenant_id,
         InputCatalogImportBatch.is_active == True,
-    ).order_by(InputCatalogImportBatch.created_at.desc()).limit(limit).all()
+    )
+    if status:
+        query = query.filter(InputCatalogImportBatch.status == status.upper())
+    batches = query.order_by(InputCatalogImportBatch.created_at.desc()).limit(limit).all()
     return {
         "schema_version": "input_catalog_imports.v1",
         "tenant_id": x_tenant_id,
+        "status": status.upper() if status else None,
         "count": len(batches),
         "imports": [_batch_payload(batch) for batch in batches],
     }
