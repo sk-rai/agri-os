@@ -129,6 +129,54 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
   URL.revokeObjectURL(url);
 }
 
+
+export interface CropTaxonomyNodeDto {
+  id: string;
+  code: string;
+  canonical_name: string;
+  description?: string | null;
+  node_type: string;
+  level: number;
+  display_order: number;
+  aliases?: unknown[] | Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  parent_codes: string[];
+  child_codes: string[];
+}
+
+export interface CropTaxonomyResponse {
+  schema_version: string;
+  nodes: CropTaxonomyNodeDto[];
+  edges: Array<{ parent_code: string; child_code: string; relationship_type: string }>;
+}
+
+export interface CropPropagationTypeDto {
+  id: string;
+  code: string;
+  canonical_name: string;
+  description?: string | null;
+  establishment_type: string;
+  aliases?: unknown[] | Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface CropCatalogItemDto {
+  id: string;
+  code: string;
+  canonical_name: string;
+  scientific_name?: string | null;
+  typical_duration_days?: number | null;
+  suitable_seasons?: string[] | null;
+  taxonomy: Array<{ code: string; canonical_name: string; node_type: string; level: number; assignment_type: string; is_primary: boolean }>;
+  propagation_options: Array<{ code: string; canonical_name: string; establishment_type: string; season_code?: string | null; is_default: boolean; notes?: string | null }>;
+}
+
+export interface CropCatalogResponse {
+  schema_version: string;
+  crops: CropCatalogItemDto[];
+  count: number;
+}
+
 export interface ActivityUsageRow {
   activity_id: string;
   activity_date?: string | null;
@@ -637,6 +685,20 @@ function projectTraceQuery(params?: ProjectTraceParams): string {
   if (params?.limit) query.set("limit", String(params.limit));
   return query.toString() ? `?${query.toString()}` : "";
 }
+
+
+export const cropCatalogApi = {
+  taxonomy: () => api<CropTaxonomyResponse>("/api/v1/crop-catalog/taxonomy"),
+  propagationTypes: () => api<CropPropagationTypeDto[]>("/api/v1/crop-catalog/propagation-types"),
+  crops: (params?: { taxonomyCode?: string; propagationType?: string; season?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.taxonomyCode) query.set("taxonomy_code", params.taxonomyCode);
+    if (params?.propagationType) query.set("propagation_type", params.propagationType);
+    if (params?.season) query.set("season", params.season);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<CropCatalogResponse>(`/api/v1/crop-catalog/crops${suffix}`);
+  },
+};
 
 export const reportsApi = {
   adminDashboard: (params?: AdminDashboardParams) => api<AdminDashboardResponse>(`/api/v1/reports/admin-dashboard${adminDashboardQuery(params)}`),

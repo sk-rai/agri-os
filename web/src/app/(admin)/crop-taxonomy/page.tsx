@@ -1,0 +1,180 @@
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  cropCatalogApi,
+  type CropCatalogItemDto,
+  type CropCatalogResponse,
+  type CropPropagationTypeDto,
+  type CropTaxonomyResponse,
+} from "@/lib/api";
+
+export default function CropTaxonomyPage() {
+  const [taxonomy, setTaxonomy] = useState<CropTaxonomyResponse | null>(null);
+  const [propagationTypes, setPropagationTypes] = useState<CropPropagationTypeDto[]>([]);
+  const [catalog, setCatalog] = useState<CropCatalogResponse | null>(null);
+  const [taxonomyFilter, setTaxonomyFilter] = useState("");
+  const [propagationFilter, setPropagationFilter] = useState("");
+  const [seasonFilter, setSeasonFilter] = useState("");
+  const [selectedCropCode, setSelectedCropCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      cropCatalogApi.taxonomy(),
+      cropCatalogApi.propagationTypes(),
+      cropCatalogApi.crops({ taxonomyCode: taxonomyFilter || undefined, propagationType: propagationFilter || undefined, season: seasonFilter || undefined }),
+    ])
+      .then(([taxonomyPayload, propagationPayload, cropPayload]) => {
+        setTaxonomy(taxonomyPayload);
+        setPropagationTypes(propagationPayload);
+        setCatalog(cropPayload);
+        setSelectedCropCode((current) => current && cropPayload.crops.some((crop) => crop.code === current) ? current : cropPayload.crops[0]?.code || null);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load crop taxonomy"))
+      .finally(() => setLoading(false));
+  }, [taxonomyFilter, propagationFilter, seasonFilter]);
+
+  const taxonomyNodes = useMemo(() => taxonomy?.nodes || [], [taxonomy]);
+  const crops = catalog?.crops || [];
+  const selectedCrop = crops.find((crop) => crop.code === selectedCropCode) || crops[0];
+  const taxonomyByLevel = useMemo(() => {
+    const groups = new Map<number, typeof taxonomyNodes>();
+    taxonomyNodes.forEach((node) => {
+      const existing = groups.get(node.level) || [];
+      groups.set(node.level, [...existing, node]);
+    });
+    return Array.from(groups.entries()).sort(([left], [right]) => left - right);
+  }, [taxonomyNodes]);
+  const seasons = Array.from(new Set(crops.flatMap((crop) => crop.suitable_seasons || []))).sort();
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Crop Taxonomy</h1>
+          <p className="mt-1 text-sm text-gray-500">Read-only crop classification, propagation options, and crop catalog metadata used by workflow templates.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <select value={taxonomyFilter} onChange={(event) => setTaxonomyFilter(event.target.value)} className="rounded border px-3 py-2 text-sm">
+            <option value="">All taxonomy</option>
+            {taxonomyNodes.map((node) => <option key={node.code} value={node.code}>{node.code}</option>)}
+          </select>
+          <select value={propagationFilter} onChange={(event) => setPropagationFilter(event.target.value)} className="rounded border px-3 py-2 text-sm">
+            <option value="">All propagation</option>
+            {propagationTypes.map((type) => <option key={type.code} value={type.code}>{type.code}</option>)}
+          </select>
+          <select value={seasonFilter} onChange={(event) => setSeasonFilter(event.target.value)} className="rounded border px-3 py-2 text-sm">
+            <option value="">All seasons</option>
+            {seasons.map((season) => <option key={season} value={season}>{season}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {error ? <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {loading ? <p className="text-sm text-gray-500">Loading crop taxonomy...</p> : null}
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Metric label="Taxonomy nodes" value={taxonomyNodes.length} />
+        <Metric label="Relationships" value={taxonomy?.edges.length || 0} />
+        <Metric label="Propagation types" value={propagationTypes.length} />
+        <Metric label="Crops" value={catalog?.count || 0} />
+      </div>
+
+      <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        <p className="font-semibold">Read-only foundation screen</p>
+        <p className="mt-1">This is the first admin surface for crop taxonomy. Import/edit/publish controls will come later through the validated import lifecycle.</p>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+        <section className="rounded bg-white p-4 shadow">
+          <h2 className="font-semibold text-gray-900">Crop catalog</h2>
+          <p className="mt-1 text-xs text-gray-500">Filtered by taxonomy, propagation, and season.</p>
+          <div className="mt-4 space-y-2">
+            {crops.map((crop) => (
+              <button key={crop.code} onClick={() => setSelectedCropCode(crop.code)} className={`w-full rounded border p-3 text-left text-sm ${selectedCrop?.code === crop.code ? "border-green-500 bg-green-50" : "border-gray-100 hover:bg-gray-50"}`}>
+                <p className="font-semibold text-gray-900">{crop.canonical_name}</p>
+                <p className="font-mono text-xs text-gray-500">{crop.code}</p>
+                <p className="mt-1 text-xs text-gray-500">{crop.suitable_seasons?.join(", ") || "No seasons"}</p>
+              </button>
+            ))}
+            {!loading && crops.length === 0 ? <p className="rounded bg-gray-50 p-4 text-center text-sm text-gray-400">No crops match this filter.</p> : null}
+          </div>
+        </section>
+
+        <div className="space-y-6">
+          {selectedCrop ? <CropDetail crop={selectedCrop} /> : null}
+          <section className="rounded bg-white p-4 shadow">
+            <h2 className="font-semibold text-gray-900">Taxonomy hierarchy</h2>
+            <div className="mt-4 space-y-4">
+              {taxonomyByLevel.map(([level, nodes]) => (
+                <div key={level}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Level {level}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {nodes.map((node) => <TaxonomyBadge key={node.code} node={node} />)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="rounded bg-white p-4 shadow">
+            <h2 className="font-semibold text-gray-900">Propagation types</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {propagationTypes.map((type) => (
+                <div key={type.code} className="rounded border p-3 text-sm">
+                  <p className="font-semibold text-gray-900">{type.code}</p>
+                  <p className="mt-1 text-gray-700">{type.canonical_name}</p>
+                  <p className="mt-1 text-xs text-gray-500">{type.establishment_type}</p>
+                  {type.description ? <p className="mt-2 text-xs text-gray-500">{type.description}</p> : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return <div className="rounded bg-white p-4 shadow"><p className="text-xs uppercase text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900">{value}</p></div>;
+}
+
+function TaxonomyBadge({ node }: { node: CropTaxonomyResponse["nodes"][number] }) {
+  return <div className="rounded border bg-gray-50 px-3 py-2 text-xs">
+    <p className="font-semibold text-gray-900">{node.code}</p>
+    <p className="text-gray-600">{node.canonical_name}</p>
+    <p className="mt-1 text-gray-400">{node.node_type}</p>
+  </div>;
+}
+
+function CropDetail({ crop }: { crop: CropCatalogItemDto }) {
+  return <section className="rounded bg-white p-5 shadow">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{crop.canonical_name}</h2>
+        <p className="mt-1 font-mono text-xs text-gray-500">{crop.code}</p>
+        {crop.scientific_name ? <p className="mt-1 text-sm italic text-gray-600">{crop.scientific_name}</p> : null}
+      </div>
+      <span className="rounded bg-green-50 px-3 py-1 text-xs font-semibold text-green-800">{crop.typical_duration_days || "?"} days</span>
+    </div>
+    <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">Taxonomy assignments</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {crop.taxonomy.map((node) => <span key={node.code} className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800">{node.code}{node.is_primary ? " ? primary" : ""}</span>)}
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">Propagation options</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {crop.propagation_options.map((option) => <span key={`${option.code}-${option.season_code || "all"}`} className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{option.code}{option.is_default ? " ? default" : ""}</span>)}
+        </div>
+      </div>
+    </div>
+  </section>;
+}
