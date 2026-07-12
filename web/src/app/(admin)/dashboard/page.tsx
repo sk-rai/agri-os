@@ -287,6 +287,7 @@ function AttentionItem({ label, count, href, tone, help }: { label: string; coun
         <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-bold">{count}</span>
       </div>
       <p className="mt-2 text-xs opacity-75">{help}</p>
+      <p className="mt-3 rounded bg-white/60 px-2 py-1 font-mono text-[10px] opacity-70">Opens {href}</p>
     </Link>
   );
 }
