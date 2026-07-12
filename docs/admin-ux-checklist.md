@@ -100,6 +100,13 @@ cd backend
 ../venv/bin/python scripts/run_admin_report_regressions.py
 ```
 
+- Run workflow-admin regressions when changing workflow drafts, publishing, version assignment, project workflow enablements, overrides, or safe-edit lifecycle:
+
+```bash
+cd backend
+../venv/bin/python scripts/run_workflow_admin_regressions.py
+```
+
 ## Manual admin testing checklist
 
 Use this quick pass after admin UI changes, especially when a screen participates in dashboard drill-downs or permission-gated mutations.
