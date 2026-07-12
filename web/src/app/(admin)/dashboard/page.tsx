@@ -225,7 +225,7 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
     {
       label: "Sync conflicts",
       count: syncSummary?.conflict_count || 0,
-      href: "/conflicts",
+      href: "/sync-health?status=CONFLICT",
       tone: "red",
       help: "Client/server conflicts waiting for admin resolution.",
     },

@@ -51,6 +51,16 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
     }
   }, [appliedFilters]);
 
+  useEffect(() => {
+    const browserFilters = filtersFromSearchParams(Object.fromEntries(new URLSearchParams(window.location.search).entries()));
+    if (browserFilters.projectId || browserFilters.entityType || browserFilters.status || browserFilters.gapOnly) {
+      setFilters(browserFilters);
+      setAppliedFilters(browserFilters);
+    }
+    // set URL filters from browser once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
 
   function submit(event: FormEvent) {
@@ -96,6 +106,13 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
           <Link href="/conflicts" className="rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800">Open conflicts</Link>
         </div>
       </div>
+
+      {(appliedFilters.status || appliedFilters.entityType || appliedFilters.gapOnly || appliedFilters.projectId) ? (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <p className="font-semibold">Sync health drill-down active</p>
+          <p className="mt-1">Showing filtered sync events from dashboard/operations context. Adjust filters below or clear them to return to all sync events.</p>
+        </div>
+      ) : null}
 
       <form onSubmit={submit} className="rounded bg-white p-5 shadow">
         <div className="grid gap-3 md:grid-cols-5">
