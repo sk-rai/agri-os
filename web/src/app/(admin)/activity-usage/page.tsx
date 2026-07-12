@@ -223,13 +223,13 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Recommended quantity", formatQuantity(row.recommended_quantity, row.recommended_quantity_unit)],
           ["Actual quantity", formatQuantity(row.actual_quantity, row.actual_quantity_unit)],
           ["Variance reason", row.dosage_variance_reason],
-        ]} action={row.input_rule_id ? <a href={`/input-rule-trace/${row.input_rule_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open rule trace</a> : undefined} />
+        ]} action={row.input_rule_id ? <TraceActions href={`/input-rule-trace/${row.input_rule_id}`} primaryLabel="Open rule trace" /> : undefined} />
         <TraceSection title="Product / package linkage" rows={[
           ["Product ID", row.product_id],
           ["Product code", row.product_code],
           ["Package ID", row.package_id],
           ["Package SKU", row.package_sku],
-        ]} action={row.product_code ? <a href={`/product-trace/${encodeURIComponent(row.product_code)}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open product trace</a> : undefined} />
+        ]} action={row.product_code ? <TraceActions href={`/product-trace/${encodeURIComponent(row.product_code)}`} primaryLabel="Open product trace" /> : undefined} />
         <TraceSection title="Crop cycle / stage" rows={[
           ["Crop cycle ID", row.crop_cycle_id],
           ["Cycle status", row.crop_cycle_status],
@@ -241,7 +241,7 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Stage name", row.stage_name],
           ["Stage order", row.stage_order != null ? String(row.stage_order) : null],
           ["Stage status", row.stage_status],
-        ]} action={<a href={`/crop-cycle-trace/${row.crop_cycle_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open cycle trace</a>} />
+        ]} action={row.crop_cycle_id ? <TraceActions href={`/crop-cycle-trace/${row.crop_cycle_id}`} primaryLabel="Open cycle trace" /> : undefined} />
         <TraceSection title="Farmer / parcel" rows={[
           ["Farmer ID", row.farmer_id],
           ["Farmer name", row.farmer_name],
@@ -249,7 +249,7 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
           ["Parcel label", row.parcel_label],
           ["Project ID", row.project_id],
           ["Tenant", row.tenant_id],
-        ]} action={<div className="flex gap-2">{row.farmer_id && <a href={`/farmer-trace/${row.farmer_id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open farmer</a>}{row.parcel_id && <a href={`/parcel-trace/${row.parcel_id}`} className="rounded border px-3 py-1 text-xs text-gray-700">Open parcel</a>}</div>} />
+        ]} action={<div className="flex flex-wrap gap-2">{row.farmer_id ? <TraceActions href={`/farmer-trace/${row.farmer_id}`} primaryLabel="Open farmer" /> : null}{row.parcel_id ? <TraceActions href={`/parcel-trace/${row.parcel_id}`} primaryLabel="Open parcel" secondary /> : null}</div>} />
         <TraceSection title="Logging / GPS" rows={[
           ["Logged by", row.logged_by],
           ["Logging method", row.logging_method],
@@ -264,6 +264,25 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
       </div>
     </aside>
   </div>;
+}
+
+
+function TraceActions({ href, primaryLabel, secondary = false }: { href: string; primaryLabel: string; secondary?: boolean }) {
+  return <div className="flex gap-2">
+    <a href={href} className={secondary ? "rounded border px-3 py-1 text-xs text-gray-700" : "rounded bg-gray-900 px-3 py-1 text-xs text-white"}>{primaryLabel}</a>
+    <CopyTraceLinkButton href={href} />
+  </div>;
+}
+
+function CopyTraceLinkButton({ href }: { href: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
+    await navigator.clipboard.writeText(target);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+  return <button type="button" onClick={copy} className="rounded border px-3 py-1 text-xs text-gray-700 hover:bg-gray-50">{copied ? "Copied" : "Copy link"}</button>;
 }
 
 function TraceSection({ title, rows, action }: { title: string; rows: Array<[string, string | number | null | undefined]>; action?: ReactNode }) {
