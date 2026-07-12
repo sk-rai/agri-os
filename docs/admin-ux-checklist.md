@@ -93,6 +93,13 @@ cd backend
 ../venv/bin/python scripts/run_admin_permission_regressions.py
 ```
 
+- Run backend report regressions when changing dashboard data, traceability payloads, report filters, CSV exports, or readiness checks:
+
+```bash
+cd backend
+../venv/bin/python scripts/run_admin_report_regressions.py
+```
+
 ## Manual admin testing checklist
 
 Use this quick pass after admin UI changes, especially when a screen participates in dashboard drill-downs or permission-gated mutations.
