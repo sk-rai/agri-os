@@ -23,6 +23,16 @@ function filtersFromSearchParams(searchParams?: Record<string, string | string[]
   };
 }
 
+function lookupHref(query: string, filters: LookupFilters) {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (filters.projectId) params.set("projectId", filters.projectId);
+  if (filters.geometryStatus) params.set("geometryStatus", filters.geometryStatus);
+  if (filters.geometrySource) params.set("geometrySource", filters.geometrySource);
+  const encoded = params.toString();
+  return `/lookup${encoded ? `?${encoded}` : ""}`;
+}
+
 export default function AdminLookupPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const [query, setQuery] = useState(paramValue(searchParams, "q", "query"));
   const [submittedQuery, setSubmittedQuery] = useState(paramValue(searchParams, "q", "query"));
@@ -31,6 +41,7 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
   const [result, setResult] = useState<AdminLookupResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (search: string, nextFilters: LookupFilters) => {
@@ -66,6 +77,14 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
     }
   }
 
+  async function copyFilteredLink() {
+    const href = lookupHref(submittedQuery, submittedFilters);
+    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
+    await navigator.clipboard.writeText(target);
+    setCopiedLink(true);
+    window.setTimeout(() => setCopiedLink(false), 1500);
+  }
+
   const total = (result?.projects.length || 0) + (result?.farmers.length || 0) + (result?.parcels.length || 0);
   const activeFilterText = [submittedFilters.projectId ? `Project ${submittedFilters.projectId}` : null, submittedFilters.geometryStatus ? `Geometry ${submittedFilters.geometryStatus}` : null, submittedFilters.geometrySource ? `Source ${submittedFilters.geometrySource}` : null].filter(Boolean).join(" ? ");
 
@@ -75,7 +94,7 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
         <h1 className="text-2xl font-bold text-gray-900">Admin Lookup</h1>
         <p className="mt-1 text-sm text-gray-500">Find projects, farmers, and parcels, then jump directly into traceability views.</p>
       </div>
-      <div className="flex gap-2"><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery, submittedFilters)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
+      <div className="flex flex-wrap gap-2"><button onClick={copyFilteredLink} className="rounded border px-4 py-2 text-sm hover:bg-gray-50">{copiedLink ? "Copied" : "Copy filtered link"}</button><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery, submittedFilters)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
     </div>
 
     <form onSubmit={submit} className="mb-6 rounded bg-white p-5 shadow">
