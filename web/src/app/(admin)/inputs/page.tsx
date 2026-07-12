@@ -132,6 +132,7 @@ export default function InputsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
   const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [showCsv, setShowCsv] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvBatch, setCsvBatch] = useState<InputCsvImportBatch | null>(null);
@@ -190,7 +191,7 @@ export default function InputsPage() {
         });
       })
       .catch((e) => setError(e))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLastRefreshedAt(new Date()); });
   }, [category, cropCode, query, showArchived, catalogRefresh]);
 
   useEffect(() => {
@@ -252,6 +253,19 @@ export default function InputsPage() {
   }, [statusFilter, visibleInputs]);
 
   const loadCsvHistory = (status?: string) => inputCatalogApi.csvImportHistory({ status, limit: 30 }).then(setCsvHistory).catch(() => setCsvHistory(null));
+
+  const refreshInputCatalog = () => {
+    setCatalogRefresh((value) => value + 1);
+    if (backlogFilter === "csv-pending" || showCsv) void loadCsvHistory(backlogFilter === "csv-pending" ? "VALIDATED" : undefined);
+    if (statusFilter) {
+      setReviewQueueLoading(true);
+      inputCatalogApi
+        .reviewQueue({ status: statusFilter, limit: 100 })
+        .then(setReviewQueue)
+        .catch(() => setReviewQueue(null))
+        .finally(() => setReviewQueueLoading(false));
+    }
+  };
 
   const openCsvPanel = () => {
     setShowCsv((value) => !value);
@@ -435,6 +449,8 @@ export default function InputsPage() {
 
   if (error && inputs.length === 0) return isPermissionDenied(error) ? <PermissionErrorCard error={error} /> : <div className="text-red-500">Error: {getErrorMessage(error)}</div>;
 
+  const refreshLabel = lastRefreshedAt ? lastRefreshedAt.toLocaleString() : "Not refreshed yet";
+
   return (
     <div>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -444,19 +460,25 @@ export default function InputsPage() {
             Admin master data for canonical seeds, fertilizers, crop protection, labor, machinery, and irrigation inputs.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={openCsvPanel} className="w-fit rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            {showCsv ? "Close CSV tools" : "CSV import / export"}
-          </button>
-          <button
-            type="button"
-            disabled={!canEditInputs}
-            title={canEditInputs ? undefined : "Your role cannot create input catalog records."}
-            onClick={() => { setShowCreate((value) => !value); setNewDraft(emptyNewInputDraft(category)); }}
-            className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          >
-            {showCreate ? "Close new input" : "New input"}
-          </button>
+        <div className="flex flex-col items-start gap-2 md:items-end">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={refreshInputCatalog} disabled={loading || reviewQueueLoading || csvBusy} className="w-fit rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {loading || reviewQueueLoading || csvBusy ? "Refreshing..." : "Refresh"}
+            </button>
+            <button type="button" onClick={openCsvPanel} className="w-fit rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              {showCsv ? "Close CSV tools" : "CSV import / export"}
+            </button>
+            <button
+              type="button"
+              disabled={!canEditInputs}
+              title={canEditInputs ? undefined : "Your role cannot create input catalog records."}
+              onClick={() => { setShowCreate((value) => !value); setNewDraft(emptyNewInputDraft(category)); }}
+              className="w-fit rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            >
+              {showCreate ? "Close new input" : "New input"}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">Last refreshed: {refreshLabel}</p>
         </div>
       </div>
 
