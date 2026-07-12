@@ -164,7 +164,10 @@ function ValidationBlockerQueue({ data, loading }: { data: WorkflowDraftValidati
           <p className="font-semibold">Workflow validation blockers</p>
           <p className="mt-1">Draft workflow versions that need validation, fixes, or publishing attention.</p>
         </div>
-        <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">{loading ? "Loading..." : `${data?.count || 0} blockers`}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">{loading ? "Loading..." : `${data?.count || 0} blockers`}</span>
+          <Link href="/workflows" className="rounded bg-white/80 px-3 py-1 text-xs font-semibold text-blue-800 hover:bg-white">Clear drill-down</Link>
+        </div>
       </div>
       {loading ? <p className="mt-3 rounded bg-white/70 p-3 text-blue-800">Loading blocker queue...</p> : null}
       {!loading && data?.blockers.length ? (

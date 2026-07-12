@@ -109,8 +109,13 @@ export default function SyncHealthPage({ searchParams }: { searchParams?: Record
 
       {(appliedFilters.status || appliedFilters.entityType || appliedFilters.gapOnly || appliedFilters.projectId) ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          <p className="font-semibold">Sync health drill-down active</p>
-          <p className="mt-1">Showing filtered sync events from dashboard/operations context. Adjust filters below or clear them to return to all sync events.</p>
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="font-semibold">Sync health drill-down active</p>
+              <p className="mt-1">Showing filtered sync events from dashboard/operations context. Adjust filters below or clear them to return to all sync events.</p>
+            </div>
+            <Link href="/sync-health" className="shrink-0 rounded bg-white/80 px-3 py-1 text-xs font-semibold text-blue-800 hover:bg-white">Clear drill-down</Link>
+          </div>
         </div>
       ) : null}
 

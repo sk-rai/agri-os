@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   inputCatalogApi,
@@ -468,12 +469,17 @@ export default function InputsPage() {
 
       {statusFilter || backlogFilter === "csv-pending" ? (
         <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          <p className="font-semibold">Backlog drill-down active</p>
-          <p className="mt-1">
-            {backlogFilter === "csv-pending"
-              ? "Showing CSV import tools for validated batches waiting to be applied."
-              : `Showing ${statusFilter} input catalog records from the dashboard attention queue.`}
-          </p>
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="font-semibold">Backlog drill-down active</p>
+              <p className="mt-1">
+                {backlogFilter === "csv-pending"
+                  ? "Showing CSV import tools for validated batches waiting to be applied."
+                  : `Showing ${statusFilter} input catalog records from the dashboard attention queue.`}
+              </p>
+            </div>
+            <Link href="/inputs" className="shrink-0 rounded bg-white/80 px-3 py-1 text-xs font-semibold text-blue-800 hover:bg-white">Clear drill-down</Link>
+          </div>
         </div>
       ) : null}
 
