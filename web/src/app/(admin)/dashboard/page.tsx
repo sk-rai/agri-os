@@ -58,11 +58,12 @@ export default function DashboardPage() {
   const [syncHealth, setSyncHealth] = useState<SyncMaterializationHealthResponse | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   const loadDashboard = (nextFilters = filters) => {
     setLoading(true);
     setError(null);
-    reportsApi
+    const dashboardRequest = reportsApi
       .adminDashboard({
         projectId: nextFilters.projectId.trim() || undefined,
         dateFrom: nextFilters.dateFrom || undefined,
@@ -73,11 +74,13 @@ export default function DashboardPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
     setSyncLoading(true);
-    reportsApi
+    const syncRequest = reportsApi
       .syncHealth({ projectId: nextFilters.projectId.trim() || undefined, limit: 8 })
       .then(setSyncHealth)
       .catch((e) => setError(e.message))
       .finally(() => setSyncLoading(false));
+
+    Promise.allSettled([dashboardRequest, syncRequest]).then(() => setLastRefreshedAt(new Date()));
   };
 
   useEffect(() => {
@@ -99,6 +102,7 @@ export default function DashboardPage() {
   if (error && !data) return <div className="text-red-500">Error: {error}</div>;
 
   const summary = data?.summary;
+  const refreshLabel = lastRefreshedAt ? lastRefreshedAt.toLocaleString() : "Not refreshed yet";
 
   return (
     <div className="space-y-6">
@@ -109,9 +113,17 @@ export default function DashboardPage() {
             Lightweight operational summary from project, farmer, parcel, crop-cycle, and activity trace data.
           </p>
         </div>
-        <Link href="/lookup" className="rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">
-          Search records
-        </Link>
+        <div className="flex flex-col items-start gap-2 md:items-end">
+          <div className="flex gap-2">
+            <button type="button" onClick={() => loadDashboard(filters)} disabled={loading || syncLoading} className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {loading || syncLoading ? "Refreshing..." : "Refresh"}
+            </button>
+            <Link href="/lookup" className="rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">
+              Search records
+            </Link>
+          </div>
+          <p className="text-xs text-gray-500">Last refreshed: {refreshLabel}</p>
+        </div>
       </div>
 
       <form onSubmit={applyFilters} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
