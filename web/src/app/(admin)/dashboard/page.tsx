@@ -192,7 +192,29 @@ export default function DashboardPage() {
 function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardResponse | null; syncHealth: SyncMaterializationHealthResponse | null }) {
   const summary = data?.summary;
   const syncSummary = syncHealth?.summary;
+  const backlog = summary?.admin_backlog;
   const attentionItems = [
+    {
+      label: "Workflow validation blockers",
+      count: backlog?.workflow_validation_blocker_count || 0,
+      href: "/workflows",
+      tone: "red",
+      help: "Draft workflows that are unvalidated, stale, or blocked by validation errors.",
+    },
+    {
+      label: "Inputs awaiting review",
+      count: backlog?.input_review_count || 0,
+      href: "/inputs",
+      tone: "amber",
+      help: "Input catalog records submitted for approval or publishing.",
+    },
+    {
+      label: "Pending CSV imports",
+      count: backlog?.csv_import_pending_count || 0,
+      href: "/inputs",
+      tone: "blue",
+      help: "Validated input CSV batches waiting for admin apply.",
+    },
     {
       label: "Failed sync events",
       count: syncSummary?.failed_count || 0,
@@ -242,7 +264,7 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
           {actionableCount > 0 ? `${actionableCount} open signals` : "No open signals"}
         </span>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {attentionItems.map((item) => (
           <AttentionItem key={item.label} {...item} />
         ))}

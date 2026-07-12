@@ -501,6 +501,17 @@ export interface AdminDashboardResponse {
     variance_count: number;
     geometry_captured_count: number;
     geometry_missing_count: number;
+    admin_backlog?: {
+      draft_workflow_count: number;
+      workflow_validation_blocker_count: number;
+      unvalidated_draft_workflow_count: number;
+      stale_validation_count: number;
+      workflow_validation_error_count: number;
+      input_review_count: number;
+      input_draft_count: number;
+      input_rejected_count: number;
+      csv_import_pending_count: number;
+    };
   };
   crop_distribution: Array<{ crop_code: string; crop_cycle_count: number }>;
   cycle_status_distribution: Array<{ status: string; crop_cycle_count: number }>;

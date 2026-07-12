@@ -11,6 +11,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
@@ -21,12 +22,20 @@ from app.modules.master_data.models import (
     AgriculturalProduct,
     AgriculturalProductPackage,
     CropStageInputRule,
+    InputCatalogImportBatch,
     Manufacturer,
     InputCategory,
     ProjectInputAssignment,
     ProjectProductApproval,
 )
-from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
+from app.modules.workflow.models import (
+    CropActivity,
+    CropCycle,
+    CropStageInstance,
+    WorkflowTemplate,
+    WorkflowTemplateAuditEvent,
+    WorkflowTemplateVersion,
+)
 from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessedEvent
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -639,7 +648,71 @@ def _admin_parcel_row(parcel, farmer, cycles_by_parcel, activities_by_parcel):
     }
 
 
-def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities):
+
+def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[uuid.UUID]) -> dict:
+    workflow_query = (
+        db.query(WorkflowTemplateVersion, WorkflowTemplate)
+        .join(WorkflowTemplate, WorkflowTemplate.id == WorkflowTemplateVersion.template_id)
+        .filter(
+            WorkflowTemplate.tenant_id == tenant_id,
+            WorkflowTemplateVersion.is_active == True,
+            WorkflowTemplateVersion.status == "DRAFT",
+        )
+    )
+    if project_id:
+        workflow_query = workflow_query.filter(or_(WorkflowTemplate.project_id == project_id, WorkflowTemplate.project_id == None))
+    draft_rows = workflow_query.all()
+
+    validation_blocker_count = 0
+    unvalidated_draft_count = 0
+    stale_validation_count = 0
+    error_validation_count = 0
+    for version, _template in draft_rows:
+        latest_validation = (
+            db.query(WorkflowTemplateAuditEvent)
+            .filter(
+                WorkflowTemplateAuditEvent.template_version_id == version.id,
+                WorkflowTemplateAuditEvent.action == "VALIDATE_DRAFT",
+            )
+            .order_by(WorkflowTemplateAuditEvent.created_at.desc())
+            .first()
+        )
+        if not latest_validation:
+            unvalidated_draft_count += 1
+            validation_blocker_count += 1
+            continue
+        if version.updated_at and latest_validation.created_at and latest_validation.created_at < version.updated_at:
+            stale_validation_count += 1
+            validation_blocker_count += 1
+            continue
+        after_payload = latest_validation.after or {}
+        counts = after_payload.get("counts") or {}
+        if after_payload.get("can_publish") is False or int(counts.get("errors") or 0) > 0:
+            error_validation_count += 1
+            validation_blocker_count += 1
+
+    input_query = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True)
+    input_review_count = input_query.filter(AgriculturalInput.catalog_status == "REVIEW").count()
+    input_draft_count = input_query.filter(AgriculturalInput.catalog_status == "DRAFT").count()
+    input_rejected_count = input_query.filter(AgriculturalInput.catalog_status == "REJECTED").count()
+    csv_pending_count = db.query(InputCatalogImportBatch).filter(
+        InputCatalogImportBatch.tenant_id == tenant_id,
+        InputCatalogImportBatch.status == "VALIDATED",
+    ).count()
+
+    return {
+        "draft_workflow_count": len(draft_rows),
+        "workflow_validation_blocker_count": validation_blocker_count,
+        "unvalidated_draft_workflow_count": unvalidated_draft_count,
+        "stale_validation_count": stale_validation_count,
+        "workflow_validation_error_count": error_validation_count,
+        "input_review_count": input_review_count,
+        "input_draft_count": input_draft_count,
+        "input_rejected_count": input_rejected_count,
+        "csv_import_pending_count": csv_pending_count,
+    }
+
+def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities, admin_backlog):
     cycles_by_project = defaultdict(list)
     cycles_by_farmer = defaultdict(list)
     cycles_by_parcel = defaultdict(list)
@@ -696,6 +769,7 @@ def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit
             "variance_count": variance_count,
             "geometry_captured_count": sum(1 for parcel in parcels if parcel.geometry_source and parcel.geometry_source != "NONE"),
             "geometry_missing_count": sum(1 for parcel in parcels if not parcel.geometry_source or parcel.geometry_source == "NONE"),
+            "admin_backlog": admin_backlog,
         },
         "crop_distribution": [
             {"crop_code": key, "crop_cycle_count": value}
@@ -772,6 +846,8 @@ def admin_dashboard_report(
         for activity, cycle, stage, farmer, parcel in activity_rows_raw
     ]
 
+    admin_backlog = _admin_backlog_counts(db, tenant_id=x_tenant_id, project_id=project_id)
+
     return _admin_dashboard_payload(
         tenant_id=x_tenant_id,
         project_id=project_id,
@@ -783,6 +859,7 @@ def admin_dashboard_report(
         parcels=parcels,
         cycles=cycles,
         activities=activities,
+        admin_backlog=admin_backlog,
     )
 
 
