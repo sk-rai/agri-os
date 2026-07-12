@@ -17,6 +17,21 @@ This checklist captures the current Agri-OS admin UI conventions. Use it when ad
 - For failed mutations, render `PermissionErrorCard` when the API returns permission denial details.
 - Pair permission checks with domain locks such as safe-edit lifecycle. Permission does not override locked projects or published workflow immutability.
 
+## Shared admin components
+
+Prefer the shared admin UI components before creating one-off markup:
+
+- `PermissionErrorCard` for backend `ADMIN_PERMISSION_DENIED` responses.
+- `DrilldownBanner` for dashboard-filtered pages with a clear reset link.
+- `CopyLinkButton` for shareable dashboard, lookup, trace, and filtered report URLs.
+
+When adding new shared components:
+
+- Keep them small and behavior-focused.
+- Put them under `web/src/components/`.
+- Use page-specific labels through props rather than duplicating the component.
+- Update this checklist when the component becomes part of the admin convention.
+
 ## Dashboard conventions
 
 - The dashboard is the admin command center, not a dense analytics page.
