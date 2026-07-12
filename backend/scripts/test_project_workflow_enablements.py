@@ -13,6 +13,7 @@ from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Farmer, Project, Tenant
 from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateEnablement
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -54,6 +55,7 @@ def main():
 
     db = SessionLocal()
     project_id = uuid.uuid4()
+    admin_user = None
     try:
         ensure_tenant(db)
         rice = db.query(WorkflowTemplate).filter(WorkflowTemplate.code == "WF_RICE_KHARIF_DEFAULT").first()
@@ -96,7 +98,9 @@ def main():
         ))
         db.commit()
 
+        admin_user, admin_headers = create_test_admin(db, tenant_id=TENANT_ID)
         client = TestClient(app)
+        client.headers.update(admin_headers)
         response = client.get(
             f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements",
             headers={"X-Tenant-ID": TENANT_ID},
@@ -107,9 +111,10 @@ def main():
         check(payload["explicit_scope"] is True, "Response marks explicit scope")
         by_crop = {item["crop_code"]: item for item in payload["workflows"]}
         check(by_crop["RICE"]["visibility_status"] == "ENABLED", "Rice is enabled")
-        check(by_crop["SUGARCANE"]["visibility_status"] == "DISABLED", "Sugarcane is disabled")
+        check(by_crop["SUGARCANE"]["visibility_status"] == "CROP_SCOPE_BLOCKED", "Sugarcane is blocked by project crop scope")
+        check(by_crop["SUGARCANE"]["assignment_rule"] == "BLOCKED_BY_PROJECT_CROP_SCOPE", "Sugarcane Android visibility is blocked by crop scope")
         check(payload["counts"]["enabled"] >= 1, "Enabled count is populated")
-        check(payload["counts"]["disabled"] >= 1, "Disabled count is populated")
+        check(payload["counts"]["crop_scope_blocked"] >= 1, "Crop scope blocked count is populated")
 
         disable_response = client.put(
             f"/api/v1/workflow-catalog/projects/{project_id}/workflow-enablements/{rice.id}",
@@ -167,6 +172,8 @@ def main():
         check(locked_update.json()["detail"]["safe_edit_lifecycle"]["lock_state"] == "LOCKED", "Blocked response includes lifecycle detail")
     finally:
         cleanup(db, project_id)
+        if admin_user:
+            delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\n" + "=" * 72)
