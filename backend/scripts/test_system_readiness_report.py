@@ -1,7 +1,9 @@
 """Regression for the admin system readiness report."""
 
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -9,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.farmer.models import Project, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -33,13 +36,45 @@ def check(condition, label, detail=None):
         raise AssertionError(label)
 
 
+def ensure_tenant(db):
+    if db.query(Tenant).filter(Tenant.id == "default").first():
+        return
+    db.add(Tenant(
+        id="default",
+        name="Default",
+        type="ENTERPRISE",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
+
+def create_project(db) -> Project:
+    project = Project(
+        id=uuid.uuid4(),
+        tenant_id="default",
+        name="System Readiness Regression Project",
+        start_date=date(2027, 1, 1),
+        end_date=date(2027, 12, 31),
+        status="PLANNED",
+        crop_scope=["RICE"],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(project)
+    db.commit()
+    return project
+
+
 def main():
     print("=" * 72)
     print("SYSTEM READINESS REPORT REGRESSION")
     print("=" * 72)
     db = SessionLocal()
     admin = None
+    project = None
     try:
+        ensure_tenant(db)
         client = TestClient(app)
         unauthenticated = client.get("/api/v1/reports/system-readiness", headers={"X-Tenant-ID": "default"})
         check(unauthenticated.status_code == 401, "system readiness requires admin authentication", unauthenticated.text)
@@ -58,7 +93,26 @@ def main():
             check(isinstance(item["ready"], bool), f"{item['code']} ready is boolean")
             check(item["severity"] in {"OK", "WARN", "INFO"}, f"{item['code']} severity is valid")
             check(bool(item["label"]) and bool(item["detail"]) and bool(item["href"]), f"{item['code']} has label/detail/href")
+
+        project = create_project(db)
+        scoped_response = client.get(f"/api/v1/reports/system-readiness?project_id={project.id}", headers=headers)
+        check(scoped_response.status_code == 200, "project-scoped system readiness returns 200", scoped_response.text[:500])
+        scoped = scoped_response.json()
+        check(scoped["filters"]["project_id"] == str(project.id), "project-scoped readiness echoes project id")
+        check(scoped["summary"]["check_count"] == len(scoped["checks"]), "project-scoped check_count matches checks length")
+        scoped_by_code = {item["code"]: item for item in scoped["checks"]}
+        check(scoped_by_code["PROJECT_SETUP"]["ready"] is True, "project-scoped project setup is ready for seeded project")
+        check(scoped_by_code["WORKFLOW_ASSIGNMENTS"]["severity"] in {"OK", "INFO"}, "project-scoped workflow assignment check is informational or ready")
+        check(scoped_by_code["FARMER_SYNC"]["href"].startswith(f"/lookup?projectId={project.id}"), "project-scoped farmer sync links to project lookup")
+
+        missing_project_id = uuid.uuid4()
+        missing_response = client.get(f"/api/v1/reports/system-readiness?project_id={missing_project_id}", headers=headers)
+        check(missing_response.status_code == 404, "missing project readiness returns 404", missing_response.text)
     finally:
+        db.rollback()
+        if project:
+            db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
+            db.commit()
         if admin:
             delete_test_admin(db, admin.id)
         db.close()
