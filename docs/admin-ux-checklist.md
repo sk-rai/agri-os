@@ -100,6 +100,13 @@ cd backend
 ../venv/bin/python scripts/run_admin_report_regressions.py
 ```
 
+- Run master-data regressions when changing crop taxonomy, crop catalogs, input catalogs, input CSV imports, input rules, or product catalogs:
+
+```bash
+cd backend
+../venv/bin/python scripts/run_master_data_regressions.py
+```
+
 - Run workflow-admin regressions when changing workflow drafts, publishing, version assignment, project workflow enablements, overrides, or safe-edit lifecycle:
 
 ```bash
