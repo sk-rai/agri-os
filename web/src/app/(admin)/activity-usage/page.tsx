@@ -36,6 +36,15 @@ function reportParams(filters: Filters, limit: number) {
   };
 }
 
+function activityUsageHref(filters: Filters) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  const query = params.toString();
+  return `/activity-usage${query ? `?${query}` : ""}`;
+}
+
 function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
   for (const key of keys) {
     const value = searchParams?.[key];
@@ -69,6 +78,7 @@ export default function ActivityUsagePage({ searchParams }: { searchParams?: Rec
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -105,6 +115,14 @@ export default function ActivityUsagePage({ searchParams }: { searchParams?: Rec
     }
   }, [filters]);
 
+  const copyFilteredLink = async () => {
+    const href = activityUsageHref(filters);
+    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
+    await navigator.clipboard.writeText(target);
+    setCopiedLink(true);
+    window.setTimeout(() => setCopiedLink(false), 1500);
+  };
+
   const summary = report?.summary;
   return <div>
     <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -112,7 +130,8 @@ export default function ActivityUsagePage({ searchParams }: { searchParams?: Rec
         <h1 className="text-2xl font-bold text-gray-900">Activity Usage</h1>
         <p className="mt-1 text-sm text-gray-500">Read-only input, product and package usage across crop activities.</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+        <button onClick={copyFilteredLink} className="rounded border px-4 py-2 text-sm hover:bg-gray-50">{copiedLink ? "Copied" : "Copy filtered link"}</button>
         <button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button>
         <button onClick={load} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button>
       </div>
