@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { reportsApi, type AdminDashboardResponse, type SyncMaterializationHealthResponse } from "@/lib/api";
+import { CopyLinkButton } from "@/components/copy-link-button";
 
 type DashboardFilters = {
   projectId: string;
@@ -286,7 +287,6 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
 }
 
 function AttentionItem({ label, count, href, tone, help }: { label: string; count: number; href: string; tone: string; help: string }) {
-  const [copied, setCopied] = useState(false);
   const toneMap: Record<string, string> = {
     red: "border-red-200 bg-red-50 text-red-900",
     amber: "border-amber-200 bg-amber-50 text-amber-900",
@@ -294,13 +294,6 @@ function AttentionItem({ label, count, href, tone, help }: { label: string; coun
     blue: "border-blue-200 bg-blue-50 text-blue-900",
   };
   const toneClass = toneMap[tone] || "border-gray-200 bg-gray-50 text-gray-900";
-
-  const copyLink = async () => {
-    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
-    await navigator.clipboard.writeText(target);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  };
 
   return (
     <div className={`rounded-lg border p-3 ${toneClass}`}>
@@ -312,13 +305,7 @@ function AttentionItem({ label, count, href, tone, help }: { label: string; coun
         <p className="mt-2 text-xs opacity-75">{help}</p>
         <p className="mt-3 rounded bg-white/60 px-2 py-1 font-mono text-[10px] opacity-70">Opens {href}</p>
       </Link>
-      <button
-        type="button"
-        onClick={copyLink}
-        className="mt-3 rounded border border-white/70 bg-white/70 px-2 py-1 text-xs font-semibold opacity-80 hover:bg-white hover:opacity-100"
-      >
-        {copied ? "Copied" : "Copy link"}
-      </button>
+      <CopyLinkButton href={href} className="mt-3 rounded border border-white/70 bg-white/70 px-2 py-1 text-xs font-semibold opacity-80 hover:bg-white hover:opacity-100" />
     </div>
   );
 }

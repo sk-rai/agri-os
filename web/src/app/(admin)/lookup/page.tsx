@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { reportsApi, type AdminLookupResponse } from "@/lib/api";
+import { CopyLinkButton } from "@/components/copy-link-button";
 
 type LookupFilters = { projectId: string; geometryStatus: string; geometrySource: string };
 
@@ -41,7 +42,6 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
   const [result, setResult] = useState<AdminLookupResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (search: string, nextFilters: LookupFilters) => {
@@ -77,13 +77,7 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
     }
   }
 
-  async function copyFilteredLink() {
-    const href = lookupHref(submittedQuery, submittedFilters);
-    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
-    await navigator.clipboard.writeText(target);
-    setCopiedLink(true);
-    window.setTimeout(() => setCopiedLink(false), 1500);
-  }
+  const filteredHref = lookupHref(submittedQuery, submittedFilters);
 
   const total = (result?.projects.length || 0) + (result?.farmers.length || 0) + (result?.parcels.length || 0);
   const activeFilterText = [submittedFilters.projectId ? `Project ${submittedFilters.projectId}` : null, submittedFilters.geometryStatus ? `Geometry ${submittedFilters.geometryStatus}` : null, submittedFilters.geometrySource ? `Source ${submittedFilters.geometrySource}` : null].filter(Boolean).join(" ? ");
@@ -94,7 +88,7 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
         <h1 className="text-2xl font-bold text-gray-900">Admin Lookup</h1>
         <p className="mt-1 text-sm text-gray-500">Find projects, farmers, and parcels, then jump directly into traceability views.</p>
       </div>
-      <div className="flex flex-wrap gap-2"><button onClick={copyFilteredLink} className="rounded border px-4 py-2 text-sm hover:bg-gray-50">{copiedLink ? "Copied" : "Copy filtered link"}</button><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery, submittedFilters)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
+      <div className="flex flex-wrap gap-2"><CopyLinkButton href={filteredHref} label="Copy filtered link" className="rounded border px-4 py-2 text-sm hover:bg-gray-50" /><button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button><button onClick={() => load(submittedQuery, submittedFilters)} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button></div>
     </div>
 
     <form onSubmit={submit} className="mb-6 rounded bg-white p-5 shadow">
@@ -183,16 +177,9 @@ export default function AdminLookupPage({ searchParams }: { searchParams?: Recor
 
 
 function TraceLinkActions({ href, label, small = false }: { href: string; label: string; small?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
-    await navigator.clipboard.writeText(target);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  };
   return <div className="flex flex-wrap items-center gap-2">
     <Link href={href} className={small ? "text-xs text-blue-600" : "text-blue-600"}>{label}</Link>
-    <button type="button" onClick={copy} className="rounded border px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50">{copied ? "Copied" : "Copy"}</button>
+    <CopyLinkButton href={href} label="Copy" className="rounded border px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50" />
   </div>;
 }
 

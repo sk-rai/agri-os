@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportsApi, type ActivityUsageFilterOptionsResponse, type ActivityUsageReportResponse, type ActivityUsageRow } from "@/lib/api";
+import { CopyLinkButton } from "@/components/copy-link-button";
 
 const EMPTY_FILTERS = {
   projectId: "",
@@ -78,7 +79,6 @@ export default function ActivityUsagePage({ searchParams }: { searchParams?: Rec
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -115,13 +115,7 @@ export default function ActivityUsagePage({ searchParams }: { searchParams?: Rec
     }
   }, [filters]);
 
-  const copyFilteredLink = async () => {
-    const href = activityUsageHref(filters);
-    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
-    await navigator.clipboard.writeText(target);
-    setCopiedLink(true);
-    window.setTimeout(() => setCopiedLink(false), 1500);
-  };
+  const filteredHref = activityUsageHref(filters);
 
   const summary = report?.summary;
   return <div>
@@ -131,7 +125,7 @@ export default function ActivityUsagePage({ searchParams }: { searchParams?: Rec
         <p className="mt-1 text-sm text-gray-500">Read-only input, product and package usage across crop activities.</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button onClick={copyFilteredLink} className="rounded border px-4 py-2 text-sm hover:bg-gray-50">{copiedLink ? "Copied" : "Copy filtered link"}</button>
+        <CopyLinkButton href={filteredHref} label="Copy filtered link" className="rounded border px-4 py-2 text-sm hover:bg-gray-50" />
         <button onClick={exportCsv} disabled={exporting} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{exporting ? "Exporting..." : "Export CSV"}</button>
         <button onClick={load} disabled={loading} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading..." : "Refresh"}</button>
       </div>
@@ -270,19 +264,8 @@ function ActivityUsageDetailPanel({ row, onClose }: { row: ActivityUsageRow; onC
 function TraceActions({ href, primaryLabel, secondary = false }: { href: string; primaryLabel: string; secondary?: boolean }) {
   return <div className="flex gap-2">
     <a href={href} className={secondary ? "rounded border px-3 py-1 text-xs text-gray-700" : "rounded bg-gray-900 px-3 py-1 text-xs text-white"}>{primaryLabel}</a>
-    <CopyTraceLinkButton href={href} />
+    <CopyLinkButton href={href} className="rounded border px-3 py-1 text-xs text-gray-700 hover:bg-gray-50" />
   </div>;
-}
-
-function CopyTraceLinkButton({ href }: { href: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    const target = typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
-    await navigator.clipboard.writeText(target);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  };
-  return <button type="button" onClick={copy} className="rounded border px-3 py-1 text-xs text-gray-700 hover:bg-gray-50">{copied ? "Copied" : "Copy link"}</button>;
 }
 
 function TraceSection({ title, rows, action }: { title: string; rows: Array<[string, string | number | null | undefined]>; action?: ReactNode }) {
