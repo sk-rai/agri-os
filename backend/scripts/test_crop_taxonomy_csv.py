@@ -71,6 +71,8 @@ def main():
         check(invalid_report["schema_version"] == "crop_taxonomy_csv_validation.v1", "validation schema version is stable")
         check(invalid_report["mode"] == "VALIDATE_ONLY", "validation is explicitly validate-only")
         check(not invalid_report["can_apply"], "invalid taxonomy report cannot apply")
+        check(invalid_report["status"] == "INVALID", "invalid validation batch is persisted as INVALID")
+        check(bool(invalid_report.get("batch_id")), "invalid validation returns batch id")
         error_codes = {error["code"] for error in invalid_report["rows"][0]["errors"]}
         check({"INVALID_NODE_TYPE", "INVALID_INTEGER", "UNKNOWN_PARENT", "INVALID_JSON"}.issubset(error_codes), "invalid row reports expected errors", sorted(error_codes))
 
@@ -79,6 +81,8 @@ def main():
         check(valid.status_code == 200, "valid taxonomy dry-run returns 200", valid.text)
         report = valid.json()
         check(report["can_apply"], "valid taxonomy report is apply-ready for future apply step")
+        check(report["status"] == "VALIDATED", "valid validation batch is persisted as VALIDATED")
+        check(bool(report.get("batch_id")), "valid validation returns batch id")
         check(report["summary"]["create"] == 1, "valid dry-run reports one create")
         check(report["summary"]["errors"] == 0, "valid dry-run has no errors")
         check(report["rows"][0]["action"] == "CREATE", "valid new taxonomy row action is CREATE")
@@ -93,6 +97,19 @@ def main():
         existing = upload_csv(client, existing_csv)
         check(existing.status_code == 200, "existing taxonomy row validates")
         check(existing.json()["rows"][0]["action"] in {"UNCHANGED", "UPDATE"}, "existing taxonomy row is classified as unchanged/update")
+
+        history = client.get("/api/v1/crop-catalog/csv/taxonomy/imports?limit=10")
+        check(history.status_code == 200, "taxonomy import history returns 200", history.text)
+        history_payload = history.json()
+        check(history_payload["schema_version"] == "crop_taxonomy_imports.v1", "taxonomy import history schema version is stable")
+        check(history_payload["count"] >= 3, "taxonomy import history includes recent validation batches")
+        batch_ids = {item["batch_id"] for item in history_payload["imports"]}
+        check(report["batch_id"] in batch_ids, "history includes valid validation batch")
+        check(invalid_report["batch_id"] in batch_ids, "history includes invalid validation batch")
+
+        validated_history = client.get("/api/v1/crop-catalog/csv/taxonomy/imports?status=VALIDATED")
+        check(validated_history.status_code == 200, "validated taxonomy import history returns 200")
+        check(all(item["status"] == "VALIDATED" for item in validated_history.json()["imports"]), "validated history filters by status")
 
         print("=" * 72)
         print("Crop taxonomy CSV validation passed")

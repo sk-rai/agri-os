@@ -12,15 +12,16 @@ import csv
 import io
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
+from app.modules.master_data.models import CropTaxonomyImportBatch
 from app.modules.master_data.models.crop import CropTaxonomyEdge, CropTaxonomyNode
 
 
@@ -172,6 +173,20 @@ def _export_row(db: Session, node_by_id: dict, node: CropTaxonomyNode) -> dict:
     }
 
 
+def _batch_payload(batch: CropTaxonomyImportBatch) -> dict:
+    report = batch.validation_report or {}
+    return {
+        "batch_id": str(batch.id),
+        "file_name": batch.file_name,
+        "status": batch.status,
+        "can_apply": batch.status == "VALIDATED" and report.get("can_apply", False) and batch.expires_at > datetime.now(timezone.utc),
+        "expires_at": batch.expires_at.isoformat(),
+        "applied_at": batch.applied_at.isoformat() if batch.applied_at else None,
+        "created_at": batch.created_at.isoformat(),
+        "report": report,
+    }
+
+
 @router.get("/taxonomy/template")
 def download_crop_taxonomy_csv_template(
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
@@ -209,6 +224,7 @@ def export_crop_taxonomy_csv(
 async def validate_crop_taxonomy_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     content = await file.read(MAX_FILE_BYTES + 1)
@@ -268,7 +284,7 @@ async def validate_crop_taxonomy_csv(
 
     counts["errors"] = sum(len(row["errors"]) for row in rows)
     can_apply = counts["errors"] == 0
-    return {
+    report = {
         "schema_version": "crop_taxonomy_csv_validation.v1",
         "mode": "VALIDATE_ONLY",
         "file_name": file.filename,
@@ -276,4 +292,44 @@ async def validate_crop_taxonomy_csv(
         "summary": counts,
         "rows": rows,
         "message": "Validation passed. Apply endpoint is intentionally not available yet." if can_apply else "Validation failed. Fix errors and upload again.",
+    }
+    now = datetime.now(timezone.utc)
+    batch = CropTaxonomyImportBatch(
+        tenant_id=x_tenant_id,
+        actor_id=principal.user_id,
+        file_name=(file.filename or "crop-taxonomy.csv")[:255],
+        status="VALIDATED" if can_apply else "INVALID",
+        normalized_rows=[row["normalized"] for row in rows if not row["errors"]],
+        validation_report=report,
+        expires_at=now + timedelta(hours=2),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(batch)
+    db.commit()
+    payload = _batch_payload(batch)
+    return {**report, "batch_id": payload["batch_id"], "status": payload["status"], "expires_at": payload["expires_at"]}
+
+
+@router.get("/taxonomy/imports")
+def list_crop_taxonomy_imports(
+    limit: int = Query(30, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(VALIDATED|INVALID|APPLIED|EXPIRED|STALE)$"),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(CropTaxonomyImportBatch).filter(
+        CropTaxonomyImportBatch.tenant_id == x_tenant_id,
+        CropTaxonomyImportBatch.is_active == True,
+    )
+    if status:
+        query = query.filter(CropTaxonomyImportBatch.status == status.upper())
+    batches = query.order_by(CropTaxonomyImportBatch.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "crop_taxonomy_imports.v1",
+        "tenant_id": x_tenant_id,
+        "status": status.upper() if status else None,
+        "count": len(batches),
+        "imports": [_batch_payload(batch) for batch in batches],
     }
