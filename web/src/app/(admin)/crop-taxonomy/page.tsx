@@ -8,6 +8,7 @@ import {
   type CropCatalogResponse,
   type CropPropagationTypeDto,
   type CropTaxonomyCsvValidationResponse,
+  type CropTaxonomyImportHistory,
   type CropTaxonomyResponse,
 } from "@/lib/api";
 
@@ -21,6 +22,9 @@ export default function CropTaxonomyPage() {
   const [selectedCropCode, setSelectedCropCode] = useState<string | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvReport, setCsvReport] = useState<CropTaxonomyCsvValidationResponse | null>(null);
+  const [importHistory, setImportHistory] = useState<CropTaxonomyImportHistory | null>(null);
+  const [historyStatus, setHistoryStatus] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +47,20 @@ export default function CropTaxonomyPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load crop taxonomy"))
       .finally(() => setLoading(false));
   }, [taxonomyFilter, propagationFilter, seasonFilter]);
+
+  useEffect(() => {
+    loadImportHistory(historyStatus || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyStatus]);
+
+  const loadImportHistory = (status?: string) => {
+    setHistoryLoading(true);
+    cropCatalogApi
+      .taxonomyImportHistory({ status, limit: 10 })
+      .then(setImportHistory)
+      .catch(() => setImportHistory(null))
+      .finally(() => setHistoryLoading(false));
+  };
 
   const taxonomyNodes = useMemo(() => taxonomy?.nodes || [], [taxonomy]);
   const crops = catalog?.crops || [];
@@ -77,6 +95,7 @@ export default function CropTaxonomyPage() {
     setCsvReport(null);
     try {
       setCsvReport(await cropCatalogApi.validateTaxonomyCsv(csvFile));
+      loadImportHistory(historyStatus || undefined);
     } catch (e) {
       setCsvError(e instanceof Error ? e.message : "Failed to validate taxonomy CSV");
     } finally {
@@ -142,6 +161,7 @@ export default function CropTaxonomyPage() {
         </div>
         {csvError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{csvError}</p> : null}
         {csvReport ? <CsvValidationReport report={csvReport} /> : null}
+        <ImportHistoryPanel history={importHistory} loading={historyLoading} status={historyStatus} onStatusChange={setHistoryStatus} onRefresh={() => loadImportHistory(historyStatus || undefined)} />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
@@ -282,4 +302,63 @@ function CsvValidationReport({ report }: { report: CropTaxonomyCsvValidationResp
       {rowsWithIssues.length ? <p className="mt-2 text-xs text-amber-700">{rowsWithIssues.length} row(s) contain warnings or errors.</p> : null}
     </div>
   </div>;
+}
+
+function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefresh }: { history: CropTaxonomyImportHistory | null; loading: boolean; status: string; onStatusChange: (value: string) => void; onRefresh: () => void }) {
+  const imports = history?.imports || [];
+  return <div className="mt-6 border-t pt-4">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h3 className="font-semibold text-gray-900">Recent taxonomy imports</h3>
+        <p className="mt-1 text-xs text-gray-500">Persisted validation batches, including invalid uploads, for review and future apply support.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <select value={status} onChange={(event) => onStatusChange(event.target.value)} className="rounded border px-3 py-2 text-sm">
+          <option value="">All statuses</option>
+          <option value="VALIDATED">Validated</option>
+          <option value="INVALID">Invalid</option>
+          <option value="APPLIED">Applied</option>
+          <option value="EXPIRED">Expired</option>
+          <option value="STALE">Stale</option>
+        </select>
+        <button onClick={onRefresh} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Refresh</button>
+      </div>
+    </div>
+    {loading ? <p className="mt-3 text-sm text-gray-500">Loading import history...</p> : null}
+    {!loading && imports.length === 0 ? <p className="mt-3 rounded bg-gray-50 p-3 text-sm text-gray-500">No taxonomy import batches found.</p> : null}
+    {imports.length ? <div className="mt-4 overflow-x-auto">
+      <table className="min-w-full text-left text-xs">
+        <thead className="text-gray-500">
+          <tr>
+            <th className="px-2 py-2">Created</th>
+            <th className="px-2 py-2">File</th>
+            <th className="px-2 py-2">Status</th>
+            <th className="px-2 py-2">Summary</th>
+            <th className="px-2 py-2">Batch</th>
+          </tr>
+        </thead>
+        <tbody>
+          {imports.map((item) => (
+            <tr key={item.batch_id} className="border-t bg-white">
+              <td className="px-2 py-2 whitespace-nowrap">{new Date(item.created_at).toLocaleString()}</td>
+              <td className="px-2 py-2">{item.file_name || "-"}</td>
+              <td className="px-2 py-2"><StatusPill status={item.status} /></td>
+              <td className="px-2 py-2">
+                <span>{item.report?.summary?.total ?? 0} rows</span>
+                <span className="ml-2 text-green-700">+{item.report?.summary?.create ?? 0}</span>
+                <span className="ml-2 text-amber-700">~{item.report?.summary?.update ?? 0}</span>
+                <span className="ml-2 text-red-700">{item.report?.summary?.errors ?? 0} errors</span>
+              </td>
+              <td className="px-2 py-2 font-mono text-[11px] text-gray-500">{item.batch_id.slice(0, 8)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div> : null}
+  </div>;
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone = status === "VALIDATED" ? "bg-green-50 text-green-700" : status === "INVALID" ? "bg-red-50 text-red-700" : status === "APPLIED" ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-700";
+  return <span className={`rounded px-2 py-1 font-semibold ${tone}`}>{status}</span>;
 }

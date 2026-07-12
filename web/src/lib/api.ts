@@ -196,6 +196,26 @@ export interface CropTaxonomyCsvValidationResponse {
   message: string;
 }
 
+export interface CropTaxonomyImportBatch {
+  batch_id: string;
+  file_name?: string | null;
+  status: "VALIDATED" | "INVALID" | "APPLIED" | "EXPIRED" | "STALE";
+  can_apply: boolean;
+  expires_at: string;
+  applied_at?: string | null;
+  created_at: string;
+  report: CropTaxonomyCsvValidationResponse;
+}
+
+export interface CropTaxonomyImportHistory {
+  schema_version: string;
+  tenant_id: string;
+  status?: string | null;
+  count: number;
+  imports: CropTaxonomyImportBatch[];
+}
+
+
 
 export interface ActivityUsageRow {
   activity_id: string;
@@ -721,6 +741,13 @@ export const cropCatalogApi = {
   downloadTaxonomyTemplate: () => apiDownload("/api/v1/crop-catalog/csv/taxonomy/template", "agri-os-crop-taxonomy-template.csv"),
   downloadTaxonomyExport: () => apiDownload("/api/v1/crop-catalog/csv/taxonomy/export", "agri-os-crop-taxonomy.csv"),
   validateTaxonomyCsv: (file: File) => apiUpload<CropTaxonomyCsvValidationResponse>("/api/v1/crop-catalog/csv/taxonomy/validate", file),
+  taxonomyImportHistory: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<CropTaxonomyImportHistory>(`/api/v1/crop-catalog/csv/taxonomy/imports${suffix}`);
+  },
 };
 
 export const reportsApi = {
