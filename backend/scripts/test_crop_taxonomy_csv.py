@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.master_data.models import CropTaxonomyImportBatch
+from app.modules.master_data.models.crop import CropTaxonomyEdge, CropTaxonomyNode
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 GREEN = "\033[92m"
@@ -35,6 +37,17 @@ def upload_csv(client: TestClient, content: str):
     )
 
 
+def cleanup_taxonomy(db):
+    node = db.query(CropTaxonomyNode).filter(CropTaxonomyNode.code == "REGRESSION_TEST_TAXONOMY").first()
+    if node:
+        db.query(CropTaxonomyEdge).filter(
+            (CropTaxonomyEdge.child_node_id == node.id) | (CropTaxonomyEdge.parent_node_id == node.id)
+        ).delete(synchronize_session=False)
+        db.query(CropTaxonomyNode).filter(CropTaxonomyNode.id == node.id).delete(synchronize_session=False)
+    db.query(CropTaxonomyImportBatch).filter(CropTaxonomyImportBatch.file_name == "taxonomy.csv").delete(synchronize_session=False)
+    db.commit()
+
+
 def main():
     print("=" * 72)
     print("CROP TAXONOMY CSV VALIDATION REGRESSION")
@@ -48,6 +61,7 @@ def main():
     check(denied.status_code == 401, "taxonomy validation requires admin authentication", denied.text)
 
     db = SessionLocal()
+    cleanup_taxonomy(db)
     admin, headers = create_test_admin(db)
     try:
         client = TestClient(app, headers=headers)
@@ -87,11 +101,37 @@ def main():
         check(report["summary"]["errors"] == 0, "valid dry-run has no errors")
         check(report["rows"][0]["action"] == "CREATE", "valid new taxonomy row action is CREATE")
 
+        apply_response = client.post(
+            f"/api/v1/crop-catalog/csv/taxonomy/imports/{report['batch_id']}/apply",
+            json={"reason": "Regression taxonomy apply"},
+        )
+        check(apply_response.status_code == 200, "validated taxonomy batch applies", apply_response.text)
+        applied = apply_response.json()
+        check(applied["status"] == "APPLIED", "applied taxonomy batch is marked APPLIED")
+        check(applied["report"]["applied_counts"]["created"] == 1, "apply creates one taxonomy node")
+        check(applied["report"]["applied_counts"]["edges_created"] == 1, "apply creates parent edge")
+        created_node = db.query(CropTaxonomyNode).filter(CropTaxonomyNode.code == "REGRESSION_TEST_TAXONOMY").first()
+        check(created_node is not None, "applied taxonomy node exists in database")
+        if created_node:
+            parent_edge = db.query(CropTaxonomyEdge).filter(CropTaxonomyEdge.child_node_id == created_node.id, CropTaxonomyEdge.is_active == True).first()
+            check(parent_edge is not None, "applied taxonomy node has active parent edge")
+
+        replay = client.post(
+            f"/api/v1/crop-catalog/csv/taxonomy/imports/{report['batch_id']}/apply",
+            json={"reason": "Replay should fail"},
+        )
+        check(replay.status_code == 409, "applied taxonomy batch cannot be replayed", replay.text)
+
         duplicate_csv = valid_csv + "REGRESSION_TEST_TAXONOMY,Duplicate Taxonomy,AGRONOMIC,2,100,FIELD_CROP,Duplicate row,[],{}\n"
         duplicate = upload_csv(client, duplicate_csv)
         check(duplicate.status_code == 200, "duplicate code returns validation report")
         duplicate_codes = {error["code"] for row in duplicate.json()["rows"] for error in row["errors"]}
         check("DUPLICATE_CODE_IN_FILE" in duplicate_codes, "duplicate code in file is reported")
+        invalid_apply = client.post(
+            f"/api/v1/crop-catalog/csv/taxonomy/imports/{duplicate.json()['batch_id']}/apply",
+            json={"reason": "Invalid batch should fail"},
+        )
+        check(invalid_apply.status_code == 409, "invalid taxonomy batch cannot be applied", invalid_apply.text)
 
         existing_csv = """code,canonical_name,node_type,level,display_order,parent_codes,description,aliases_json,metadata_json\nFIELD_CROP,Field Crop,AGRONOMIC,1,10,AGRICULTURE,Crops grown in open fields,[],{}\n"""
         existing = upload_csv(client, existing_csv)
@@ -115,6 +155,7 @@ def main():
         print("Crop taxonomy CSV validation passed")
         print("=" * 72)
     finally:
+        cleanup_taxonomy(db)
         delete_test_admin(db, admin.id)
         db.close()
 

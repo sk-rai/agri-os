@@ -12,11 +12,13 @@ import csv
 import io
 import json
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
@@ -42,6 +44,10 @@ REQUIRED_COLUMNS = {"code", "canonical_name", "node_type", "level"}
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 1000
 VALID_NODE_TYPES = {"ROOT", "AGRONOMIC", "ECONOMIC", "BOTANICAL", "GROWTH_HABIT", "SEASONAL", "PROPAGATION"}
+
+
+class CropTaxonomyApplyRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
 
 
 def _csv_response(content: str, file_name: str) -> Response:
@@ -309,6 +315,135 @@ async def validate_crop_taxonomy_csv(
     db.commit()
     payload = _batch_payload(batch)
     return {**report, "batch_id": payload["batch_id"], "status": payload["status"], "expires_at": payload["expires_at"]}
+
+
+@router.post("/taxonomy/imports/{batch_id}/apply")
+def apply_crop_taxonomy_import(
+    batch_id: uuid.UUID,
+    body: CropTaxonomyApplyRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    batch = db.query(CropTaxonomyImportBatch).filter(
+        CropTaxonomyImportBatch.id == batch_id,
+        CropTaxonomyImportBatch.tenant_id == x_tenant_id,
+        CropTaxonomyImportBatch.is_active == True,
+    ).first()
+    if not batch:
+        raise HTTPException(404, "Taxonomy import batch not found")
+    if batch.status != "VALIDATED":
+        raise HTTPException(409, f"Taxonomy import batch status is {batch.status}")
+    if batch.expires_at <= datetime.now(timezone.utc):
+        batch.status = "EXPIRED"
+        batch.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(409, "Taxonomy import batch has expired; validate the CSV again")
+
+    rows = batch.normalized_rows or []
+    if not rows:
+        raise HTTPException(409, "Taxonomy import batch has no valid rows to apply")
+
+    now = datetime.now(timezone.utc)
+    existing_nodes = db.query(CropTaxonomyNode).filter(CropTaxonomyNode.is_active == True).all()
+    nodes_by_code = {node.code: node for node in existing_nodes}
+    missing_parents = sorted({
+        parent_code
+        for row in rows
+        for parent_code in row.get("parent_codes", [])
+        if parent_code not in nodes_by_code and parent_code not in {candidate.get("code") for candidate in rows}
+    })
+    if missing_parents:
+        batch.status = "STALE"
+        batch.updated_at = now
+        db.commit()
+        raise HTTPException(409, f"Taxonomy parents changed since validation: {', '.join(missing_parents)}")
+
+    applied_counts = {"created": 0, "updated": 0, "unchanged": 0, "edges_created": 0, "edges_restored": 0, "edges_disabled": 0}
+
+    # First pass: create/update all nodes so same-file parent references resolve.
+    for row in rows:
+        code = row["code"]
+        node = nodes_by_code.get(code)
+        before = None if not node else {
+            "canonical_name": node.canonical_name,
+            "description": node.description,
+            "node_type": node.node_type,
+            "level": node.level,
+            "display_order": node.display_order,
+            "aliases": node.aliases or [],
+            "metadata": node.metadata_ or {},
+        }
+        if not node:
+            node = CropTaxonomyNode(code=code, created_at=now, updated_at=now, is_active=True)
+            db.add(node)
+            nodes_by_code[code] = node
+            applied_counts["created"] += 1
+        node.canonical_name = row["canonical_name"]
+        node.description = row.get("description")
+        node.node_type = row["node_type"]
+        node.level = row["level"]
+        node.display_order = row["display_order"]
+        node.aliases = row.get("aliases") or []
+        node.metadata_ = row.get("metadata") or {}
+        node.updated_at = now
+        after = {
+            "canonical_name": node.canonical_name,
+            "description": node.description,
+            "node_type": node.node_type,
+            "level": node.level,
+            "display_order": node.display_order,
+            "aliases": node.aliases or [],
+            "metadata": node.metadata_ or {},
+        }
+        if before is None:
+            continue
+        if before == after:
+            applied_counts["unchanged"] += 1
+        else:
+            applied_counts["updated"] += 1
+    db.flush()
+
+    # Second pass: reconcile parent edges for nodes included in this batch.
+    for row in rows:
+        child = nodes_by_code[row["code"]]
+        desired_parent_ids = {nodes_by_code[parent_code].id for parent_code in row.get("parent_codes", [])}
+        current_edges = db.query(CropTaxonomyEdge).filter(CropTaxonomyEdge.child_node_id == child.id).all()
+        edge_by_parent = {edge.parent_node_id: edge for edge in current_edges}
+        for edge in current_edges:
+            if edge.parent_node_id not in desired_parent_ids and edge.is_active:
+                edge.is_active = False
+                edge.updated_at = now
+                applied_counts["edges_disabled"] += 1
+        for parent_id in desired_parent_ids:
+            edge = edge_by_parent.get(parent_id)
+            if edge:
+                if not edge.is_active:
+                    edge.is_active = True
+                    edge.updated_at = now
+                    applied_counts["edges_restored"] += 1
+                continue
+            db.add(CropTaxonomyEdge(
+                parent_node_id=parent_id,
+                child_node_id=child.id,
+                relationship_type="IS_A",
+                display_order=0,
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            ))
+            applied_counts["edges_created"] += 1
+
+    batch.status = "APPLIED"
+    batch.applied_at = now
+    batch.updated_at = now
+    report = dict(batch.validation_report or {})
+    report["applied_counts"] = applied_counts
+    report["apply_reason"] = body.reason
+    report["applied_by"] = str(principal.user_id)
+    batch.validation_report = report
+    db.commit()
+    return _batch_payload(batch)
 
 
 @router.get("/taxonomy/imports")
