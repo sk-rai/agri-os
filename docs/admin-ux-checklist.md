@@ -77,3 +77,40 @@ npm run build
 cd backend
 ../venv/bin/python scripts/run_admin_permission_regressions.py
 ```
+
+## Manual admin testing checklist
+
+Use this quick pass after admin UI changes, especially when a screen participates in dashboard drill-downs or permission-gated mutations.
+
+1. Dashboard entry
+   - Open `/dashboard`.
+   - Confirm the Command Center cards render and link to the expected admin areas.
+   - Confirm Attention Queue cards show count, reason, and the exact target route.
+
+2. Filtered drill-down
+   - Open at least one dashboard queue link, such as `/inputs?filter=review` or `/sync-health?status=FAILED`.
+   - Confirm the destination page shows the blue drill-down banner.
+   - Click `Clear drill-down` and confirm the unfiltered page loads.
+
+3. Read-only role behavior
+   - Test with a `VIEW`-only admin when possible.
+   - Confirm browse, search, trace, preview, and export actions still work.
+   - Confirm mutation controls are hidden or disabled with helpful read-only messaging.
+
+4. Permission denial behavior
+   - Attempt one protected mutation with insufficient permissions when practical.
+   - Confirm the page stays usable and renders `PermissionErrorCard` if the backend returns permission details.
+
+5. Mutation happy path
+   - For the changed screen, complete one valid mutation using an admin role with the required permission.
+   - Confirm success feedback, list refresh, audit/trace visibility, and no stale UI state.
+
+6. Empty and error states
+   - Test one narrow filter that returns zero rows.
+   - Confirm the empty state explains the filter/no-data situation.
+   - If an API call fails during development, confirm the page shows a recoverable error instead of going blank.
+
+7. Regression command
+   - Run `npm run build` from `web/` before committing UI changes.
+   - If permissions or guarded endpoints changed, also run the backend admin permission regression suite.
+
