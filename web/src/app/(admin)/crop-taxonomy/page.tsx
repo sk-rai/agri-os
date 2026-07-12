@@ -6,6 +6,8 @@ import {
   cropCatalogApi,
   type CropCatalogItemDto,
   type CropCatalogResponse,
+  type CropPropagationCsvValidationResponse,
+  type CropPropagationImportHistory,
   type CropPropagationTypeDto,
   type CropTaxonomyCsvValidationResponse,
   type CropTaxonomyImportHistory,
@@ -28,6 +30,13 @@ export default function CropTaxonomyPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
+  const [propCsvFile, setPropCsvFile] = useState<File | null>(null);
+  const [propCsvReport, setPropCsvReport] = useState<CropPropagationCsvValidationResponse | null>(null);
+  const [propImportHistory, setPropImportHistory] = useState<CropPropagationImportHistory | null>(null);
+  const [propHistoryStatus, setPropHistoryStatus] = useState("");
+  const [propHistoryLoading, setPropHistoryLoading] = useState(false);
+  const [propCsvBusy, setPropCsvBusy] = useState(false);
+  const [propCsvError, setPropCsvError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +63,11 @@ export default function CropTaxonomyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyStatus]);
 
+  useEffect(() => {
+    loadPropagationImportHistory(propHistoryStatus || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propHistoryStatus]);
+
   const loadImportHistory = (status?: string) => {
     setHistoryLoading(true);
     cropCatalogApi
@@ -61,6 +75,15 @@ export default function CropTaxonomyPage() {
       .then(setImportHistory)
       .catch(() => setImportHistory(null))
       .finally(() => setHistoryLoading(false));
+  };
+
+  const loadPropagationImportHistory = (status?: string) => {
+    setPropHistoryLoading(true);
+    cropCatalogApi
+      .propagationImportHistory({ status, limit: 10 })
+      .then(setPropImportHistory)
+      .catch(() => setPropImportHistory(null))
+      .finally(() => setPropHistoryLoading(false));
   };
 
   const taxonomyNodes = useMemo(() => taxonomy?.nodes || [], [taxonomy]);
@@ -101,6 +124,24 @@ export default function CropTaxonomyPage() {
       setCsvError(e instanceof Error ? e.message : "Failed to validate taxonomy CSV");
     } finally {
       setCsvBusy(false);
+    }
+  };
+
+  const validatePropagationCsv = async () => {
+    if (!propCsvFile) {
+      setPropCsvError("Choose a crop propagation CSV file first.");
+      return;
+    }
+    setPropCsvBusy(true);
+    setPropCsvError(null);
+    setPropCsvReport(null);
+    try {
+      setPropCsvReport(await cropCatalogApi.validatePropagationCsv(propCsvFile));
+      loadPropagationImportHistory(propHistoryStatus || undefined);
+    } catch (e) {
+      setPropCsvError(e instanceof Error ? e.message : "Failed to validate propagation CSV");
+    } finally {
+      setPropCsvBusy(false);
     }
   };
 
@@ -163,13 +204,56 @@ export default function CropTaxonomyPage() {
         {csvError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{csvError}</p> : null}
         {csvReport ? <CsvValidationReport report={csvReport} /> : null}
         <ImportHistoryPanel
+          title="Recent taxonomy imports"
+          description="Persisted taxonomy validation batches, including invalid uploads, for review and controlled apply."
+          applyReasonDefault="Apply validated crop taxonomy import"
+          applyHint="Only VALIDATED batches can be applied. Applying creates/updates taxonomy nodes and parent edges, then marks the batch APPLIED."
           history={importHistory}
           loading={historyLoading}
           status={historyStatus}
           onStatusChange={setHistoryStatus}
           onRefresh={() => loadImportHistory(historyStatus || undefined)}
+          applyImport={(batchId, reason) => cropCatalogApi.applyTaxonomyImport(batchId, reason)}
           onApplied={() => {
             loadImportHistory(historyStatus || undefined);
+            setCatalogRefresh((value) => value + 1);
+          }}
+        />
+      </section>
+
+      <section className="rounded bg-white p-4 shadow">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">Propagation CSV validation</h2>
+            <p className="mt-1 text-sm text-gray-500">Manage crop establishment methods such as direct seeding, nursery transplant, vegetative sett, tuber, cutting, sapling, grafted plant, bulb, and rhizome.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => cropCatalogApi.downloadPropagationTemplate().catch((e) => setPropCsvError(e instanceof Error ? e.message : "Failed to download propagation template"))} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Download template</button>
+            <button onClick={() => cropCatalogApi.downloadPropagationExport().catch((e) => setPropCsvError(e instanceof Error ? e.message : "Failed to export propagation catalog"))} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Export propagation</button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <input type="file" accept=".csv,text/csv" onChange={(event) => setPropCsvFile(event.target.files?.[0] || null)} className="text-sm" />
+          <button onClick={validatePropagationCsv} disabled={propCsvBusy || !propCsvFile} className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">
+            {propCsvBusy ? "Validating..." : "Validate CSV"}
+          </button>
+          {propCsvFile ? <span className="text-xs text-gray-500">Selected: {propCsvFile.name}</span> : null}
+        </div>
+        {propCsvError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{propCsvError}</p> : null}
+        {propCsvReport ? <CsvValidationReport report={propCsvReport} /> : null}
+        <ImportHistoryPanel
+          title="Recent propagation imports"
+          description="Persisted propagation validation batches for crop establishment type changes."
+          applyReasonDefault="Apply validated crop propagation import"
+          applyHint="Only VALIDATED batches can be applied. Applying creates/updates propagation types, then marks the batch APPLIED."
+          history={propImportHistory}
+          loading={propHistoryLoading}
+          status={propHistoryStatus}
+          onStatusChange={setPropHistoryStatus}
+          onRefresh={() => loadPropagationImportHistory(propHistoryStatus || undefined)}
+          applyImport={(batchId, reason) => cropCatalogApi.applyPropagationImport(batchId, reason)}
+          onApplied={() => {
+            loadPropagationImportHistory(propHistoryStatus || undefined);
             setCatalogRefresh((value) => value + 1);
           }}
         />
@@ -315,9 +399,9 @@ function CsvValidationReport({ report }: { report: CropTaxonomyCsvValidationResp
   </div>;
 }
 
-function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefresh, onApplied }: { history: CropTaxonomyImportHistory | null; loading: boolean; status: string; onStatusChange: (value: string) => void; onRefresh: () => void; onApplied: () => void }) {
+function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint, history, loading, status, onStatusChange, onRefresh, applyImport, onApplied }: { title: string; description: string; applyReasonDefault: string; applyHint: string; history: CropTaxonomyImportHistory | null; loading: boolean; status: string; onStatusChange: (value: string) => void; onRefresh: () => void; applyImport: (batchId: string, reason: string) => Promise<{ report: { applied_counts?: Record<string, number> } }>; onApplied: () => void }) {
   const imports = history?.imports || [];
-  const [applyReason, setApplyReason] = useState("Apply validated crop taxonomy import");
+  const [applyReason, setApplyReason] = useState(applyReasonDefault);
   const [applyingBatchId, setApplyingBatchId] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyNotice, setApplyNotice] = useState<string | null>(null);
@@ -331,7 +415,7 @@ function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefres
     setApplyError(null);
     setApplyNotice(null);
     try {
-      const applied = await cropCatalogApi.applyTaxonomyImport(batchId, applyReason.trim());
+      const applied = await applyImport(batchId, applyReason.trim());
       const counts = applied.report.applied_counts || {};
       setApplyNotice(`Applied ${batchId.slice(0, 8)}: ${counts.created || 0} created, ${counts.updated || 0} updated, ${counts.unchanged || 0} unchanged.`);
       onApplied();
@@ -345,8 +429,8 @@ function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefres
   return <div className="mt-6 border-t pt-4">
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
-        <h3 className="font-semibold text-gray-900">Recent taxonomy imports</h3>
-        <p className="mt-1 text-xs text-gray-500">Persisted validation batches, including invalid uploads, for review and controlled apply.</p>
+        <h3 className="font-semibold text-gray-900">{title}</h3>
+        <p className="mt-1 text-xs text-gray-500">{description}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <select value={status} onChange={(event) => onStatusChange(event.target.value)} className="rounded border px-3 py-2 text-sm">
@@ -362,7 +446,7 @@ function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefres
     </div>
     <div className="mt-4 rounded border bg-amber-50 p-3 text-sm text-amber-900">
       <p className="font-semibold">Apply is immediate</p>
-      <p className="mt-1 text-xs">Only VALIDATED batches can be applied. Applying creates/updates taxonomy nodes and parent edges, then marks the batch APPLIED.</p>
+      <p className="mt-1 text-xs">{applyHint}</p>
       <input value={applyReason} onChange={(event) => setApplyReason(event.target.value)} className="mt-3 w-full rounded border px-3 py-2 text-sm text-gray-900" placeholder="Reason for applying this taxonomy import" />
     </div>
     {applyError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{applyError}</p> : null}

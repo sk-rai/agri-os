@@ -219,6 +219,10 @@ export interface CropTaxonomyImportHistory {
   imports: CropTaxonomyImportBatch[];
 }
 
+export type CropPropagationCsvValidationResponse = CropTaxonomyCsvValidationResponse;
+export type CropPropagationImportBatch = CropTaxonomyImportBatch;
+export type CropPropagationImportHistory = CropTaxonomyImportHistory;
+
 
 
 export interface ActivityUsageRow {
@@ -754,6 +758,18 @@ export const cropCatalogApi = {
   },
   applyTaxonomyImport: (batchId: string, reason: string) =>
     api<CropTaxonomyImportBatch>(`/api/v1/crop-catalog/csv/taxonomy/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
+  downloadPropagationTemplate: () => apiDownload("/api/v1/crop-catalog/csv/propagation-types/template", "agri-os-crop-propagation-template.csv"),
+  downloadPropagationExport: () => apiDownload("/api/v1/crop-catalog/csv/propagation-types/export", "agri-os-crop-propagation.csv"),
+  validatePropagationCsv: (file: File) => apiUpload<CropPropagationCsvValidationResponse>("/api/v1/crop-catalog/csv/propagation-types/validate", file),
+  propagationImportHistory: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<CropPropagationImportHistory>(`/api/v1/crop-catalog/csv/propagation-types/imports${suffix}`);
+  },
+  applyPropagationImport: (batchId: string, reason: string) =>
+    api<CropPropagationImportBatch>(`/api/v1/crop-catalog/csv/propagation-types/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
 };
 
 export const reportsApi = {
