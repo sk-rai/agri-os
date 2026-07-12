@@ -7,6 +7,7 @@ import {
   type CropCatalogItemDto,
   type CropCatalogResponse,
   type CropPropagationTypeDto,
+  type CropTaxonomyCsvValidationResponse,
   type CropTaxonomyResponse,
 } from "@/lib/api";
 
@@ -18,6 +19,10 @@ export default function CropTaxonomyPage() {
   const [propagationFilter, setPropagationFilter] = useState("");
   const [seasonFilter, setSeasonFilter] = useState("");
   const [selectedCropCode, setSelectedCropCode] = useState<string | null>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvReport, setCsvReport] = useState<CropTaxonomyCsvValidationResponse | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +56,33 @@ export default function CropTaxonomyPage() {
     return Array.from(groups.entries()).sort(([left], [right]) => left - right);
   }, [taxonomyNodes]);
   const seasons = Array.from(new Set(crops.flatMap((crop) => crop.suitable_seasons || []))).sort();
+
+  const downloadTemplate = () => {
+    setCsvError(null);
+    cropCatalogApi.downloadTaxonomyTemplate().catch((e) => setCsvError(e instanceof Error ? e.message : "Failed to download taxonomy template"));
+  };
+
+  const downloadExport = () => {
+    setCsvError(null);
+    cropCatalogApi.downloadTaxonomyExport().catch((e) => setCsvError(e instanceof Error ? e.message : "Failed to export taxonomy catalog"));
+  };
+
+  const validateCsv = async () => {
+    if (!csvFile) {
+      setCsvError("Choose a crop taxonomy CSV file first.");
+      return;
+    }
+    setCsvBusy(true);
+    setCsvError(null);
+    setCsvReport(null);
+    try {
+      setCsvReport(await cropCatalogApi.validateTaxonomyCsv(csvFile));
+    } catch (e) {
+      setCsvError(e instanceof Error ? e.message : "Failed to validate taxonomy CSV");
+    } finally {
+      setCsvBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -86,8 +118,30 @@ export default function CropTaxonomyPage() {
       </div>
 
       <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <p className="font-semibold">Read-only foundation screen</p>
-        <p className="mt-1">This is the first admin surface for crop taxonomy. Import/edit/publish controls will come later through the validated import lifecycle.</p>
+        <p className="font-semibold">Safe import foundation</p>
+        <p className="mt-1">Taxonomy CSV upload is validate-only for now. Backend reports planned creates/updates/errors, but does not mutate published taxonomy yet.</p>
+      </section>
+
+      <section className="rounded bg-white p-4 shadow">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">Taxonomy CSV validation</h2>
+            <p className="mt-1 text-sm text-gray-500">Download the template, upload a CSV, and inspect row-level diagnostics before any future apply flow exists.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={downloadTemplate} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Download template</button>
+            <button onClick={downloadExport} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Export current taxonomy</button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <input type="file" accept=".csv,text/csv" onChange={(event) => setCsvFile(event.target.files?.[0] || null)} className="text-sm" />
+          <button onClick={validateCsv} disabled={csvBusy || !csvFile} className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">
+            {csvBusy ? "Validating..." : "Validate CSV"}
+          </button>
+          {csvFile ? <span className="text-xs text-gray-500">Selected: {csvFile.name}</span> : null}
+        </div>
+        {csvError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{csvError}</p> : null}
+        {csvReport ? <CsvValidationReport report={csvReport} /> : null}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
@@ -177,4 +231,55 @@ function CropDetail({ crop }: { crop: CropCatalogItemDto }) {
       </div>
     </div>
   </section>;
+}
+
+function CsvValidationReport({ report }: { report: CropTaxonomyCsvValidationResponse }) {
+  const rowsWithIssues = report.rows.filter((row) => row.errors.length || row.warnings.length);
+  return <div className="mt-4 rounded border bg-gray-50 p-4">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <p className="font-semibold text-gray-900">Validation result: {report.can_apply ? "Ready for future apply" : "Needs fixes"}</p>
+        <p className="mt-1 text-xs text-gray-500">{report.message}</p>
+      </div>
+      <span className="rounded bg-white px-3 py-1 text-xs font-semibold text-gray-700">{report.mode}</span>
+    </div>
+    <div className="mt-4 grid gap-2 md:grid-cols-6">
+      <Metric label="Rows" value={report.summary.total} />
+      <Metric label="Create" value={report.summary.create} />
+      <Metric label="Update" value={report.summary.update} />
+      <Metric label="Unchanged" value={report.summary.unchanged} />
+      <Metric label="Invalid" value={report.summary.invalid} />
+      <Metric label="Errors" value={report.summary.errors} />
+    </div>
+    <div className="mt-4 overflow-x-auto">
+      <table className="min-w-full text-left text-xs">
+        <thead className="text-gray-500">
+          <tr>
+            <th className="px-2 py-2">Row</th>
+            <th className="px-2 py-2">Code</th>
+            <th className="px-2 py-2">Action</th>
+            <th className="px-2 py-2">Diagnostics</th>
+          </tr>
+        </thead>
+        <tbody>
+          {report.rows.slice(0, 25).map((row) => (
+            <tr key={`${row.row_number}-${row.code}`} className="border-t bg-white">
+              <td className="px-2 py-2">{row.row_number}</td>
+              <td className="px-2 py-2 font-mono">{row.code || "-"}</td>
+              <td className="px-2 py-2"><span className={`rounded px-2 py-1 ${row.action === "INVALID" ? "bg-red-50 text-red-700" : row.action === "CREATE" ? "bg-green-50 text-green-700" : row.action === "UPDATE" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-600"}`}>{row.action}</span></td>
+              <td className="px-2 py-2">
+                {[...row.errors, ...row.warnings].length ? (
+                  <ul className="space-y-1">
+                    {[...row.errors, ...row.warnings].map((item, index) => <li key={`${item.code}-${index}`}><span className="font-semibold">{item.field}/{item.code}:</span> {item.message}</li>)}
+                  </ul>
+                ) : <span className="text-gray-400">No issues</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {report.rows.length > 25 ? <p className="mt-2 text-xs text-gray-500">Showing first 25 rows of {report.rows.length}.</p> : null}
+      {rowsWithIssues.length ? <p className="mt-2 text-xs text-amber-700">{rowsWithIssues.length} row(s) contain warnings or errors.</p> : null}
+    </div>
+  </div>;
 }

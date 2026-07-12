@@ -177,6 +177,26 @@ export interface CropCatalogResponse {
   count: number;
 }
 
+export interface CropTaxonomyCsvValidationRow {
+  row_number: number;
+  code: string;
+  action: "CREATE" | "UPDATE" | "UNCHANGED" | "INVALID";
+  errors: Array<{ field: string; code: string; message: string }>;
+  warnings: Array<{ field: string; code: string; message: string }>;
+  normalized: Record<string, unknown>;
+}
+
+export interface CropTaxonomyCsvValidationResponse {
+  schema_version: string;
+  mode: "VALIDATE_ONLY";
+  file_name?: string | null;
+  can_apply: boolean;
+  summary: { total: number; create: number; update: number; unchanged: number; invalid: number; warnings: number; errors: number };
+  rows: CropTaxonomyCsvValidationRow[];
+  message: string;
+}
+
+
 export interface ActivityUsageRow {
   activity_id: string;
   activity_date?: string | null;
@@ -698,6 +718,9 @@ export const cropCatalogApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<CropCatalogResponse>(`/api/v1/crop-catalog/crops${suffix}`);
   },
+  downloadTaxonomyTemplate: () => apiDownload("/api/v1/crop-catalog/csv/taxonomy/template", "agri-os-crop-taxonomy-template.csv"),
+  downloadTaxonomyExport: () => apiDownload("/api/v1/crop-catalog/csv/taxonomy/export", "agri-os-crop-taxonomy.csv"),
+  validateTaxonomyCsv: (file: File) => apiUpload<CropTaxonomyCsvValidationResponse>("/api/v1/crop-catalog/csv/taxonomy/validate", file),
 };
 
 export const reportsApi = {
