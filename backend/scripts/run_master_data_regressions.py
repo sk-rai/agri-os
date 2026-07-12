@@ -19,6 +19,7 @@ BACKEND_ROOT = SCRIPT_DIR.parent
 REGRESSION_SCRIPTS = [
     "test_crop_catalog.py",
     "test_crop_taxonomy_csv.py",
+    "test_crop_propagation_csv.py",
     "test_input_catalog.py",
     "test_input_catalog_csv.py",
     "test_input_catalog_lifecycle.py",

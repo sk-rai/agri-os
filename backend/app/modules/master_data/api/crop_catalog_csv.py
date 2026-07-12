@@ -23,13 +23,13 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.master_data.models import CropTaxonomyImportBatch
-from app.modules.master_data.models.crop import CropTaxonomyEdge, CropTaxonomyNode
+from app.modules.master_data.models import CropPropagationImportBatch, CropTaxonomyImportBatch
+from app.modules.master_data.models.crop import CropPropagationType, CropTaxonomyEdge, CropTaxonomyNode
 
 
 router = APIRouter(prefix="/api/v1/crop-catalog/csv", tags=["crop-catalog-csv"])
 
-CSV_COLUMNS = [
+TAXONOMY_CSV_COLUMNS = [
     "code",
     "canonical_name",
     "node_type",
@@ -40,10 +40,20 @@ CSV_COLUMNS = [
     "aliases_json",
     "metadata_json",
 ]
-REQUIRED_COLUMNS = {"code", "canonical_name", "node_type", "level"}
+TAXONOMY_REQUIRED_COLUMNS = {"code", "canonical_name", "node_type", "level"}
+PROPAGATION_CSV_COLUMNS = [
+    "code",
+    "canonical_name",
+    "establishment_type",
+    "description",
+    "aliases_json",
+    "metadata_json",
+]
+PROPAGATION_REQUIRED_COLUMNS = {"code", "canonical_name", "establishment_type"}
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 1000
 VALID_NODE_TYPES = {"ROOT", "AGRONOMIC", "ECONOMIC", "BOTANICAL", "GROWTH_HABIT", "SEASONAL", "PROPAGATION"}
+VALID_ESTABLISHMENT_TYPES = {"SEED", "TRANSPLANT", "VEGETATIVE", "PERENNIAL_PLANTING"}
 
 
 class CropTaxonomyApplyRequest(BaseModel):
@@ -58,9 +68,9 @@ def _csv_response(content: str, file_name: str) -> Response:
     )
 
 
-def _write_csv(rows: list[dict]) -> str:
+def _write_csv(rows: list[dict], fieldnames: list[str]) -> str:
     output = io.StringIO(newline="")
-    writer = csv.DictWriter(output, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
     return output.getvalue()
@@ -208,7 +218,7 @@ def download_crop_taxonomy_csv_template(
         "aliases_json": '[{"lang":"en","name":"Example alias"}]',
         "metadata_json": '{"source":"admin_upload"}',
     }
-    return _csv_response(_write_csv([row]), "agri-os-crop-taxonomy-template.csv")
+    return _csv_response(_write_csv([row], TAXONOMY_CSV_COLUMNS), "agri-os-crop-taxonomy-template.csv")
 
 
 @router.get("/taxonomy/export")
@@ -223,7 +233,7 @@ def export_crop_taxonomy_csv(
     nodes = query.order_by(CropTaxonomyNode.level, CropTaxonomyNode.display_order, CropTaxonomyNode.code).all()
     node_by_id = {node.id: node for node in db.query(CropTaxonomyNode).all()}
     date_stamp = datetime.now(timezone.utc).date().isoformat()
-    return _csv_response(_write_csv([_export_row(db, node_by_id, node) for node in nodes]), f"agri-os-crop-taxonomy-{date_stamp}.csv")
+    return _csv_response(_write_csv([_export_row(db, node_by_id, node) for node in nodes], TAXONOMY_CSV_COLUMNS), f"agri-os-crop-taxonomy-{date_stamp}.csv")
 
 
 @router.post("/taxonomy/validate")
@@ -245,7 +255,7 @@ async def validate_crop_taxonomy_csv(
     if not reader.fieldnames:
         raise HTTPException(400, "CSV header row is required")
     headers = {header.strip() for header in reader.fieldnames if header}
-    missing = sorted(REQUIRED_COLUMNS - headers)
+    missing = sorted(TAXONOMY_REQUIRED_COLUMNS - headers)
     if missing:
         raise HTTPException(400, {"error": "MISSING_COLUMNS", "columns": missing})
     raw_rows = list(reader)
@@ -444,6 +454,255 @@ def apply_crop_taxonomy_import(
     batch.validation_report = report
     db.commit()
     return _batch_payload(batch)
+
+
+# --- Propagation type CSV lifecycle -------------------------------------------------
+
+def _normalize_propagation_row(raw: dict[str, str], row_number: int) -> dict:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    code = (raw.get("code") or "").strip().upper().replace(" ", "_")
+    canonical_name = (raw.get("canonical_name") or "").strip()
+    establishment_type = (raw.get("establishment_type") or "").strip().upper()
+    aliases = _parse_json_field(raw.get("aliases_json"), expected_type=list, field="aliases_json", errors=errors)
+    metadata = _parse_json_field(raw.get("metadata_json"), expected_type=dict, field="metadata_json", errors=errors)
+    if not re.fullmatch(r"[A-Z0-9_]{2,50}", code):
+        errors.append({"field": "code", "code": "INVALID_CODE", "message": "Use 2-50 uppercase letters, numbers, or underscores"})
+    if not canonical_name:
+        errors.append({"field": "canonical_name", "code": "REQUIRED", "message": "canonical_name is required"})
+    if len(canonical_name) > 150:
+        errors.append({"field": "canonical_name", "code": "TOO_LONG", "message": "canonical_name exceeds 150 characters"})
+    if establishment_type not in VALID_ESTABLISHMENT_TYPES:
+        errors.append({"field": "establishment_type", "code": "INVALID_ESTABLISHMENT_TYPE", "message": f"establishment_type must be one of: {', '.join(sorted(VALID_ESTABLISHMENT_TYPES))}"})
+    if not (raw.get("description") or "").strip():
+        warnings.append({"field": "description", "code": "MISSING_DESCRIPTION", "message": "Description is recommended for admin clarity"})
+    normalized = {
+        "code": code,
+        "canonical_name": canonical_name,
+        "establishment_type": establishment_type,
+        "description": (raw.get("description") or "").strip() or None,
+        "aliases": aliases,
+        "metadata": metadata,
+    }
+    return {"row_number": row_number, "code": code, "errors": errors, "warnings": warnings, "normalized": normalized}
+
+
+def _comparable_propagation(item: CropPropagationType) -> dict:
+    return {
+        "code": item.code,
+        "canonical_name": item.canonical_name,
+        "establishment_type": item.establishment_type,
+        "description": item.description,
+        "aliases": item.aliases or [],
+        "metadata": item.metadata_ or {},
+    }
+
+
+def _export_propagation_row(item: CropPropagationType) -> dict:
+    return {
+        "code": item.code,
+        "canonical_name": item.canonical_name,
+        "establishment_type": item.establishment_type,
+        "description": item.description or "",
+        "aliases_json": json.dumps(item.aliases or [], ensure_ascii=False, separators=(",", ":")),
+        "metadata_json": json.dumps(item.metadata_ or {}, ensure_ascii=False, separators=(",", ":")),
+    }
+
+
+def _propagation_batch_payload(batch: CropPropagationImportBatch) -> dict:
+    report = batch.validation_report or {}
+    return {
+        "batch_id": str(batch.id),
+        "file_name": batch.file_name,
+        "status": batch.status,
+        "can_apply": batch.status == "VALIDATED" and report.get("can_apply", False) and batch.expires_at > datetime.now(timezone.utc),
+        "expires_at": batch.expires_at.isoformat(),
+        "applied_at": batch.applied_at.isoformat() if batch.applied_at else None,
+        "created_at": batch.created_at.isoformat(),
+        "report": report,
+    }
+
+
+@router.get("/propagation-types/template")
+def download_propagation_csv_template(principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
+    row = {
+        "code": "EXAMPLE_PROPAGATION",
+        "canonical_name": "Example Propagation",
+        "establishment_type": "SEED",
+        "description": "Example crop establishment method",
+        "aliases_json": '[{"lang":"en","name":"Example alias"}]',
+        "metadata_json": '{"source":"admin_upload"}',
+    }
+    return _csv_response(_write_csv([row], PROPAGATION_CSV_COLUMNS), "agri-os-crop-propagation-template.csv")
+
+
+@router.get("/propagation-types/export")
+def export_propagation_csv(
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(CropPropagationType)
+    if not include_inactive:
+        query = query.filter(CropPropagationType.is_active == True)
+    items = query.order_by(CropPropagationType.code).all()
+    date_stamp = datetime.now(timezone.utc).date().isoformat()
+    return _csv_response(_write_csv([_export_propagation_row(item) for item in items], PROPAGATION_CSV_COLUMNS), f"agri-os-crop-propagation-{date_stamp}.csv")
+
+
+@router.post("/propagation-types/validate")
+async def validate_propagation_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    content = await file.read(MAX_FILE_BYTES + 1)
+    if len(content) > MAX_FILE_BYTES:
+        raise HTTPException(413, "CSV file exceeds 2 MB")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded")
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(400, "CSV header row is required")
+    headers = {header.strip() for header in reader.fieldnames if header}
+    missing = sorted(PROPAGATION_REQUIRED_COLUMNS - headers)
+    if missing:
+        raise HTTPException(400, {"error": "MISSING_COLUMNS", "columns": missing})
+    raw_rows = list(reader)
+    if not raw_rows:
+        raise HTTPException(400, "CSV contains no data rows")
+    if len(raw_rows) > MAX_ROWS:
+        raise HTTPException(413, f"CSV exceeds {MAX_ROWS} rows")
+    rows = [_normalize_propagation_row(raw, index) for index, raw in enumerate(raw_rows, start=2)]
+    seen: dict[str, int] = {}
+    for row in rows:
+        code = row["code"]
+        if code in seen:
+            row["errors"].append({"field": "code", "code": "DUPLICATE_CODE_IN_FILE", "message": f"Code also appears on row {seen[code]}"})
+        elif code:
+            seen[code] = row["row_number"]
+    existing_by_code = {item.code: item for item in db.query(CropPropagationType).filter(CropPropagationType.code.in_(list(seen))).all()} if seen else {}
+    counts = {"total": len(rows), "create": 0, "update": 0, "unchanged": 0, "invalid": 0, "warnings": 0}
+    for row in rows:
+        existing = existing_by_code.get(row["code"])
+        if row["errors"]:
+            row["action"] = "INVALID"
+        elif not existing:
+            row["action"] = "CREATE"
+        elif _comparable_propagation(existing) == row["normalized"]:
+            row["action"] = "UNCHANGED"
+        else:
+            row["action"] = "UPDATE"
+        counts[row["action"].lower()] += 1
+        counts["warnings"] += len(row["warnings"])
+    counts["errors"] = sum(len(row["errors"]) for row in rows)
+    can_apply = counts["errors"] == 0
+    report = {
+        "schema_version": "crop_propagation_csv_validation.v1",
+        "mode": "VALIDATE_ONLY",
+        "file_name": file.filename,
+        "can_apply": can_apply,
+        "summary": counts,
+        "rows": rows,
+        "message": "Validation passed. Batch can be applied." if can_apply else "Validation failed. Fix errors and upload again.",
+    }
+    now = datetime.now(timezone.utc)
+    batch = CropPropagationImportBatch(
+        tenant_id=x_tenant_id,
+        actor_id=principal.user_id,
+        file_name=(file.filename or "crop-propagation.csv")[:255],
+        status="VALIDATED" if can_apply else "INVALID",
+        normalized_rows=[row["normalized"] for row in rows if not row["errors"]],
+        validation_report=report,
+        expires_at=now + timedelta(hours=2),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(batch)
+    db.commit()
+    payload = _propagation_batch_payload(batch)
+    return {**report, "batch_id": payload["batch_id"], "status": payload["status"], "expires_at": payload["expires_at"]}
+
+
+@router.post("/propagation-types/imports/{batch_id}/apply")
+def apply_propagation_import(
+    batch_id: uuid.UUID,
+    body: CropTaxonomyApplyRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    batch = db.query(CropPropagationImportBatch).filter(CropPropagationImportBatch.id == batch_id, CropPropagationImportBatch.tenant_id == x_tenant_id, CropPropagationImportBatch.is_active == True).first()
+    if not batch:
+        raise HTTPException(404, "Propagation import batch not found")
+    if batch.status != "VALIDATED":
+        raise HTTPException(409, f"Propagation import batch status is {batch.status}")
+    if batch.expires_at <= datetime.now(timezone.utc):
+        batch.status = "EXPIRED"
+        batch.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(409, "Propagation import batch has expired; validate the CSV again")
+    rows = batch.normalized_rows or []
+    if not rows:
+        raise HTTPException(409, "Propagation import batch has no valid rows to apply")
+    now = datetime.now(timezone.utc)
+    existing_by_code = {item.code: item for item in db.query(CropPropagationType).filter(CropPropagationType.is_active == True).all()}
+    applied_counts = {"created": 0, "updated": 0, "unchanged": 0}
+    for row in rows:
+        item = existing_by_code.get(row["code"])
+        before = _comparable_propagation(item) if item else None
+        if not item:
+            item = CropPropagationType(code=row["code"], created_at=now, updated_at=now, is_active=True)
+            db.add(item)
+            existing_by_code[item.code] = item
+            applied_counts["created"] += 1
+        item.canonical_name = row["canonical_name"]
+        item.establishment_type = row["establishment_type"]
+        item.description = row.get("description")
+        item.aliases = row.get("aliases") or []
+        item.metadata_ = row.get("metadata") or {}
+        item.updated_at = now
+        if before is None:
+            continue
+        after = _comparable_propagation(item)
+        if before == after:
+            applied_counts["unchanged"] += 1
+        else:
+            applied_counts["updated"] += 1
+    batch.status = "APPLIED"
+    batch.applied_at = now
+    batch.updated_at = now
+    report = dict(batch.validation_report or {})
+    report["applied_counts"] = applied_counts
+    report["apply_reason"] = body.reason
+    report["applied_by"] = str(principal.user_id)
+    batch.validation_report = report
+    db.commit()
+    return _propagation_batch_payload(batch)
+
+
+@router.get("/propagation-types/imports")
+def list_propagation_imports(
+    limit: int = Query(30, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(VALIDATED|INVALID|APPLIED|EXPIRED|STALE)$"),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(CropPropagationImportBatch).filter(CropPropagationImportBatch.tenant_id == x_tenant_id, CropPropagationImportBatch.is_active == True)
+    if status:
+        query = query.filter(CropPropagationImportBatch.status == status.upper())
+    batches = query.order_by(CropPropagationImportBatch.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "crop_propagation_imports.v1",
+        "tenant_id": x_tenant_id,
+        "status": status.upper() if status else None,
+        "count": len(batches),
+        "imports": [_propagation_batch_payload(batch) for batch in batches],
+    }
 
 
 @router.get("/taxonomy/imports")
