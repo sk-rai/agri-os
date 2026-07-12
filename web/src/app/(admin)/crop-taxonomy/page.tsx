@@ -20,6 +20,7 @@ export default function CropTaxonomyPage() {
   const [propagationFilter, setPropagationFilter] = useState("");
   const [seasonFilter, setSeasonFilter] = useState("");
   const [selectedCropCode, setSelectedCropCode] = useState<string | null>(null);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvReport, setCsvReport] = useState<CropTaxonomyCsvValidationResponse | null>(null);
   const [importHistory, setImportHistory] = useState<CropTaxonomyImportHistory | null>(null);
@@ -46,7 +47,7 @@ export default function CropTaxonomyPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load crop taxonomy"))
       .finally(() => setLoading(false));
-  }, [taxonomyFilter, propagationFilter, seasonFilter]);
+  }, [taxonomyFilter, propagationFilter, seasonFilter, catalogRefresh]);
 
   useEffect(() => {
     loadImportHistory(historyStatus || undefined);
@@ -161,7 +162,17 @@ export default function CropTaxonomyPage() {
         </div>
         {csvError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{csvError}</p> : null}
         {csvReport ? <CsvValidationReport report={csvReport} /> : null}
-        <ImportHistoryPanel history={importHistory} loading={historyLoading} status={historyStatus} onStatusChange={setHistoryStatus} onRefresh={() => loadImportHistory(historyStatus || undefined)} />
+        <ImportHistoryPanel
+          history={importHistory}
+          loading={historyLoading}
+          status={historyStatus}
+          onStatusChange={setHistoryStatus}
+          onRefresh={() => loadImportHistory(historyStatus || undefined)}
+          onApplied={() => {
+            loadImportHistory(historyStatus || undefined);
+            setCatalogRefresh((value) => value + 1);
+          }}
+        />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
@@ -304,13 +315,38 @@ function CsvValidationReport({ report }: { report: CropTaxonomyCsvValidationResp
   </div>;
 }
 
-function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefresh }: { history: CropTaxonomyImportHistory | null; loading: boolean; status: string; onStatusChange: (value: string) => void; onRefresh: () => void }) {
+function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefresh, onApplied }: { history: CropTaxonomyImportHistory | null; loading: boolean; status: string; onStatusChange: (value: string) => void; onRefresh: () => void; onApplied: () => void }) {
   const imports = history?.imports || [];
+  const [applyReason, setApplyReason] = useState("Apply validated crop taxonomy import");
+  const [applyingBatchId, setApplyingBatchId] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
+
+  const applyBatch = async (batchId: string) => {
+    if (applyReason.trim().length < 3) {
+      setApplyError("Enter an apply reason with at least 3 characters.");
+      return;
+    }
+    setApplyingBatchId(batchId);
+    setApplyError(null);
+    setApplyNotice(null);
+    try {
+      const applied = await cropCatalogApi.applyTaxonomyImport(batchId, applyReason.trim());
+      const counts = applied.report.applied_counts || {};
+      setApplyNotice(`Applied ${batchId.slice(0, 8)}: ${counts.created || 0} created, ${counts.updated || 0} updated, ${counts.unchanged || 0} unchanged.`);
+      onApplied();
+    } catch (e) {
+      setApplyError(e instanceof Error ? e.message : "Failed to apply taxonomy import batch");
+    } finally {
+      setApplyingBatchId(null);
+    }
+  };
+
   return <div className="mt-6 border-t pt-4">
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
         <h3 className="font-semibold text-gray-900">Recent taxonomy imports</h3>
-        <p className="mt-1 text-xs text-gray-500">Persisted validation batches, including invalid uploads, for review and future apply support.</p>
+        <p className="mt-1 text-xs text-gray-500">Persisted validation batches, including invalid uploads, for review and controlled apply.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <select value={status} onChange={(event) => onStatusChange(event.target.value)} className="rounded border px-3 py-2 text-sm">
@@ -324,6 +360,13 @@ function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefres
         <button onClick={onRefresh} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Refresh</button>
       </div>
     </div>
+    <div className="mt-4 rounded border bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="font-semibold">Apply is immediate</p>
+      <p className="mt-1 text-xs">Only VALIDATED batches can be applied. Applying creates/updates taxonomy nodes and parent edges, then marks the batch APPLIED.</p>
+      <input value={applyReason} onChange={(event) => setApplyReason(event.target.value)} className="mt-3 w-full rounded border px-3 py-2 text-sm text-gray-900" placeholder="Reason for applying this taxonomy import" />
+    </div>
+    {applyError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{applyError}</p> : null}
+    {applyNotice ? <p className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">{applyNotice}</p> : null}
     {loading ? <p className="mt-3 text-sm text-gray-500">Loading import history...</p> : null}
     {!loading && imports.length === 0 ? <p className="mt-3 rounded bg-gray-50 p-3 text-sm text-gray-500">No taxonomy import batches found.</p> : null}
     {imports.length ? <div className="mt-4 overflow-x-auto">
@@ -335,11 +378,14 @@ function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefres
             <th className="px-2 py-2">Status</th>
             <th className="px-2 py-2">Summary</th>
             <th className="px-2 py-2">Batch</th>
+            <th className="px-2 py-2">Action</th>
           </tr>
         </thead>
         <tbody>
-          {imports.map((item) => (
-            <tr key={item.batch_id} className="border-t bg-white">
+          {imports.map((item) => {
+            const canApply = item.status === "VALIDATED" && item.can_apply;
+            const appliedCounts = item.report?.applied_counts;
+            return <tr key={item.batch_id} className="border-t bg-white">
               <td className="px-2 py-2 whitespace-nowrap">{new Date(item.created_at).toLocaleString()}</td>
               <td className="px-2 py-2">{item.file_name || "-"}</td>
               <td className="px-2 py-2"><StatusPill status={item.status} /></td>
@@ -348,10 +394,21 @@ function ImportHistoryPanel({ history, loading, status, onStatusChange, onRefres
                 <span className="ml-2 text-green-700">+{item.report?.summary?.create ?? 0}</span>
                 <span className="ml-2 text-amber-700">~{item.report?.summary?.update ?? 0}</span>
                 <span className="ml-2 text-red-700">{item.report?.summary?.errors ?? 0} errors</span>
+                {appliedCounts ? <span className="ml-2 text-blue-700">applied {appliedCounts.created || 0}/{appliedCounts.updated || 0}</span> : null}
               </td>
               <td className="px-2 py-2 font-mono text-[11px] text-gray-500">{item.batch_id.slice(0, 8)}</td>
-            </tr>
-          ))}
+              <td className="px-2 py-2">
+                <button
+                  onClick={() => applyBatch(item.batch_id)}
+                  disabled={!canApply || applyingBatchId === item.batch_id}
+                  className="rounded bg-green-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                  title={canApply ? "Apply this validated taxonomy import" : `Cannot apply ${item.status} batch`}
+                >
+                  {applyingBatchId === item.batch_id ? "Applying..." : item.status === "APPLIED" ? "Applied" : "Apply"}
+                </button>
+              </td>
+            </tr>;
+          })}
         </tbody>
       </table>
     </div> : null}

@@ -204,7 +204,11 @@ export interface CropTaxonomyImportBatch {
   expires_at: string;
   applied_at?: string | null;
   created_at: string;
-  report: CropTaxonomyCsvValidationResponse;
+  report: CropTaxonomyCsvValidationResponse & {
+    applied_counts?: Record<string, number>;
+    apply_reason?: string;
+    applied_by?: string;
+  };
 }
 
 export interface CropTaxonomyImportHistory {
@@ -748,6 +752,8 @@ export const cropCatalogApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<CropTaxonomyImportHistory>(`/api/v1/crop-catalog/csv/taxonomy/imports${suffix}`);
   },
+  applyTaxonomyImport: (batchId: string, reason: string) =>
+    api<CropTaxonomyImportBatch>(`/api/v1/crop-catalog/csv/taxonomy/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
 };
 
 export const reportsApi = {
