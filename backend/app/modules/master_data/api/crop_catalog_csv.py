@@ -23,8 +23,16 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.master_data.models import CropPropagationImportBatch, CropTaxonomyImportBatch
-from app.modules.master_data.models.crop import CropPropagationType, CropTaxonomyEdge, CropTaxonomyNode
+from app.modules.master_data.models import CropCatalogImportBatch, CropPropagationImportBatch, CropTaxonomyImportBatch
+from app.modules.master_data.models.crop import (
+    Crop,
+    CropCategory,
+    CropPropagationOption,
+    CropPropagationType,
+    CropTaxonomyAssignment,
+    CropTaxonomyEdge,
+    CropTaxonomyNode,
+)
 
 
 router = APIRouter(prefix="/api/v1/crop-catalog/csv", tags=["crop-catalog-csv"])
@@ -50,6 +58,22 @@ PROPAGATION_CSV_COLUMNS = [
     "metadata_json",
 ]
 PROPAGATION_REQUIRED_COLUMNS = {"code", "canonical_name", "establishment_type"}
+CROP_CSV_COLUMNS = [
+    "code",
+    "category_code",
+    "canonical_name",
+    "scientific_name",
+    "typical_duration_days",
+    "suitable_seasons",
+    "suitable_soil_types",
+    "taxonomy_codes",
+    "primary_taxonomy_code",
+    "propagation_options",
+    "default_propagation_code",
+    "description",
+    "aliases_json",
+]
+CROP_REQUIRED_COLUMNS = {"code", "category_code", "canonical_name"}
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 1000
 VALID_NODE_TYPES = {"ROOT", "AGRONOMIC", "ECONOMIC", "BOTANICAL", "GROWTH_HABIT", "SEASONAL", "PROPAGATION"}
@@ -726,4 +750,452 @@ def list_crop_taxonomy_imports(
         "status": status.upper() if status else None,
         "count": len(batches),
         "imports": [_batch_payload(batch) for batch in batches],
+    }
+
+
+# --- Crop catalog CSV lifecycle ------------------------------------------------------
+
+def _split_codes(raw: Optional[str]) -> list[str]:
+    return sorted({value.strip().upper().replace(" ", "_") for value in (raw or "").replace(",", "|").split("|") if value.strip()})
+
+
+def _normalize_crop_row(raw: dict[str, str], row_number: int) -> dict:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    code = (raw.get("code") or "").strip().upper().replace(" ", "_")
+    category_code = (raw.get("category_code") or "").strip().upper().replace(" ", "_")
+    canonical_name = (raw.get("canonical_name") or "").strip()
+    taxonomy_codes = _split_codes(raw.get("taxonomy_codes"))
+    propagation_options = _split_codes(raw.get("propagation_options"))
+    primary_taxonomy_code = (raw.get("primary_taxonomy_code") or "").strip().upper().replace(" ", "_") or (taxonomy_codes[0] if taxonomy_codes else None)
+    default_propagation_code = (raw.get("default_propagation_code") or "").strip().upper().replace(" ", "_") or (propagation_options[0] if propagation_options else None)
+    aliases = _parse_json_field(raw.get("aliases_json"), expected_type=list, field="aliases_json", errors=errors)
+
+    typical_duration_days: Optional[int] = None
+    if (raw.get("typical_duration_days") or "").strip():
+        try:
+            typical_duration_days = int((raw.get("typical_duration_days") or "").strip())
+            if typical_duration_days <= 0:
+                raise ValueError
+        except ValueError:
+            errors.append({"field": "typical_duration_days", "code": "INVALID_INTEGER", "message": "typical_duration_days must be a positive integer"})
+
+    if not re.fullmatch(r"[A-Z0-9_]{2,30}", code):
+        errors.append({"field": "code", "code": "INVALID_CODE", "message": "Use 2-30 uppercase letters, numbers, or underscores"})
+    if not re.fullmatch(r"[A-Z0-9_]{2,30}", category_code):
+        errors.append({"field": "category_code", "code": "INVALID_CATEGORY_CODE", "message": "category_code must reference an existing crop category code"})
+    if not canonical_name:
+        errors.append({"field": "canonical_name", "code": "REQUIRED", "message": "canonical_name is required"})
+    if len(canonical_name) > 100:
+        errors.append({"field": "canonical_name", "code": "TOO_LONG", "message": "canonical_name exceeds 100 characters"})
+    if len((raw.get("scientific_name") or "").strip()) > 150:
+        errors.append({"field": "scientific_name", "code": "TOO_LONG", "message": "scientific_name exceeds 150 characters"})
+    if primary_taxonomy_code and primary_taxonomy_code not in taxonomy_codes:
+        errors.append({"field": "primary_taxonomy_code", "code": "PRIMARY_NOT_IN_TAXONOMY_CODES", "message": "primary_taxonomy_code must be included in taxonomy_codes"})
+    if default_propagation_code and default_propagation_code not in propagation_options:
+        errors.append({"field": "default_propagation_code", "code": "DEFAULT_NOT_IN_PROPAGATION_OPTIONS", "message": "default_propagation_code must be included in propagation_options"})
+    if not taxonomy_codes:
+        warnings.append({"field": "taxonomy_codes", "code": "MISSING_TAXONOMY", "message": "Crop has no taxonomy assignments"})
+    if not propagation_options:
+        warnings.append({"field": "propagation_options", "code": "MISSING_PROPAGATION", "message": "Crop has no propagation options"})
+
+    normalized = {
+        "code": code,
+        "category_code": category_code,
+        "canonical_name": canonical_name,
+        "scientific_name": (raw.get("scientific_name") or "").strip() or None,
+        "typical_duration_days": typical_duration_days,
+        "suitable_seasons": _split_codes(raw.get("suitable_seasons")),
+        "suitable_soil_types": _split_codes(raw.get("suitable_soil_types")),
+        "taxonomy_codes": taxonomy_codes,
+        "primary_taxonomy_code": primary_taxonomy_code,
+        "propagation_options": propagation_options,
+        "default_propagation_code": default_propagation_code,
+        "description": (raw.get("description") or "").strip() or None,
+        "aliases": aliases,
+    }
+    return {"row_number": row_number, "code": code, "errors": errors, "warnings": warnings, "normalized": normalized}
+
+
+def _crop_taxonomy_state(db: Session, crop: Crop) -> tuple[list[str], Optional[str]]:
+    rows = db.query(CropTaxonomyAssignment, CropTaxonomyNode).join(
+        CropTaxonomyNode,
+        CropTaxonomyNode.id == CropTaxonomyAssignment.taxonomy_node_id,
+    ).filter(
+        CropTaxonomyAssignment.crop_id == crop.id,
+        CropTaxonomyAssignment.is_active == True,
+        CropTaxonomyNode.is_active == True,
+    ).all()
+    codes = sorted({node.code for assignment, node in rows})
+    primary = next((node.code for assignment, node in rows if assignment.is_primary), None)
+    return codes, primary
+
+
+def _crop_propagation_state(db: Session, crop: Crop) -> tuple[list[str], Optional[str]]:
+    rows = db.query(CropPropagationOption, CropPropagationType).join(
+        CropPropagationType,
+        CropPropagationType.id == CropPropagationOption.propagation_type_id,
+    ).filter(
+        CropPropagationOption.crop_id == crop.id,
+        CropPropagationOption.season_code.is_(None),
+        CropPropagationOption.is_active == True,
+        CropPropagationType.is_active == True,
+    ).all()
+    codes = sorted({ptype.code for option, ptype in rows})
+    default = next((ptype.code for option, ptype in rows if option.is_default), None)
+    return codes, default
+
+
+def _comparable_crop(db: Session, crop: Crop) -> dict:
+    taxonomy_codes, primary_taxonomy_code = _crop_taxonomy_state(db, crop)
+    propagation_codes, default_propagation_code = _crop_propagation_state(db, crop)
+    return {
+        "code": crop.code,
+        "category_code": crop.category.code if crop.category else None,
+        "canonical_name": crop.canonical_name,
+        "scientific_name": crop.scientific_name,
+        "typical_duration_days": crop.typical_duration_days,
+        "suitable_seasons": sorted(crop.suitable_seasons or []),
+        "suitable_soil_types": sorted(crop.suitable_soil_types or []),
+        "taxonomy_codes": taxonomy_codes,
+        "primary_taxonomy_code": primary_taxonomy_code,
+        "propagation_options": propagation_codes,
+        "default_propagation_code": default_propagation_code,
+        "description": crop.description,
+        "aliases": crop.aliases or [],
+    }
+
+
+def _export_crop_row(db: Session, crop: Crop) -> dict:
+    taxonomy_codes, primary_taxonomy_code = _crop_taxonomy_state(db, crop)
+    propagation_codes, default_propagation_code = _crop_propagation_state(db, crop)
+    return {
+        "code": crop.code,
+        "category_code": crop.category.code if crop.category else "",
+        "canonical_name": crop.canonical_name,
+        "scientific_name": crop.scientific_name or "",
+        "typical_duration_days": crop.typical_duration_days or "",
+        "suitable_seasons": "|".join(sorted(crop.suitable_seasons or [])),
+        "suitable_soil_types": "|".join(sorted(crop.suitable_soil_types or [])),
+        "taxonomy_codes": "|".join(taxonomy_codes),
+        "primary_taxonomy_code": primary_taxonomy_code or "",
+        "propagation_options": "|".join(propagation_codes),
+        "default_propagation_code": default_propagation_code or "",
+        "description": crop.description or "",
+        "aliases_json": json.dumps(crop.aliases or [], ensure_ascii=False, separators=(",", ":")),
+    }
+
+
+def _crop_batch_payload(batch: CropCatalogImportBatch) -> dict:
+    report = batch.validation_report or {}
+    return {
+        "batch_id": str(batch.id),
+        "file_name": batch.file_name,
+        "status": batch.status,
+        "can_apply": batch.status == "VALIDATED" and report.get("can_apply", False) and batch.expires_at > datetime.now(timezone.utc),
+        "expires_at": batch.expires_at.isoformat(),
+        "applied_at": batch.applied_at.isoformat() if batch.applied_at else None,
+        "created_at": batch.created_at.isoformat(),
+        "report": report,
+    }
+
+
+@router.get("/crops/template")
+def download_crops_csv_template(principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
+    row = {
+        "code": "EXAMPLE_CROP",
+        "category_code": "CEREALS",
+        "canonical_name": "Example Crop",
+        "scientific_name": "Example scientific name",
+        "typical_duration_days": "120",
+        "suitable_seasons": "KHARIF|RABI",
+        "suitable_soil_types": "LOAM|CLAY",
+        "taxonomy_codes": "FIELD_CROP|CEREAL",
+        "primary_taxonomy_code": "FIELD_CROP",
+        "propagation_options": "DIRECT_SEEDED|NURSERY_TRANSPLANT",
+        "default_propagation_code": "DIRECT_SEEDED",
+        "description": "Example crop row",
+        "aliases_json": '[{"lang":"en","name":"Example alias"}]',
+    }
+    return _csv_response(_write_csv([row], CROP_CSV_COLUMNS), "agri-os-crops-template.csv")
+
+
+@router.get("/crops/export")
+def export_crops_csv(
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(Crop)
+    if not include_inactive:
+        query = query.filter(Crop.is_active == True)
+    crops = query.order_by(Crop.code).all()
+    date_stamp = datetime.now(timezone.utc).date().isoformat()
+    return _csv_response(_write_csv([_export_crop_row(db, crop) for crop in crops], CROP_CSV_COLUMNS), f"agri-os-crops-{date_stamp}.csv")
+
+
+@router.post("/crops/validate")
+async def validate_crops_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    content = await file.read(MAX_FILE_BYTES + 1)
+    if len(content) > MAX_FILE_BYTES:
+        raise HTTPException(413, "CSV file exceeds 2 MB")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded")
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(400, "CSV header row is required")
+    headers = {header.strip() for header in reader.fieldnames if header}
+    missing = sorted(CROP_REQUIRED_COLUMNS - headers)
+    if missing:
+        raise HTTPException(400, {"error": "MISSING_COLUMNS", "columns": missing})
+    raw_rows = list(reader)
+    if not raw_rows:
+        raise HTTPException(400, "CSV contains no data rows")
+    if len(raw_rows) > MAX_ROWS:
+        raise HTTPException(413, f"CSV exceeds {MAX_ROWS} rows")
+
+    rows = [_normalize_crop_row(raw, index) for index, raw in enumerate(raw_rows, start=2)]
+    seen: dict[str, int] = {}
+    for row in rows:
+        code = row["code"]
+        if code in seen:
+            row["errors"].append({"field": "code", "code": "DUPLICATE_CODE_IN_FILE", "message": f"Code also appears on row {seen[code]}"})
+        elif code:
+            seen[code] = row["row_number"]
+
+    categories_by_code = {item.code: item for item in db.query(CropCategory).filter(CropCategory.is_active == True).all()}
+    taxonomy_by_code = {item.code: item for item in db.query(CropTaxonomyNode).filter(CropTaxonomyNode.is_active == True).all()}
+    propagation_by_code = {item.code: item for item in db.query(CropPropagationType).filter(CropPropagationType.is_active == True).all()}
+    existing_by_code = {item.code: item for item in db.query(Crop).filter(Crop.code.in_(list(seen))).all()} if seen else {}
+
+    for row in rows:
+        normalized = row["normalized"]
+        if normalized["category_code"] not in categories_by_code:
+            row["errors"].append({"field": "category_code", "code": "UNKNOWN_CATEGORY", "message": f"Unknown crop category: {normalized['category_code']}"})
+        missing_taxonomy = sorted(set(normalized["taxonomy_codes"]) - set(taxonomy_by_code))
+        if missing_taxonomy:
+            row["errors"].append({"field": "taxonomy_codes", "code": "UNKNOWN_TAXONOMY", "message": f"Unknown taxonomy codes: {', '.join(missing_taxonomy)}"})
+        missing_propagation = sorted(set(normalized["propagation_options"]) - set(propagation_by_code))
+        if missing_propagation:
+            row["errors"].append({"field": "propagation_options", "code": "UNKNOWN_PROPAGATION", "message": f"Unknown propagation codes: {', '.join(missing_propagation)}"})
+
+    counts = {"total": len(rows), "create": 0, "update": 0, "unchanged": 0, "invalid": 0, "warnings": 0}
+    for row in rows:
+        existing = existing_by_code.get(row["code"])
+        if row["errors"]:
+            row["action"] = "INVALID"
+        elif not existing:
+            row["action"] = "CREATE"
+        elif _comparable_crop(db, existing) == row["normalized"]:
+            row["action"] = "UNCHANGED"
+        else:
+            row["action"] = "UPDATE"
+        counts[row["action"].lower()] += 1
+        counts["warnings"] += len(row["warnings"])
+    counts["errors"] = sum(len(row["errors"]) for row in rows)
+    can_apply = counts["errors"] == 0
+    report = {
+        "schema_version": "crop_catalog_csv_validation.v1",
+        "mode": "VALIDATE_ONLY",
+        "file_name": file.filename,
+        "can_apply": can_apply,
+        "summary": counts,
+        "rows": rows,
+        "message": "Validation passed. Batch can be applied." if can_apply else "Validation failed. Fix errors and upload again.",
+    }
+    now = datetime.now(timezone.utc)
+    batch = CropCatalogImportBatch(
+        tenant_id=x_tenant_id,
+        actor_id=principal.user_id,
+        file_name=(file.filename or "crops.csv")[:255],
+        status="VALIDATED" if can_apply else "INVALID",
+        normalized_rows=[row["normalized"] for row in rows if not row["errors"]],
+        validation_report=report,
+        expires_at=now + timedelta(hours=2),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(batch)
+    db.commit()
+    payload = _crop_batch_payload(batch)
+    return {**report, "batch_id": payload["batch_id"], "status": payload["status"], "expires_at": payload["expires_at"]}
+
+
+@router.post("/crops/imports/{batch_id}/apply")
+def apply_crops_import(
+    batch_id: uuid.UUID,
+    body: CropTaxonomyApplyRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    batch = db.query(CropCatalogImportBatch).filter(CropCatalogImportBatch.id == batch_id, CropCatalogImportBatch.tenant_id == x_tenant_id, CropCatalogImportBatch.is_active == True).first()
+    if not batch:
+        raise HTTPException(404, "Crop import batch not found")
+    if batch.status != "VALIDATED":
+        raise HTTPException(409, f"Crop import batch status is {batch.status}")
+    if batch.expires_at <= datetime.now(timezone.utc):
+        batch.status = "EXPIRED"
+        batch.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(409, "Crop import batch has expired; validate the CSV again")
+    rows = batch.normalized_rows or []
+    if not rows:
+        raise HTTPException(409, "Crop import batch has no valid rows to apply")
+
+    now = datetime.now(timezone.utc)
+    categories_by_code = {item.code: item for item in db.query(CropCategory).filter(CropCategory.is_active == True).all()}
+    taxonomy_by_code = {item.code: item for item in db.query(CropTaxonomyNode).filter(CropTaxonomyNode.is_active == True).all()}
+    propagation_by_code = {item.code: item for item in db.query(CropPropagationType).filter(CropPropagationType.is_active == True).all()}
+    stale_categories = sorted({row["category_code"] for row in rows if row["category_code"] not in categories_by_code})
+    stale_taxonomy = sorted({code for row in rows for code in row.get("taxonomy_codes", []) if code not in taxonomy_by_code})
+    stale_propagation = sorted({code for row in rows for code in row.get("propagation_options", []) if code not in propagation_by_code})
+    if stale_categories or stale_taxonomy or stale_propagation:
+        batch.status = "STALE"
+        batch.updated_at = now
+        db.commit()
+        raise HTTPException(409, {"error": "STALE_REFERENCES", "categories": stale_categories, "taxonomy": stale_taxonomy, "propagation": stale_propagation})
+
+    existing_by_code = {item.code: item for item in db.query(Crop).filter(Crop.code.in_([row["code"] for row in rows])).all()}
+    applied_counts = {
+        "created": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "taxonomy_assignments_created": 0,
+        "taxonomy_assignments_restored": 0,
+        "taxonomy_assignments_disabled": 0,
+        "propagation_options_created": 0,
+        "propagation_options_restored": 0,
+        "propagation_options_disabled": 0,
+    }
+
+    for row in rows:
+        crop = existing_by_code.get(row["code"])
+        before = _comparable_crop(db, crop) if crop else None
+        if not crop:
+            crop = Crop(code=row["code"], created_at=now, updated_at=now, is_active=True)
+            db.add(crop)
+            existing_by_code[crop.code] = crop
+            applied_counts["created"] += 1
+        crop.category = categories_by_code[row["category_code"]]
+        crop.canonical_name = row["canonical_name"]
+        crop.scientific_name = row.get("scientific_name")
+        crop.typical_duration_days = row.get("typical_duration_days")
+        crop.suitable_seasons = row.get("suitable_seasons") or []
+        crop.suitable_soil_types = row.get("suitable_soil_types") or []
+        crop.description = row.get("description")
+        crop.aliases = row.get("aliases") or []
+        crop.is_active = True
+        crop.updated_at = now
+        db.flush()
+
+        desired_taxonomy_ids = {taxonomy_by_code[code].id for code in row.get("taxonomy_codes", [])}
+        primary_taxonomy_id = taxonomy_by_code[row["primary_taxonomy_code"]].id if row.get("primary_taxonomy_code") else None
+        assignments = db.query(CropTaxonomyAssignment).filter(CropTaxonomyAssignment.crop_id == crop.id).all()
+        assignment_by_node = {assignment.taxonomy_node_id: assignment for assignment in assignments}
+        for assignment in assignments:
+            if assignment.taxonomy_node_id not in desired_taxonomy_ids and assignment.is_active:
+                assignment.is_active = False
+                assignment.updated_at = now
+                applied_counts["taxonomy_assignments_disabled"] += 1
+        for taxonomy_id in desired_taxonomy_ids:
+            assignment = assignment_by_node.get(taxonomy_id)
+            is_primary = taxonomy_id == primary_taxonomy_id
+            if assignment:
+                if not assignment.is_active:
+                    applied_counts["taxonomy_assignments_restored"] += 1
+                assignment.is_active = True
+                assignment.assignment_type = "PRIMARY" if is_primary else "SECONDARY"
+                assignment.is_primary = is_primary
+                assignment.source = "CSV_IMPORT"
+                assignment.updated_at = now
+            else:
+                db.add(CropTaxonomyAssignment(
+                    crop_id=crop.id,
+                    taxonomy_node_id=taxonomy_id,
+                    assignment_type="PRIMARY" if is_primary else "SECONDARY",
+                    is_primary=is_primary,
+                    source="CSV_IMPORT",
+                    created_at=now,
+                    updated_at=now,
+                    is_active=True,
+                ))
+                applied_counts["taxonomy_assignments_created"] += 1
+
+        desired_propagation_ids = {propagation_by_code[code].id for code in row.get("propagation_options", [])}
+        default_propagation_id = propagation_by_code[row["default_propagation_code"]].id if row.get("default_propagation_code") else None
+        options = db.query(CropPropagationOption).filter(CropPropagationOption.crop_id == crop.id, CropPropagationOption.season_code.is_(None)).all()
+        option_by_type = {option.propagation_type_id: option for option in options}
+        for option in options:
+            if option.propagation_type_id not in desired_propagation_ids and option.is_active:
+                option.is_active = False
+                option.updated_at = now
+                applied_counts["propagation_options_disabled"] += 1
+        for propagation_id in desired_propagation_ids:
+            option = option_by_type.get(propagation_id)
+            is_default = propagation_id == default_propagation_id
+            if option:
+                if not option.is_active:
+                    applied_counts["propagation_options_restored"] += 1
+                option.is_active = True
+                option.is_default = is_default
+                option.updated_at = now
+            else:
+                db.add(CropPropagationOption(
+                    crop_id=crop.id,
+                    propagation_type_id=propagation_id,
+                    season_code=None,
+                    is_default=is_default,
+                    metadata_={"source": "CSV_IMPORT"},
+                    created_at=now,
+                    updated_at=now,
+                    is_active=True,
+                ))
+                applied_counts["propagation_options_created"] += 1
+        db.flush()
+        if before is None:
+            continue
+        after = _comparable_crop(db, crop)
+        if before == after:
+            applied_counts["unchanged"] += 1
+        else:
+            applied_counts["updated"] += 1
+
+    batch.status = "APPLIED"
+    batch.applied_at = now
+    batch.updated_at = now
+    report = dict(batch.validation_report or {})
+    report["applied_counts"] = applied_counts
+    report["apply_reason"] = body.reason
+    report["applied_by"] = str(principal.user_id)
+    batch.validation_report = report
+    db.commit()
+    return _crop_batch_payload(batch)
+
+
+@router.get("/crops/imports")
+def list_crop_imports(
+    limit: int = Query(30, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(VALIDATED|INVALID|APPLIED|EXPIRED|STALE)$"),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(CropCatalogImportBatch).filter(CropCatalogImportBatch.tenant_id == x_tenant_id, CropCatalogImportBatch.is_active == True)
+    if status:
+        query = query.filter(CropCatalogImportBatch.status == status.upper())
+    batches = query.order_by(CropCatalogImportBatch.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "crop_catalog_imports.v1",
+        "tenant_id": x_tenant_id,
+        "status": status.upper() if status else None,
+        "count": len(batches),
+        "imports": [_crop_batch_payload(batch) for batch in batches],
     }

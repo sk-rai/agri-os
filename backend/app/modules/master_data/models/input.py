@@ -361,3 +361,23 @@ class CropPropagationImportBatch(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_crop_propagation_import_tenant_created", "tenant_id", "created_at"),
         Index("idx_crop_propagation_import_status_expiry", "status", "expires_at"),
     )
+
+
+class CropCatalogImportBatch(Base, UUIDPrimaryKey, AuditMixin):
+    """Validated crop catalog CSV batch awaiting explicit admin application."""
+
+    __tablename__ = "crop_catalog_import_batches"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    actor_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    file_name = Column(String(255))
+    status = Column(String(20), nullable=False, default="VALIDATED", index=True)
+    normalized_rows = Column(JSONB, nullable=False, default=list)
+    validation_report = Column(JSONB, nullable=False, default=dict)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    applied_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_crop_catalog_import_tenant_created", "tenant_id", "created_at"),
+        Index("idx_crop_catalog_import_status_expiry", "status", "expires_at"),
+    )
