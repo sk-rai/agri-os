@@ -34,6 +34,7 @@ from app.modules.workflow.models import (
     CropStageInstance,
     WorkflowTemplate,
     WorkflowTemplateAuditEvent,
+    WorkflowTemplateEnablement,
     WorkflowTemplateVersion,
 )
 from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessedEvent
@@ -794,6 +795,111 @@ def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit
             for parcel in parcels[:limit]
         ],
         "activities": activities[:limit],
+    }
+
+
+
+
+def _readiness_item(code: str, label: str, ready: bool, detail: str, href: str, severity: str = "WARN") -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "ready": bool(ready),
+        "severity": "OK" if ready else severity,
+        "detail": detail,
+        "href": href,
+    }
+
+
+@router.get("/system-readiness")
+def system_readiness_report(
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    project_query = db.query(Project).filter(Project.tenant_id == x_tenant_id)
+    farmer_query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    parcel_query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id)
+    cycle_query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id)
+    activity_query = db.query(CropActivity).filter(CropActivity.tenant_id == x_tenant_id)
+
+    if project_id:
+        project = project_query.filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+        project_query = project_query.filter(Project.id == project_id)
+        farmer_query = farmer_query.filter(Farmer.project_id == project_id)
+        parcel_query = parcel_query.filter(Parcel.project_id == project_id)
+        cycle_query = cycle_query.filter(CropCycle.project_id == project_id)
+        activity_query = activity_query.join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id).filter(CropCycle.project_id == project_id)
+
+    project_count = project_query.count()
+    farmer_count = farmer_query.count()
+    parcel_count = parcel_query.count()
+    cycle_count = cycle_query.count()
+    activity_count = activity_query.count()
+    geometry_missing_count = parcel_query.filter((Parcel.geometry_source.is_(None)) | (Parcel.geometry_source == "NONE")).count()
+    geometry_captured_count = max(parcel_count - geometry_missing_count, 0)
+
+    published_workflow_count = (
+        db.query(WorkflowTemplateVersion)
+        .join(WorkflowTemplate, WorkflowTemplate.id == WorkflowTemplateVersion.template_id)
+        .filter(
+            WorkflowTemplate.tenant_id == x_tenant_id,
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplateVersion.is_active == True,
+        )
+        .count()
+    )
+    enablement_query = db.query(WorkflowTemplateEnablement).filter(WorkflowTemplateEnablement.tenant_id == x_tenant_id)
+    if project_id:
+        enablement_query = enablement_query.filter(WorkflowTemplateEnablement.project_id == project_id)
+    workflow_enablement_count = enablement_query.count()
+    active_input_count = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True).count()
+    published_input_count = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").count()
+    active_product_count = db.query(AgriculturalProduct).filter(AgriculturalProduct.is_active == True).count()
+
+    backlog = _admin_backlog_counts(db, tenant_id=x_tenant_id, project_id=project_id)
+    sync_payload = sync_materialization_health_report(
+        project_id=project_id,
+        entity_type=None,
+        status=None,
+        gap_only=False,
+        limit=1,
+        db=db,
+        x_tenant_id=x_tenant_id,
+        principal=principal,
+    )
+    sync_summary = sync_payload["summary"]
+    materialization_gaps = sum(row["unmaterialized_count"] for row in sync_payload["materialization"])
+    sync_issue_count = sync_summary["failed_count"] + sync_summary["conflict_count"] + sync_summary["dependency_missing_count"] + materialization_gaps
+
+    lookup_href = f"/lookup?projectId={project_id}" if project_id else "/lookup"
+    activity_href = f"/activity-usage?projectId={project_id}" if project_id else "/activity-usage"
+    checks = [
+        _readiness_item("PROJECT_SETUP", "Project setup", project_count > 0, f"{project_count} projects available", "/projects"),
+        _readiness_item("WORKFLOW_RUNTIME", "Workflow runtime", published_workflow_count > 0 and backlog["workflow_validation_blocker_count"] == 0, f"{published_workflow_count} published workflows, {backlog['workflow_validation_blocker_count']} blockers", "/workflows?filter=validation-blockers"),
+        _readiness_item("WORKFLOW_ASSIGNMENTS", "Workflow assignments", (not project_id) or workflow_enablement_count > 0, f"{workflow_enablement_count} project workflow assignment rows", "/project-workflows", "INFO"),
+        _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
+        _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0, f"{active_product_count} active products/brands", "/products", "INFO"),
+        _readiness_item("FARMER_SYNC", "Farmer sync", farmer_count > 0, f"{farmer_count} farmers materialized", lookup_href),
+        _readiness_item("PARCEL_GEOMETRY", "Parcel geometry", parcel_count > 0 and geometry_missing_count == 0, f"{geometry_captured_count} captured, {geometry_missing_count} missing", f"{lookup_href}{'&' if '?' in lookup_href else '?'}geometryStatus=MISSING"),
+        _readiness_item("ACTIVITY_EVIDENCE", "Activity evidence", activity_count > 0, f"{activity_count} logged activities", activity_href),
+        _readiness_item("SYNC_HEALTH", "Sync health", sync_issue_count == 0, f"{sync_issue_count} sync/materialization issues", "/sync-health?gapOnly=true" if sync_issue_count else "/sync-health"),
+    ]
+    ready_count = sum(1 for item in checks if item["ready"])
+    return {
+        "schema_version": "system_readiness.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {"project_id": str(project_id) if project_id else None},
+        "summary": {
+            "ready_count": ready_count,
+            "check_count": len(checks),
+            "blocking_count": sum(1 for item in checks if not item["ready"] and item["severity"] == "WARN"),
+            "info_count": sum(1 for item in checks if not item["ready"] and item["severity"] == "INFO"),
+        },
+        "checks": checks,
     }
 
 

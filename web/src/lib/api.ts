@@ -485,6 +485,23 @@ export interface SyncMaterializationHealthResponse {
   recent_events: SyncHealthEventRow[];
 }
 
+export interface SystemReadinessCheck {
+  code: string;
+  label: string;
+  ready: boolean;
+  severity: "OK" | "WARN" | "INFO";
+  detail: string;
+  href: string;
+}
+
+export interface SystemReadinessResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: { project_id?: string | null };
+  summary: { ready_count: number; check_count: number; blocking_count: number; info_count: number };
+  checks: SystemReadinessCheck[];
+}
+
 export interface AdminDashboardResponse {
   schema_version: string;
   tenant_id: string;
@@ -580,6 +597,12 @@ function adminDashboardQuery(params?: AdminDashboardParams): string {
   return query.toString() ? `?${query.toString()}` : "";
 }
 
+function systemReadinessQuery(params?: { projectId?: string }): string {
+  const query = new URLSearchParams();
+  if (params?.projectId) query.set("project_id", params.projectId);
+  return query.toString() ? `?${query.toString()}` : "";
+}
+
 function activityUsageQuery(params?: ActivityUsageParams): string {
   const query = new URLSearchParams();
   if (params?.projectId) query.set("project_id", params.projectId);
@@ -617,6 +640,7 @@ function projectTraceQuery(params?: ProjectTraceParams): string {
 
 export const reportsApi = {
   adminDashboard: (params?: AdminDashboardParams) => api<AdminDashboardResponse>(`/api/v1/reports/admin-dashboard${adminDashboardQuery(params)}`),
+  systemReadiness: (params?: { projectId?: string }) => api<SystemReadinessResponse>(`/api/v1/reports/system-readiness${systemReadinessQuery(params)}`),
   syncHealth: (params?: SyncHealthParams) => api<SyncMaterializationHealthResponse>(`/api/v1/reports/sync-health${syncHealthQuery(params)}`),
   downloadSyncHealthCsv: (params?: SyncHealthParams) =>
     apiDownload(`/api/v1/reports/sync-health.csv${syncHealthQuery(params)}`, params?.gapOnly ? "sync_health_gaps.csv" : "sync_health.csv"),

@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { reportsApi, type AdminDashboardResponse, type SyncMaterializationHealthResponse } from "@/lib/api";
+import { reportsApi, type AdminDashboardResponse, type SyncMaterializationHealthResponse, type SystemReadinessResponse } from "@/lib/api";
 import { CopyLinkButton } from "@/components/copy-link-button";
 
 type DashboardFilters = {
@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState(initialFilters);
   const [loading, setLoading] = useState(true);
   const [syncHealth, setSyncHealth] = useState<SyncMaterializationHealthResponse | null>(null);
+  const [readiness, setReadiness] = useState<SystemReadinessResponse | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
@@ -80,8 +81,12 @@ export default function DashboardPage() {
       .then(setSyncHealth)
       .catch((e) => setError(e.message))
       .finally(() => setSyncLoading(false));
+    const readinessRequest = reportsApi
+      .systemReadiness({ projectId: nextFilters.projectId.trim() || undefined })
+      .then(setReadiness)
+      .catch(() => setReadiness(null));
 
-    Promise.allSettled([dashboardRequest, syncRequest]).then(() => setLastRefreshedAt(new Date()));
+    Promise.allSettled([dashboardRequest, syncRequest, readinessRequest]).then(() => setLastRefreshedAt(new Date()));
   };
 
   useEffect(() => {
@@ -169,7 +174,7 @@ export default function DashboardPage() {
       </form>
 
       <CommandCenterPanel data={data} syncHealth={syncHealth} />
-      <SystemReadinessPanel data={data} syncHealth={syncHealth} />
+      <SystemReadinessPanel readiness={readiness} data={data} syncHealth={syncHealth} />
       <AttentionQueuePanel data={data} syncHealth={syncHealth} />
 
       {summary ? (
@@ -203,13 +208,13 @@ export default function DashboardPage() {
   );
 }
 
-function SystemReadinessPanel({ data, syncHealth }: { data: AdminDashboardResponse | null; syncHealth: SyncMaterializationHealthResponse | null }) {
+function SystemReadinessPanel({ readiness, data, syncHealth }: { readiness: SystemReadinessResponse | null; data: AdminDashboardResponse | null; syncHealth: SyncMaterializationHealthResponse | null }) {
   const summary = data?.summary;
   const backlog = summary?.admin_backlog;
   const syncSummary = syncHealth?.summary;
   const syncIssues = (syncSummary?.failed_count || 0) + (syncSummary?.conflict_count || 0) + (syncSummary?.dependency_missing_count || 0);
   const materializationGaps = (syncHealth?.materialization || []).reduce((sum, row) => sum + row.unmaterialized_count, 0);
-  const readinessItems = [
+  const fallbackItems = [
     {
       label: "Project setup",
       ready: (summary?.project_count || 0) > 0,
@@ -247,7 +252,9 @@ function SystemReadinessPanel({ data, syncHealth }: { data: AdminDashboardRespon
       href: syncIssues || materializationGaps ? "/sync-health?gapOnly=true" : "/sync-health",
     },
   ];
-  const readyCount = readinessItems.filter((item) => item.ready).length;
+  const readinessItems = readiness?.checks || fallbackItems;
+  const readyCount = readiness?.summary.ready_count ?? readinessItems.filter((item) => item.ready).length;
+  const checkCount = readiness?.summary.check_count ?? readinessItems.length;
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -257,7 +264,7 @@ function SystemReadinessPanel({ data, syncHealth }: { data: AdminDashboardRespon
           <p className="mt-1 text-sm text-gray-500">Quick sanity check for whether the tenant has usable configuration, synced field data, and clean operations signals.</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${readyCount === readinessItems.length ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>
-          {readyCount}/{readinessItems.length} ready
+          {readyCount}/{checkCount} ready
         </span>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
