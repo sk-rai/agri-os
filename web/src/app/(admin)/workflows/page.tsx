@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   workflowCatalogApi,
   type EnabledCropWorkflow,
@@ -37,8 +37,11 @@ export default function WorkflowsPage() {
   const [cropFilter, setCropFilter] = useState("");
   const [validationBlockers, setValidationBlockers] = useState<WorkflowDraftValidationBlockersResponse | null>(null);
   const [loadingBlockers, setLoadingBlockers] = useState(false);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     workflowCatalogApi
       .enabledCropWorkflows({ includeStages: true })
       .then((data) => {
@@ -46,8 +49,8 @@ export default function WorkflowsPage() {
         setSelectedId(data.workflows[0]?.workflow_template_id || null);
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { setLoading(false); setLastRefreshedAt(new Date()); });
+  }, [catalogRefresh]);
 
   const cropCodes = useMemo(
     () => Array.from(new Set(workflows.map((w) => w.crop_code))).sort(),
@@ -64,18 +67,29 @@ export default function WorkflowsPage() {
     setBacklogFilter(new URLSearchParams(window.location.search).get("filter") || "");
   }, []);
 
-  useEffect(() => {
-    if (backlogFilter !== "validation-blockers") return;
+  const loadValidationBlockers = useCallback(() => {
     setLoadingBlockers(true);
     workflowCatalogApi
       .draftValidationBlockers({ limit: 100 })
       .then(setValidationBlockers)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load validation blockers"))
       .finally(() => setLoadingBlockers(false));
-  }, [backlogFilter]);
+  }, []);
 
-  if (loading) return <div className="text-gray-500">Loading workflow catalog...</div>;
-  if (error) return <div className="text-red-500">Error: {error}</div>;
+  useEffect(() => {
+    if (backlogFilter !== "validation-blockers") return;
+    loadValidationBlockers();
+  }, [backlogFilter, loadValidationBlockers]);
+
+  const refreshWorkflowCatalog = () => {
+    setCatalogRefresh((value) => value + 1);
+    if (backlogFilter === "validation-blockers") loadValidationBlockers();
+  };
+
+  if (loading && workflows.length === 0) return <div className="text-gray-500">Loading workflow catalog...</div>;
+  if (error && workflows.length === 0) return <div className="text-red-500">Error: {error}</div>;
+
+  const refreshLabel = lastRefreshedAt ? lastRefreshedAt.toLocaleString() : "Not refreshed yet";
 
   return (
     <div>
@@ -86,19 +100,27 @@ export default function WorkflowsPage() {
             Read-only view of enabled crop-cycle templates, stages, recommendations, and linked input codes.
           </p>
         </div>
-        <select
-          value={cropFilter}
-          onChange={(e) => {
-            setCropFilter(e.target.value);
-            setSelectedId(null);
-          }}
-          className="rounded-lg border px-3 py-2 text-sm"
-        >
-          <option value="">All crops</option>
-          {cropCodes.map((code) => (
-            <option key={code} value={code}>{code}</option>
-          ))}
-        </select>
+        <div className="flex flex-col items-start gap-2 md:items-end">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={refreshWorkflowCatalog} disabled={loading || loadingBlockers} className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {loading || loadingBlockers ? "Refreshing..." : "Refresh"}
+            </button>
+            <select
+              value={cropFilter}
+              onChange={(e) => {
+                setCropFilter(e.target.value);
+                setSelectedId(null);
+              }}
+              className="rounded-lg border px-3 py-2 text-sm"
+            >
+              <option value="">All crops</option>
+              {cropCodes.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-gray-500">Last refreshed: {refreshLabel}</p>
+        </div>
       </div>
 
       {backlogFilter === "validation-blockers" ? (
