@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -81,6 +82,27 @@ def main():
         version_rows = parse_csv_response(by_version)
         check(len(version_rows) > 0, "version-filtered export returns rows")
         check({row["version_number"] for row in version_rows} == {version.version_number}, "version-filtered export returns requested version")
+
+        source = db.query(WorkflowTemplate, WorkflowTemplateVersion).join(
+            WorkflowTemplateVersion,
+            WorkflowTemplateVersion.template_id == WorkflowTemplate.id,
+        ).filter(
+            WorkflowTemplateVersion.status == "PUBLISHED",
+            WorkflowTemplate.crop_code == "RICE",
+            WorkflowTemplate.season_code == "KHARIF",
+        ).first()
+        check(source is not None, "published Rice/Kharif workflow exists for draft export")
+        source_template, source_version = source
+        draft_version_number = f"csv-exp-{uuid.uuid4().hex[:8]}"
+        clone = client.post(f"/api/v1/workflow-catalog/templates/{source_template.id}/versions/{source_version.id}/clone-draft", json={"version_number": draft_version_number})
+        check(clone.status_code == 200, "clone draft for CSV export returns 200", clone.text[:300])
+        draft_id = clone.json()["draft_version_id"]
+        draft_export = client.get(f"/api/v1/workflow-catalog/csv/workflows/export?template_version_id={draft_id}&status=ALL")
+        check(draft_export.status_code == 200, "workflow export can return a draft by version id", draft_export.text[:200])
+        draft_rows = parse_csv_response(draft_export)
+        check(len(draft_rows) > 0, "draft version export returns rows")
+        check({row["version_status"] for row in draft_rows} == {"DRAFT"}, "draft version export marks rows as DRAFT")
+        check({row["version_number"] for row in draft_rows} == {clone.json()["version"]}, "draft export returns requested draft version")
 
         print("=" * 72)
         print("Workflow CSV export validated")
