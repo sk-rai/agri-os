@@ -99,6 +99,15 @@ def main():
         check("taxonomy" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports taxonomy detail")
         check("propagation" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports propagation detail")
         check("crops" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports crop catalog detail")
+        check(by_code["PRODUCT_CATALOG"]["href"] == "/products", "product catalog readiness links to products admin")
+        check("manufacturers" in by_code["PRODUCT_CATALOG"]["detail"], "product catalog readiness reports manufacturer detail")
+        check("active packages" in by_code["PRODUCT_CATALOG"]["detail"], "product catalog readiness reports package detail")
+        check("pending apply" in by_code["PRODUCT_CATALOG"]["detail"], "product catalog readiness reports pending import detail")
+        dashboard_response = client.get("/api/v1/reports/admin-dashboard", headers=headers)
+        check(dashboard_response.status_code == 200, "admin dashboard returns product backlog fields", dashboard_response.text[:300])
+        backlog = dashboard_response.json()["summary"]["admin_backlog"]
+        check("product_csv_import_pending_count" in backlog, "dashboard backlog reports pending product CSV imports")
+        check("product_csv_import_invalid_count" in backlog, "dashboard backlog reports invalid product CSV imports")
 
         project = create_project(db)
         scoped_response = client.get(f"/api/v1/reports/system-readiness?project_id={project.id}", headers=headers)

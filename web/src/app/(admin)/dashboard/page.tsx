@@ -344,6 +344,13 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
       help: "Validated input CSV batches waiting for admin apply.",
     },
     {
+      label: "Product CSV imports",
+      count: (backlog?.product_csv_import_pending_count || 0) + (backlog?.product_csv_import_invalid_count || 0),
+      href: "/products",
+      tone: (backlog?.product_csv_import_invalid_count || 0) ? "red" : "blue",
+      help: "Validated or invalid product catalog CSV batches that need review/apply.",
+    },
+    {
       label: "Failed sync events",
       count: syncSummary?.failed_count || 0,
       href: "/sync-health?status=FAILED",
