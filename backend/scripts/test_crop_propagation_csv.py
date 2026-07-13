@@ -88,7 +88,14 @@ def main():
         report = valid.json()
         check(report["can_apply"], "valid propagation report can apply")
         check(report["status"] == "VALIDATED", "valid propagation batch is persisted as VALIDATED")
+        check(report["file_name"] == "propagation.csv", "valid propagation report includes uploaded file name")
+        check(bool(report.get("batch_id")), "valid propagation report includes import batch id")
+        required_summary_keys = {"total", "create", "update", "unchanged", "invalid", "errors", "warnings"}
+        check(required_summary_keys.issubset(set(report["summary"].keys())), "valid propagation report exposes admin summary contract", sorted(report["summary"].keys()))
+        check(report["summary"]["total"] == 1, "valid dry-run reports one uploaded row")
+        check(report["summary"]["invalid"] == 0, "valid dry-run reports zero invalid rows")
         check(report["summary"]["create"] == 1, "valid dry-run reports one create")
+        check(report["summary"]["errors"] == 0, "valid dry-run reports zero errors")
 
         apply_response = client.post(
             f"/api/v1/crop-catalog/csv/propagation-types/imports/{report['batch_id']}/apply",
@@ -97,7 +104,11 @@ def main():
         check(apply_response.status_code == 200, "validated propagation batch applies", apply_response.text)
         applied = apply_response.json()
         check(applied["status"] == "APPLIED", "applied propagation batch is marked APPLIED")
+        check(applied["batch_id"] == report["batch_id"], "applied propagation response echoes batch id")
+        required_applied_counts = {"created", "updated", "unchanged"}
+        check(required_applied_counts.issubset(set(applied["report"]["applied_counts"].keys())), "applied propagation response exposes applied count contract", sorted(applied["report"]["applied_counts"].keys()))
         check(applied["report"]["applied_counts"]["created"] == 1, "apply creates one propagation type")
+        check(applied["report"]["applied_counts"]["updated"] == 0, "apply reports zero updates")
         created = db.query(CropPropagationType).filter(CropPropagationType.code == "REGRESSION_PROPAGATION").first()
         check(created is not None and created.establishment_type == "VEGETATIVE", "applied propagation type exists in database")
 
