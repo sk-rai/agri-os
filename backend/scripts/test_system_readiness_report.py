@@ -19,6 +19,7 @@ REQUIRED_CHECKS = {
     "PROJECT_SETUP",
     "WORKFLOW_RUNTIME",
     "WORKFLOW_ASSIGNMENTS",
+    "CROP_SETUP",
     "INPUT_CATALOG",
     "PRODUCT_CATALOG",
     "FARMER_SYNC",
@@ -93,6 +94,11 @@ def main():
             check(isinstance(item["ready"], bool), f"{item['code']} ready is boolean")
             check(item["severity"] in {"OK", "WARN", "INFO"}, f"{item['code']} severity is valid")
             check(bool(item["label"]) and bool(item["detail"]) and bool(item["href"]), f"{item['code']} has label/detail/href")
+        by_code = {item["code"]: item for item in payload["checks"]}
+        check(by_code["CROP_SETUP"]["href"] == "/crop-taxonomy", "crop setup readiness links to crop setup admin")
+        check("taxonomy" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports taxonomy detail")
+        check("propagation" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports propagation detail")
+        check("crops" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports crop catalog detail")
 
         project = create_project(db)
         scoped_response = client.get(f"/api/v1/reports/system-readiness?project_id={project.id}", headers=headers)

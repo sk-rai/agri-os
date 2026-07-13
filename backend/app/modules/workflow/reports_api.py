@@ -23,6 +23,12 @@ from app.modules.master_data.models import (
     AgriculturalProductPackage,
     CropStageInputRule,
     InputCatalogImportBatch,
+    Crop,
+    CropCatalogImportBatch,
+    CropPropagationImportBatch,
+    CropPropagationType,
+    CropTaxonomyImportBatch,
+    CropTaxonomyNode,
     Manufacturer,
     InputCategory,
     ProjectInputAssignment,
@@ -859,6 +865,14 @@ def system_readiness_report(
     active_input_count = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True).count()
     published_input_count = db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").count()
     active_product_count = db.query(AgriculturalProduct).filter(AgriculturalProduct.is_active == True).count()
+    crop_taxonomy_count = db.query(CropTaxonomyNode).filter(CropTaxonomyNode.is_active == True).count()
+    crop_propagation_count = db.query(CropPropagationType).filter(CropPropagationType.is_active == True).count()
+    crop_catalog_count = db.query(Crop).filter(Crop.is_active == True).count()
+    crop_import_invalid_count = (
+        db.query(CropTaxonomyImportBatch).filter(CropTaxonomyImportBatch.status == "INVALID").count()
+        + db.query(CropPropagationImportBatch).filter(CropPropagationImportBatch.status == "INVALID").count()
+        + db.query(CropCatalogImportBatch).filter(CropCatalogImportBatch.status == "INVALID").count()
+    )
 
     backlog = _admin_backlog_counts(db, tenant_id=x_tenant_id, project_id=project_id)
     sync_payload = sync_materialization_health_report(
@@ -881,6 +895,7 @@ def system_readiness_report(
         _readiness_item("PROJECT_SETUP", "Project setup", project_count > 0, f"{project_count} projects available", "/projects"),
         _readiness_item("WORKFLOW_RUNTIME", "Workflow runtime", published_workflow_count > 0 and backlog["workflow_validation_blocker_count"] == 0, f"{published_workflow_count} published workflows, {backlog['workflow_validation_blocker_count']} blockers", "/workflows?filter=validation-blockers"),
         _readiness_item("WORKFLOW_ASSIGNMENTS", "Workflow assignments", (not project_id) or workflow_enablement_count > 0, f"{workflow_enablement_count} project workflow assignment rows", "/project-workflows", "INFO"),
+        _readiness_item("CROP_SETUP", "Crop setup", crop_taxonomy_count > 0 and crop_propagation_count > 0 and crop_catalog_count > 0 and crop_import_invalid_count == 0, f"{crop_taxonomy_count} taxonomy nodes, {crop_propagation_count} propagation types, {crop_catalog_count} crops, {crop_import_invalid_count} invalid import batches", "/crop-taxonomy"),
         _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
         _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0, f"{active_product_count} active products/brands", "/products", "INFO"),
         _readiness_item("FARMER_SYNC", "Farmer sync", farmer_count > 0, f"{farmer_count} farmers materialized", lookup_href),
