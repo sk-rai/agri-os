@@ -784,6 +784,8 @@ export default function WorkflowPreviewPage() {
             templateVersionId={preview.workflow_template_version_id}
             file={workflowCsvFile}
             validation={workflowCsvValidation}
+            draftValidation={draftValidation}
+            draftFreshness={draftFreshness}
             error={workflowCsvError}
             applyMessage={workflowCsvApplyMessage}
             validating={workflowCsvValidating}
@@ -2632,10 +2634,62 @@ function WorkflowAuditTrailPanel({
   );
 }
 
+
+function WorkflowCsvStatusChecklist({
+  hasFile,
+  validation,
+  applyMessage,
+  draftValidation,
+  draftFreshness,
+}: {
+  hasFile: boolean;
+  validation: WorkflowCsvValidationResponse | null;
+  applyMessage: string | null;
+  draftValidation: WorkflowDraftValidationResponse | null;
+  draftFreshness: WorkflowPreviewResponse["draft_freshness"] | null;
+}) {
+  const csvValidated = Boolean(validation);
+  const csvApplyReady = Boolean(validation?.can_apply);
+  const csvApplied = Boolean(applyMessage) || validation?.mode === "APPLY";
+  const draftValidationCurrent = Boolean(draftValidation?.can_publish && draftFreshness?.validation_current !== false);
+  const items = [
+    { label: "CSV selected", detail: hasFile ? "A CSV file is selected for validation/apply." : "Choose or download/edit a workflow CSV first.", status: hasFile ? "ok" : "pending" },
+    { label: "CSV validated", detail: csvValidated ? `${validation?.summary.errors || 0} errors, ${validation?.summary.warnings || 0} warnings.` : "Run CSV validation before applying.", status: !csvValidated ? "pending" : csvApplyReady ? "ok" : "error" },
+    { label: "Apply-ready", detail: csvApplyReady ? "CSV can be applied to this draft with an audit reason." : "Fix CSV errors before apply is allowed.", status: csvApplyReady ? "ok" : csvValidated ? "error" : "pending" },
+    { label: "Applied to draft", detail: csvApplied ? "CSV apply has completed in this browser session." : "Apply has not run in this session.", status: csvApplied ? "ok" : "pending" },
+    { label: "Draft validation", detail: draftValidationCurrent ? "Draft validation is current and publish-ready." : "Run draft validation after CSV apply before publishing.", status: draftValidationCurrent ? "ok" : "pending" },
+  ];
+
+  return (
+    <div className="mb-4 rounded border border-blue-100 bg-blue-50 p-4">
+      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-blue-950">CSV workflow status checklist</h3>
+          <p className="text-xs text-blue-800">A quick guardrail for the export/edit/validate/apply/validate/publish sequence.</p>
+        </div>
+        <Badge>{items.filter((item) => item.status === "ok").length}/{items.length} complete</Badge>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        {items.map((item) => (
+          <div key={item.label} className={`rounded border p-2 ${item.status === "ok" ? "border-green-200 bg-white text-green-800" : item.status === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-gray-200 bg-white text-gray-600"}`}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold">{item.label}</p>
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase">{item.status === "ok" ? "OK" : item.status === "error" ? "Fix" : "Next"}</span>
+            </div>
+            <p className="mt-1 text-[11px] opacity-80">{item.detail}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkflowCsvValidationPanel({
   templateVersionId,
   file,
   validation,
+  draftValidation,
+  draftFreshness,
   error,
   applyMessage,
   validating,
@@ -2650,6 +2704,8 @@ function WorkflowCsvValidationPanel({
   templateVersionId: string;
   file: File | null;
   validation: WorkflowCsvValidationResponse | null;
+  draftValidation: WorkflowDraftValidationResponse | null;
+  draftFreshness: WorkflowPreviewResponse["draft_freshness"] | null;
   error: string | null;
   applyMessage: string | null;
   validating: boolean;
@@ -2692,6 +2748,14 @@ function WorkflowCsvValidationPanel({
           ) : null}
         </div>
       </div>
+
+      <WorkflowCsvStatusChecklist
+        hasFile={Boolean(file)}
+        validation={validation}
+        applyMessage={applyMessage}
+        draftValidation={draftValidation}
+        draftFreshness={draftFreshness}
+      />
 
       <div className="rounded border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
