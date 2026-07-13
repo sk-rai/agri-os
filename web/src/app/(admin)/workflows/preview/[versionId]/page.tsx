@@ -792,6 +792,7 @@ export default function WorkflowPreviewPage() {
             applying={workflowCsvApplying}
             applyReason={workflowCsvApplyReason}
             canEditDraft={canEditDraft}
+            draftValidating={draftValidating}
             onApplyReasonChange={setWorkflowCsvApplyReason}
             onFileChange={(file) => {
               setWorkflowCsvFile(file);
@@ -801,6 +802,7 @@ export default function WorkflowPreviewPage() {
             }}
             onValidate={validateWorkflowCsv}
             onApply={applyWorkflowCsv}
+            onValidateDraft={validateDraft}
           />
           <WorkflowAuditTrailPanel
             audit={workflowAudit}
@@ -2696,10 +2698,12 @@ function WorkflowCsvValidationPanel({
   applying,
   applyReason,
   canEditDraft,
+  draftValidating,
   onApplyReasonChange,
   onFileChange,
   onValidate,
   onApply,
+  onValidateDraft,
 }: {
   templateVersionId: string;
   file: File | null;
@@ -2712,10 +2716,12 @@ function WorkflowCsvValidationPanel({
   applying: boolean;
   applyReason: string;
   canEditDraft: boolean;
+  draftValidating: boolean;
   onApplyReasonChange: (reason: string) => void;
   onFileChange: (file: File | null) => void;
   onValidate: () => void;
   onApply: () => void;
+  onValidateDraft: () => void;
 }) {
   const rowsWithIssues = validation?.rows.filter((row) => row.errors.length || row.warnings.length) || [];
   const previewRows = rowsWithIssues.length ? rowsWithIssues.slice(0, 12) : (validation?.rows || []).slice(0, 12);
@@ -2756,6 +2762,24 @@ function WorkflowCsvValidationPanel({
         draftValidation={draftValidation}
         draftFreshness={draftFreshness}
       />
+
+      {applyMessage ? (
+        <div className="mb-4 rounded border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="font-semibold">CSV applied. Next: validate the draft before publishing.</p>
+              <p className="mt-1 text-xs text-green-800">The draft changed, so publish validation must be refreshed. Review the audit trail if you need to confirm what changed.</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <button type="button" disabled={draftValidating} onClick={onValidateDraft} className="rounded bg-green-700 px-3 py-1.5 font-semibold text-white hover:bg-green-800 disabled:cursor-wait disabled:opacity-60">
+                {draftValidating ? "Validating draft..." : "Run draft validation"}
+              </button>
+              <button type="button" onClick={() => document.getElementById("workflow-audit-trail-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded border border-green-200 bg-white px-3 py-1.5 font-semibold text-green-700 hover:bg-green-50">Review audit</button>
+              <button type="button" onClick={() => document.getElementById("draft-validation-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded border border-green-200 bg-white px-3 py-1.5 font-semibold text-green-700 hover:bg-green-50">Publish readiness</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
