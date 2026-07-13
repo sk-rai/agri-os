@@ -157,6 +157,7 @@ export default function WorkflowPreviewPage() {
   const [workflowCsvApplyReason, setWorkflowCsvApplyReason] = useState("");
   const [workflowCsvApplying, setWorkflowCsvApplying] = useState(false);
   const [workflowCsvApplyMessage, setWorkflowCsvApplyMessage] = useState<string | null>(null);
+  const [workflowCsvApplyReport, setWorkflowCsvApplyReport] = useState<WorkflowCsvValidationResponse | null>(null);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
   const [publishOutcome, setPublishOutcome] = useState<PublishOutcome | null>(null);
   const [postValidationAudit, setPostValidationAudit] = useState<WorkflowAuditResponse | null>(null);
@@ -362,12 +363,14 @@ export default function WorkflowPreviewPage() {
       setWorkflowCsvValidation(report);
       if (!report.can_apply) {
         setWorkflowCsvError("CSV was not applied because validation errors remain.");
+        setWorkflowCsvApplyReport(null);
         return;
       }
       const refreshed = await workflowCatalogApi.draftPreview(preview.workflow_template_version_id);
       setPreview(refreshed);
       setDraftValidation(null);
       setWorkflowCsvApplyMessage(report.message || "Workflow CSV applied to draft.");
+      setWorkflowCsvApplyReport(report);
       workflowCatalogApi
         .draftPublishImpact(preview.workflow_template_version_id, { archivePrevious: true })
         .then(setPublishImpact)
@@ -788,6 +791,7 @@ export default function WorkflowPreviewPage() {
             draftFreshness={draftFreshness}
             error={workflowCsvError}
             applyMessage={workflowCsvApplyMessage}
+            applyReport={workflowCsvApplyReport}
             validating={workflowCsvValidating}
             applying={workflowCsvApplying}
             applyReason={workflowCsvApplyReason}
@@ -799,6 +803,7 @@ export default function WorkflowPreviewPage() {
               setWorkflowCsvValidation(null);
               setWorkflowCsvError(null);
               setWorkflowCsvApplyMessage(null);
+              setWorkflowCsvApplyReport(null);
             }}
             onValidate={validateWorkflowCsv}
             onApply={applyWorkflowCsv}
@@ -2694,6 +2699,7 @@ function WorkflowCsvValidationPanel({
   draftFreshness,
   error,
   applyMessage,
+  applyReport,
   validating,
   applying,
   applyReason,
@@ -2712,6 +2718,7 @@ function WorkflowCsvValidationPanel({
   draftFreshness: WorkflowPreviewResponse["draft_freshness"] | null;
   error: string | null;
   applyMessage: string | null;
+  applyReport: WorkflowCsvValidationResponse | null;
   validating: boolean;
   applying: boolean;
   applyReason: string;
@@ -2780,6 +2787,8 @@ function WorkflowCsvValidationPanel({
           </div>
         </div>
       ) : null}
+
+      {applyReport ? <WorkflowCsvApplySummary report={applyReport} /> : null}
 
       <div className="rounded border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2873,6 +2882,35 @@ function WorkflowCsvValidationPanel({
           {validation.rows.length > previewRows.length ? <p className="text-xs text-gray-500">Showing {previewRows.length} of {validation.rows.length} rows, prioritizing rows with issues.</p> : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+
+function WorkflowCsvApplySummary({ report }: { report: WorkflowCsvValidationResponse }) {
+  const changedStages = report.summary.stage_create + report.summary.stage_update;
+  return (
+    <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+      <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="font-semibold">Applied CSV summary</p>
+          <p className="mt-1 text-xs text-blue-800">
+            {report.file_name || "Workflow CSV"} replaced the draft workflow structure. Use this summary for a quick operator check, then validate the draft before publish.
+          </p>
+        </div>
+        <Badge>Mode {report.mode}</Badge>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <CsvStat label="Rows applied" value={report.summary.total_rows} />
+        <CsvStat label="Stages" value={report.summary.stages} />
+        <CsvStat label="Recommendations" value={report.summary.recommendations} />
+        <CsvStat label="New stages" value={report.summary.stage_create} />
+        <CsvStat label="Updated stages" value={report.summary.stage_update} />
+        <CsvStat label="Warnings" value={report.summary.warnings} />
+      </div>
+      <p className="mt-3 text-xs text-blue-800">
+        Stage impact: {changedStages} changed, {report.summary.stage_unchanged} unchanged. Recommendations are counted after the full draft replacement.
+      </p>
     </div>
   );
 }
