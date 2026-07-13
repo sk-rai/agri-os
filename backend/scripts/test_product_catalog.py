@@ -63,6 +63,8 @@ def main():
         check(repeat_apply.status_code==409,"applied product CSV batch cannot be applied twice")
         csv_catalog=client.get("/api/v1/product-catalog/products?input_code=UREA_46_N")
         check(any(x["code"]==CSV_PRODUCT and x["packages"][0]["sku"]=="REG-CSV-45KG" for x in csv_catalog.json()["products"]),"applied product CSV creates product and package")
+        audit_actions={event.action for event in db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([CSV_MFG,CSV_PRODUCT,"REG-CSV-45KG"])).all()}
+        check({"IMPORT_CREATE_MANUFACTURER","IMPORT_CREATE_PRODUCT","IMPORT_CREATE_PACKAGE"}.issubset(audit_actions),"product CSV apply records manufacturer/product/package audit events")
         invalid_csv="manufacturer_code,manufacturer_name,product_code,canonical_input_code,brand_name,package_sku,package_quantity,package_unit,package_label\nREGRESSION_AGRO,Regression Agro,BAD_PRODUCT,NO_SUCH_INPUT,,REG-UREA-45KG,-1,kg,\n"
         invalid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",invalid_csv.encode("utf-8"),"text/csv")})
         invalid_batch=invalid_csv_response.json()
