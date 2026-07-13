@@ -68,6 +68,8 @@ The master-data import foundation now includes these safe CSV lifecycles:
 
 Recommended order for crop onboarding:
 
+See also: [Workflow CSV lifecycle](workflow-csv-lifecycle.md) for the current export/edit/validate/apply/publish operator flow.
+
 1. Import/apply taxonomy nodes first.
 2. Import/apply propagation types next.
 3. Import/apply crop catalog rows after their reference codes exist.
