@@ -52,6 +52,32 @@ function dashboardProjectTraceHref(data: AdminDashboardResponse, params: Record<
   })}`;
 }
 
+const readinessPriority: Record<string, number> = {
+  "Project setup": 1,
+  "Crop setup": 2,
+  "Workflow runtime": 3,
+  "Workflow assignments": 4,
+  "Input catalog": 5,
+  "Product catalog": 6,
+  "Farmer sync": 7,
+  "Parcel geometry": 8,
+  "Activity evidence": 9,
+  "Sync health": 10,
+};
+
+function readinessCategory(label: string) {
+  if (["Project setup", "Crop setup", "Workflow runtime", "Workflow assignments", "Input catalog", "Product catalog"].includes(label)) return "Setup";
+  if (["Farmer sync", "Parcel geometry", "Activity evidence"].includes(label)) return "Field data";
+  return "Operations";
+}
+
+function sortReadinessItems<T extends { label: string; ready: boolean }>(items: T[]) {
+  return [...items].sort((left, right) => {
+    if (left.ready !== right.ready) return Number(left.ready) - Number(right.ready);
+    return (readinessPriority[left.label] || 99) - (readinessPriority[right.label] || 99);
+  });
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<AdminDashboardResponse | null>(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -252,7 +278,7 @@ function SystemReadinessPanel({ readiness, data, syncHealth }: { readiness: Syst
       href: syncIssues || materializationGaps ? "/sync-health?gapOnly=true" : "/sync-health",
     },
   ];
-  const readinessItems = readiness?.checks || fallbackItems;
+  const readinessItems = sortReadinessItems(readiness?.checks || fallbackItems);
   const readyCount = readiness?.summary.ready_count ?? readinessItems.filter((item) => item.ready).length;
   const checkCount = readiness?.summary.check_count ?? readinessItems.length;
 
@@ -275,10 +301,14 @@ function SystemReadinessPanel({ readiness, data, syncHealth }: { readiness: Syst
 }
 
 function ReadinessItem({ label, ready, detail, href }: { label: string; ready: boolean; detail: string; href: string }) {
+  const category = readinessCategory(label);
   return (
     <Link href={href} className={`rounded-lg border p-3 transition hover:-translate-y-0.5 hover:shadow-md ${ready ? "border-green-200 bg-green-50 text-green-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold">{label}</p>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-60">{category}</p>
+          <p className="mt-1 text-sm font-semibold">{label}</p>
+        </div>
         <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-bold">{ready ? "Ready" : "Check"}</span>
       </div>
       <p className="mt-2 text-xs opacity-80">{detail}</p>
