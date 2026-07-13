@@ -22,6 +22,8 @@ def cleanup(db, user=None):
         db.query(ProjectProductApproval).filter(ProjectProductApproval.product_id==product.id).delete(synchronize_session=False)
         db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.product_id==product.id).delete(synchronize_session=False)
         db.query(AgriculturalProduct).filter(AgriculturalProduct.id==product.id).delete(synchronize_session=False)
+    from app.modules.master_data.models import ProductCatalogImportBatch
+    db.query(ProductCatalogImportBatch).filter(ProductCatalogImportBatch.file_name=="products.csv").delete(synchronize_session=False)
     db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([MFG,PRODUCT])).delete(synchronize_session=False)
     db.query(Manufacturer).filter(Manufacturer.code==MFG).delete(synchronize_session=False)
     db.query(Project).filter(Project.id==PROJECT).delete(synchronize_session=False)
@@ -53,10 +55,16 @@ def main():
         check(export.status_code==200 and PRODUCT in export.text and "REG-UREA-45KG" in export.text,"product CSV export includes created product package")
         valid_csv="manufacturer_code,manufacturer_name,manufacturer_short_name,manufacturer_country,product_code,canonical_input_code,brand_name,composition,registration_number,registration_authority,registration_expiry_date,product_country,product_status,package_sku,package_quantity,package_unit,package_label,package_barcode\nREGRESSION_CSV_MFG,Regression CSV Manufacturer,RCM,India,REGRESSION_CSV_PRODUCT,UREA_46_N,Regression CSV Product,46% Nitrogen,REG-CSV-001,Regression Authority,2028-12-31,India,ACTIVE,REG-CSV-45KG,45,kg,45 kg bag,\n"
         valid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",valid_csv.encode("utf-8"),"text/csv")})
-        check(valid_csv_response.status_code==200 and valid_csv_response.json()["can_apply"] and valid_csv_response.json()["summary"]["create"]==1,"product CSV validation accepts create row")
+        valid_batch=valid_csv_response.json()
+        check(valid_csv_response.status_code==200 and valid_batch["can_apply"] and valid_batch["report"]["summary"]["create"]==1,"product CSV validation accepts create row")
         invalid_csv="manufacturer_code,manufacturer_name,product_code,canonical_input_code,brand_name,package_sku,package_quantity,package_unit,package_label\nREGRESSION_AGRO,Regression Agro,BAD_PRODUCT,NO_SUCH_INPUT,,REG-UREA-45KG,-1,kg,\n"
         invalid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",invalid_csv.encode("utf-8"),"text/csv")})
-        check(invalid_csv_response.status_code==200 and not invalid_csv_response.json()["can_apply"] and invalid_csv_response.json()["summary"]["errors"]>0,"product CSV validation reports invalid rows")
+        invalid_batch=invalid_csv_response.json()
+        check(invalid_csv_response.status_code==200 and not invalid_batch["can_apply"] and invalid_batch["report"]["summary"]["errors"]>0,"product CSV validation reports invalid rows")
+        history=client.get("/api/v1/product-catalog/csv/imports?limit=10")
+        check(history.status_code==200 and valid_batch["batch_id"] in {item["batch_id"] for item in history.json()["imports"]},"product CSV import history includes validated batch")
+        invalid_history=client.get("/api/v1/product-catalog/csv/imports?status=INVALID&limit=10")
+        check(invalid_history.status_code==200 and all(item["status"]=="INVALID" for item in invalid_history.json()["imports"]),"product CSV import history filters invalid batches")
         catalog=TestClient(app).get(f"/api/v1/product-catalog/products?input_code=UREA_46_N", headers={"X-Tenant-ID":"default"})
         check(catalog.status_code==200 and any(x["code"]==PRODUCT for x in catalog.json()["products"]),"runtime lists product by canonical input")
         approval=client.put(f"/api/v1/product-catalog/projects/{PROJECT}/products/{PRODUCT}",json={"enabled":True,"preferred":True,"display_order":1,"reason":"Preferred project urea"})

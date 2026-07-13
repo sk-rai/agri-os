@@ -8,6 +8,7 @@ import {
   type CropStageInputRuleDto,
   type ManufacturerDto,
   type ProductCsvValidationResponse,
+  type ProductCsvImportBatch,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
@@ -21,6 +22,7 @@ export default function ProductsPage() {
   const [busy, setBusy] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvReport, setCsvReport] = useState<ProductCsvValidationResponse | null>(null);
+  const [csvImports, setCsvImports] = useState<ProductCsvImportBatch[]>([]);
   const [csvBusy, setCsvBusy] = useState(false);
   const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
   const [mfg, setMfg] = useState({ code: "", canonical_name: "", short_name: "", country: "India", reason: "Created in admin" });
@@ -44,9 +46,16 @@ export default function ProductsPage() {
       setRules(data.rules);
     } catch (e) { setError(e); }
   };
+  const loadProductImportHistory = async () => {
+    try {
+      const data = await productCatalogApi.importHistory({ limit: 5 });
+      setCsvImports(data.imports);
+    } catch (e) { setError(e); }
+  };
   useEffect(() => {
     void load();
     void loadRules();
+    void loadProductImportHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,7 +69,7 @@ export default function ProductsPage() {
   const validateProductCsv = async () => {
     if (!csvFile) { setError("Choose a product catalog CSV file first."); return; }
     setCsvBusy(true); setError(null); setCsvReport(null);
-    try { setCsvReport(await productCatalogApi.validateCsv(csvFile)); }
+    try { const batch = await productCatalogApi.validateCsv(csvFile); setCsvReport(batch.report); await loadProductImportHistory(); }
     catch (e) { setError(e); }
     finally { setCsvBusy(false); }
   };
@@ -88,6 +97,7 @@ export default function ProductsPage() {
         {csvFile ? <span className="text-xs text-blue-800">Selected: {csvFile.name}</span> : null}
       </div>
       {csvReport ? <ProductCsvValidationPanel report={csvReport} /> : null}
+      <ProductCsvImportHistoryPanel imports={csvImports} onRefresh={loadProductImportHistory} />
     </section>
     <div className="mt-6 grid gap-5 xl:grid-cols-3">
       <Panel title="New manufacturer"><Field label="Code" value={mfg.code} set={v => setMfg({ ...mfg, code: v })} /><Field label="Name" value={mfg.canonical_name} set={v => setMfg({ ...mfg, canonical_name: v })} /><Field label="Short name" value={mfg.short_name} set={v => setMfg({ ...mfg, short_name: v })} /><button disabled={busy || !canEditCatalog || !mfg.code || !mfg.canonical_name} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={createMfg} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create manufacturer</button></Panel>
@@ -96,6 +106,32 @@ export default function ProductsPage() {
     </div>
     <Panel title="Crop-stage input compatibility & dosage"><div className="grid gap-3 md:grid-cols-4"><Field label="Crop" value={ruleDraft.crop_code} set={v => setRuleDraft({ ...ruleDraft, crop_code: v })} /><Field label="Season" value={ruleDraft.season_code} set={v => setRuleDraft({ ...ruleDraft, season_code: v })} /><Field label="Stage" value={ruleDraft.stage_code} set={v => setRuleDraft({ ...ruleDraft, stage_code: v })} /><Field label="Activity" value={ruleDraft.activity_type} set={v => setRuleDraft({ ...ruleDraft, activity_type: v })} /><Field label="Input code" value={ruleDraft.input_code} set={v => setRuleDraft({ ...ruleDraft, input_code: v })} /><Field label="Quantity" value={ruleDraft.dosage_quantity} set={v => setRuleDraft({ ...ruleDraft, dosage_quantity: v })} /><Field label="Unit" value={ruleDraft.dosage_unit} set={v => setRuleDraft({ ...ruleDraft, dosage_unit: v })} /><Field label="Per area" value={ruleDraft.dosage_area_unit} set={v => setRuleDraft({ ...ruleDraft, dosage_area_unit: v })} /><Field label="Min qty" value={ruleDraft.min_quantity} set={v => setRuleDraft({ ...ruleDraft, min_quantity: v })} /><Field label="Max qty" value={ruleDraft.max_quantity} set={v => setRuleDraft({ ...ruleDraft, max_quantity: v })} /><Field label="Project ID (optional)" value={ruleDraft.project_id} set={v => setRuleDraft({ ...ruleDraft, project_id: v })} /><Field label="Reason" value={ruleDraft.reason} set={v => setRuleDraft({ ...ruleDraft, reason: v })} /></div><div className="mt-3 grid gap-3 md:grid-cols-3"><Field label="Application method" value={ruleDraft.application_method} set={v => setRuleDraft({ ...ruleDraft, application_method: v })} /><Field label="Timing note" value={ruleDraft.timing_note} set={v => setRuleDraft({ ...ruleDraft, timing_note: v })} /><Field label="Safety note" value={ruleDraft.safety_note} set={v => setRuleDraft({ ...ruleDraft, safety_note: v })} /></div><button disabled={busy || !canEditCatalog || !ruleDraft.crop_code || !ruleDraft.stage_code || !ruleDraft.input_code} title={canEditCatalog ? undefined : "Your role cannot edit input dosage rules."} onClick={createRule} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create dosage rule</button></Panel>
     <div className="mt-6 grid gap-6 xl:grid-cols-2"><DataTable title="Branded products" headers={["Code", "Brand", "Canonical input", "Manufacturer", "Packages", "Status"]}>{products.map(x => <tr key={x.code}><td className="p-3 font-mono text-xs">{x.code}</td><td className="p-3 font-medium">{x.brand_name}</td><td className="p-3">{x.canonical_input_code}</td><td className="p-3">{x.manufacturer_name}</td><td className="p-3">{x.packages.map(p => p.pack_label).join(", ")}</td><td className="p-3"><button disabled={!canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={async () => { if (!canEditCatalog) return; await productCatalogApi.updateProduct(x.code, { status: x.status === "ACTIVE" ? "DISCONTINUED" : "ACTIVE", reason: "Admin status change" }); await load(); }} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{x.status}</button></td></tr>)}</DataTable><div><div className="mb-3 grid grid-cols-4 gap-2"><Field label="Rule crop" value={ruleFilter.crop_code} set={v => setRuleFilter({ ...ruleFilter, crop_code: v })} /><Field label="Rule stage" value={ruleFilter.stage_code} set={v => setRuleFilter({ ...ruleFilter, stage_code: v })} /><Field label="Rule activity" value={ruleFilter.activity_type} set={v => setRuleFilter({ ...ruleFilter, activity_type: v })} /><button onClick={loadRules} className="mt-5 rounded border px-3 py-2 text-sm">Refresh</button></div><DataTable title="Dosage rules" headers={["Scope", "Crop/stage", "Input", "Dosage", "Enabled"]}>{rules.map(r => <tr key={r.id}><td className="p-3">{r.rule_scope}</td><td className="p-3"><div>{r.crop_code} · {r.stage_code}</div><div className="text-xs text-gray-500">{r.activity_type}</div></td><td className="p-3"><div className="font-medium">{r.input_name}</div><div className="font-mono text-xs">{r.input_code}</div></td><td className="p-3">{r.dosage.quantity || "-"} {r.dosage.unit || ""}/{r.dosage.area_unit}</td><td className="p-3"><button disabled={!canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot edit input dosage rules."} onClick={() => toggleRule(r)} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{r.enabled ? "Enabled" : "Disabled"}</button></td></tr>)}</DataTable></div></div>
+  </div>;
+}
+function ProductCsvImportHistoryPanel({ imports, onRefresh }: { imports: ProductCsvImportBatch[]; onRefresh: () => void }) {
+  return <div className="mt-4 rounded border border-blue-100 bg-white p-4 text-sm text-gray-900">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <p className="font-semibold">Recent product CSV validations</p>
+        <p className="mt-1 text-xs text-gray-500">Validated and invalid batches are retained briefly so admins can review operator progress before apply support is enabled.</p>
+      </div>
+      <button onClick={onRefresh} className="rounded border px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Refresh</button>
+    </div>
+    {imports.length ? <div className="mt-3 overflow-x-auto">
+      <table className="min-w-full text-left text-xs">
+        <thead className="text-gray-500"><tr><th className="px-2 py-2">Created</th><th className="px-2 py-2">File</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Issues</th><th className="px-2 py-2">Expires</th></tr></thead>
+        <tbody>
+          {imports.map((item) => <tr key={item.batch_id} className="border-t">
+            <td className="px-2 py-2">{new Date(item.created_at).toLocaleString()}</td>
+            <td className="px-2 py-2">{item.file_name || "-"}</td>
+            <td className="px-2 py-2"><span className={`rounded px-2 py-1 font-semibold ${item.status === "VALIDATED" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{item.status}</span></td>
+            <td className="px-2 py-2">{item.report.summary.total}</td>
+            <td className="px-2 py-2">{item.report.summary.errors} errors · {item.report.summary.warnings} warnings</td>
+            <td className="px-2 py-2">{new Date(item.expires_at).toLocaleString()}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div> : <p className="mt-3 rounded bg-gray-50 p-3 text-xs text-gray-500">No product CSV validation batches yet.</p>}
   </div>;
 }
 function ProductCsvValidationPanel({ report }: { report: ProductCsvValidationResponse }) {

@@ -1,6 +1,6 @@
 """Manufacturer, branded product, package, and project approval APIs."""
 import csv
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import io
 from decimal import Decimal, InvalidOperation
 from typing import Optional
@@ -16,7 +16,7 @@ from app.core.database import get_db
 from app.modules.farmer.models import Project
 from app.modules.master_data.models import (
     AgriculturalInput, AgriculturalProduct, AgriculturalProductPackage, Manufacturer,
-    ProductCatalogAuditEvent, ProjectProductApproval,
+    ProductCatalogAuditEvent, ProductCatalogImportBatch, ProjectProductApproval,
 )
 
 router = APIRouter(prefix="/api/v1/product-catalog", tags=["product-catalog"])
@@ -172,6 +172,20 @@ def record_audit(db, tenant, principal, entity_type, entity_id, entity_code, act
     db.add(ProductCatalogAuditEvent(id=uuid.uuid4(), tenant_id=tenant, entity_type=entity_type, entity_id=entity_id,
         entity_code=entity_code, actor_id=principal.user_id, action=action, before_payload=before, after_payload=after,
         reason=reason, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)))
+
+
+def _product_import_batch_payload(batch: ProductCatalogImportBatch) -> dict:
+    report = batch.validation_report or {}
+    return {
+        "batch_id": str(batch.id),
+        "file_name": batch.file_name,
+        "status": batch.status,
+        "can_apply": batch.status == "VALIDATED" and report.get("can_apply", False) and batch.expires_at > datetime.now(timezone.utc),
+        "expires_at": batch.expires_at.isoformat(),
+        "applied_at": batch.applied_at.isoformat() if batch.applied_at else None,
+        "created_at": batch.created_at.isoformat(),
+        "report": report,
+    }
 
 
 def _product_csv_row(product: AgriculturalProduct, package: Optional[AgriculturalProductPackage] = None) -> dict:
@@ -330,6 +344,7 @@ async def _read_product_csv_upload(file: UploadFile) -> str:
 async def validate_product_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     text = await _read_product_csv_upload(file)
@@ -372,7 +387,7 @@ async def validate_product_csv(
         else:
             summary["unchanged"] += 1
     can_apply = summary["errors"] == 0
-    return {
+    report = {
         "schema_version": "product_catalog_csv_validation.v1",
         "mode": "VALIDATE_ONLY",
         "file_name": file.filename,
@@ -380,6 +395,43 @@ async def validate_product_csv(
         "summary": summary,
         "rows": rows,
         "message": "Validation passed. Product CSV can be applied once apply endpoint is enabled." if can_apply else "Validation failed. Fix errors and upload again.",
+    }
+    now = datetime.now(timezone.utc)
+    batch = ProductCatalogImportBatch(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        actor_id=principal.user_id,
+        file_name=(file.filename or "product-catalog.csv")[:255],
+        status="VALIDATED" if can_apply else "INVALID",
+        normalized_rows=[row["normalized"] for row in rows if not row["errors"]],
+        validation_report=report,
+        expires_at=now + timedelta(hours=2),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(batch)
+    db.commit()
+    return _product_import_batch_payload(batch)
+
+
+@router.get("/csv/imports")
+def product_csv_import_history(
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(ProductCatalogImportBatch).filter(ProductCatalogImportBatch.tenant_id == x_tenant_id, ProductCatalogImportBatch.is_active == True)
+    if status:
+        query = query.filter(ProductCatalogImportBatch.status == status.upper())
+    rows = query.order_by(ProductCatalogImportBatch.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "product_catalog_imports.v1",
+        "tenant_id": x_tenant_id,
+        "status": status.upper() if status else None,
+        "count": len(rows),
+        "imports": [_product_import_batch_payload(row) for row in rows],
     }
 
 
