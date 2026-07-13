@@ -409,6 +409,14 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       destination: "Workflow catalog",
     },
     {
+      title: "Crop setup & imports",
+      description: "Manage crop taxonomy, propagation methods, crop catalog CSV imports, and onboarding order.",
+      href: "/crop-taxonomy",
+      metric: "Crops",
+      accent: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      destination: "Crop setup",
+    },
+    {
       title: "Input catalog",
       description: "Manage inputs, products, dosage rules, and project input visibility.",
       href: "/inputs",
