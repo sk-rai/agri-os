@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import uuid
 import re
+import csv
+import io
+import json
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -41,6 +45,181 @@ from app.modules.workflow.template_service import (
 )
 
 router = APIRouter(prefix="/api/v1/workflow-catalog", tags=["workflow-catalog"])
+
+
+WORKFLOW_CSV_COLUMNS = [
+    "template_code",
+    "crop_code",
+    "season_code",
+    "propagation_type_code",
+    "version_number",
+    "version_status",
+    "stage_order",
+    "stage_code",
+    "stage_name_en",
+    "stage_name_hi",
+    "duration_days",
+    "stage_type",
+    "phase",
+    "description_en",
+    "description_hi",
+    "farmer_actions_json",
+    "typical_inputs_json",
+    "key_observations_json",
+    "recommendation_sort_order",
+    "recommendation_day_offset",
+    "activity_type",
+    "input_code",
+    "input_name",
+    "typical_quantity",
+    "typical_cost_per_acre",
+    "is_critical",
+    "recommendation_description_en",
+    "recommendation_description_hi",
+    "recommendation_metadata_json",
+]
+
+
+def _csv_download(rows: list[dict], fieldnames: list[str], file_name: str) -> Response:
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
+
+
+def _localized(value, lang: str) -> str:
+    if isinstance(value, dict):
+        return str(value.get(lang) or value.get("en") or next(iter(value.values()), "") or "")
+    return str(value or "")
+
+
+def _json_compact(value) -> str:
+    return json.dumps(value or ([] if isinstance(value, list) else {}), ensure_ascii=False, separators=(",", ":"))
+
+
+def _workflow_csv_row(template: WorkflowTemplate, version: WorkflowTemplateVersion, stage: WorkflowTemplateStage, recommendation: Optional[WorkflowTemplateRecommendation] = None) -> dict:
+    rec_description = recommendation.description if recommendation else None
+    return {
+        "template_code": template.code,
+        "crop_code": template.crop_code,
+        "season_code": template.season_code,
+        "propagation_type_code": template.propagation_type_code or "",
+        "version_number": version.version_number,
+        "version_status": version.status,
+        "stage_order": stage.stage_order,
+        "stage_code": stage.stage_code,
+        "stage_name_en": _localized(stage.stage_name, "en"),
+        "stage_name_hi": _localized(stage.stage_name, "hi"),
+        "duration_days": stage.duration_days,
+        "stage_type": stage.stage_type or "",
+        "phase": stage.phase or "",
+        "description_en": _localized(stage.description, "en"),
+        "description_hi": _localized(stage.description, "hi"),
+        "farmer_actions_json": _json_compact(stage.farmer_actions or []),
+        "typical_inputs_json": _json_compact(stage.typical_inputs or []),
+        "key_observations_json": _json_compact(stage.key_observations or []),
+        "recommendation_sort_order": recommendation.sort_order if recommendation else "",
+        "recommendation_day_offset": recommendation.day_offset if recommendation else "",
+        "activity_type": recommendation.activity_type if recommendation else "",
+        "input_code": recommendation.input_code if recommendation and recommendation.input_code else "",
+        "input_name": recommendation.input_name if recommendation else "",
+        "typical_quantity": recommendation.typical_quantity if recommendation and recommendation.typical_quantity else "",
+        "typical_cost_per_acre": str(recommendation.typical_cost_per_acre) if recommendation and recommendation.typical_cost_per_acre is not None else "",
+        "is_critical": str(bool(recommendation.is_critical)).lower() if recommendation else "",
+        "recommendation_description_en": _localized(rec_description, "en"),
+        "recommendation_description_hi": _localized(rec_description, "hi"),
+        "recommendation_metadata_json": _json_compact(recommendation.metadata_ if recommendation else {}),
+    }
+
+
+@router.get("/csv/workflows/template")
+def download_workflow_csv_template(
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    row = {
+        "template_code": "RICE_KHARIF_NURSERY_TRANSPLANT",
+        "crop_code": "RICE",
+        "season_code": "KHARIF",
+        "propagation_type_code": "NURSERY_TRANSPLANT",
+        "version_number": "draft-1",
+        "version_status": "DRAFT",
+        "stage_order": "1",
+        "stage_code": "NURSERY",
+        "stage_name_en": "Nursery Preparation",
+        "stage_name_hi": "",
+        "duration_days": "14",
+        "stage_type": "PROPAGATION",
+        "phase": "NURSERY",
+        "description_en": "Prepare nursery bed and sow seed.",
+        "description_hi": "",
+        "farmer_actions_json": '["Prepare raised nursery bed","Apply compost"]',
+        "typical_inputs_json": '["Seed","FYM/Compost"]',
+        "key_observations_json": '["Uniform germination","No water logging"]',
+        "recommendation_sort_order": "1",
+        "recommendation_day_offset": "1",
+        "activity_type": "FERTILIZER",
+        "input_code": "FYM_COMPOST",
+        "input_name": "FYM/Compost",
+        "typical_quantity": "2-3 quintal",
+        "typical_cost_per_acre": "500",
+        "is_critical": "true",
+        "recommendation_description_en": "Apply well decomposed compost before sowing.",
+        "recommendation_description_hi": "",
+        "recommendation_metadata_json": '{"source":"admin_upload"}',
+    }
+    return _csv_download([row], WORKFLOW_CSV_COLUMNS, "agri-os-workflow-template.csv")
+
+
+@router.get("/csv/workflows/export")
+def export_workflow_csv(
+    template_version_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    status: str = Query("PUBLISHED", pattern="^(DRAFT|PUBLISHED|ARCHIVED|ALL)$"),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(WorkflowTemplate, WorkflowTemplateVersion).join(
+        WorkflowTemplateVersion,
+        WorkflowTemplateVersion.template_id == WorkflowTemplate.id,
+    ).filter(
+        WorkflowTemplate.is_active == True,
+        WorkflowTemplateVersion.is_active == True,
+        WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+    )
+    if template_version_id:
+        query = query.filter(WorkflowTemplateVersion.id == template_version_id)
+    if crop_code:
+        query = query.filter(WorkflowTemplate.crop_code == crop_code.upper())
+    if season_code:
+        query = query.filter(WorkflowTemplate.season_code == season_code.upper())
+    if status != "ALL":
+        query = query.filter(WorkflowTemplateVersion.status == status)
+    pairs = query.order_by(WorkflowTemplate.crop_code, WorkflowTemplate.season_code, WorkflowTemplate.code, WorkflowTemplateVersion.version_number).all()
+
+    rows: list[dict] = []
+    for template, version in pairs:
+        stages = db.query(WorkflowTemplateStage).filter(
+            WorkflowTemplateStage.template_version_id == version.id,
+            WorkflowTemplateStage.is_active == True,
+        ).order_by(WorkflowTemplateStage.stage_order.asc()).all()
+        for stage in stages:
+            recommendations = db.query(WorkflowTemplateRecommendation).filter(
+                WorkflowTemplateRecommendation.template_stage_id == stage.id,
+                WorkflowTemplateRecommendation.is_active == True,
+            ).order_by(WorkflowTemplateRecommendation.sort_order.asc(), WorkflowTemplateRecommendation.day_offset.asc()).all()
+            if recommendations:
+                rows.extend(_workflow_csv_row(template, version, stage, rec) for rec in recommendations)
+            else:
+                rows.append(_workflow_csv_row(template, version, stage, None))
+    date_stamp = datetime.now(timezone.utc).date().isoformat()
+    return _csv_download(rows, WORKFLOW_CSV_COLUMNS, f"agri-os-workflows-{date_stamp}.csv")
 
 
 def _actor_uuid(x_actor_id: Optional[str]):

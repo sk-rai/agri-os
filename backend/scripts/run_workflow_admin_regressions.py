@@ -17,6 +17,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_ROOT = SCRIPT_DIR.parent
 
 REGRESSION_SCRIPTS = [
+    "test_workflow_csv_export.py",
     "test_project_edit_policy.py",
     "test_project_workflow_enablements.py",
     "test_project_workflow_overrides.py",
