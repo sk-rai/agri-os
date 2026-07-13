@@ -7,6 +7,7 @@ import {
   type AgriculturalProductDto,
   type CropStageInputRuleDto,
   type ManufacturerDto,
+  type ProductCsvValidationResponse,
 } from "@/lib/api";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 import { getErrorMessage, isPermissionDenied, PermissionErrorCard } from "@/components/permission-error-card";
@@ -18,6 +19,9 @@ export default function ProductsPage() {
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvReport, setCsvReport] = useState<ProductCsvValidationResponse | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
   const { profile: adminProfile, loading: loadingProfile } = useAdminProfile();
   const [mfg, setMfg] = useState({ code: "", canonical_name: "", short_name: "", country: "India", reason: "Created in admin" });
   const [product, setProduct] = useState({ code: "", canonical_input_code: "", manufacturer_code: "", brand_name: "", composition: "", registration_number: "", registration_authority: "", sku: "", quantity: "", unit: "kg", pack_label: "", barcode: "", reason: "Created in admin" });
@@ -53,6 +57,13 @@ export default function ProductsPage() {
   const toggleRule = async (rule: CropStageInputRuleDto) => { if (!canEditCatalog) { setError("Your current role can view dosage rules but cannot edit input rules."); return; } setBusy(true); setError(null); try { await inputCatalogApi.updateInputRule(rule.id, { enabled: !rule.enabled, reason: rule.enabled ? "Disabled from admin" : "Enabled from admin" }); await loadRules(); } catch (e) { setError(e); } finally { setBusy(false); } };
   const downloadProductTemplate = () => { setError(null); productCatalogApi.downloadCsvTemplate().catch(setError); };
   const exportProducts = (includeInactive = false) => { setError(null); productCatalogApi.exportCsv(includeInactive).catch(setError); };
+  const validateProductCsv = async () => {
+    if (!csvFile) { setError("Choose a product catalog CSV file first."); return; }
+    setCsvBusy(true); setError(null); setCsvReport(null);
+    try { setCsvReport(await productCatalogApi.validateCsv(csvFile)); }
+    catch (e) { setError(e); }
+    finally { setCsvBusy(false); }
+  };
 
   return <div>
     <h1 className="text-2xl font-bold">Products, Manufacturers & Dosage Rules</h1>
@@ -71,6 +82,12 @@ export default function ProductsPage() {
           <button onClick={() => exportProducts(true)} className="rounded border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">Export all</button>
         </div>
       </div>
+      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+        <input type="file" accept=".csv,text/csv" onChange={(event) => { setCsvFile(event.target.files?.[0] || null); setCsvReport(null); }} className="text-xs" />
+        <button onClick={validateProductCsv} disabled={csvBusy || !csvFile || !canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot validate product CSV imports."} className="rounded bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">{csvBusy ? "Validating..." : "Validate CSV"}</button>
+        {csvFile ? <span className="text-xs text-blue-800">Selected: {csvFile.name}</span> : null}
+      </div>
+      {csvReport ? <ProductCsvValidationPanel report={csvReport} /> : null}
     </section>
     <div className="mt-6 grid gap-5 xl:grid-cols-3">
       <Panel title="New manufacturer"><Field label="Code" value={mfg.code} set={v => setMfg({ ...mfg, code: v })} /><Field label="Name" value={mfg.canonical_name} set={v => setMfg({ ...mfg, canonical_name: v })} /><Field label="Short name" value={mfg.short_name} set={v => setMfg({ ...mfg, short_name: v })} /><button disabled={busy || !canEditCatalog || !mfg.code || !mfg.canonical_name} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={createMfg} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create manufacturer</button></Panel>
@@ -81,6 +98,39 @@ export default function ProductsPage() {
     <div className="mt-6 grid gap-6 xl:grid-cols-2"><DataTable title="Branded products" headers={["Code", "Brand", "Canonical input", "Manufacturer", "Packages", "Status"]}>{products.map(x => <tr key={x.code}><td className="p-3 font-mono text-xs">{x.code}</td><td className="p-3 font-medium">{x.brand_name}</td><td className="p-3">{x.canonical_input_code}</td><td className="p-3">{x.manufacturer_name}</td><td className="p-3">{x.packages.map(p => p.pack_label).join(", ")}</td><td className="p-3"><button disabled={!canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={async () => { if (!canEditCatalog) return; await productCatalogApi.updateProduct(x.code, { status: x.status === "ACTIVE" ? "DISCONTINUED" : "ACTIVE", reason: "Admin status change" }); await load(); }} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{x.status}</button></td></tr>)}</DataTable><div><div className="mb-3 grid grid-cols-4 gap-2"><Field label="Rule crop" value={ruleFilter.crop_code} set={v => setRuleFilter({ ...ruleFilter, crop_code: v })} /><Field label="Rule stage" value={ruleFilter.stage_code} set={v => setRuleFilter({ ...ruleFilter, stage_code: v })} /><Field label="Rule activity" value={ruleFilter.activity_type} set={v => setRuleFilter({ ...ruleFilter, activity_type: v })} /><button onClick={loadRules} className="mt-5 rounded border px-3 py-2 text-sm">Refresh</button></div><DataTable title="Dosage rules" headers={["Scope", "Crop/stage", "Input", "Dosage", "Enabled"]}>{rules.map(r => <tr key={r.id}><td className="p-3">{r.rule_scope}</td><td className="p-3"><div>{r.crop_code} · {r.stage_code}</div><div className="text-xs text-gray-500">{r.activity_type}</div></td><td className="p-3"><div className="font-medium">{r.input_name}</div><div className="font-mono text-xs">{r.input_code}</div></td><td className="p-3">{r.dosage.quantity || "-"} {r.dosage.unit || ""}/{r.dosage.area_unit}</td><td className="p-3"><button disabled={!canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot edit input dosage rules."} onClick={() => toggleRule(r)} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{r.enabled ? "Enabled" : "Disabled"}</button></td></tr>)}</DataTable></div></div>
   </div>;
 }
+function ProductCsvValidationPanel({ report }: { report: ProductCsvValidationResponse }) {
+  const rowsWithIssues = report.rows.filter((row) => row.errors.length || row.warnings.length);
+  const previewRows = rowsWithIssues.length ? rowsWithIssues.slice(0, 8) : report.rows.slice(0, 8);
+  return <div className="mt-4 rounded border border-blue-100 bg-white p-4 text-sm text-gray-900">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <p className="font-semibold">Validation result: {report.can_apply ? "Ready for future apply" : "Needs fixes"}</p>
+        <p className="mt-1 text-xs text-gray-500">{report.message}</p>
+      </div>
+      <span className="rounded bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{report.mode}</span>
+    </div>
+    <div className="mt-3 grid gap-2 md:grid-cols-6">
+      <MiniStat label="Rows" value={report.summary.total} />
+      <MiniStat label="Create" value={report.summary.create} />
+      <MiniStat label="Update" value={report.summary.update} />
+      <MiniStat label="Invalid" value={report.summary.invalid} />
+      <MiniStat label="Warnings" value={report.summary.warnings} />
+      <MiniStat label="Errors" value={report.summary.errors} />
+    </div>
+    <div className="mt-4 overflow-x-auto">
+      <table className="min-w-full text-left text-xs">
+        <thead className="text-gray-500"><tr><th className="px-2 py-2">Row</th><th className="px-2 py-2">Product</th><th className="px-2 py-2">SKU</th><th className="px-2 py-2">Action</th><th className="px-2 py-2">Diagnostics</th></tr></thead>
+        <tbody>
+          {previewRows.map((row) => <tr key={`${row.row_number}-${row.package_sku}`} className="border-t">
+            <td className="px-2 py-2">{row.row_number}</td><td className="px-2 py-2 font-mono">{row.product_code || "-"}</td><td className="px-2 py-2 font-mono">{row.package_sku || "-"}</td><td className="px-2 py-2">{row.action}</td>
+            <td className="px-2 py-2">{[...row.errors, ...row.warnings].length ? [...row.errors, ...row.warnings].map((issue, index) => <p key={`${issue.code}-${index}`}><span className="font-semibold">{issue.field}/{issue.code}:</span> {issue.message}</p>) : <span className="text-gray-400">No issues</span>}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
+function MiniStat({ label, value }: { label: string; value: string | number }) { return <div className="rounded bg-gray-50 p-2"><p className="text-[10px] uppercase text-gray-400">{label}</p><p className="text-lg font-bold text-gray-900">{value}</p></div>; }
 function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <div className="mt-6 space-y-3 rounded bg-white p-5 shadow"><h2 className="font-semibold">{title}</h2>{children}</div>; }
 function Field({ label, value, set }: { label: string; value: string; set: (v: string) => void }) { return <label className="block text-xs text-gray-500">{label}<input value={value} onChange={e => set(e.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>; }
 function DataTable({ title, headers, children }: { title: string; headers: string[]; children: React.ReactNode }) { return <div className="overflow-hidden rounded bg-white shadow"><h2 className="border-b p-3 font-semibold">{title}</h2><table className="w-full text-sm"><thead className="bg-gray-50"><tr>{headers.map(x => <th key={x} className="p-3 text-left">{x}</th>)}</tr></thead><tbody className="divide-y">{children}</tbody></table></div>; }

@@ -2148,9 +2148,13 @@ export const tenantAdminUsersApi = {
 export interface ManufacturerDto { id: string; code: string; canonical_name: string; short_name?: string | null; country: string; aliases: Array<Record<string,string>>; is_active: boolean }
 export interface ProductPackageDto { id: string; sku: string; quantity: string; unit: string; pack_label: string; barcode?: string | null; status: string }
 export interface AgriculturalProductDto { id: string; code: string; canonical_input_code: string; canonical_input_name: string; manufacturer_code: string; manufacturer_name: string; brand_name: string; composition?: string | null; registration_number?: string | null; registration_authority?: string | null; registration_expiry_date?: string | null; country: string; status: string; packages: ProductPackageDto[]; project_approval?: { enabled: boolean; preferred: boolean; display_order: number; reason?: string | null } | null }
+export interface ProductCsvIssueDto { field: string; code: string; message: string }
+export interface ProductCsvRowDto { row_number: number; product_code: string; package_sku: string; action: string; errors: ProductCsvIssueDto[]; warnings: ProductCsvIssueDto[]; normalized: Record<string, unknown> }
+export interface ProductCsvValidationResponse { schema_version: string; mode: string; file_name?: string | null; can_apply: boolean; summary: { total: number; create: number; update: number; unchanged: number; invalid: number; warnings: number; errors: number }; rows: ProductCsvRowDto[]; message: string }
 export const productCatalogApi = {
   downloadCsvTemplate: () => apiDownload("/api/v1/product-catalog/csv/template", "agri-os-product-catalog-template.csv"),
   exportCsv: (includeInactive = false) => apiDownload(`/api/v1/product-catalog/csv/export?include_inactive=${includeInactive}`, "agri-os-product-catalog.csv"),
+  validateCsv: (file: File) => apiUpload<ProductCsvValidationResponse>("/api/v1/product-catalog/csv/validate", file),
   manufacturers: () => api<{count:number; manufacturers:ManufacturerDto[]}>("/api/v1/product-catalog/manufacturers"),
   createManufacturer: (body: Record<string, unknown>) => api<ManufacturerDto>("/api/v1/product-catalog/manufacturers", {method:"POST", body}),
   products: (params?: {inputCode?:string; manufacturerCode?:string; projectId?:string; includeInactive?:boolean}) => { const q=new URLSearchParams(); if(params?.inputCode)q.set("input_code",params.inputCode); if(params?.manufacturerCode)q.set("manufacturer_code",params.manufacturerCode); if(params?.projectId)q.set("project_id",params.projectId); if(params?.includeInactive)q.set("include_inactive","true"); return api<{count:number; approval_policy:string; products:AgriculturalProductDto[]}>(`/api/v1/product-catalog/products?${q}`); },
