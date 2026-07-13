@@ -45,6 +45,7 @@ When adding new shared components:
   - why the queue matters,
   - the exact drill-down target, for example `Opens /inputs?filter=review`.
 - Dashboard drill-down links should land on a filtered page whenever possible.
+- System Readiness should surface setup/configuration checks before field-data and operations checks; `CROP_SETUP` should link to `/crop-taxonomy` and report taxonomy, propagation, crop, and import-batch health.
 
 ## Drill-down screens
 
@@ -121,6 +122,8 @@ Use this quick pass after admin UI changes, especially when a screen participate
 1. Dashboard entry
    - Open `/dashboard`.
    - Confirm the Command Center cards render and link to the expected admin areas.
+   - Confirm `Crop setup & imports` opens `/crop-taxonomy`.
+   - Confirm System Readiness shows setup checks first, including `Crop setup` when backend readiness includes `CROP_SETUP`.
    - Confirm Attention Queue cards show count, reason, and the exact target route.
 
 2. Filtered drill-down
@@ -148,5 +151,6 @@ Use this quick pass after admin UI changes, especially when a screen participate
 
 7. Regression command
    - Run `npm run build` from `web/` before committing UI changes.
+   - If dashboard readiness/report contracts changed, run `../venv/bin/python scripts/run_admin_report_regressions.py` from `backend/`.
    - If permissions or guarded endpoints changed, also run the backend admin permission regression suite.
 

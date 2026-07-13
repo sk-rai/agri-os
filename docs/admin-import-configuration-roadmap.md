@@ -79,6 +79,8 @@ See also: [Workflow CSV lifecycle](workflow-csv-lifecycle.md) for the current ex
 
 Crop catalog CSV rows deliberately fail validation when referenced category, taxonomy, or propagation codes are missing. That keeps admin uploads explicit and prevents Android from receiving partially linked crop metadata.
 
+The admin dashboard now includes `CROP_SETUP` in System Readiness. It links to `/crop-taxonomy` and reports taxonomy nodes, propagation types, crop rows, and invalid crop import batches so tenant setup gaps are visible before workflow publishing.
+
 ## CSV/import targets by priority
 
 ### Phase 1: Low-risk reference data
