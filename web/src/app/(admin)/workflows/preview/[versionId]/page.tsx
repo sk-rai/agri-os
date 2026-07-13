@@ -15,6 +15,7 @@ import {
   type WorkflowDraftValidationResponse,
   type WorkflowCsvValidationResponse,
   type WorkflowAuditResponse,
+  type WorkflowAuditEvent,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
   type WorkflowPublishImpactResponse,
@@ -2135,6 +2136,74 @@ function PublishConfirmationModal({
   );
 }
 
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function auditNumber(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : undefined;
+}
+
+function auditString(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function WorkflowAuditEventSummary({ event }: { event: WorkflowAuditEvent }) {
+  const before = asRecord(event.before);
+  const after = asRecord(event.after);
+  const metadata = asRecord(event.metadata);
+  const summary = asRecord(metadata.summary);
+  const csvSummary = asRecord(after.csv_summary) || summary;
+  const isCsvApply = event.action === "APPLY_WORKFLOW_CSV";
+
+  if (!isCsvApply) {
+    const changedFields = Array.isArray(metadata.changed_fields) ? metadata.changed_fields.map(String) : [];
+    return (
+      <div className="mt-2 rounded border border-gray-100 bg-gray-50 p-2 text-[11px] text-gray-600">
+        <div className="flex flex-wrap gap-1">
+          {changedFields.length ? changedFields.map((field) => <Badge key={field}>{field}</Badge>) : <Badge>{event.target_type}</Badge>}
+          {event.reason ? <Badge>Reason recorded</Badge> : null}
+        </div>
+      </div>
+    );
+  }
+
+  const fileName = auditString(metadata, "file_name") || "workflow.csv";
+  const beforeStageCount = auditNumber(before, "stage_count") ?? 0;
+  const afterStageCount = auditNumber(after, "stage_count") ?? 0;
+  const beforeRecommendationCount = auditNumber(before, "recommendation_count") ?? 0;
+  const afterRecommendationCount = auditNumber(after, "recommendation_count") ?? 0;
+  const totalRows = auditNumber(csvSummary, "total_rows") ?? 0;
+  const errors = auditNumber(csvSummary, "errors") ?? 0;
+  const warnings = auditNumber(csvSummary, "warnings") ?? 0;
+
+  return (
+    <div className="mt-2 rounded border border-green-100 bg-green-50 p-3 text-[11px] text-green-900">
+      <div className="flex flex-wrap gap-1">
+        <Badge>CSV apply</Badge>
+        <Badge>{fileName}</Badge>
+        <Badge>{totalRows} rows</Badge>
+        <Badge>{errors} errors</Badge>
+        <Badge>{warnings} warnings</Badge>
+      </div>
+      <div className="mt-2 grid gap-2 md:grid-cols-2">
+        <div className="rounded bg-white/70 p-2">
+          <p className="font-semibold">Before</p>
+          <p>{beforeStageCount} stages, {beforeRecommendationCount} recommendations</p>
+        </div>
+        <div className="rounded bg-white/70 p-2">
+          <p className="font-semibold">After</p>
+          <p>{afterStageCount} stages, {afterRecommendationCount} recommendations</p>
+        </div>
+      </div>
+      {event.reason ? <p className="mt-2"><span className="font-semibold">Reason:</span> {event.reason}</p> : null}
+    </div>
+  );
+}
+
 function DraftFreshnessCard({
   freshness,
   validation,
@@ -2209,9 +2278,13 @@ function DraftFreshnessCard({
                       </div>
                     </div>
                   </summary>
-                  <pre className="mt-2 max-h-48 overflow-auto rounded bg-gray-950 p-2 text-[11px] text-gray-100">
-                    {JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}
-                  </pre>
+                  <WorkflowAuditEventSummary event={event} />
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] font-semibold text-gray-500">Raw audit payload</summary>
+                    <pre className="mt-2 max-h-48 overflow-auto rounded bg-gray-950 p-2 text-[11px] text-gray-100">
+                      {JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}
+                    </pre>
+                  </details>
                 </details>
               ))}
             </div>
