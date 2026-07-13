@@ -2666,7 +2666,10 @@ function WorkflowCsvValidationPanel({
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Workflow CSV Validation</h2>
-          <p className="text-sm text-gray-500">Upload an edited workflow CSV and validate it against this draft version. Apply/import is intentionally disabled for now.</p>
+          <p className="text-sm text-gray-500">Upload an edited workflow CSV, validate it against this draft, then apply with an audit reason before draft validation and publish.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Recommended sequence: export &gt; edit &gt; validate CSV &gt; apply to draft &gt; run draft validation &gt; publish. See <span className="font-medium text-green-700">docs/workflow-csv-lifecycle.md</span> for the operator checklist.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {validation ? (
