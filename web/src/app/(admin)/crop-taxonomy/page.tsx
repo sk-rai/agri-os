@@ -120,6 +120,16 @@ export default function CropTaxonomyPage() {
     });
     return Array.from(groups.entries()).sort(([left], [right]) => left - right);
   }, [taxonomyNodes]);
+  const importBatches = [
+    ...(cropImportHistory?.imports || []),
+    ...(importHistory?.imports || []),
+    ...(propImportHistory?.imports || []),
+  ];
+  const importStatusCounts = importBatches.reduce<Record<string, number>>((acc, item) => {
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, {});
+  const setupReadyCount = [taxonomyNodes.length > 0, propagationTypes.length > 0, (catalog?.count || 0) > 0, (importStatusCounts.INVALID || 0) === 0].filter(Boolean).length;
   const seasons = Array.from(new Set(crops.flatMap((crop) => crop.suitable_seasons || []))).sort();
 
   const downloadTemplate = () => {
@@ -212,12 +222,14 @@ export default function CropTaxonomyPage() {
       {error ? <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       {loading ? <p className="text-sm text-gray-500">Loading crop taxonomy...</p> : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Taxonomy nodes" value={taxonomyNodes.length} />
-        <Metric label="Relationships" value={taxonomy?.edges.length || 0} />
-        <Metric label="Propagation types" value={propagationTypes.length} />
-        <Metric label="Crops" value={catalog?.count || 0} />
-      </div>
+      <CropSetupReadinessSummary
+        readyCount={setupReadyCount}
+        taxonomyCount={taxonomyNodes.length}
+        relationshipCount={taxonomy?.edges.length || 0}
+        propagationCount={propagationTypes.length}
+        cropCount={catalog?.count || 0}
+        importCounts={importStatusCounts}
+      />
 
       <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
         <p className="font-semibold">Safe import foundation</p>
@@ -405,6 +417,35 @@ export default function CropTaxonomyPage() {
       </div>
     </div>
   );
+}
+
+function CropSetupReadinessSummary({ readyCount, taxonomyCount, relationshipCount, propagationCount, cropCount, importCounts }: { readyCount: number; taxonomyCount: number; relationshipCount: number; propagationCount: number; cropCount: number; importCounts: Record<string, number> }) {
+  const allReady = readyCount === 4;
+  return <section className={`rounded-lg border p-4 shadow-sm ${allReady ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Crop setup readiness</h2>
+        <p className="mt-1 text-sm text-gray-600">Quick check for whether taxonomy, propagation, crop catalog, and recent import health are ready for workflow configuration.</p>
+      </div>
+      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${allReady ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>{readyCount}/4 ready</span>
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <ReadinessMetric label="Taxonomy" value={taxonomyCount} detail={`${relationshipCount} relationships`} ready={taxonomyCount > 0} />
+      <ReadinessMetric label="Propagation" value={propagationCount} detail="establishment methods" ready={propagationCount > 0} />
+      <ReadinessMetric label="Crops" value={cropCount} detail="catalog rows visible" ready={cropCount > 0} />
+      <ReadinessMetric label="Import health" value={importCounts.INVALID || 0} detail={`${importCounts.VALIDATED || 0} validated, ${importCounts.APPLIED || 0} applied`} ready={(importCounts.INVALID || 0) === 0} invert />
+    </div>
+  </section>;
+}
+
+function ReadinessMetric({ label, value, detail, ready, invert = false }: { label: string; value: string | number; detail: string; ready: boolean; invert?: boolean }) {
+  const tone = ready ? "border-green-100 bg-white/80 text-green-900" : "border-amber-100 bg-white/80 text-amber-900";
+  return <div className={`rounded border p-3 ${tone}`}>
+    <p className="text-xs uppercase tracking-wide opacity-70">{label}</p>
+    <p className="mt-1 text-2xl font-bold">{value}</p>
+    <p className="mt-1 text-xs opacity-75">{detail}</p>
+    <p className="mt-2 text-[11px] font-semibold opacity-80">{ready ? (invert ? "No blocking invalid batches" : "Configured") : "Needs attention"}</p>
+  </div>;
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {
