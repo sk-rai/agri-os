@@ -1,10 +1,13 @@
 """Manufacturer, branded product, package, and project approval APIs."""
+import csv
 from datetime import date, datetime, timezone
+import io
 from decimal import Decimal
 from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -17,6 +20,40 @@ from app.modules.master_data.models import (
 )
 
 router = APIRouter(prefix="/api/v1/product-catalog", tags=["product-catalog"])
+
+
+PRODUCT_CSV_COLUMNS = [
+    "manufacturer_code",
+    "manufacturer_name",
+    "manufacturer_short_name",
+    "manufacturer_country",
+    "product_code",
+    "canonical_input_code",
+    "brand_name",
+    "composition",
+    "registration_number",
+    "registration_authority",
+    "registration_expiry_date",
+    "product_country",
+    "product_status",
+    "package_sku",
+    "package_quantity",
+    "package_unit",
+    "package_label",
+    "package_barcode",
+]
+
+
+def _csv_download(rows: list[dict], fieldnames: list[str], file_name: str) -> Response:
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        content="﻿" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
 
 
 class ManufacturerCreate(BaseModel):
@@ -118,6 +155,74 @@ def record_audit(db, tenant, principal, entity_type, entity_id, entity_code, act
     db.add(ProductCatalogAuditEvent(id=uuid.uuid4(), tenant_id=tenant, entity_type=entity_type, entity_id=entity_id,
         entity_code=entity_code, actor_id=principal.user_id, action=action, before_payload=before, after_payload=after,
         reason=reason, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)))
+
+
+def _product_csv_row(product: AgriculturalProduct, package: Optional[AgriculturalProductPackage] = None) -> dict:
+    return {
+        "manufacturer_code": product.manufacturer.code,
+        "manufacturer_name": product.manufacturer.canonical_name,
+        "manufacturer_short_name": product.manufacturer.short_name,
+        "manufacturer_country": product.manufacturer.country,
+        "product_code": product.code,
+        "canonical_input_code": product.canonical_input.code,
+        "brand_name": product.brand_name,
+        "composition": product.composition,
+        "registration_number": product.registration_number,
+        "registration_authority": product.registration_authority,
+        "registration_expiry_date": product.registration_expiry_date.isoformat() if product.registration_expiry_date else "",
+        "product_country": product.country,
+        "product_status": product.status,
+        "package_sku": package.sku if package else "",
+        "package_quantity": str(package.quantity) if package else "",
+        "package_unit": package.unit if package else "",
+        "package_label": package.pack_label if package else "",
+        "package_barcode": package.barcode if package else "",
+    }
+
+
+@router.get("/csv/template")
+def download_product_csv_template(principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
+    row = {
+        "manufacturer_code": "ACME_AGRO",
+        "manufacturer_name": "Acme Agro Industries",
+        "manufacturer_short_name": "ACME",
+        "manufacturer_country": "India",
+        "product_code": "ACME_UREA_GOLD",
+        "canonical_input_code": "UREA_46_N",
+        "brand_name": "Acme Urea Gold",
+        "composition": "46% Nitrogen",
+        "registration_number": "REG-EXAMPLE-001",
+        "registration_authority": "State Agriculture Department",
+        "registration_expiry_date": "2028-12-31",
+        "product_country": "India",
+        "product_status": "ACTIVE",
+        "package_sku": "ACME_UREA_GOLD_45KG",
+        "package_quantity": "45",
+        "package_unit": "kg",
+        "package_label": "45 kg bag",
+        "package_barcode": "",
+    }
+    return _csv_download([row], PRODUCT_CSV_COLUMNS, "agri-os-product-catalog-template.csv")
+
+
+@router.get("/csv/export")
+def export_product_csv(
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(AgriculturalProduct).join(AgriculturalInput, AgriculturalInput.id == AgriculturalProduct.canonical_input_id).join(Manufacturer, Manufacturer.id == AgriculturalProduct.manufacturer_id)
+    if not include_inactive:
+        query = query.filter(AgriculturalProduct.is_active == True, AgriculturalProduct.status == "ACTIVE", AgriculturalInput.catalog_status == "PUBLISHED", Manufacturer.is_active == True)
+    products = query.order_by(Manufacturer.code, AgriculturalProduct.code).all()
+    rows: list[dict] = []
+    for product in products:
+        packages = [package for package in sorted(product.packages, key=lambda item: item.sku) if include_inactive or package.is_active]
+        if packages:
+            rows.extend(_product_csv_row(product, package) for package in packages)
+        else:
+            rows.append(_product_csv_row(product, None))
+    return _csv_download(rows, PRODUCT_CSV_COLUMNS, "agri-os-product-catalog.csv")
 
 
 @router.get("/manufacturers")
