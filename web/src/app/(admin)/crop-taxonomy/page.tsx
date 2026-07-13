@@ -224,6 +224,22 @@ export default function CropTaxonomyPage() {
         <p className="mt-1">Crop, taxonomy, and propagation CSV uploads validate row-level diagnostics, persist import batches, and require an explicit admin apply step before mutating master data.</p>
       </section>
 
+      <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="font-semibold">Recommended import order</p>
+            <p className="mt-1 text-amber-900">Use this order when onboarding a new client/project so reference links validate cleanly and Android receives a coherent published contract.</p>
+          </div>
+          <a href="https://github.com/sk-rai/agri-os/blob/main/docs/admin-import-configuration-roadmap.md" target="_blank" rel="noreferrer" className="text-xs font-semibold text-amber-800 underline">Docs: admin import roadmap</a>
+        </div>
+        <ol className="mt-3 grid gap-2 md:grid-cols-4">
+          <li className="rounded bg-white/70 p-3"><span className="font-semibold">1. Taxonomy</span><br /><span className="text-xs">Crop groups, economic class, botanical or client tags.</span></li>
+          <li className="rounded bg-white/70 p-3"><span className="font-semibold">2. Propagation</span><br /><span className="text-xs">Direct seeded, nursery transplant, sett, tuber, cutting, sapling, etc.</span></li>
+          <li className="rounded bg-white/70 p-3"><span className="font-semibold">3. Crops</span><br /><span className="text-xs">Crop rows link to category, taxonomy, seasons, soils, and propagation options.</span></li>
+          <li className="rounded bg-white/70 p-3"><span className="font-semibold">4. Workflows</span><br /><span className="text-xs">Create draft stages/recommendations, validate, then publish for Android.</span></li>
+        </ol>
+      </section>
+
       <section className="rounded bg-white p-4 shadow">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>

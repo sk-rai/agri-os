@@ -55,6 +55,28 @@ Every bulk import should follow the same state machine:
    - Admin can reject stale/failed imports.
    - Rejected imports remain auditable.
 
+## Current implemented import foundation
+
+The master-data import foundation now includes these safe CSV lifecycles:
+
+| Area | Backend lifecycle | Admin UI | Apply behavior |
+| --- | --- | --- | --- |
+| Crop taxonomy | template/export/validate/history/apply | available on Crop Taxonomy screen | creates/updates taxonomy nodes and parent edges |
+| Crop propagation types | template/export/validate/history/apply | available on Crop Taxonomy screen | creates/updates propagation establishment types |
+| Crop catalog | template/export/validate/history/apply | available on Crop Taxonomy screen | creates/updates crops, taxonomy assignments, and propagation options |
+| Input catalog | template/export/validate/history/apply plus review/publish lifecycle | available on Inputs screen | creates/updates canonical inputs and keeps lifecycle states auditable |
+
+Recommended order for crop onboarding:
+
+1. Import/apply taxonomy nodes first.
+2. Import/apply propagation types next.
+3. Import/apply crop catalog rows after their reference codes exist.
+4. Create or import workflow templates as drafts.
+5. Validate and publish workflow versions.
+6. Assign published workflows and input/product visibility to projects.
+
+Crop catalog CSV rows deliberately fail validation when referenced category, taxonomy, or propagation codes are missing. That keeps admin uploads explicit and prevents Android from receiving partially linked crop metadata.
+
 ## CSV/import targets by priority
 
 ### Phase 1: Low-risk reference data
@@ -158,8 +180,8 @@ Android should not hardcode crop stage names, recommendation dates, input catalo
 
 Near-term screens:
 
-- Taxonomy catalog: read-only first, then import.
-- Workflow import: upload -> validate -> preview draft -> publish.
+- Taxonomy catalog: read-only plus CSV template/export/validate/history/apply.
+- Crop catalog: CSV template/export/validate/history/apply for crops linked to taxonomy and propagation.
 - Recommendation import: tied to a workflow draft.
 - Input/product import: extend existing input CSV queue.
 - Rule import: validate against workflow stage and input/product catalogs.
@@ -200,11 +222,11 @@ npm run build
 
 ## Recommended next implementation order
 
-1. Add read-only crop taxonomy admin screen.
-2. Add taxonomy import validation endpoint.
-3. Add taxonomy import apply endpoint with audit.
-4. Add workflow CSV template/export endpoint.
-5. Add workflow import validation into DRAFT version.
-6. Add admin preview of workflow import validation errors.
-7. Extend product/package CSV import.
-8. Add rule import validation and apply.
+1. Add workflow CSV template/export endpoint.
+2. Add workflow import validation into DRAFT versions.
+3. Add admin preview of workflow import validation errors.
+4. Add workflow import apply/publish handoff.
+5. Extend product/package CSV import.
+6. Add crop-stage input rule CSV validation and apply.
+7. Add import audit/search screen across all batch types.
+8. Add downloadable validation reports for failed imports.
