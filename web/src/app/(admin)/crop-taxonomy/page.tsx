@@ -245,6 +245,7 @@ export default function CropTaxonomyPage() {
           <div>
             <h2 className="font-semibold text-gray-900">Crop catalog CSV validation</h2>
             <p className="mt-1 text-sm text-gray-500">Create or update crops and link them to category, taxonomy nodes, and allowed propagation options.</p>
+            <ImportLifecycleHelp subject="crop catalog" applyEffect="applies crop rows and refreshes taxonomy/propagation link tables" />
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => cropCatalogApi.downloadCropTemplate().catch((e) => setCropCsvError(e instanceof Error ? e.message : "Failed to download crop template"))} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Download template</button>
@@ -282,7 +283,8 @@ export default function CropTaxonomyPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="font-semibold text-gray-900">Taxonomy CSV validation</h2>
-            <p className="mt-1 text-sm text-gray-500">Download the template, upload a CSV, and inspect row-level diagnostics before any future apply flow exists.</p>
+            <p className="mt-1 text-sm text-gray-500">Download the template, upload a CSV, and inspect row-level diagnostics before applying taxonomy changes.</p>
+            <ImportLifecycleHelp subject="taxonomy" applyEffect="applies taxonomy nodes and parent-child edges" />
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={downloadTemplate} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Download template</button>
@@ -321,6 +323,7 @@ export default function CropTaxonomyPage() {
           <div>
             <h2 className="font-semibold text-gray-900">Propagation CSV validation</h2>
             <p className="mt-1 text-sm text-gray-500">Manage crop establishment methods such as direct seeding, nursery transplant, vegetative sett, tuber, cutting, sapling, grafted plant, bulb, and rhizome.</p>
+            <ImportLifecycleHelp subject="propagation" applyEffect="applies propagation type rows used by crop catalog and workflow templates" />
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => cropCatalogApi.downloadPropagationTemplate().catch((e) => setPropCsvError(e instanceof Error ? e.message : "Failed to download propagation template"))} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Download template</button>
@@ -441,6 +444,20 @@ function CropDetail({ crop }: { crop: CropCatalogItemDto }) {
       </div>
     </div>
   </section>;
+}
+
+function ImportLifecycleHelp({ subject, applyEffect }: { subject: string; applyEffect: string }) {
+  return <details className="mt-3 max-w-3xl rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-950">
+    <summary className="cursor-pointer font-semibold text-blue-800">Open {subject} import lifecycle</summary>
+    <ol className="mt-2 list-decimal space-y-1 pl-4">
+      <li>Download the current export/template for this exact master-data area.</li>
+      <li>Edit the CSV offline; keep stable codes because workflows and Android references depend on them.</li>
+      <li>Validate first. Invalid uploads are persisted for audit but cannot be applied.</li>
+      <li>Apply only a VALIDATED batch with a clear reason; apply {applyEffect}.</li>
+      <li>Use import history to confirm APPLIED/INVALID status, row counts, and applied-count summaries.</li>
+    </ol>
+    <p className="mt-2 text-blue-800">Recommended order for new client onboarding: taxonomy, then propagation, then crops, then workflow drafts.</p>
+  </details>;
 }
 
 function CsvValidationReport({ report }: { report: CropTaxonomyCsvValidationResponse }) {
