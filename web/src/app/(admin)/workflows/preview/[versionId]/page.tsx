@@ -161,6 +161,9 @@ export default function WorkflowPreviewPage() {
   const [publishOutcome, setPublishOutcome] = useState<PublishOutcome | null>(null);
   const [postValidationAudit, setPostValidationAudit] = useState<WorkflowAuditResponse | null>(null);
   const [postValidationAuditLoading, setPostValidationAuditLoading] = useState(false);
+  const [workflowAudit, setWorkflowAudit] = useState<WorkflowAuditResponse | null>(null);
+  const [workflowAuditLoading, setWorkflowAuditLoading] = useState(false);
+  const [workflowAuditAction, setWorkflowAuditAction] = useState("ALL");
   const [deletedStages, setDeletedStages] = useState<WorkflowDeletedStagesResponse | null>(null);
   const [selectedStageCode, setSelectedStageCode] = useState<string | null>(null);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
@@ -255,6 +258,23 @@ export default function WorkflowPreviewPage() {
       .catch(() => setPostValidationAudit(null))
       .finally(() => setPostValidationAuditLoading(false));
   }, [preview, draftValidation?.freshness]);
+
+  useEffect(() => {
+    if (!preview || preview.status !== "DRAFT" || preview.preview_source !== "workflow_template_draft") {
+      setWorkflowAudit(null);
+      return;
+    }
+    setWorkflowAuditLoading(true);
+    workflowCatalogApi
+      .templateAudit(preview.workflow_template_id, {
+        versionId: preview.workflow_template_version_id,
+        action: workflowAuditAction === "ALL" ? undefined : workflowAuditAction,
+        limit: 75,
+      })
+      .then(setWorkflowAudit)
+      .catch(() => setWorkflowAudit(null))
+      .finally(() => setWorkflowAuditLoading(false));
+  }, [preview, workflowAuditAction]);
 
 
   const createOverride = async (
@@ -778,6 +798,12 @@ export default function WorkflowPreviewPage() {
             }}
             onValidate={validateWorkflowCsv}
             onApply={applyWorkflowCsv}
+          />
+          <WorkflowAuditTrailPanel
+            audit={workflowAudit}
+            loading={workflowAuditLoading}
+            actionFilter={workflowAuditAction}
+            onActionFilterChange={setWorkflowAuditAction}
           />
           <DeletedStagesPanel deletedStages={deletedStages} busyTarget={busyTarget} onRestoreStage={restoreDraftStage} />
         </div>
@@ -2506,6 +2532,99 @@ function DraftValidationPanel({
           <ValidationIssueGroup title="Blocking errors" tone="error" issues={errors} />
           <ValidationIssueGroup title="Warnings" tone="warn" issues={warnings} />
           <ValidationIssueGroup title="Info" tone="info" issues={info} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+const WORKFLOW_AUDIT_ACTIONS = [
+  "ALL",
+  "APPLY_WORKFLOW_CSV",
+  "VALIDATE_DRAFT",
+  "PUBLISH_DRAFT",
+  "CLONE_DRAFT",
+  "UPDATE_STAGE",
+  "CREATE_DRAFT_STAGE",
+  "DELETE_DRAFT_STAGE",
+  "RESTORE_DRAFT_STAGE",
+  "UPDATE_RECOMMENDATION",
+  "CREATE_RECOMMENDATION",
+  "DELETE_RECOMMENDATION",
+  "REORDER_DRAFT_STAGES",
+  "REORDER_DRAFT_RECOMMENDATIONS",
+];
+
+function WorkflowAuditTrailPanel({
+  audit,
+  loading,
+  actionFilter,
+  onActionFilterChange,
+}: {
+  audit: WorkflowAuditResponse | null;
+  loading: boolean;
+  actionFilter: string;
+  onActionFilterChange: (action: string) => void;
+}) {
+  const events = audit?.events || [];
+  const csvApplyCount = events.filter((event) => event.action === "APPLY_WORKFLOW_CSV").length;
+
+  return (
+    <div id="workflow-audit-trail-panel" className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Workflow Audit Trail</h2>
+          <p className="text-sm text-gray-500">Filter draft governance events by action. CSV apply events include readable before/after and reason summaries.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Badge>{loading ? "Loading..." : `${events.length} event(s)`}</Badge>
+          {csvApplyCount ? <Badge>{csvApplyCount} CSV apply</Badge> : null}
+          <select
+            value={actionFilter}
+            onChange={(event) => onActionFilterChange(event.target.value)}
+            className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700"
+          >
+            {WORKFLOW_AUDIT_ACTIONS.map((action) => <option key={action} value={action}>{action === "ALL" ? "All actions" : action}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">Loading workflow audit trail...</p>
+      ) : !audit ? (
+        <p className="rounded bg-red-50 p-3 text-sm text-red-700">Unable to load workflow audit trail.</p>
+      ) : events.length === 0 ? (
+        <p className="rounded bg-gray-50 p-3 text-sm text-gray-500">No audit events match this filter.</p>
+      ) : (
+        <div className="max-h-[520px] space-y-3 overflow-auto">
+          {events.map((event) => (
+            <details key={event.id} className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+              <summary className="cursor-pointer list-none">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge>{event.action}</Badge>
+                      <Badge>{event.target_type}</Badge>
+                      {event.target_code ? <Badge>{event.target_code}</Badge> : null}
+                    </div>
+                    {event.reason ? <p className="mt-2 text-xs text-gray-600">{event.reason}</p> : null}
+                  </div>
+                  <div className="text-xs text-gray-500 md:text-right">
+                    <p>{formatDateTime(event.created_at)}</p>
+                    {event.actor_id ? <p>Actor {event.actor_id}</p> : null}
+                  </div>
+                </div>
+              </summary>
+              <WorkflowAuditEventSummary event={event} />
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] font-semibold text-gray-500">Raw audit payload</summary>
+                <pre className="mt-2 max-h-48 overflow-auto rounded bg-gray-950 p-2 text-[11px] text-gray-100">
+                  {JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}
+                </pre>
+              </details>
+            </details>
+          ))}
         </div>
       )}
     </div>
