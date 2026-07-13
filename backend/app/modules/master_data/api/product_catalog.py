@@ -2,11 +2,11 @@
 import csv
 from datetime import date, datetime, timezone
 import io
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 import uuid
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
@@ -21,6 +21,10 @@ from app.modules.master_data.models import (
 
 router = APIRouter(prefix="/api/v1/product-catalog", tags=["product-catalog"])
 
+
+PRODUCT_CSV_MAX_FILE_BYTES = 2 * 1024 * 1024
+PRODUCT_CSV_MAX_ROWS = 2000
+PRODUCT_CSV_REQUIRED_COLUMNS = {"manufacturer_code", "manufacturer_name", "product_code", "canonical_input_code", "brand_name", "package_sku", "package_quantity", "package_unit", "package_label"}
 
 PRODUCT_CSV_COLUMNS = [
     "manufacturer_code",
@@ -42,6 +46,19 @@ PRODUCT_CSV_COLUMNS = [
     "package_label",
     "package_barcode",
 ]
+
+
+def _clean(value: Optional[str]) -> str:
+    return (value or "").strip()
+
+
+def _code(value: Optional[str]) -> str:
+    return _clean(value).upper().replace(" ", "_")
+
+
+def _nullable(value: Optional[str]) -> Optional[str]:
+    value = _clean(value)
+    return value or None
 
 
 def _csv_download(rows: list[dict], fieldnames: list[str], file_name: str) -> Response:
@@ -223,6 +240,147 @@ def export_product_csv(
         else:
             rows.append(_product_csv_row(product, None))
     return _csv_download(rows, PRODUCT_CSV_COLUMNS, "agri-os-product-catalog.csv")
+
+
+def _normalize_product_csv_row(raw: dict[str, str], row_number: int, known_inputs: set[str], known_manufacturers: set[str], existing_products: dict[str, AgriculturalProduct], existing_skus: set[str]) -> dict:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    manufacturer_code = _code(raw.get("manufacturer_code"))
+    manufacturer_name = _clean(raw.get("manufacturer_name"))
+    product_code = _code(raw.get("product_code"))
+    canonical_input_code = _code(raw.get("canonical_input_code"))
+    brand_name = _clean(raw.get("brand_name"))
+    package_sku = _code(raw.get("package_sku"))
+    package_quantity_raw = _clean(raw.get("package_quantity"))
+    package_unit = _clean(raw.get("package_unit"))
+    package_label = _clean(raw.get("package_label"))
+    product_status = (_clean(raw.get("product_status")) or "ACTIVE").upper()
+    registration_expiry_date = _nullable(raw.get("registration_expiry_date"))
+    package_quantity = None
+
+    if not manufacturer_code:
+        errors.append({"field": "manufacturer_code", "code": "REQUIRED", "message": "manufacturer_code is required"})
+    if manufacturer_code and manufacturer_code not in known_manufacturers:
+        warnings.append({"field": "manufacturer_code", "code": "MANUFACTURER_WILL_BE_CREATED", "message": f"Manufacturer {manufacturer_code} will be created during apply"})
+    if not manufacturer_name:
+        errors.append({"field": "manufacturer_name", "code": "REQUIRED", "message": "manufacturer_name is required"})
+    if not product_code:
+        errors.append({"field": "product_code", "code": "REQUIRED", "message": "product_code is required"})
+    if not canonical_input_code or canonical_input_code not in known_inputs:
+        errors.append({"field": "canonical_input_code", "code": "UNKNOWN_INPUT", "message": f"Published canonical input not found: {canonical_input_code or '-'}"})
+    if not brand_name:
+        errors.append({"field": "brand_name", "code": "REQUIRED", "message": "brand_name is required"})
+    if product_status not in {"ACTIVE", "DISCONTINUED"}:
+        errors.append({"field": "product_status", "code": "INVALID_STATUS", "message": "product_status must be ACTIVE or DISCONTINUED"})
+    if registration_expiry_date:
+        try:
+            date.fromisoformat(registration_expiry_date)
+        except ValueError:
+            errors.append({"field": "registration_expiry_date", "code": "INVALID_DATE", "message": "Use YYYY-MM-DD"})
+    if not package_sku:
+        errors.append({"field": "package_sku", "code": "REQUIRED", "message": "package_sku is required"})
+    if package_sku in existing_skus and product_code not in existing_products:
+        errors.append({"field": "package_sku", "code": "SKU_ALREADY_EXISTS", "message": f"Package SKU already exists: {package_sku}"})
+    try:
+        package_quantity = Decimal(package_quantity_raw)
+        if package_quantity <= 0:
+            raise InvalidOperation
+    except (InvalidOperation, ValueError):
+        errors.append({"field": "package_quantity", "code": "INVALID_NUMBER", "message": "package_quantity must be positive"})
+    if not package_unit:
+        errors.append({"field": "package_unit", "code": "REQUIRED", "message": "package_unit is required"})
+    if not package_label:
+        errors.append({"field": "package_label", "code": "REQUIRED", "message": "package_label is required"})
+
+    normalized = {
+        "manufacturer_code": manufacturer_code,
+        "manufacturer_name": manufacturer_name,
+        "manufacturer_short_name": _nullable(raw.get("manufacturer_short_name")),
+        "manufacturer_country": _clean(raw.get("manufacturer_country")) or "India",
+        "product_code": product_code,
+        "canonical_input_code": canonical_input_code,
+        "brand_name": brand_name,
+        "composition": _nullable(raw.get("composition")),
+        "registration_number": _nullable(raw.get("registration_number")),
+        "registration_authority": _nullable(raw.get("registration_authority")),
+        "registration_expiry_date": registration_expiry_date,
+        "product_country": _clean(raw.get("product_country")) or "India",
+        "product_status": product_status,
+        "package_sku": package_sku,
+        "package_quantity": str(package_quantity) if package_quantity is not None else None,
+        "package_unit": package_unit,
+        "package_label": package_label,
+        "package_barcode": _nullable(raw.get("package_barcode")),
+    }
+    action = "INVALID" if errors else ("UPDATE" if product_code in existing_products else "CREATE")
+    return {"row_number": row_number, "product_code": product_code, "package_sku": package_sku, "action": action, "errors": errors, "warnings": warnings, "normalized": normalized}
+
+
+async def _read_product_csv_upload(file: UploadFile) -> str:
+    content = await file.read(PRODUCT_CSV_MAX_FILE_BYTES + 1)
+    if len(content) > PRODUCT_CSV_MAX_FILE_BYTES:
+        raise HTTPException(413, "CSV file exceeds 2 MB")
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded")
+
+
+@router.post("/csv/validate")
+async def validate_product_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    text = await _read_product_csv_upload(file)
+    reader = csv.DictReader(io.StringIO(text))
+    headers = set(reader.fieldnames or [])
+    missing = sorted(PRODUCT_CSV_REQUIRED_COLUMNS - headers)
+    if missing:
+        raise HTTPException(400, {"error": "MISSING_COLUMNS", "columns": missing})
+    raw_rows = list(reader)
+    if not raw_rows:
+        raise HTTPException(400, "CSV contains no data rows")
+    if len(raw_rows) > PRODUCT_CSV_MAX_ROWS:
+        raise HTTPException(413, "CSV exceeds 2000 rows")
+
+    known_inputs = {row.code for row in db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()}
+    known_manufacturers = {row.code for row in db.query(Manufacturer).filter(Manufacturer.is_active == True).all()}
+    existing_products = {row.code: row for row in db.query(AgriculturalProduct).all()}
+    existing_skus = {row.sku for row in db.query(AgriculturalProductPackage).all()}
+    rows = [_normalize_product_csv_row(raw, index, known_inputs, known_manufacturers, existing_products, existing_skus) for index, raw in enumerate(raw_rows, start=2)]
+
+    sku_seen: set[str] = set()
+    for row in rows:
+        package_sku = row["package_sku"]
+        if package_sku in sku_seen:
+            row["errors"].append({"field": "package_sku", "code": "DUPLICATE_SKU_IN_FILE", "message": f"Package SKU also appears earlier in this file: {package_sku}"})
+        sku_seen.add(package_sku)
+        if row["errors"]:
+            row["action"] = "INVALID"
+
+    summary = {"total": len(rows), "create": 0, "update": 0, "unchanged": 0, "invalid": 0, "warnings": 0, "errors": 0}
+    for row in rows:
+        summary["warnings"] += len(row["warnings"])
+        summary["errors"] += len(row["errors"])
+        if row["action"] == "CREATE":
+            summary["create"] += 1
+        elif row["action"] == "UPDATE":
+            summary["update"] += 1
+        elif row["action"] == "INVALID":
+            summary["invalid"] += 1
+        else:
+            summary["unchanged"] += 1
+    can_apply = summary["errors"] == 0
+    return {
+        "schema_version": "product_catalog_csv_validation.v1",
+        "mode": "VALIDATE_ONLY",
+        "file_name": file.filename,
+        "can_apply": can_apply,
+        "summary": summary,
+        "rows": rows,
+        "message": "Validation passed. Product CSV can be applied once apply endpoint is enabled." if can_apply else "Validation failed. Fix errors and upload again.",
+    }
 
 
 @router.get("/manufacturers")

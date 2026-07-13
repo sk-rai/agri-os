@@ -51,6 +51,12 @@ def main():
         check(template.status_code==200 and "manufacturer_code" in template.text and "package_sku" in template.text,"product CSV template downloads with package columns")
         export=client.get("/api/v1/product-catalog/csv/export")
         check(export.status_code==200 and PRODUCT in export.text and "REG-UREA-45KG" in export.text,"product CSV export includes created product package")
+        valid_csv="manufacturer_code,manufacturer_name,manufacturer_short_name,manufacturer_country,product_code,canonical_input_code,brand_name,composition,registration_number,registration_authority,registration_expiry_date,product_country,product_status,package_sku,package_quantity,package_unit,package_label,package_barcode\nREGRESSION_CSV_MFG,Regression CSV Manufacturer,RCM,India,REGRESSION_CSV_PRODUCT,UREA_46_N,Regression CSV Product,46% Nitrogen,REG-CSV-001,Regression Authority,2028-12-31,India,ACTIVE,REG-CSV-45KG,45,kg,45 kg bag,\n"
+        valid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",valid_csv.encode("utf-8"),"text/csv")})
+        check(valid_csv_response.status_code==200 and valid_csv_response.json()["can_apply"] and valid_csv_response.json()["summary"]["create"]==1,"product CSV validation accepts create row")
+        invalid_csv="manufacturer_code,manufacturer_name,product_code,canonical_input_code,brand_name,package_sku,package_quantity,package_unit,package_label\nREGRESSION_AGRO,Regression Agro,BAD_PRODUCT,NO_SUCH_INPUT,,REG-UREA-45KG,-1,kg,\n"
+        invalid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",invalid_csv.encode("utf-8"),"text/csv")})
+        check(invalid_csv_response.status_code==200 and not invalid_csv_response.json()["can_apply"] and invalid_csv_response.json()["summary"]["errors"]>0,"product CSV validation reports invalid rows")
         catalog=TestClient(app).get(f"/api/v1/product-catalog/products?input_code=UREA_46_N", headers={"X-Tenant-ID":"default"})
         check(catalog.status_code==200 and any(x["code"]==PRODUCT for x in catalog.json()["products"]),"runtime lists product by canonical input")
         approval=client.put(f"/api/v1/product-catalog/projects/{PROJECT}/products/{PRODUCT}",json={"enabled":True,"preferred":True,"display_order":1,"reason":"Preferred project urea"})
