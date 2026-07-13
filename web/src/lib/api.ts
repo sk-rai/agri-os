@@ -2150,6 +2150,8 @@ export const tenantAdminUsersApi = {
 export interface ManufacturerDto { id: string; code: string; canonical_name: string; short_name?: string | null; country: string; aliases: Array<Record<string,string>>; is_active: boolean }
 export interface ProductPackageDto { id: string; sku: string; quantity: string; unit: string; pack_label: string; barcode?: string | null; status: string }
 export interface AgriculturalProductDto { id: string; code: string; canonical_input_code: string; canonical_input_name: string; manufacturer_code: string; manufacturer_name: string; brand_name: string; composition?: string | null; registration_number?: string | null; registration_authority?: string | null; registration_expiry_date?: string | null; country: string; status: string; packages: ProductPackageDto[]; project_approval?: { enabled: boolean; preferred: boolean; display_order: number; reason?: string | null } | null }
+export interface ProductCatalogAuditEventDto { id: string; entity_type: string; entity_code: string; action: string; actor_id?: string | null; before?: Record<string, unknown> | null; after?: Record<string, unknown> | null; reason?: string | null; created_at: string }
+export interface ProductCatalogAuditResponse { count: number; events: ProductCatalogAuditEventDto[] }
 export interface ProductCsvIssueDto { field: string; code: string; message: string }
 export interface ProductCsvRowDto { row_number: number; product_code: string; package_sku: string; action: string; errors: ProductCsvIssueDto[]; warnings: ProductCsvIssueDto[]; normalized: Record<string, unknown> }
 export interface ProductCsvValidationResponse { schema_version: string; mode: string; file_name?: string | null; can_apply: boolean; summary: { total: number; create: number; update: number; unchanged: number; invalid: number; warnings: number; errors: number }; rows: ProductCsvRowDto[]; message: string; applied_counts?: Record<string, number>; apply_reason?: string }
@@ -2167,4 +2169,5 @@ export const productCatalogApi = {
   createProduct: (body: Record<string, unknown>) => api<AgriculturalProductDto>("/api/v1/product-catalog/products", {method:"POST", body}),
   updateProduct: (code:string, body:Record<string,unknown>) => api<AgriculturalProductDto>(`/api/v1/product-catalog/products/${code}`, {method:"PUT", body}),
   approveProduct: (projectId:string, code:string, body:Record<string,unknown>) => api<{product:AgriculturalProductDto}>(`/api/v1/product-catalog/projects/${projectId}/products/${code}`, {method:"PUT", body}),
+  audit: (params?: { entityType?: string; entityCode?: string; limit?: number }) => { const q=new URLSearchParams(); if(params?.entityType)q.set("entity_type",params.entityType); if(params?.entityCode)q.set("entity_code",params.entityCode); if(params?.limit)q.set("limit",String(params.limit)); const suffix=q.toString()?`?${q}`:""; return api<ProductCatalogAuditResponse>(`/api/v1/product-catalog/audit${suffix}`); },
 };
