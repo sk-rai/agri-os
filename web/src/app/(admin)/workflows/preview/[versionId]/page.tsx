@@ -2740,8 +2740,19 @@ function WorkflowCsvValidationPanel({
           <h2 className="text-lg font-semibold text-gray-900">Workflow CSV Validation</h2>
           <p className="text-sm text-gray-500">Upload an edited workflow CSV, validate it against this draft, then apply with an audit reason before draft validation and publish.</p>
           <p className="mt-1 text-xs text-gray-500">
-            Recommended sequence: export &gt; edit &gt; validate CSV &gt; apply to draft &gt; run draft validation &gt; publish. See <span className="font-medium text-green-700">docs/workflow-csv-lifecycle.md</span> for the operator checklist.
+            Recommended sequence: export &gt; edit &gt; validate CSV &gt; apply to draft &gt; run draft validation &gt; publish.
           </p>
+          <details className="mt-3 max-w-3xl rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-950">
+            <summary className="cursor-pointer font-semibold text-blue-800">Open CSV operator checklist</summary>
+            <ol className="mt-2 list-decimal space-y-1 pl-4">
+              <li>Download the current draft CSV from this exact workflow version.</li>
+              <li>Edit stages/recommendations offline, keeping template, crop, season, stage codes, and sort order consistent.</li>
+              <li>Validate the CSV here before applying; fix all errors and review warnings.</li>
+              <li>Apply only with a clear audit reason. Apply replaces the draft stages/recommendations, never the published Android workflow.</li>
+              <li>Review the applied summary and audit trail, then run draft validation before publishing.</li>
+            </ol>
+            <p className="mt-2 text-blue-800">Full operator notes live in docs/workflow-csv-lifecycle.md.</p>
+          </details>
           <button
             type="button"
             onClick={() => workflowCatalogApi.downloadWorkflowCsvExport({ templateVersionId, status: "ALL" })}
