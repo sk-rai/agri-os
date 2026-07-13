@@ -153,6 +153,9 @@ export default function WorkflowPreviewPage() {
   const [workflowCsvValidation, setWorkflowCsvValidation] = useState<WorkflowCsvValidationResponse | null>(null);
   const [workflowCsvValidating, setWorkflowCsvValidating] = useState(false);
   const [workflowCsvError, setWorkflowCsvError] = useState<string | null>(null);
+  const [workflowCsvApplyReason, setWorkflowCsvApplyReason] = useState("");
+  const [workflowCsvApplying, setWorkflowCsvApplying] = useState(false);
+  const [workflowCsvApplyMessage, setWorkflowCsvApplyMessage] = useState<string | null>(null);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
   const [publishOutcome, setPublishOutcome] = useState<PublishOutcome | null>(null);
   const [postValidationAudit, setPostValidationAudit] = useState<WorkflowAuditResponse | null>(null);
@@ -316,6 +319,42 @@ export default function WorkflowPreviewPage() {
       setWorkflowCsvError(getErrorMessage(e));
     } finally {
       setWorkflowCsvValidating(false);
+    }
+  };
+
+  const applyWorkflowCsv = async () => {
+    if (!preview) return;
+    if (!requireDraftEdit()) return;
+    if (!workflowCsvFile) {
+      setWorkflowCsvError("Choose a workflow CSV file first.");
+      return;
+    }
+    if (!workflowCsvApplyReason.trim()) {
+      setWorkflowCsvError("Enter an audit reason before applying the workflow CSV.");
+      return;
+    }
+    setWorkflowCsvApplying(true);
+    setWorkflowCsvError(null);
+    setWorkflowCsvApplyMessage(null);
+    try {
+      const report = await workflowCatalogApi.applyWorkflowCsvToDraft(preview.workflow_template_version_id, workflowCsvFile, workflowCsvApplyReason.trim());
+      setWorkflowCsvValidation(report);
+      if (!report.can_apply) {
+        setWorkflowCsvError("CSV was not applied because validation errors remain.");
+        return;
+      }
+      const refreshed = await workflowCatalogApi.draftPreview(preview.workflow_template_version_id);
+      setPreview(refreshed);
+      setDraftValidation(null);
+      setWorkflowCsvApplyMessage(report.message || "Workflow CSV applied to draft.");
+      workflowCatalogApi
+        .draftPublishImpact(preview.workflow_template_version_id, { archivePrevious: true })
+        .then(setPublishImpact)
+        .catch(() => setPublishImpact(null));
+    } catch (e) {
+      setWorkflowCsvError(getErrorMessage(e));
+    } finally {
+      setWorkflowCsvApplying(false);
     }
   };
 
@@ -724,14 +763,20 @@ export default function WorkflowPreviewPage() {
             file={workflowCsvFile}
             validation={workflowCsvValidation}
             error={workflowCsvError}
+            applyMessage={workflowCsvApplyMessage}
             validating={workflowCsvValidating}
+            applying={workflowCsvApplying}
+            applyReason={workflowCsvApplyReason}
             canEditDraft={canEditDraft}
+            onApplyReasonChange={setWorkflowCsvApplyReason}
             onFileChange={(file) => {
               setWorkflowCsvFile(file);
               setWorkflowCsvValidation(null);
               setWorkflowCsvError(null);
+              setWorkflowCsvApplyMessage(null);
             }}
             onValidate={validateWorkflowCsv}
+            onApply={applyWorkflowCsv}
           />
           <DeletedStagesPanel deletedStages={deletedStages} busyTarget={busyTarget} onRestoreStage={restoreDraftStage} />
         </div>
@@ -2398,18 +2443,28 @@ function WorkflowCsvValidationPanel({
   file,
   validation,
   error,
+  applyMessage,
   validating,
+  applying,
+  applyReason,
   canEditDraft,
+  onApplyReasonChange,
   onFileChange,
   onValidate,
+  onApply,
 }: {
   file: File | null;
   validation: WorkflowCsvValidationResponse | null;
   error: string | null;
+  applyMessage: string | null;
   validating: boolean;
+  applying: boolean;
+  applyReason: string;
   canEditDraft: boolean;
+  onApplyReasonChange: (reason: string) => void;
   onFileChange: (file: File | null) => void;
   onValidate: () => void;
+  onApply: () => void;
 }) {
   const rowsWithIssues = validation?.rows.filter((row) => row.errors.length || row.warnings.length) || [];
   const previewRows = rowsWithIssues.length ? rowsWithIssues.slice(0, 12) : (validation?.rows || []).slice(0, 12);
@@ -2456,7 +2511,34 @@ function WorkflowCsvValidationPanel({
         </div>
         {!canEditDraft ? <p className="mt-3 rounded bg-yellow-50 p-2 text-xs text-yellow-700">Your role can view this draft but cannot validate workflow CSV changes.</p> : null}
         {error ? <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p> : null}
+        {applyMessage ? <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">{applyMessage}</p> : null}
       </div>
+
+      {validation?.can_apply ? (
+        <div className="mt-4 rounded border border-green-200 bg-green-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <label className="flex-1 text-sm font-medium text-green-950">
+              Apply reason
+              <input
+                value={applyReason}
+                disabled={!canEditDraft || applying}
+                onChange={(event) => onApplyReasonChange(event.target.value)}
+                placeholder="Why is this CSV being applied?"
+                className="mt-1 w-full rounded border border-green-200 px-3 py-2 text-sm text-gray-900 disabled:opacity-60"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!canEditDraft || applying || validating || !file || !applyReason.trim()}
+              onClick={onApply}
+              className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {applying ? "Applying CSV..." : "Apply CSV to draft"}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-green-800">This replaces the draft stages/recommendations from the uploaded CSV and writes an audit event. Run draft validation again before publishing.</p>
+        </div>
+      ) : null}
 
       {validation ? (
         <div className="mt-4 space-y-4">

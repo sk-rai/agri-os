@@ -15,7 +15,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -360,23 +360,18 @@ def _current_draft_stage_signature(db: Session, version_id) -> dict:
     return {row.stage_code: {"stage_order": row.stage_order, "duration_days": row.duration_days, "stage_name": row.stage_name or {}} for row in rows}
 
 
-@router.post("/csv/workflows/drafts/{workflow_template_version_id}/validate")
-async def validate_workflow_csv_against_draft(
-    workflow_template_version_id: uuid.UUID,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
-):
-    """Validate workflow CSV rows against an existing DRAFT version without mutating it."""
-    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
-    content = await file.read(2 * 1024 * 1024 + 1)
-    if len(content) > 2 * 1024 * 1024:
-        raise HTTPException(413, "CSV file exceeds 2 MB")
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise HTTPException(400, "CSV must be UTF-8 encoded")
+
+def _workflow_csv_validation_report(
+    *,
+    db: Session,
+    template: WorkflowTemplate,
+    version: WorkflowTemplateVersion,
+    tenant_id: str,
+    file_name: Optional[str],
+    text: str,
+    mode: str = "VALIDATE_ONLY",
+    apply_available: bool = True,
+) -> dict:
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
         raise HTTPException(400, "CSV header row is required")
@@ -446,26 +441,176 @@ async def validate_workflow_csv_against_draft(
         else:
             counts["stage_update"] += 1
     for row in rows:
-        row["action"] = "INVALID" if row["errors"] else "VALIDATE"
+        row["action"] = "INVALID" if row["errors"] else ("APPLY" if mode == "APPLY" else "VALIDATE")
         counts["errors"] += len(row["errors"])
         counts["warnings"] += len(row["warnings"])
     can_apply = counts["errors"] == 0
     return {
         "schema_version": "workflow_csv_validation.v1",
-        "mode": "VALIDATE_ONLY",
-        "apply_available": False,
+        "mode": mode,
+        "apply_available": apply_available,
         "can_apply": can_apply,
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "workflow_template_id": str(template.id),
         "workflow_template_version_id": str(version.id),
         "workflow_template_code": template.code,
         "version": version.version_number,
         "status": version.status,
-        "file_name": file.filename,
+        "file_name": file_name,
         "summary": counts,
         "rows": rows,
-        "message": "Validation passed. Apply endpoint is intentionally not enabled yet." if can_apply else "Validation failed. Fix errors and upload again.",
+        "message": "Validation passed. CSV can be applied to this draft." if can_apply and mode == "VALIDATE_ONLY" else ("Workflow CSV applied to draft." if can_apply else "Validation failed. Fix errors and upload again."),
     }
+
+
+async def _read_workflow_csv_upload(file: UploadFile) -> str:
+    content = await file.read(2 * 1024 * 1024 + 1)
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(413, "CSV file exceeds 2 MB")
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded")
+
+
+@router.post("/csv/workflows/drafts/{workflow_template_version_id}/validate")
+async def validate_workflow_csv_against_draft(
+    workflow_template_version_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Validate workflow CSV rows against an existing DRAFT version without mutating it."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    text = await _read_workflow_csv_upload(file)
+    return _workflow_csv_validation_report(
+        db=db,
+        template=template,
+        version=version,
+        tenant_id=x_tenant_id,
+        file_name=file.filename,
+        text=text,
+        mode="VALIDATE_ONLY",
+        apply_available=True,
+    )
+
+
+def _workflow_csv_stage_snapshot(db: Session, version_id) -> dict:
+    stage_rows = db.query(WorkflowTemplateStage).filter(WorkflowTemplateStage.template_version_id == version_id, WorkflowTemplateStage.is_active == True).all()
+    stage_ids = [stage.id for stage in stage_rows]
+    recommendation_count = 0
+    if stage_ids:
+        recommendation_count = db.query(WorkflowTemplateRecommendation).filter(WorkflowTemplateRecommendation.template_stage_id.in_(stage_ids), WorkflowTemplateRecommendation.is_active == True).count()
+    return {"stage_count": len(stage_rows), "recommendation_count": recommendation_count, "stage_codes": [stage.stage_code for stage in stage_rows]}
+
+
+def _apply_workflow_csv_report_to_draft(db: Session, *, version: WorkflowTemplateVersion, report: dict) -> None:
+    stage_rows: dict[str, WorkflowTemplateStage] = {}
+    for row in sorted(report["rows"], key=lambda item: (item["normalized"].get("stage_order") or 0, item["row_number"])):
+        normalized = row["normalized"]
+        stage_code = normalized["stage_code"]
+        if stage_code not in stage_rows:
+            stage = WorkflowTemplateStage(
+                id=uuid.uuid4(),
+                template_version_id=version.id,
+                stage_code=stage_code,
+                stage_name=normalized["stage_name"],
+                stage_order=int(normalized["stage_order"]),
+                duration_days=int(normalized["duration_days"]),
+                stage_type=normalized.get("stage_type"),
+                phase=normalized.get("phase"),
+                description=normalized.get("description"),
+                farmer_actions=normalized.get("farmer_actions") or [],
+                typical_inputs=normalized.get("typical_inputs") or [],
+                key_observations=normalized.get("key_observations") or [],
+                metadata_={"source": "workflow_csv_apply", "csv_row_number": row["row_number"]},
+                is_active=True,
+            )
+            db.add(stage)
+            stage_rows[stage_code] = stage
+    db.flush()
+    for row in sorted(report["rows"], key=lambda item: (item["normalized"].get("stage_order") or 0, (item["normalized"].get("recommendation") or {}).get("sort_order") or 0, item["row_number"])):
+        normalized = row["normalized"]
+        recommendation = normalized.get("recommendation")
+        if not recommendation:
+            continue
+        metadata = dict(recommendation.get("metadata") or {})
+        metadata["source"] = metadata.get("source") or "workflow_csv_apply"
+        metadata["csv_row_number"] = row["row_number"]
+        db.add(WorkflowTemplateRecommendation(
+            id=uuid.uuid4(),
+            template_stage_id=stage_rows[normalized["stage_code"]].id,
+            sort_order=int(recommendation.get("sort_order") or 0),
+            day_offset=int(recommendation.get("day_offset") or 0),
+            activity_type=recommendation["activity_type"],
+            input_code=recommendation.get("input_code"),
+            input_name=recommendation["input_name"],
+            typical_quantity=recommendation.get("typical_quantity"),
+            typical_cost_per_acre=recommendation.get("typical_cost_per_acre"),
+            is_critical=bool(recommendation.get("is_critical")),
+            description=recommendation.get("description"),
+            metadata_=metadata,
+            is_active=True,
+        ))
+
+
+@router.post("/csv/workflows/drafts/{workflow_template_version_id}/apply")
+async def apply_workflow_csv_to_draft(
+    workflow_template_version_id: uuid.UUID,
+    file: UploadFile = File(...),
+    reason: str = Form(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Validate and apply a complete workflow CSV replacement to an existing DRAFT version."""
+    if not reason or not reason.strip():
+        raise HTTPException(400, "reason is required to apply workflow CSV")
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    text = await _read_workflow_csv_upload(file)
+    report = _workflow_csv_validation_report(
+        db=db,
+        template=template,
+        version=version,
+        tenant_id=x_tenant_id,
+        file_name=file.filename,
+        text=text,
+        mode="APPLY",
+        apply_available=True,
+    )
+    if not report["can_apply"]:
+        return report
+
+    before = _workflow_csv_stage_snapshot(db, version.id)
+    existing_stages = db.query(WorkflowTemplateStage.id).filter(WorkflowTemplateStage.template_version_id == version.id).all()
+    existing_stage_ids = [row.id for row in existing_stages]
+    if existing_stage_ids:
+        db.query(WorkflowTemplateRecommendation).filter(WorkflowTemplateRecommendation.template_stage_id.in_(existing_stage_ids)).delete(synchronize_session=False)
+    db.query(WorkflowTemplateStage).filter(WorkflowTemplateStage.template_version_id == version.id).delete(synchronize_session=False)
+    db.flush()
+    _apply_workflow_csv_report_to_draft(db, version=version, report=report)
+    version.total_duration_days = sum(int(row["duration_days"] or 0) for row in {row["normalized"]["stage_code"]: row["normalized"] for row in report["rows"]}.values())
+    version.updated_at = datetime.now(timezone.utc)
+    after = {**_workflow_csv_stage_snapshot(db, version.id), "csv_summary": report["summary"]}
+    _record_workflow_audit_event(
+        db,
+        tenant_id=x_tenant_id,
+        template_id=template.id,
+        template_version_id=version.id,
+        actor_id=principal.user_id,
+        action="APPLY_WORKFLOW_CSV",
+        target_type="WORKFLOW_VERSION",
+        target_id=str(version.id),
+        target_code=template.code,
+        before=before,
+        after=after,
+        reason=reason.strip(),
+        metadata={"file_name": file.filename, "summary": report["summary"]},
+    )
+    db.commit()
+    report["message"] = "Workflow CSV applied to draft. Review preview and run draft validation before publishing."
+    return report
 
 
 def _actor_uuid(x_actor_id: Optional[str]):

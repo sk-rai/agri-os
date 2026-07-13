@@ -101,8 +101,13 @@ export async function api<T = unknown>(
 }
 
 export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  return apiUploadWithFields<T>(path, file);
+}
+
+export async function apiUploadWithFields<T>(path: string, file: File, fields?: Record<string, string>): Promise<T> {
   const form = new FormData();
   form.append("file", file);
+  Object.entries(fields || {}).forEach(([key, value]) => form.append(key, value));
   const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: getAuthHeaders(), body: form });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1569,6 +1574,8 @@ export const workflowCatalogApi = {
     api<WorkflowDraftValidationResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/validation`),
   validateWorkflowCsvAgainstDraft: (versionId: string, file: File) =>
     apiUpload<WorkflowCsvValidationResponse>(`/api/v1/workflow-catalog/csv/workflows/drafts/${versionId}/validate`, file),
+  applyWorkflowCsvToDraft: (versionId: string, file: File, reason: string) =>
+    apiUploadWithFields<WorkflowCsvValidationResponse>(`/api/v1/workflow-catalog/csv/workflows/drafts/${versionId}/apply`, file, { reason }),
   deletedDraftStages: (versionId: string) =>
     api<WorkflowDeletedStagesResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/deleted-stages`),
   draftPublishImpact: (versionId: string, params?: { archivePrevious?: boolean }) => {

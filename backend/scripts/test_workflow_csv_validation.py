@@ -56,6 +56,14 @@ def upload_workflow_csv(client: TestClient, draft_id: str, content: str):
     )
 
 
+def apply_workflow_csv(client: TestClient, draft_id: str, content: str, reason: str = "Regression apply"):
+    return client.post(
+        f"/api/v1/workflow-catalog/csv/workflows/drafts/{draft_id}/apply",
+        data={"reason": reason},
+        files={"file": ("workflow.csv", io.BytesIO(content.encode("utf-8")), "text/csv")},
+    )
+
+
 def main():
     print("=" * 72)
     print("WORKFLOW CSV DRAFT VALIDATION REGRESSION")
@@ -87,12 +95,38 @@ def main():
         report = valid.json()
         check(report["schema_version"] == "workflow_csv_validation.v1", "workflow CSV validation schema version is stable")
         check(report["mode"] == "VALIDATE_ONLY", "workflow CSV validation is non-mutating")
-        check(report["apply_available"] is False, "workflow CSV apply remains disabled in this slice")
+        check(report["apply_available"] is True, "workflow CSV apply is available for valid draft uploads")
         check(report["can_apply"] is True, "exported workflow CSV validates against draft")
         check(report["summary"]["errors"] == 0, "valid workflow CSV has zero errors")
         check(report["summary"]["stages"] > 0, "valid workflow CSV counts stages")
         check(report["summary"]["recommendations"] > 0, "valid workflow CSV counts recommendations")
         check(report["workflow_template_version_id"] == draft_id, "validation report targets requested draft")
+
+        edited_rows = list(csv.DictReader(io.StringIO(valid_csv)))
+        first_stage = edited_rows[0]["stage_code"]
+        for row in edited_rows:
+            if row["stage_code"] == first_stage:
+                row["stage_name_en"] = "CSV Applied Stage Name"
+                row["duration_days"] = "17"
+        edited_buffer = io.StringIO()
+        writer = csv.DictWriter(edited_buffer, fieldnames=edited_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(edited_rows)
+        edited_csv = edited_buffer.getvalue()
+        applied = apply_workflow_csv(client, draft_id, edited_csv, reason="Regression CSV apply")
+        check(applied.status_code == 200, "valid workflow CSV apply returns 200", applied.text[:500])
+        apply_report = applied.json()
+        check(apply_report["mode"] == "APPLY", "apply report is returned in APPLY mode")
+        check(apply_report["can_apply"] is True, "valid workflow CSV apply report remains clean")
+        preview = client.get(f"/api/v1/workflow-catalog/draft-preview/{draft_id}")
+        check(preview.status_code == 200, "draft preview after CSV apply returns 200", preview.text[:300])
+        first_preview_stage = next(stage for stage in preview.json()["android_preview"]["stages"] if stage["code"] == first_stage)
+        check(first_preview_stage["name"]["en"] == "CSV Applied Stage Name", "CSV apply updates stage name")
+        check(first_preview_stage["duration_days"] == 17, "CSV apply updates stage duration")
+        audit = client.get(f"/api/v1/workflow-catalog/templates/{template.id}/audit?version_id={draft_id}&limit=20")
+        check(audit.status_code == 200, "workflow audit after CSV apply returns 200", audit.text[:300])
+        actions = [event["action"] for event in audit.json()["events"]]
+        check("APPLY_WORKFLOW_CSV" in actions, "workflow audit records CSV apply")
 
         header = ["template_code", "crop_code", "season_code", "propagation_type_code", "version_number", "version_status", "stage_order", "stage_code", "stage_name_en", "stage_name_hi", "duration_days", "stage_type", "phase", "description_en", "description_hi", "farmer_actions_json", "typical_inputs_json", "key_observations_json", "recommendation_sort_order", "recommendation_day_offset", "activity_type", "input_code", "input_name", "typical_quantity", "typical_cost_per_acre", "is_critical", "recommendation_description_en", "recommendation_description_hi", "recommendation_metadata_json"]
         invalid_buffer = io.StringIO()
@@ -127,6 +161,10 @@ def main():
         error_codes = {error["code"] for row in invalid_report["rows"] for error in row["errors"]}
         expected = {"CROP_MISMATCH", "INVALID_STAGE_CODE", "INVALID_INTEGER", "INVALID_JSON", "UNKNOWN_INPUT_CODE", "INVALID_BOOLEAN", "INVALID_JSON_TYPE"}
         check(expected.issubset(error_codes), "invalid workflow CSV reports expected diagnostics", sorted(error_codes))
+
+        invalid_apply = apply_workflow_csv(client, draft_id, invalid_buffer.getvalue(), reason="Regression invalid apply")
+        check(invalid_apply.status_code == 200, "invalid workflow CSV apply returns validation report", invalid_apply.text[:500])
+        check(invalid_apply.json()["can_apply"] is False, "invalid workflow CSV apply does not mutate draft")
 
         print("=" * 72)
         print("Workflow CSV draft validation validated")
