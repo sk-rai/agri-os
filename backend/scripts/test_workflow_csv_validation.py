@@ -127,6 +127,13 @@ def main():
         check(audit.status_code == 200, "workflow audit after CSV apply returns 200", audit.text[:300])
         actions = [event["action"] for event in audit.json()["events"]]
         check("APPLY_WORKFLOW_CSV" in actions, "workflow audit records CSV apply")
+        filtered_audit = client.get(f"/api/v1/workflow-catalog/templates/{template.id}/audit?version_id={draft_id}&action=APPLY_WORKFLOW_CSV&limit=20")
+        check(filtered_audit.status_code == 200, "workflow audit action filter returns 200", filtered_audit.text[:300])
+        filtered_events = filtered_audit.json()["events"]
+        check(filtered_events and all(event["action"] == "APPLY_WORKFLOW_CSV" for event in filtered_events), "workflow audit action filter returns only CSV apply events")
+        csv_event = filtered_events[0]
+        check(csv_event["metadata"]["file_name"] == "workflow.csv", "filtered CSV apply audit includes file name")
+        check(csv_event["metadata"]["summary"]["total_rows"] == apply_report["summary"]["total_rows"], "filtered CSV apply audit includes row count")
 
         header = ["template_code", "crop_code", "season_code", "propagation_type_code", "version_number", "version_status", "stage_order", "stage_code", "stage_name_en", "stage_name_hi", "duration_days", "stage_type", "phase", "description_en", "description_hi", "farmer_actions_json", "typical_inputs_json", "key_observations_json", "recommendation_sort_order", "recommendation_day_offset", "activity_type", "input_code", "input_name", "typical_quantity", "typical_cost_per_acre", "is_critical", "recommendation_description_en", "recommendation_description_hi", "recommendation_metadata_json"]
         invalid_buffer = io.StringIO()
