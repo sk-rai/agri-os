@@ -39,6 +39,7 @@ export default function WorkflowsPage() {
   const [loadingBlockers, setLoadingBlockers] = useState(false);
   const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [csvDownloadBusy, setCsvDownloadBusy] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -86,6 +87,22 @@ export default function WorkflowsPage() {
     if (backlogFilter === "validation-blockers") loadValidationBlockers();
   };
 
+  const downloadWorkflowCsv = async (mode: "template" | "export") => {
+    setCsvDownloadBusy(mode);
+    setError(null);
+    try {
+      if (mode === "template") {
+        await workflowCatalogApi.downloadWorkflowCsvTemplate();
+      } else {
+        await workflowCatalogApi.downloadWorkflowCsvExport({ cropCode: cropFilter || undefined, status: "PUBLISHED" });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to download workflow CSV");
+    } finally {
+      setCsvDownloadBusy(null);
+    }
+  };
+
   if (loading && workflows.length === 0) return <div className="text-gray-500">Loading workflow catalog...</div>;
   if (error && workflows.length === 0) return <div className="text-red-500">Error: {error}</div>;
 
@@ -97,11 +114,17 @@ export default function WorkflowsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Crop Workflows</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Read-only view of enabled crop-cycle templates, stages, recommendations, and linked input codes.
+            Read-only view of enabled crop-cycle templates, stages, recommendations, and linked input codes. Export CSV as a starting point for draft workflow imports.
           </p>
         </div>
         <div className="flex flex-col items-start gap-2 md:items-end">
           <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => downloadWorkflowCsv("template")} disabled={!!csvDownloadBusy} className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {csvDownloadBusy === "template" ? "Downloading..." : "CSV template"}
+            </button>
+            <button type="button" onClick={() => downloadWorkflowCsv("export")} disabled={!!csvDownloadBusy} className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {csvDownloadBusy === "export" ? "Exporting..." : cropFilter ? `Export ${cropFilter}` : "Export workflows"}
+            </button>
             <button type="button" onClick={refreshWorkflowCatalog} disabled={loading || loadingBlockers} className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
               {loading || loadingBlockers ? "Refreshing..." : "Refresh"}
             </button>

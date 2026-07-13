@@ -1451,6 +1451,16 @@ export interface EnabledWorkflowCatalogResponse {
 }
 
 export const workflowCatalogApi = {
+  downloadWorkflowCsvTemplate: () => apiDownload("/api/v1/workflow-catalog/csv/workflows/template", "agri-os-workflow-template.csv"),
+  downloadWorkflowCsvExport: (params?: { templateVersionId?: string; cropCode?: string; seasonCode?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.templateVersionId) query.set("template_version_id", params.templateVersionId);
+    if (params?.cropCode) query.set("crop_code", params.cropCode);
+    if (params?.seasonCode) query.set("season_code", params.seasonCode);
+    if (params?.status) query.set("status", params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return apiDownload(`/api/v1/workflow-catalog/csv/workflows/export${suffix}`, "agri-os-workflows.csv");
+  },
   enabledCropWorkflows: (params?: { projectId?: string; cropCode?: string; season?: string; includeStages?: boolean }) => {
     const query = new URLSearchParams();
     if (params?.projectId) query.set("project_id", params.projectId);
