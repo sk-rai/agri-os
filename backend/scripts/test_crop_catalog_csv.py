@@ -117,7 +117,14 @@ REGRESSION_CROP,{category_code},Regression Crop,Regression crop scientific,120,K
         report = valid.json()
         check(report["can_apply"], "valid crop report can apply")
         check(report["status"] == "VALIDATED", "valid crop batch is persisted as VALIDATED")
+        check(report["file_name"] == "crops.csv", "valid crop report includes uploaded file name")
+        check(report["batch_id"], "valid crop report includes import batch id")
+        required_summary_keys = {"total", "create", "update", "unchanged", "invalid", "errors", "warnings"}
+        check(required_summary_keys.issubset(set(report["summary"].keys())), "valid crop report exposes admin summary contract", sorted(report["summary"].keys()))
+        check(report["summary"]["total"] == 1, "valid dry-run reports one uploaded row")
+        check(report["summary"]["invalid"] == 0, "valid dry-run reports zero invalid rows")
         check(report["summary"]["create"] == 1, "valid dry-run reports one create")
+        check(report["summary"]["errors"] == 0, "valid dry-run reports zero errors")
 
         apply_response = client.post(
             f"/api/v1/crop-catalog/csv/crops/imports/{report['batch_id']}/apply",
@@ -126,7 +133,11 @@ REGRESSION_CROP,{category_code},Regression Crop,Regression crop scientific,120,K
         check(apply_response.status_code == 200, "validated crop batch applies", apply_response.text)
         applied = apply_response.json()
         check(applied["status"] == "APPLIED", "applied crop batch is marked APPLIED")
+        check(applied["batch_id"] == report["batch_id"], "applied crop response echoes batch id")
+        required_applied_counts = {"created", "updated", "unchanged", "taxonomy_assignments_created", "propagation_options_created"}
+        check(required_applied_counts.issubset(set(applied["report"]["applied_counts"].keys())), "applied crop response exposes applied count contract", sorted(applied["report"]["applied_counts"].keys()))
         check(applied["report"]["applied_counts"]["created"] == 1, "apply creates one crop")
+        check(applied["report"]["applied_counts"]["updated"] == 0, "apply reports zero updates")
         check(applied["report"]["applied_counts"]["taxonomy_assignments_created"] == 1, "apply creates taxonomy assignment")
         check(applied["report"]["applied_counts"]["propagation_options_created"] == 1, "apply creates propagation option")
 
