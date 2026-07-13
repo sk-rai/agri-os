@@ -781,6 +781,7 @@ export default function WorkflowPreviewPage() {
           <PublishImpactPanel impact={publishImpact} />
           <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
           <WorkflowCsvValidationPanel
+            templateVersionId={preview.workflow_template_version_id}
             file={workflowCsvFile}
             validation={workflowCsvValidation}
             error={workflowCsvError}
@@ -2632,6 +2633,7 @@ function WorkflowAuditTrailPanel({
 }
 
 function WorkflowCsvValidationPanel({
+  templateVersionId,
   file,
   validation,
   error,
@@ -2645,6 +2647,7 @@ function WorkflowCsvValidationPanel({
   onValidate,
   onApply,
 }: {
+  templateVersionId: string;
   file: File | null;
   validation: WorkflowCsvValidationResponse | null;
   error: string | null;
@@ -2670,6 +2673,13 @@ function WorkflowCsvValidationPanel({
           <p className="mt-1 text-xs text-gray-500">
             Recommended sequence: export &gt; edit &gt; validate CSV &gt; apply to draft &gt; run draft validation &gt; publish. See <span className="font-medium text-green-700">docs/workflow-csv-lifecycle.md</span> for the operator checklist.
           </p>
+          <button
+            type="button"
+            onClick={() => workflowCatalogApi.downloadWorkflowCsvExport({ templateVersionId, status: "ALL" })}
+            className="mt-3 rounded border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50"
+          >
+            Download current draft CSV
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {validation ? (
