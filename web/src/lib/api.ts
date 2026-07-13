@@ -2157,6 +2157,7 @@ export const productCatalogApi = {
   downloadCsvTemplate: () => apiDownload("/api/v1/product-catalog/csv/template", "agri-os-product-catalog-template.csv"),
   exportCsv: (includeInactive = false) => apiDownload(`/api/v1/product-catalog/csv/export?include_inactive=${includeInactive}`, "agri-os-product-catalog.csv"),
   validateCsv: (file: File) => apiUpload<ProductCsvImportBatch>("/api/v1/product-catalog/csv/validate", file),
+  applyCsv: (batchId: string, reason: string) => api<ProductCsvImportBatch>(`/api/v1/product-catalog/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
   importHistory: (params?: { status?: string; limit?: number }) => { const q=new URLSearchParams(); if(params?.status)q.set("status",params.status); if(params?.limit)q.set("limit",String(params.limit)); const suffix=q.toString()?`?${q}`:""; return api<ProductCsvImportHistory>(`/api/v1/product-catalog/csv/imports${suffix}`); },
   manufacturers: () => api<{count:number; manufacturers:ManufacturerDto[]}>("/api/v1/product-catalog/manufacturers"),
   createManufacturer: (body: Record<string, unknown>) => api<ManufacturerDto>("/api/v1/product-catalog/manufacturers", {method:"POST", body}),

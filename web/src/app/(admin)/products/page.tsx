@@ -73,6 +73,13 @@ export default function ProductsPage() {
     catch (e) { setError(e); }
     finally { setCsvBusy(false); }
   };
+  const applyProductCsvImport = async (batch: ProductCsvImportBatch, reason: string) => {
+    if (!canEditCatalog) { setError("Your current role can view product CSV imports but cannot apply them."); return; }
+    setCsvBusy(true); setError(null);
+    try { const applied = await productCatalogApi.applyCsv(batch.batch_id, reason); setCsvReport(applied.report); setNotice("Product CSV import applied"); await Promise.all([load(), loadProductImportHistory()]); }
+    catch (e) { setError(e); }
+    finally { setCsvBusy(false); }
+  };
 
   return <div>
     <h1 className="text-2xl font-bold">Products, Manufacturers & Dosage Rules</h1>
@@ -83,7 +90,7 @@ export default function ProductsPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="font-semibold">Product catalog CSV foundation</p>
-          <p className="mt-1 text-blue-800">Download the template or export the current manufacturer, branded product, and package catalog. Validate/apply lifecycle will follow this same contract.</p>
+          <p className="mt-1 text-blue-800">Download the template or export the current manufacturer, branded product, and package catalog. Validate, review, and apply product catalog changes through the persisted import lifecycle.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={downloadProductTemplate} className="rounded border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">Download template</button>
@@ -97,7 +104,7 @@ export default function ProductsPage() {
         {csvFile ? <span className="text-xs text-blue-800">Selected: {csvFile.name}</span> : null}
       </div>
       {csvReport ? <ProductCsvValidationPanel report={csvReport} /> : null}
-      <ProductCsvImportHistoryPanel imports={csvImports} onRefresh={loadProductImportHistory} />
+      <ProductCsvImportHistoryPanel imports={csvImports} canEdit={canEditCatalog} busy={csvBusy} onRefresh={loadProductImportHistory} onApply={applyProductCsvImport} />
     </section>
     <div className="mt-6 grid gap-5 xl:grid-cols-3">
       <Panel title="New manufacturer"><Field label="Code" value={mfg.code} set={v => setMfg({ ...mfg, code: v })} /><Field label="Name" value={mfg.canonical_name} set={v => setMfg({ ...mfg, canonical_name: v })} /><Field label="Short name" value={mfg.short_name} set={v => setMfg({ ...mfg, short_name: v })} /><button disabled={busy || !canEditCatalog || !mfg.code || !mfg.canonical_name} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={createMfg} className="mt-3 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">Create manufacturer</button></Panel>
@@ -108,18 +115,20 @@ export default function ProductsPage() {
     <div className="mt-6 grid gap-6 xl:grid-cols-2"><DataTable title="Branded products" headers={["Code", "Brand", "Canonical input", "Manufacturer", "Packages", "Status"]}>{products.map(x => <tr key={x.code}><td className="p-3 font-mono text-xs">{x.code}</td><td className="p-3 font-medium">{x.brand_name}</td><td className="p-3">{x.canonical_input_code}</td><td className="p-3">{x.manufacturer_name}</td><td className="p-3">{x.packages.map(p => p.pack_label).join(", ")}</td><td className="p-3"><button disabled={!canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot edit the product catalog."} onClick={async () => { if (!canEditCatalog) return; await productCatalogApi.updateProduct(x.code, { status: x.status === "ACTIVE" ? "DISCONTINUED" : "ACTIVE", reason: "Admin status change" }); await load(); }} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{x.status}</button></td></tr>)}</DataTable><div><div className="mb-3 grid grid-cols-4 gap-2"><Field label="Rule crop" value={ruleFilter.crop_code} set={v => setRuleFilter({ ...ruleFilter, crop_code: v })} /><Field label="Rule stage" value={ruleFilter.stage_code} set={v => setRuleFilter({ ...ruleFilter, stage_code: v })} /><Field label="Rule activity" value={ruleFilter.activity_type} set={v => setRuleFilter({ ...ruleFilter, activity_type: v })} /><button onClick={loadRules} className="mt-5 rounded border px-3 py-2 text-sm">Refresh</button></div><DataTable title="Dosage rules" headers={["Scope", "Crop/stage", "Input", "Dosage", "Enabled"]}>{rules.map(r => <tr key={r.id}><td className="p-3">{r.rule_scope}</td><td className="p-3"><div>{r.crop_code} · {r.stage_code}</div><div className="text-xs text-gray-500">{r.activity_type}</div></td><td className="p-3"><div className="font-medium">{r.input_name}</div><div className="font-mono text-xs">{r.input_code}</div></td><td className="p-3">{r.dosage.quantity || "-"} {r.dosage.unit || ""}/{r.dosage.area_unit}</td><td className="p-3"><button disabled={!canEditCatalog} title={canEditCatalog ? undefined : "Your role cannot edit input dosage rules."} onClick={() => toggleRule(r)} className="rounded border px-2 py-1 text-xs disabled:opacity-50">{r.enabled ? "Enabled" : "Disabled"}</button></td></tr>)}</DataTable></div></div>
   </div>;
 }
-function ProductCsvImportHistoryPanel({ imports, onRefresh }: { imports: ProductCsvImportBatch[]; onRefresh: () => void }) {
+function ProductCsvImportHistoryPanel({ imports, canEdit, busy, onRefresh, onApply }: { imports: ProductCsvImportBatch[]; canEdit: boolean; busy: boolean; onRefresh: () => void; onApply: (batch: ProductCsvImportBatch, reason: string) => void }) {
+  const [reason, setReason] = useState("Apply validated product catalog import");
   return <div className="mt-4 rounded border border-blue-100 bg-white p-4 text-sm text-gray-900">
     <div className="flex items-center justify-between gap-3">
       <div>
         <p className="font-semibold">Recent product CSV validations</p>
-        <p className="mt-1 text-xs text-gray-500">Validated and invalid batches are retained briefly so admins can review operator progress before apply support is enabled.</p>
+        <p className="mt-1 text-xs text-gray-500">Validated and invalid batches are retained briefly so admins can review and apply operator uploads safely.</p>
       </div>
       <button onClick={onRefresh} className="rounded border px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Refresh</button>
     </div>
+    <input value={reason} onChange={(event) => setReason(event.target.value)} className="mt-3 w-full rounded border px-3 py-2 text-xs text-gray-900" placeholder="Reason for applying product import" />
     {imports.length ? <div className="mt-3 overflow-x-auto">
       <table className="min-w-full text-left text-xs">
-        <thead className="text-gray-500"><tr><th className="px-2 py-2">Created</th><th className="px-2 py-2">File</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Issues</th><th className="px-2 py-2">Expires</th></tr></thead>
+        <thead className="text-gray-500"><tr><th className="px-2 py-2">Created</th><th className="px-2 py-2">File</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Issues</th><th className="px-2 py-2">Expires</th><th className="px-2 py-2">Action</th></tr></thead>
         <tbody>
           {imports.map((item) => <tr key={item.batch_id} className="border-t">
             <td className="px-2 py-2">{new Date(item.created_at).toLocaleString()}</td>
@@ -128,6 +137,7 @@ function ProductCsvImportHistoryPanel({ imports, onRefresh }: { imports: Product
             <td className="px-2 py-2">{item.report.summary.total}</td>
             <td className="px-2 py-2">{item.report.summary.errors} errors · {item.report.summary.warnings} warnings</td>
             <td className="px-2 py-2">{new Date(item.expires_at).toLocaleString()}</td>
+            <td className="px-2 py-2">{item.can_apply ? <button disabled={busy || !canEdit || reason.trim().length < 3} title={canEdit ? undefined : "Your role cannot apply product imports."} onClick={() => onApply(item, reason.trim())} className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">Apply</button> : <span className="text-gray-400">-</span>}</td>
           </tr>)}
         </tbody>
       </table>
@@ -140,7 +150,7 @@ function ProductCsvValidationPanel({ report }: { report: ProductCsvValidationRes
   return <div className="mt-4 rounded border border-blue-100 bg-white p-4 text-sm text-gray-900">
     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
       <div>
-        <p className="font-semibold">Validation result: {report.can_apply ? "Ready for future apply" : "Needs fixes"}</p>
+        <p className="font-semibold">Validation result: {report.can_apply ? "Ready to apply" : "Needs fixes"}</p>
         <p className="mt-1 text-xs text-gray-500">{report.message}</p>
       </div>
       <span className="rounded bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{report.mode}</span>

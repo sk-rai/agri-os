@@ -1,4 +1,4 @@
-"""Manufacturer, branded product, package, and project approval APIs."""
+﻿"""Manufacturer, branded product, package, and project approval APIs."""
 import csv
 from datetime import date, datetime, timedelta, timezone
 import io
@@ -143,6 +143,10 @@ class ApprovalUpdate(BaseModel):
     enabled: bool
     preferred: bool = False
     display_order: int = Field(1000, ge=0)
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+class ProductCsvApplyRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
@@ -394,7 +398,7 @@ async def validate_product_csv(
         "can_apply": can_apply,
         "summary": summary,
         "rows": rows,
-        "message": "Validation passed. Product CSV can be applied once apply endpoint is enabled." if can_apply else "Validation failed. Fix errors and upload again.",
+        "message": "Validation passed. Product CSV can be applied." if can_apply else "Validation failed. Fix errors and upload again.",
     }
     now = datetime.now(timezone.utc)
     batch = ProductCatalogImportBatch(
@@ -413,6 +417,168 @@ async def validate_product_csv(
     db.commit()
     return _product_import_batch_payload(batch)
 
+@router.post("/csv/imports/{batch_id}/apply")
+def apply_product_csv_import(
+    batch_id: uuid.UUID,
+    body: ProductCsvApplyRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    batch = db.query(ProductCatalogImportBatch).filter(
+        ProductCatalogImportBatch.id == batch_id,
+        ProductCatalogImportBatch.tenant_id == x_tenant_id,
+        ProductCatalogImportBatch.is_active == True,
+    ).first()
+    if not batch:
+        raise HTTPException(404, "Import batch not found")
+    if batch.status != "VALIDATED":
+        raise HTTPException(409, f"Import batch status is {batch.status}")
+    now = datetime.now(timezone.utc)
+    if batch.expires_at <= now:
+        batch.status = "EXPIRED"
+        batch.updated_at = now
+        db.commit()
+        raise HTTPException(409, "Import batch has expired; validate the CSV again")
+
+    rows = batch.normalized_rows or []
+    input_codes = {row["canonical_input_code"] for row in rows}
+    inputs = {
+        item.code: item
+        for item in db.query(AgriculturalInput).filter(
+            AgriculturalInput.code.in_(input_codes),
+            AgriculturalInput.catalog_status == "PUBLISHED",
+            AgriculturalInput.is_active == True,
+        ).all()
+    }
+    missing_inputs = sorted(input_codes - set(inputs))
+    if missing_inputs:
+        batch.status = "STALE"
+        batch.updated_at = now
+        db.commit()
+        raise HTTPException(409, f"Published canonical inputs changed since validation: {', '.join(missing_inputs)}")
+
+    product_codes = {row["product_code"] for row in rows}
+    products = {item.code: item for item in db.query(AgriculturalProduct).filter(AgriculturalProduct.code.in_(product_codes)).all()}
+    skus = {row["package_sku"] for row in rows}
+    packages = {item.sku: item for item in db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.sku.in_(skus)).all()}
+    for row in rows:
+        package = packages.get(row["package_sku"])
+        product = products.get(row["product_code"])
+        if package and (not product or package.product_id != product.id):
+            batch.status = "STALE"
+            batch.updated_at = now
+            db.commit()
+            raise HTTPException(409, f"Package SKU now belongs to another product: {row['package_sku']}")
+        if row.get("package_barcode"):
+            barcode_owner = db.query(AgriculturalProductPackage).filter(
+                AgriculturalProductPackage.barcode == row["package_barcode"],
+                AgriculturalProductPackage.sku != row["package_sku"],
+            ).first()
+            if barcode_owner:
+                batch.status = "STALE"
+                batch.updated_at = now
+                db.commit()
+                raise HTTPException(409, f"Package barcode now belongs to another SKU: {row['package_barcode']}")
+        if row.get("registration_number"):
+            registration_owner = db.query(AgriculturalProduct).filter(
+                AgriculturalProduct.registration_number == row["registration_number"],
+                AgriculturalProduct.code != row["product_code"],
+            ).first()
+            if registration_owner:
+                batch.status = "STALE"
+                batch.updated_at = now
+                db.commit()
+                raise HTTPException(409, f"Registration number now belongs to another product: {row['registration_number']}")
+
+    counts = {
+        "manufacturers_created": 0,
+        "manufacturers_updated": 0,
+        "manufacturers_unchanged": 0,
+        "products_created": 0,
+        "products_updated": 0,
+        "products_unchanged": 0,
+        "packages_created": 0,
+        "packages_updated": 0,
+        "packages_unchanged": 0,
+    }
+    manufacturers = {item.code: item for item in db.query(Manufacturer).filter(Manufacturer.code.in_({row["manufacturer_code"] for row in rows})).all()}
+    for row in rows:
+        manufacturer = manufacturers.get(row["manufacturer_code"])
+        before_manufacturer = manufacturer_payload(manufacturer) if manufacturer else None
+        if not manufacturer:
+            manufacturer = Manufacturer(id=uuid.uuid4(), code=row["manufacturer_code"], aliases=[], created_at=now, updated_at=now, is_active=True)
+            db.add(manufacturer)
+            manufacturers[row["manufacturer_code"]] = manufacturer
+        manufacturer.canonical_name = row["manufacturer_name"]
+        manufacturer.short_name = row.get("manufacturer_short_name")
+        manufacturer.country = row.get("manufacturer_country") or "India"
+        manufacturer.updated_at = now
+        db.flush()
+        after_manufacturer = manufacturer_payload(manufacturer)
+        if before_manufacturer == after_manufacturer:
+            counts["manufacturers_unchanged"] += 1
+        else:
+            counts["manufacturers_created" if before_manufacturer is None else "manufacturers_updated"] += 1
+            record_audit(db, x_tenant_id, principal, "MANUFACTURER", manufacturer.id, manufacturer.code, "IMPORT_CREATE_MANUFACTURER" if before_manufacturer is None else "IMPORT_UPDATE_MANUFACTURER", before_manufacturer, after_manufacturer, body.reason)
+
+        product = products.get(row["product_code"])
+        before_product = product_payload(product) if product else None
+        if not product:
+            product = AgriculturalProduct(id=uuid.uuid4(), code=row["product_code"], created_at=now, updated_at=now, is_active=True)
+            db.add(product)
+            products[row["product_code"]] = product
+        product.canonical_input = inputs[row["canonical_input_code"]]
+        product.canonical_input_id = inputs[row["canonical_input_code"]].id
+        product.manufacturer = manufacturer
+        product.manufacturer_id = manufacturer.id
+        product.brand_name = row["brand_name"]
+        product.composition = row.get("composition")
+        product.registration_number = row.get("registration_number")
+        product.registration_authority = row.get("registration_authority")
+        product.registration_expiry_date = date.fromisoformat(row["registration_expiry_date"]) if row.get("registration_expiry_date") else None
+        product.country = row.get("product_country") or "India"
+        product.status = row.get("product_status") or "ACTIVE"
+        product.updated_at = now
+        db.flush()
+        after_product = product_payload(product)
+        if before_product == after_product:
+            counts["products_unchanged"] += 1
+        else:
+            counts["products_created" if before_product is None else "products_updated"] += 1
+            record_audit(db, x_tenant_id, principal, "PRODUCT", product.id, product.code, "IMPORT_CREATE_PRODUCT" if before_product is None else "IMPORT_UPDATE_PRODUCT", before_product, after_product, body.reason)
+
+        package = packages.get(row["package_sku"])
+        before_package = package_payload(package) if package else None
+        if not package:
+            package = AgriculturalProductPackage(id=uuid.uuid4(), product_id=product.id, sku=row["package_sku"], created_at=now, updated_at=now, is_active=True)
+            db.add(package)
+            packages[row["package_sku"]] = package
+        package.product_id = product.id
+        package.quantity = Decimal(row["package_quantity"])
+        package.unit = row["package_unit"]
+        package.pack_label = row["package_label"]
+        package.barcode = row.get("package_barcode")
+        package.status = "ACTIVE"
+        package.updated_at = now
+        db.flush()
+        after_package = package_payload(package)
+        if before_package == after_package:
+            counts["packages_unchanged"] += 1
+        else:
+            counts["packages_created" if before_package is None else "packages_updated"] += 1
+            record_audit(db, x_tenant_id, principal, "PACKAGE", package.id, package.sku, "IMPORT_CREATE_PACKAGE" if before_package is None else "IMPORT_UPDATE_PACKAGE", before_package, after_package, body.reason)
+
+    batch.status = "APPLIED"
+    batch.applied_at = now
+    batch.updated_at = now
+    report = dict(batch.validation_report or {})
+    report["applied_counts"] = counts
+    report["apply_reason"] = body.reason
+    report["message"] = "Product CSV import applied."
+    batch.validation_report = report
+    db.commit()
+    return _product_import_batch_payload(batch)
 
 @router.get("/csv/imports")
 def product_csv_import_history(

@@ -10,22 +10,21 @@ from app.modules.farmer.models import Project, Tenant
 from app.modules.master_data.models import AgriculturalProduct, AgriculturalProductPackage, Manufacturer, ProductCatalogAuditEvent, ProjectProductApproval
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
-MFG="REGRESSION_AGRO"; PRODUCT="REGRESSION_UREA_BRAND"; PROJECT=uuid.uuid4()
+MFG="REGRESSION_AGRO"; PRODUCT="REGRESSION_UREA_BRAND"; CSV_MFG="REGRESSION_CSV_MFG"; CSV_PRODUCT="REGRESSION_CSV_PRODUCT"; PROJECT=uuid.uuid4()
 
 def check(v,l):
     if not v: raise AssertionError(l)
     print("  OK ",l)
 
 def cleanup(db, user=None):
-    product=db.query(AgriculturalProduct).filter(AgriculturalProduct.code==PRODUCT).first()
-    if product:
+    for product in db.query(AgriculturalProduct).filter(AgriculturalProduct.code.in_([PRODUCT,CSV_PRODUCT])).all():
         db.query(ProjectProductApproval).filter(ProjectProductApproval.product_id==product.id).delete(synchronize_session=False)
         db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.product_id==product.id).delete(synchronize_session=False)
         db.query(AgriculturalProduct).filter(AgriculturalProduct.id==product.id).delete(synchronize_session=False)
     from app.modules.master_data.models import ProductCatalogImportBatch
     db.query(ProductCatalogImportBatch).filter(ProductCatalogImportBatch.file_name=="products.csv").delete(synchronize_session=False)
-    db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([MFG,PRODUCT])).delete(synchronize_session=False)
-    db.query(Manufacturer).filter(Manufacturer.code==MFG).delete(synchronize_session=False)
+    db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([MFG,PRODUCT,CSV_MFG,CSV_PRODUCT,"REG-CSV-45KG"])).delete(synchronize_session=False)
+    db.query(Manufacturer).filter(Manufacturer.code.in_([MFG,CSV_MFG])).delete(synchronize_session=False)
     db.query(Project).filter(Project.id==PROJECT).delete(synchronize_session=False)
     db.commit()
     if user: delete_test_admin(db,user.id)
@@ -57,6 +56,13 @@ def main():
         valid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",valid_csv.encode("utf-8"),"text/csv")})
         valid_batch=valid_csv_response.json()
         check(valid_csv_response.status_code==200 and valid_batch["can_apply"] and valid_batch["report"]["summary"]["create"]==1,"product CSV validation accepts create row")
+        apply_response=client.post(f"/api/v1/product-catalog/csv/imports/{valid_batch['batch_id']}/apply",json={"reason":"Product CSV regression apply"})
+        applied_batch=apply_response.json()
+        check(apply_response.status_code==200 and applied_batch["status"]=="APPLIED" and applied_batch["report"]["applied_counts"]["products_created"]==1,"validated product CSV batch applies")
+        repeat_apply=client.post(f"/api/v1/product-catalog/csv/imports/{valid_batch['batch_id']}/apply",json={"reason":"Repeat apply should fail"})
+        check(repeat_apply.status_code==409,"applied product CSV batch cannot be applied twice")
+        csv_catalog=client.get("/api/v1/product-catalog/products?input_code=UREA_46_N")
+        check(any(x["code"]==CSV_PRODUCT and x["packages"][0]["sku"]=="REG-CSV-45KG" for x in csv_catalog.json()["products"]),"applied product CSV creates product and package")
         invalid_csv="manufacturer_code,manufacturer_name,product_code,canonical_input_code,brand_name,package_sku,package_quantity,package_unit,package_label\nREGRESSION_AGRO,Regression Agro,BAD_PRODUCT,NO_SUCH_INPUT,,REG-UREA-45KG,-1,kg,\n"
         invalid_csv_response=client.post("/api/v1/product-catalog/csv/validate",files={"file":("products.csv",invalid_csv.encode("utf-8"),"text/csv")})
         invalid_batch=invalid_csv_response.json()
