@@ -519,7 +519,7 @@ function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint,
   const [applyReason, setApplyReason] = useState(applyReasonDefault);
   const [applyingBatchId, setApplyingBatchId] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
-  const [applyNotice, setApplyNotice] = useState<string | null>(null);
+  const [applyNotice, setApplyNotice] = useState<{ batchId: string; counts: Record<string, number> } | null>(null);
 
   const applyBatch = async (batchId: string) => {
     if (applyReason.trim().length < 3) {
@@ -532,7 +532,7 @@ function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint,
     try {
       const applied = await applyImport(batchId, applyReason.trim());
       const counts = applied.report.applied_counts || {};
-      setApplyNotice(`Applied ${batchId.slice(0, 8)}: ${counts.created || 0} created, ${counts.updated || 0} updated, ${counts.unchanged || 0} unchanged.`);
+      setApplyNotice({ batchId, counts });
       onApplied();
     } catch (e) {
       setApplyError(e instanceof Error ? e.message : "Failed to apply taxonomy import batch");
@@ -565,7 +565,7 @@ function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint,
       <input value={applyReason} onChange={(event) => setApplyReason(event.target.value)} className="mt-3 w-full rounded border px-3 py-2 text-sm text-gray-900" placeholder="Reason for applying this taxonomy import" />
     </div>
     {applyError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{applyError}</p> : null}
-    {applyNotice ? <p className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">{applyNotice}</p> : null}
+    {applyNotice ? <ApplyResultNotice batchId={applyNotice.batchId} counts={applyNotice.counts} /> : null}
     {loading ? <p className="mt-3 text-sm text-gray-500">Loading import history...</p> : null}
     {!loading && imports.length === 0 ? <p className="mt-3 rounded bg-gray-50 p-3 text-sm text-gray-500">No import batches found.</p> : null}
     {imports.length ? (
@@ -620,6 +620,31 @@ function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint,
         </tbody>
       </table>
     </div> : null}
+  </div>;
+}
+
+function ApplyResultNotice({ batchId, counts }: { batchId: string; counts: Record<string, number> }) {
+  const extraCounts = [
+    ["Taxonomy edges", (counts.edges_created || 0) + (counts.edges_restored || 0)],
+    ["Taxonomy disabled", counts.edges_disabled || 0],
+    ["Crop taxonomy links", (counts.taxonomy_assignments_created || 0) + (counts.taxonomy_assignments_restored || 0)],
+    ["Crop propagation links", (counts.propagation_options_created || 0) + (counts.propagation_options_restored || 0)],
+    ["Links disabled", (counts.taxonomy_assignments_disabled || 0) + (counts.propagation_options_disabled || 0)],
+  ].filter(([, value]) => Number(value) > 0);
+
+  return <div className="mt-3 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+    <p className="font-semibold">Import applied: <span className="font-mono">{batchId.slice(0, 8)}</span></p>
+    <div className="mt-3 grid gap-2 md:grid-cols-3">
+      <ImportHistoryMetric label="Created" value={counts.created || 0} detail="new master-data rows" tone={(counts.created || 0) ? "ok" : "neutral"} />
+      <ImportHistoryMetric label="Updated" value={counts.updated || 0} detail="existing rows changed" tone={(counts.updated || 0) ? "info" : "neutral"} />
+      <ImportHistoryMetric label="Unchanged" value={counts.unchanged || 0} detail="rows already matched" />
+    </div>
+    {extraCounts.length ? (
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        {extraCounts.map(([label, value]) => <span key={label} className="rounded bg-white px-2 py-1 font-semibold text-green-800">{label}: {value}</span>)}
+      </div>
+    ) : null}
+    <p className="mt-2 text-xs text-green-800">Catalog data has changed. The page refreshes the relevant crop/taxonomy data after apply.</p>
   </div>;
 }
 
