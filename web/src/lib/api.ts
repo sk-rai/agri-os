@@ -222,6 +222,9 @@ export interface CropTaxonomyImportHistory {
 export type CropPropagationCsvValidationResponse = CropTaxonomyCsvValidationResponse;
 export type CropPropagationImportBatch = CropTaxonomyImportBatch;
 export type CropPropagationImportHistory = CropTaxonomyImportHistory;
+export type CropCatalogCsvValidationResponse = CropTaxonomyCsvValidationResponse;
+export type CropCatalogImportBatch = CropTaxonomyImportBatch;
+export type CropCatalogImportHistory = CropTaxonomyImportHistory;
 
 
 
@@ -746,6 +749,18 @@ export const cropCatalogApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<CropCatalogResponse>(`/api/v1/crop-catalog/crops${suffix}`);
   },
+  downloadCropTemplate: () => apiDownload("/api/v1/crop-catalog/csv/crops/template", "agri-os-crops-template.csv"),
+  downloadCropExport: () => apiDownload("/api/v1/crop-catalog/csv/crops/export", "agri-os-crops.csv"),
+  validateCropCsv: (file: File) => apiUpload<CropCatalogCsvValidationResponse>("/api/v1/crop-catalog/csv/crops/validate", file),
+  cropImportHistory: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<CropCatalogImportHistory>(`/api/v1/crop-catalog/csv/crops/imports${suffix}`);
+  },
+  applyCropImport: (batchId: string, reason: string) =>
+    api<CropCatalogImportBatch>(`/api/v1/crop-catalog/csv/crops/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
   downloadTaxonomyTemplate: () => apiDownload("/api/v1/crop-catalog/csv/taxonomy/template", "agri-os-crop-taxonomy-template.csv"),
   downloadTaxonomyExport: () => apiDownload("/api/v1/crop-catalog/csv/taxonomy/export", "agri-os-crop-taxonomy.csv"),
   validateTaxonomyCsv: (file: File) => apiUpload<CropTaxonomyCsvValidationResponse>("/api/v1/crop-catalog/csv/taxonomy/validate", file),

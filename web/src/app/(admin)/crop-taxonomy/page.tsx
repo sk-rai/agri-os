@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   cropCatalogApi,
+  type CropCatalogCsvValidationResponse,
+  type CropCatalogImportHistory,
   type CropCatalogItemDto,
   type CropCatalogResponse,
   type CropPropagationCsvValidationResponse,
@@ -23,6 +25,13 @@ export default function CropTaxonomyPage() {
   const [seasonFilter, setSeasonFilter] = useState("");
   const [selectedCropCode, setSelectedCropCode] = useState<string | null>(null);
   const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [cropCsvFile, setCropCsvFile] = useState<File | null>(null);
+  const [cropCsvReport, setCropCsvReport] = useState<CropCatalogCsvValidationResponse | null>(null);
+  const [cropImportHistory, setCropImportHistory] = useState<CropCatalogImportHistory | null>(null);
+  const [cropHistoryStatus, setCropHistoryStatus] = useState("");
+  const [cropHistoryLoading, setCropHistoryLoading] = useState(false);
+  const [cropCsvBusy, setCropCsvBusy] = useState(false);
+  const [cropCsvError, setCropCsvError] = useState<string | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvReport, setCsvReport] = useState<CropTaxonomyCsvValidationResponse | null>(null);
   const [importHistory, setImportHistory] = useState<CropTaxonomyImportHistory | null>(null);
@@ -59,6 +68,11 @@ export default function CropTaxonomyPage() {
   }, [taxonomyFilter, propagationFilter, seasonFilter, catalogRefresh]);
 
   useEffect(() => {
+    loadCropImportHistory(cropHistoryStatus || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropHistoryStatus]);
+
+  useEffect(() => {
     loadImportHistory(historyStatus || undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyStatus]);
@@ -67,6 +81,15 @@ export default function CropTaxonomyPage() {
     loadPropagationImportHistory(propHistoryStatus || undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propHistoryStatus]);
+
+  const loadCropImportHistory = (status?: string) => {
+    setCropHistoryLoading(true);
+    cropCatalogApi
+      .cropImportHistory({ status, limit: 10 })
+      .then(setCropImportHistory)
+      .catch(() => setCropImportHistory(null))
+      .finally(() => setCropHistoryLoading(false));
+  };
 
   const loadImportHistory = (status?: string) => {
     setHistoryLoading(true);
@@ -107,6 +130,24 @@ export default function CropTaxonomyPage() {
   const downloadExport = () => {
     setCsvError(null);
     cropCatalogApi.downloadTaxonomyExport().catch((e) => setCsvError(e instanceof Error ? e.message : "Failed to export taxonomy catalog"));
+  };
+
+  const validateCropCsv = async () => {
+    if (!cropCsvFile) {
+      setCropCsvError("Choose a crop catalog CSV file first.");
+      return;
+    }
+    setCropCsvBusy(true);
+    setCropCsvError(null);
+    setCropCsvReport(null);
+    try {
+      setCropCsvReport(await cropCatalogApi.validateCropCsv(cropCsvFile));
+      loadCropImportHistory(cropHistoryStatus || undefined);
+    } catch (e) {
+      setCropCsvError(e instanceof Error ? e.message : "Failed to validate crop CSV");
+    } finally {
+      setCropCsvBusy(false);
+    }
   };
 
   const validateCsv = async () => {
@@ -180,7 +221,45 @@ export default function CropTaxonomyPage() {
 
       <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
         <p className="font-semibold">Safe import foundation</p>
-        <p className="mt-1">Taxonomy CSV upload is validate-only for now. Backend reports planned creates/updates/errors, but does not mutate published taxonomy yet.</p>
+        <p className="mt-1">Crop, taxonomy, and propagation CSV uploads validate row-level diagnostics, persist import batches, and require an explicit admin apply step before mutating master data.</p>
+      </section>
+
+      <section className="rounded bg-white p-4 shadow">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">Crop catalog CSV validation</h2>
+            <p className="mt-1 text-sm text-gray-500">Create or update crops and link them to category, taxonomy nodes, and allowed propagation options.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => cropCatalogApi.downloadCropTemplate().catch((e) => setCropCsvError(e instanceof Error ? e.message : "Failed to download crop template"))} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Download template</button>
+            <button onClick={() => cropCatalogApi.downloadCropExport().catch((e) => setCropCsvError(e instanceof Error ? e.message : "Failed to export crops"))} className="rounded border px-3 py-2 text-sm hover:bg-gray-50">Export crops</button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <input type="file" accept=".csv,text/csv" onChange={(event) => setCropCsvFile(event.target.files?.[0] || null)} className="text-sm" />
+          <button onClick={validateCropCsv} disabled={cropCsvBusy || !cropCsvFile} className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300">
+            {cropCsvBusy ? "Validating..." : "Validate CSV"}
+          </button>
+          {cropCsvFile ? <span className="text-xs text-gray-500">Selected: {cropCsvFile.name}</span> : null}
+        </div>
+        {cropCsvError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{cropCsvError}</p> : null}
+        {cropCsvReport ? <CsvValidationReport report={cropCsvReport} /> : null}
+        <ImportHistoryPanel
+          title="Recent crop imports"
+          description="Persisted crop validation batches. Applying creates/updates crops plus taxonomy and propagation linkages."
+          applyReasonDefault="Apply validated crop catalog import"
+          applyHint="Only VALIDATED batches can be applied. Applying updates crop master data and link tables, then marks the batch APPLIED."
+          history={cropImportHistory}
+          loading={cropHistoryLoading}
+          status={cropHistoryStatus}
+          onStatusChange={setCropHistoryStatus}
+          onRefresh={() => loadCropImportHistory(cropHistoryStatus || undefined)}
+          applyImport={(batchId, reason) => cropCatalogApi.applyCropImport(batchId, reason)}
+          onApplied={() => {
+            loadCropImportHistory(cropHistoryStatus || undefined);
+            setCatalogRefresh((value) => value + 1);
+          }}
+        />
       </section>
 
       <section className="rounded bg-white p-4 shadow">
