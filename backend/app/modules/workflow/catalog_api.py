@@ -15,7 +15,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -220,6 +220,252 @@ def export_workflow_csv(
                 rows.append(_workflow_csv_row(template, version, stage, None))
     date_stamp = datetime.now(timezone.utc).date().isoformat()
     return _csv_download(rows, WORKFLOW_CSV_COLUMNS, f"agri-os-workflows-{date_stamp}.csv")
+
+
+def _parse_workflow_json_list(raw: str, *, field: str, errors: list[dict]):
+    value = (raw or "").strip()
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        errors.append({"field": field, "code": "INVALID_JSON", "message": f"{field} must be valid JSON"})
+        return []
+    if not isinstance(parsed, list):
+        errors.append({"field": field, "code": "INVALID_JSON_TYPE", "message": f"{field} must be a JSON list"})
+        return []
+    return parsed
+
+
+def _parse_workflow_json_dict(raw: str, *, field: str, errors: list[dict]):
+    value = (raw or "").strip()
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        errors.append({"field": field, "code": "INVALID_JSON", "message": f"{field} must be valid JSON"})
+        return {}
+    if not isinstance(parsed, dict):
+        errors.append({"field": field, "code": "INVALID_JSON_TYPE", "message": f"{field} must be a JSON object"})
+        return {}
+    return parsed
+
+
+def _parse_workflow_int(raw: str, *, field: str, errors: list[dict], minimum: Optional[int] = None):
+    value = (raw or "").strip()
+    if value == "":
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        errors.append({"field": field, "code": "INVALID_INTEGER", "message": f"{field} must be an integer"})
+        return None
+    if minimum is not None and parsed < minimum:
+        errors.append({"field": field, "code": "INVALID_INTEGER", "message": f"{field} must be >= {minimum}"})
+    return parsed
+
+
+def _parse_workflow_float(raw: str, *, field: str, errors: list[dict]):
+    value = (raw or "").strip()
+    if value == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        errors.append({"field": field, "code": "INVALID_NUMBER", "message": f"{field} must be numeric"})
+        return None
+
+
+def _parse_workflow_bool(raw: str, *, field: str, errors: list[dict]):
+    value = (raw or "").strip().lower()
+    if value == "":
+        return False
+    if value in {"true", "1", "yes", "y"}:
+        return True
+    if value in {"false", "0", "no", "n"}:
+        return False
+    errors.append({"field": field, "code": "INVALID_BOOLEAN", "message": f"{field} must be true/false"})
+    return False
+
+
+def _normalize_workflow_csv_row(raw: dict[str, str], row_number: int) -> dict:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    stage_order = _parse_workflow_int(raw.get("stage_order") or "", field="stage_order", errors=errors, minimum=1)
+    duration_days = _parse_workflow_int(raw.get("duration_days") or "", field="duration_days", errors=errors, minimum=0)
+    recommendation_sort_order = _parse_workflow_int(raw.get("recommendation_sort_order") or "", field="recommendation_sort_order", errors=errors, minimum=0)
+    recommendation_day_offset = _parse_workflow_int(raw.get("recommendation_day_offset") or "", field="recommendation_day_offset", errors=errors, minimum=0)
+    typical_cost_per_acre = _parse_workflow_float(raw.get("typical_cost_per_acre") or "", field="typical_cost_per_acre", errors=errors)
+    stage_code = (raw.get("stage_code") or "").strip().upper().replace(" ", "_")
+    activity_type = (raw.get("activity_type") or "").strip().upper().replace(" ", "_")
+    input_code = (raw.get("input_code") or "").strip().upper().replace(" ", "_") or None
+    input_name = (raw.get("input_name") or "").strip()
+    has_recommendation = bool(activity_type or input_code or input_name or (raw.get("recommendation_day_offset") or "").strip())
+    if not re.fullmatch(r"[A-Z0-9_]{2,50}", stage_code):
+        errors.append({"field": "stage_code", "code": "INVALID_STAGE_CODE", "message": "Use 2-50 uppercase letters, numbers, or underscores"})
+    if not (raw.get("stage_name_en") or "").strip():
+        errors.append({"field": "stage_name_en", "code": "REQUIRED", "message": "stage_name_en is required"})
+    if duration_days is None:
+        errors.append({"field": "duration_days", "code": "REQUIRED", "message": "duration_days is required"})
+    if has_recommendation:
+        if recommendation_sort_order is None:
+            errors.append({"field": "recommendation_sort_order", "code": "REQUIRED", "message": "recommendation_sort_order is required when recommendation fields are present"})
+        if recommendation_day_offset is None:
+            errors.append({"field": "recommendation_day_offset", "code": "REQUIRED", "message": "recommendation_day_offset is required when recommendation fields are present"})
+        if not activity_type:
+            errors.append({"field": "activity_type", "code": "REQUIRED", "message": "activity_type is required when recommendation fields are present"})
+        if not input_name:
+            errors.append({"field": "input_name", "code": "REQUIRED", "message": "input_name is required when recommendation fields are present"})
+    normalized = {
+        "template_code": (raw.get("template_code") or "").strip(),
+        "crop_code": (raw.get("crop_code") or "").strip().upper(),
+        "season_code": (raw.get("season_code") or "").strip().upper(),
+        "propagation_type_code": (raw.get("propagation_type_code") or "").strip().upper() or None,
+        "version_number": (raw.get("version_number") or "").strip(),
+        "version_status": (raw.get("version_status") or "").strip().upper(),
+        "stage_order": stage_order,
+        "stage_code": stage_code,
+        "stage_name": {"en": (raw.get("stage_name_en") or "").strip(), "hi": (raw.get("stage_name_hi") or "").strip()},
+        "duration_days": duration_days,
+        "stage_type": (raw.get("stage_type") or "").strip() or None,
+        "phase": (raw.get("phase") or "").strip() or None,
+        "description": {"en": (raw.get("description_en") or "").strip(), "hi": (raw.get("description_hi") or "").strip()},
+        "farmer_actions": _parse_workflow_json_list(raw.get("farmer_actions_json") or "", field="farmer_actions_json", errors=errors),
+        "typical_inputs": _parse_workflow_json_list(raw.get("typical_inputs_json") or "", field="typical_inputs_json", errors=errors),
+        "key_observations": _parse_workflow_json_list(raw.get("key_observations_json") or "", field="key_observations_json", errors=errors),
+        "has_recommendation": has_recommendation,
+        "recommendation": None,
+    }
+    if has_recommendation:
+        normalized["recommendation"] = {
+            "sort_order": recommendation_sort_order,
+            "day_offset": recommendation_day_offset,
+            "activity_type": activity_type,
+            "input_code": input_code,
+            "input_name": input_name,
+            "typical_quantity": (raw.get("typical_quantity") or "").strip() or None,
+            "typical_cost_per_acre": typical_cost_per_acre,
+            "is_critical": _parse_workflow_bool(raw.get("is_critical") or "", field="is_critical", errors=errors),
+            "description": {"en": (raw.get("recommendation_description_en") or "").strip(), "hi": (raw.get("recommendation_description_hi") or "").strip()},
+            "metadata": _parse_workflow_json_dict(raw.get("recommendation_metadata_json") or "", field="recommendation_metadata_json", errors=errors),
+        }
+    if not input_code and has_recommendation:
+        warnings.append({"field": "input_code", "code": "CUSTOM_OR_UNMAPPED_INPUT", "message": "Recommendation has no catalog input_code and will be treated as custom/unmapped during apply"})
+    return {"row_number": row_number, "stage_code": stage_code, "errors": errors, "warnings": warnings, "normalized": normalized}
+
+
+def _current_draft_stage_signature(db: Session, version_id) -> dict:
+    rows = db.query(WorkflowTemplateStage).filter(WorkflowTemplateStage.template_version_id == version_id, WorkflowTemplateStage.is_active == True).all()
+    return {row.stage_code: {"stage_order": row.stage_order, "duration_days": row.duration_days, "stage_name": row.stage_name or {}} for row in rows}
+
+
+@router.post("/csv/workflows/drafts/{workflow_template_version_id}/validate")
+async def validate_workflow_csv_against_draft(
+    workflow_template_version_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Validate workflow CSV rows against an existing DRAFT version without mutating it."""
+    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    content = await file.read(2 * 1024 * 1024 + 1)
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(413, "CSV file exceeds 2 MB")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded")
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(400, "CSV header row is required")
+    headers = {header.strip() for header in reader.fieldnames if header}
+    required = {"template_code", "crop_code", "season_code", "stage_order", "stage_code", "stage_name_en", "duration_days"}
+    missing = sorted(required - headers)
+    if missing:
+        raise HTTPException(400, {"error": "MISSING_COLUMNS", "columns": missing})
+    raw_rows = list(reader)
+    if not raw_rows:
+        raise HTTPException(400, "CSV contains no data rows")
+    if len(raw_rows) > 2000:
+        raise HTTPException(413, "CSV exceeds 2000 rows")
+
+    rows = [_normalize_workflow_csv_row(raw, index) for index, raw in enumerate(raw_rows, start=2)]
+    known_inputs = {item.code: set(item.applicable_crops or []) for item in db.query(AgriculturalInput).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()}
+    stage_seen: dict[str, dict] = {}
+    stage_orders: dict[int, str] = {}
+    rec_seen: set[tuple[str, int]] = set()
+    for row in rows:
+        normalized = row["normalized"]
+        if normalized["template_code"] and normalized["template_code"] != template.code:
+            row["errors"].append({"field": "template_code", "code": "TEMPLATE_MISMATCH", "message": f"CSV template_code must be {template.code}"})
+        if normalized["crop_code"] and normalized["crop_code"] != template.crop_code:
+            row["errors"].append({"field": "crop_code", "code": "CROP_MISMATCH", "message": f"CSV crop_code must be {template.crop_code}"})
+        if normalized["season_code"] and normalized["season_code"] != template.season_code:
+            row["errors"].append({"field": "season_code", "code": "SEASON_MISMATCH", "message": f"CSV season_code must be {template.season_code}"})
+        if normalized["propagation_type_code"] and template.propagation_type_code and normalized["propagation_type_code"] != template.propagation_type_code:
+            row["errors"].append({"field": "propagation_type_code", "code": "PROPAGATION_MISMATCH", "message": f"CSV propagation_type_code must be {template.propagation_type_code}"})
+        stage_key = normalized["stage_code"]
+        stage_signature = {key: normalized[key] for key in ["stage_order", "stage_name", "duration_days", "stage_type", "phase", "description", "farmer_actions", "typical_inputs", "key_observations"]}
+        previous = stage_seen.get(stage_key)
+        if previous and previous != stage_signature:
+            row["errors"].append({"field": "stage_code", "code": "CONFLICTING_STAGE_DEFINITION", "message": "Rows with the same stage_code must repeat identical stage fields"})
+        else:
+            stage_seen[stage_key] = stage_signature
+        order = normalized.get("stage_order")
+        if order is not None:
+            previous_stage = stage_orders.get(order)
+            if previous_stage and previous_stage != stage_key:
+                row["errors"].append({"field": "stage_order", "code": "DUPLICATE_STAGE_ORDER", "message": f"stage_order {order} is also used by {previous_stage}"})
+            else:
+                stage_orders[order] = stage_key
+        recommendation = normalized.get("recommendation")
+        if recommendation:
+            rec_key = (stage_key, int(recommendation.get("sort_order") or 0))
+            if rec_key in rec_seen:
+                row["errors"].append({"field": "recommendation_sort_order", "code": "DUPLICATE_RECOMMENDATION_ORDER", "message": "Each stage must use recommendation_sort_order only once"})
+            rec_seen.add(rec_key)
+            input_code = recommendation.get("input_code")
+            if input_code:
+                if input_code not in known_inputs:
+                    row["errors"].append({"field": "input_code", "code": "UNKNOWN_INPUT_CODE", "message": f"Unknown published input_code: {input_code}"})
+                else:
+                    applicable = {str(code).upper() for code in known_inputs.get(input_code) or []}
+                    if applicable and template.crop_code.upper() not in applicable:
+                        row["errors"].append({"field": "input_code", "code": "INPUT_NOT_APPLICABLE_TO_CROP", "message": f"Input {input_code} is not applicable to {template.crop_code}"})
+
+    current_stages = _current_draft_stage_signature(db, version.id)
+    counts = {"total_rows": len(rows), "stages": len(stage_seen), "recommendations": sum(1 for row in rows if row["normalized"].get("recommendation")), "errors": 0, "warnings": 0, "stage_create": 0, "stage_update": 0, "stage_unchanged": 0}
+    for code, signature in stage_seen.items():
+        current = current_stages.get(code)
+        if not current:
+            counts["stage_create"] += 1
+        elif current.get("stage_order") == signature.get("stage_order") and current.get("duration_days") == signature.get("duration_days") and (current.get("stage_name") or {}).get("en") == signature.get("stage_name", {}).get("en"):
+            counts["stage_unchanged"] += 1
+        else:
+            counts["stage_update"] += 1
+    for row in rows:
+        row["action"] = "INVALID" if row["errors"] else "VALIDATE"
+        counts["errors"] += len(row["errors"])
+        counts["warnings"] += len(row["warnings"])
+    can_apply = counts["errors"] == 0
+    return {
+        "schema_version": "workflow_csv_validation.v1",
+        "mode": "VALIDATE_ONLY",
+        "apply_available": False,
+        "can_apply": can_apply,
+        "tenant_id": x_tenant_id,
+        "workflow_template_id": str(template.id),
+        "workflow_template_version_id": str(version.id),
+        "workflow_template_code": template.code,
+        "version": version.version_number,
+        "status": version.status,
+        "file_name": file.filename,
+        "summary": counts,
+        "rows": rows,
+        "message": "Validation passed. Apply endpoint is intentionally not enabled yet." if can_apply else "Validation failed. Fix errors and upload again.",
+    }
 
 
 def _actor_uuid(x_actor_id: Optional[str]):

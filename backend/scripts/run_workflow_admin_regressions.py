@@ -18,6 +18,7 @@ BACKEND_ROOT = SCRIPT_DIR.parent
 
 REGRESSION_SCRIPTS = [
     "test_workflow_csv_export.py",
+    "test_workflow_csv_validation.py",
     "test_project_edit_policy.py",
     "test_project_workflow_enablements.py",
     "test_project_workflow_overrides.py",
