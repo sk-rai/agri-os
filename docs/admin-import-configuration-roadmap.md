@@ -1,4 +1,4 @@
-# Admin import and configuration roadmap
+﻿# Admin import and configuration roadmap
 
 This roadmap defines how Agri-OS should move from seeded backend data to admin-configurable crop, workflow, recommendation, and input catalogs without turning Android into a rule engine.
 
@@ -119,6 +119,24 @@ Expected validation:
 - package unit normalization;
 - product approval project exists;
 - custom Android-submitted inputs can be reviewed/deduped.
+
+Current product catalog CSV lifecycle:
+
+- export/template download is available from Products admin;
+- validation persists an import batch with `VALIDATED` or `INVALID` status;
+- only `VALIDATED` batches can be applied before expiry;
+- apply creates/updates manufacturers, branded products, and package SKUs;
+- repeat apply is blocked after the batch becomes `APPLIED`;
+- apply result summary records manufacturer/product/package created, updated, and unchanged counts;
+- product CSV apply writes audit events for manufacturer, product, and package changes.
+
+Batch status contract:
+
+- `VALIDATED`: ready to apply before expiry;
+- `INVALID`: fix CSV and upload again;
+- `APPLIED`: already imported and cannot be applied again;
+- `EXPIRED`: validate again before applying;
+- `STALE`: referenced catalog data changed after validation, so revalidate.
 
 ### Phase 3: Workflow templates and recommendations
 
