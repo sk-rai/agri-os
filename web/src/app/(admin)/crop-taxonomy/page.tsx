@@ -496,6 +496,26 @@ function CsvValidationReport({ report }: { report: CropTaxonomyCsvValidationResp
 
 function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint, history, loading, status, onStatusChange, onRefresh, applyImport, onApplied }: { title: string; description: string; applyReasonDefault: string; applyHint: string; history: CropTaxonomyImportHistory | null; loading: boolean; status: string; onStatusChange: (value: string) => void; onRefresh: () => void; applyImport: (batchId: string, reason: string) => Promise<{ report: { applied_counts?: Record<string, number> } }>; onApplied: () => void }) {
   const imports = history?.imports || [];
+  const statusCounts = imports.reduce<Record<string, number>>((acc, item) => {
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, {});
+  const aggregateSummary = imports.reduce(
+    (acc, item) => {
+      const summary = item.report?.summary || {};
+      const applied = item.report?.applied_counts || {};
+      acc.rows += Number(summary.total || 0);
+      acc.create += Number(summary.create || 0);
+      acc.update += Number(summary.update || 0);
+      acc.invalid += Number(summary.invalid || 0);
+      acc.errors += Number(summary.errors || 0);
+      acc.appliedCreated += Number(applied.created || 0);
+      acc.appliedUpdated += Number(applied.updated || 0);
+      return acc;
+    },
+    { rows: 0, create: 0, update: 0, invalid: 0, errors: 0, appliedCreated: 0, appliedUpdated: 0 },
+  );
+  const latestImport = imports[0];
   const [applyReason, setApplyReason] = useState(applyReasonDefault);
   const [applyingBatchId, setApplyingBatchId] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -547,7 +567,16 @@ function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint,
     {applyError ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{applyError}</p> : null}
     {applyNotice ? <p className="mt-3 rounded bg-green-50 p-3 text-sm text-green-700">{applyNotice}</p> : null}
     {loading ? <p className="mt-3 text-sm text-gray-500">Loading import history...</p> : null}
-    {!loading && imports.length === 0 ? <p className="mt-3 rounded bg-gray-50 p-3 text-sm text-gray-500">No taxonomy import batches found.</p> : null}
+    {!loading && imports.length === 0 ? <p className="mt-3 rounded bg-gray-50 p-3 text-sm text-gray-500">No import batches found.</p> : null}
+    {imports.length ? (
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <ImportHistoryMetric label="Batches" value={imports.length} detail={`${statusCounts.VALIDATED || 0} validated / ${statusCounts.APPLIED || 0} applied / ${statusCounts.INVALID || 0} invalid`} />
+        <ImportHistoryMetric label="Rows reviewed" value={aggregateSummary.rows} detail={`${aggregateSummary.create} create, ${aggregateSummary.update} update`} />
+        <ImportHistoryMetric label="Issues" value={aggregateSummary.errors} detail={`${aggregateSummary.invalid} invalid rows across shown batches`} tone={aggregateSummary.errors ? "warn" : "ok"} />
+        <ImportHistoryMetric label="Applied changes" value={aggregateSummary.appliedCreated + aggregateSummary.appliedUpdated} detail={`${aggregateSummary.appliedCreated} created, ${aggregateSummary.appliedUpdated} updated`} tone={aggregateSummary.appliedCreated + aggregateSummary.appliedUpdated ? "info" : "neutral"} />
+      </div>
+    ) : null}
+    {latestImport ? <p className="mt-2 text-xs text-gray-500">Latest batch: <span className="font-mono">{latestImport.batch_id.slice(0, 8)}</span> - {latestImport.status} - {new Date(latestImport.created_at).toLocaleString()}</p> : null}
     {imports.length ? <div className="mt-4 overflow-x-auto">
       <table className="min-w-full text-left text-xs">
         <thead className="text-gray-500">
@@ -591,6 +620,15 @@ function ImportHistoryPanel({ title, description, applyReasonDefault, applyHint,
         </tbody>
       </table>
     </div> : null}
+  </div>;
+}
+
+function ImportHistoryMetric({ label, value, detail, tone = "neutral" }: { label: string; value: string | number; detail: string; tone?: "neutral" | "ok" | "warn" | "info" }) {
+  const toneClass = tone === "ok" ? "border-green-100 bg-green-50" : tone === "warn" ? "border-amber-100 bg-amber-50" : tone === "info" ? "border-blue-100 bg-blue-50" : "border-gray-100 bg-gray-50";
+  return <div className={`rounded border p-3 ${toneClass}`}>
+    <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+    <p className="mt-1 text-xl font-bold text-gray-900">{value}</p>
+    <p className="mt-1 text-xs text-gray-500">{detail}</p>
   </div>;
 }
 
