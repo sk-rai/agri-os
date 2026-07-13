@@ -999,6 +999,48 @@ export interface WorkflowDraftValidationResponse {
   freshness?: WorkflowDraftFreshness | null;
 }
 
+
+export interface WorkflowCsvValidationIssue {
+  field: string;
+  code: string;
+  message: string;
+}
+
+export interface WorkflowCsvValidationRow {
+  row_number: number;
+  stage_code: string;
+  action: string;
+  errors: WorkflowCsvValidationIssue[];
+  warnings: WorkflowCsvValidationIssue[];
+  normalized: Record<string, unknown>;
+}
+
+export interface WorkflowCsvValidationResponse {
+  schema_version: string;
+  mode: string;
+  apply_available: boolean;
+  can_apply: boolean;
+  tenant_id: string;
+  workflow_template_id: string;
+  workflow_template_version_id: string;
+  workflow_template_code: string;
+  version: string;
+  status: string;
+  file_name?: string | null;
+  summary: {
+    total_rows: number;
+    stages: number;
+    recommendations: number;
+    errors: number;
+    warnings: number;
+    stage_create: number;
+    stage_update: number;
+    stage_unchanged: number;
+  };
+  rows: WorkflowCsvValidationRow[];
+  message: string;
+}
+
 export interface WorkflowDraftValidationBlocker {
   workflow_template_id: string;
   workflow_template_version_id: string;
@@ -1525,6 +1567,8 @@ export const workflowCatalogApi = {
     api<WorkflowPreviewResponse>(`/api/v1/workflow-catalog/draft-preview/${versionId}`),
   validateDraftVersion: (versionId: string) =>
     api<WorkflowDraftValidationResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/validation`),
+  validateWorkflowCsvAgainstDraft: (versionId: string, file: File) =>
+    apiUpload<WorkflowCsvValidationResponse>(`/api/v1/workflow-catalog/csv/workflows/drafts/${versionId}/validate`, file),
   deletedDraftStages: (versionId: string) =>
     api<WorkflowDeletedStagesResponse>(`/api/v1/workflow-catalog/drafts/${versionId}/deleted-stages`),
   draftPublishImpact: (versionId: string, params?: { archivePrevious?: boolean }) => {

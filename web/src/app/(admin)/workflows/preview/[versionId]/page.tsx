@@ -13,6 +13,7 @@ import {
   type WorkflowDraftStageDuplicateRequest,
   type WorkflowDraftStageUpdateRequest,
   type WorkflowDraftValidationResponse,
+  type WorkflowCsvValidationResponse,
   type WorkflowAuditResponse,
   type WorkflowOverrideHistoryResponse,
   type WorkflowPreviewResponse,
@@ -148,6 +149,10 @@ export default function WorkflowPreviewPage() {
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [draftValidation, setDraftValidation] = useState<WorkflowDraftValidationResponse | null>(null);
   const [draftValidating, setDraftValidating] = useState(false);
+  const [workflowCsvFile, setWorkflowCsvFile] = useState<File | null>(null);
+  const [workflowCsvValidation, setWorkflowCsvValidation] = useState<WorkflowCsvValidationResponse | null>(null);
+  const [workflowCsvValidating, setWorkflowCsvValidating] = useState(false);
+  const [workflowCsvError, setWorkflowCsvError] = useState<string | null>(null);
   const [publishImpact, setPublishImpact] = useState<WorkflowPublishImpactResponse | null>(null);
   const [publishOutcome, setPublishOutcome] = useState<PublishOutcome | null>(null);
   const [postValidationAudit, setPostValidationAudit] = useState<WorkflowAuditResponse | null>(null);
@@ -291,6 +296,26 @@ export default function WorkflowPreviewPage() {
       return null;
     } finally {
       setDraftValidating(false);
+    }
+  };
+
+  const validateWorkflowCsv = async () => {
+    if (!preview) return;
+    if (!requireDraftEdit()) return;
+    if (!workflowCsvFile) {
+      setWorkflowCsvError("Choose a workflow CSV file first.");
+      return;
+    }
+    setWorkflowCsvValidating(true);
+    setWorkflowCsvError(null);
+    setWorkflowCsvValidation(null);
+    try {
+      const validation = await workflowCatalogApi.validateWorkflowCsvAgainstDraft(preview.workflow_template_version_id, workflowCsvFile);
+      setWorkflowCsvValidation(validation);
+    } catch (e) {
+      setWorkflowCsvError(getErrorMessage(e));
+    } finally {
+      setWorkflowCsvValidating(false);
     }
   };
 
@@ -695,6 +720,19 @@ export default function WorkflowPreviewPage() {
           />
           <PublishImpactPanel impact={publishImpact} />
           <DraftValidationPanel validation={draftValidation} validating={draftValidating} onValidate={validateDraft} />
+          <WorkflowCsvValidationPanel
+            file={workflowCsvFile}
+            validation={workflowCsvValidation}
+            error={workflowCsvError}
+            validating={workflowCsvValidating}
+            canEditDraft={canEditDraft}
+            onFileChange={(file) => {
+              setWorkflowCsvFile(file);
+              setWorkflowCsvValidation(null);
+              setWorkflowCsvError(null);
+            }}
+            onValidate={validateWorkflowCsv}
+          />
           <DeletedStagesPanel deletedStages={deletedStages} busyTarget={busyTarget} onRestoreStage={restoreDraftStage} />
         </div>
       ) : null}
@@ -2352,6 +2390,123 @@ function DraftValidationPanel({
           <ValidationIssueGroup title="Info" tone="info" issues={info} />
         </div>
       )}
+    </div>
+  );
+}
+
+function WorkflowCsvValidationPanel({
+  file,
+  validation,
+  error,
+  validating,
+  canEditDraft,
+  onFileChange,
+  onValidate,
+}: {
+  file: File | null;
+  validation: WorkflowCsvValidationResponse | null;
+  error: string | null;
+  validating: boolean;
+  canEditDraft: boolean;
+  onFileChange: (file: File | null) => void;
+  onValidate: () => void;
+}) {
+  const rowsWithIssues = validation?.rows.filter((row) => row.errors.length || row.warnings.length) || [];
+  const previewRows = rowsWithIssues.length ? rowsWithIssues.slice(0, 12) : (validation?.rows || []).slice(0, 12);
+
+  return (
+    <div id="workflow-csv-validation-panel" className="mb-6 rounded-lg bg-white p-5 shadow">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Workflow CSV Validation</h2>
+          <p className="text-sm text-gray-500">Upload an edited workflow CSV and validate it against this draft version. Apply/import is intentionally disabled for now.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {validation ? (
+            <>
+              <Badge>Rows {validation.summary.total_rows}</Badge>
+              <Badge>Errors {validation.summary.errors}</Badge>
+              <Badge>Warnings {validation.summary.warnings}</Badge>
+              <Badge>{validation.can_apply ? "CSV clean" : "Review required"}</Badge>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="rounded border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              disabled={!canEditDraft || validating}
+              onChange={(event) => onFileChange(event.target.files?.[0] || null)}
+              className="block text-sm text-gray-700 file:mr-3 file:rounded file:border-0 file:bg-green-700 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-green-800 disabled:opacity-60"
+            />
+            <p className="mt-2 text-xs text-gray-500">{file ? `Selected: ${file.name}` : "Use the workflow export/template CSV, then validate before any future apply step."}</p>
+          </div>
+          <button
+            type="button"
+            disabled={!canEditDraft || validating || !file}
+            onClick={onValidate}
+            className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {validating ? "Validating CSV..." : "Validate CSV"}
+          </button>
+        </div>
+        {!canEditDraft ? <p className="mt-3 rounded bg-yellow-50 p-2 text-xs text-yellow-700">Your role can view this draft but cannot validate workflow CSV changes.</p> : null}
+        {error ? <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p> : null}
+      </div>
+
+      {validation ? (
+        <div className="mt-4 space-y-4">
+          <div className={`rounded border p-3 text-sm ${validation.can_apply ? "border-green-200 bg-green-50 text-green-800" : "border-yellow-200 bg-yellow-50 text-yellow-800"}`}>
+            <p className="font-semibold">{validation.message}</p>
+            <p className="mt-1 text-xs">Mode: {validation.mode}. Apply available: {validation.apply_available ? "yes" : "no"}. Draft: {validation.workflow_template_code} v{validation.version}.</p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <CsvStat label="Stages" value={validation.summary.stages} />
+            <CsvStat label="Recommendations" value={validation.summary.recommendations} />
+            <CsvStat label="Create stages" value={validation.summary.stage_create} />
+            <CsvStat label="Update stages" value={validation.summary.stage_update} />
+          </div>
+
+          <div className="overflow-hidden rounded border border-gray-200">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Stage</th><th className="px-3 py-2">Action</th><th className="px-3 py-2">Issues</th></tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {previewRows.map((row) => (
+                  <tr key={`${row.row_number}-${row.stage_code}`}>
+                    <td className="px-3 py-2 font-mono text-xs">{row.row_number}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{row.stage_code || "-"}</td>
+                    <td className="px-3 py-2"><span className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{row.action}</span></td>
+                    <td className="px-3 py-2">
+                      {row.errors.length === 0 && row.warnings.length === 0 ? <span className="text-xs text-green-700">No issues</span> : null}
+                      <div className="space-y-1">
+                        {row.errors.map((issue, index) => <p key={`e-${index}`} className="text-xs text-red-700">ERROR {issue.field}: {issue.message}</p>)}
+                        {row.warnings.map((issue, index) => <p key={`w-${index}`} className="text-xs text-yellow-700">WARN {issue.field}: {issue.message}</p>)}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {validation.rows.length > previewRows.length ? <p className="text-xs text-gray-500">Showing {previewRows.length} of {validation.rows.length} rows, prioritizing rows with issues.</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CsvStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-gray-200 bg-gray-50 p-3">
+      <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-gray-900">{value}</p>
     </div>
   );
 }
