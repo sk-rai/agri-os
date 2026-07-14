@@ -520,6 +520,33 @@ def _enrollment_payload(enrollment: FarmerProjectEnrollment, project: Optional[P
     }
 
 
+def _farmer_profile_completion(farmer: Farmer, parcel_count: int, soil_profile_count: int) -> dict:
+    missing = []
+    if not farmer.display_name:
+        missing.append("display_name")
+    if not farmer.village_id and not farmer.village_name_manual:
+        missing.append("village")
+    if parcel_count == 0:
+        missing.append("parcel")
+    return {
+        "is_complete_for_home": len(missing) == 0,
+        "missing_fields": missing,
+        "parcel_count": parcel_count,
+        "soil_profile_count": soil_profile_count,
+    }
+
+
+def _launch_navigation_decision(farmer: Farmer, enrollments: list[FarmerProjectEnrollment], completion: dict) -> str:
+    active_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "ACTIVE"]
+    if farmer.status not in {"ACTIVE", "PENDING"}:
+        return "SHOW_REGISTRATION"
+    if len(active_enrollments) > 1:
+        return "SHOW_PROJECT_PICKER"
+    if not completion["is_complete_for_home"]:
+        return "SHOW_PROFILE_COMPLETION"
+    return "SHOW_HOME"
+
+
 def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer]) -> dict:
     from app.modules.farmer.soil_profile import SoilProfile
     from app.modules.master_data.models import Crop
@@ -1171,6 +1198,72 @@ def list_project_farmer_enrollments(
         query = query.filter(FarmerProjectEnrollment.status == status)
     enrollments = query.order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).all()
     return [_enrollment_payload(enrollment, project) for enrollment in enrollments]
+
+
+@router.get("/farmers/{farmer_id}/launch-context")
+def get_farmer_launch_context(
+    farmer_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return Android post-login launch decision context for a farmer."""
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer_id,
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        )
+        .order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc())
+        .all()
+    )
+    project_ids = [enrollment.project_id for enrollment in enrollments]
+    projects = {project.id: project for project in db.query(Project).filter(Project.id.in_(project_ids)).all()} if project_ids else {}
+    active_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "ACTIVE"]
+    selected_enrollment = active_enrollments[0] if len(active_enrollments) == 1 else None
+    selected_project = projects.get(selected_enrollment.project_id) if selected_enrollment else None
+
+    parcel_count = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer_id, Parcel.status != "ARCHIVED").count()
+    try:
+        from app.modules.farmer.soil_profile import SoilProfile
+        soil_profile_count = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer_id).count()
+    except Exception:
+        soil_profile_count = 0
+
+    completion = _farmer_profile_completion(farmer, parcel_count, soil_profile_count)
+    decision = _launch_navigation_decision(farmer, enrollments, completion)
+    project_selection_required = len(active_enrollments) > 1
+
+    bootstrap_endpoint = "/api/v1/app-config/bootstrap"
+    if selected_project:
+        bootstrap_endpoint = f"/api/v1/app-config/bootstrap?project_id={selected_project.id}"
+
+    return {
+        "schema_version": "farmer_launch_context.v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tenant_id": x_tenant_id,
+        "farmer": _farmer_payload(farmer),
+        "project_enrollments": [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in enrollments],
+        "active_project_count": len(active_enrollments),
+        "active_project_candidate": None if not selected_enrollment else _enrollment_payload(selected_enrollment, selected_project),
+        "project_selection_required": project_selection_required,
+        "profile_completion": completion,
+        "recommended_navigation": decision,
+        "endpoints": {
+            "bootstrap": bootstrap_endpoint,
+            "profile_hydration_by_mobile": f"/api/v1/farmers/by-mobile/{farmer.mobile_number}",
+            "profile_hydration_me": "/api/v1/farmers/me/profile",
+            "project_enrollments": f"/api/v1/farmers/{farmer.id}/project-enrollments",
+        },
+        "notes": [
+            "Android may keep current native screens until backend-driven form flags are enabled.",
+            "If project_selection_required is true, use project_enrollments to let the user choose context before calling bootstrap with project_id.",
+        ],
+    }
 
 
 # --- Parcel Endpoints ---
