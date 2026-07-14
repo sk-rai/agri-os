@@ -10,6 +10,8 @@ Agri-OS started with Android-led farmer onboarding and crop-cycle execution, the
 
 The next platform step is to bring farmer profile, land parcel, soil profile, media capture, communication, and operating hierarchy into the same backend-driven model. This document records the intended architecture before implementation starts, so future changes remain additive and do not break tested Android crop-cycle flows.
 
+See also: [Backend-driven profile form contracts](profile-form-contracts.md) for the current farmer/parcel/soil form rendering contract and rollout semantics.
+
 ## Current backend foundation
 
 The backend already has useful primitives:

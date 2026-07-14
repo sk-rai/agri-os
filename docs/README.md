@@ -23,6 +23,8 @@ docs/
 4. `reconciliation/adrs/farmer-value-ladder.md` — Why would farmers use this?
 5. `reconciliation/contracts/mvp-api-contract.md` — What does the API look like?
 6. `reconciliation/contracts/complete-state-machines.md` — How do workflows behave?
+7. `backend-driven-platform-architecture.md` — How are backend-driven platform modules evolving?
+8. `profile-form-contracts.md` — How should farmer/parcel/soil profile forms be rendered?
 
 ## Governance Rule
 
