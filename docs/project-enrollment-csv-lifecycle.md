@@ -60,13 +60,17 @@ The principle is the same as other Agri-OS imports: validate first, persist the 
 
 ## Regression commands
 
-Run before committing enrollment CSV changes:
+Run the focused project-enrollment suite before committing enrollment CSV, membership sync, launch context, or enrollment report changes:
 
 ```bash
 cd ~/projects/farmint/backend
-../venv/bin/python scripts/test_project_enrollment_csv_import.py
-../venv/bin/python scripts/test_farmer_project_enrollments.py
-../venv/bin/python scripts/test_project_enrollment_report.py
+../venv/bin/python scripts/run_project_enrollment_regressions.py
+```
+
+For deeper dashboard/readiness coverage after changing admin reports:
+
+```bash
+cd ~/projects/farmint/backend
 ../venv/bin/python scripts/run_admin_report_regressions.py
 ```
 
