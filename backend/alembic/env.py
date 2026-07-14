@@ -26,6 +26,7 @@ from app.modules.workflow.models import (  # noqa: F401
 )
 
 from app.modules.auth.models import TenantUserAccessAuditEvent  # noqa: F401
+from app.modules.farmer.models import FarmerProjectEnrollment  # noqa: F401
 
 from app.modules.master_data.models import (  # noqa: F401
     GeographyState,

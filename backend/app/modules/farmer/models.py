@@ -172,6 +172,47 @@ class Farmer(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class FarmerProjectEnrollment(Base, UUIDPrimaryKey, AuditMixin):
+    """Project membership for a farmer.
+
+    This decouples farmer identity from project participation so Agri-OS can
+    support both direct self-registration and project-led enrollment. The
+    legacy farmers.project_id field remains for backward compatibility, but
+    new project context should read from this table.
+    """
+
+    __tablename__ = "farmer_project_enrollments"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+
+    enrollment_method = Column(String(30), nullable=False, default="ASSISTED")
+    # SELF, ASSISTED, BULK_IMPORT, WEB_ADMIN, PROJECT_INVITE, SYNC_MATERIALIZED
+    enrollment_source = Column(String(50))
+    enrollment_batch_id = Column(String(100))
+    enrolled_by = Column(UUID(as_uuid=True))
+
+    status = Column(String(20), nullable=False, default="ACTIVE")
+    # PENDING, ACTIVE, COMPLETED, ARCHIVED, CANCELLED
+    parcel_ids = Column(JSONB, default=list)
+    assigned_user_ids = Column(JSONB, default=list)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    notes = Column(Text)
+
+    __table_args__ = (
+        Index("idx_farmer_project_enrollment_tenant", "tenant_id"),
+        Index("idx_farmer_project_enrollment_farmer", "farmer_id"),
+        Index("idx_farmer_project_enrollment_project", "project_id"),
+        Index("idx_farmer_project_enrollment_status", "status"),
+        Index("idx_farmer_project_enrollment_unique", "tenant_id", "farmer_id", "project_id", unique=True),
+        CheckConstraint(
+            "status IN ('PENDING', 'ACTIVE', 'COMPLETED', 'ARCHIVED', 'CANCELLED')",
+            name="ck_farmer_project_enrollment_status",
+        ),
+    )
+
+
 class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     """A piece of agricultural land belonging to a farmer.
 

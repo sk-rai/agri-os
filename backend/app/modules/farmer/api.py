@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel
+from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -162,6 +162,38 @@ class GeometryUpdate(BaseModel):
     centroid_lng: Optional[float] = None
     geojson: Optional[dict] = None  # Standard GeoJSON: Point, MultiPoint, or Polygon
     accuracy_meters: Optional[float] = None
+
+
+class FarmerProjectEnrollmentCreate(BaseModel):
+    project_id: uuid.UUID
+    enrollment_method: str = Field(default="ASSISTED", pattern=r"^(SELF|ASSISTED|BULK_IMPORT|WEB_ADMIN|PROJECT_INVITE|SYNC_MATERIALIZED)$")
+    enrollment_source: Optional[str] = None
+    enrollment_batch_id: Optional[str] = None
+    status: str = Field(default="ACTIVE", pattern=r"^(PENDING|ACTIVE|COMPLETED|ARCHIVED|CANCELLED)$")
+    parcel_ids: list[uuid.UUID] = Field(default_factory=list)
+    assigned_user_ids: list[uuid.UUID] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    notes: Optional[str] = None
+
+
+class FarmerProjectEnrollmentResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: str
+    farmer_id: uuid.UUID
+    project_id: uuid.UUID
+    project_name: Optional[str] = None
+    project_status: Optional[str] = None
+    enrollment_method: str
+    enrollment_source: Optional[str] = None
+    enrollment_batch_id: Optional[str] = None
+    enrolled_by: Optional[uuid.UUID] = None
+    status: str
+    parcel_ids: list[str] = Field(default_factory=list)
+    assigned_user_ids: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class DuplicateFarmerArchiveRequest(BaseModel):
@@ -408,6 +440,28 @@ def _soil_profile_payload(profile) -> dict:
     }
 
 
+def _enrollment_payload(enrollment: FarmerProjectEnrollment, project: Optional[Project] = None) -> dict:
+    return {
+        "id": str(enrollment.id),
+        "tenant_id": enrollment.tenant_id,
+        "farmer_id": str(enrollment.farmer_id),
+        "project_id": str(enrollment.project_id),
+        "project_name": project.name if project else None,
+        "project_status": project.status if project else None,
+        "enrollment_method": enrollment.enrollment_method,
+        "enrollment_source": enrollment.enrollment_source,
+        "enrollment_batch_id": enrollment.enrollment_batch_id,
+        "enrolled_by": str(enrollment.enrolled_by) if enrollment.enrolled_by else None,
+        "status": enrollment.status,
+        "parcel_ids": [str(value) for value in (enrollment.parcel_ids or [])],
+        "assigned_user_ids": [str(value) for value in (enrollment.assigned_user_ids or [])],
+        "metadata": enrollment.metadata_ or {},
+        "notes": enrollment.notes,
+        "created_at": _iso_date(enrollment.created_at),
+        "updated_at": _iso_date(enrollment.updated_at),
+    }
+
+
 def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer]) -> dict:
     from app.modules.farmer.soil_profile import SoilProfile
     from app.modules.master_data.models import Crop
@@ -432,6 +486,21 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         .order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc())
         .all()
     )
+    project_enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        )
+        .order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc())
+        .all()
+    )
+    enrollment_project_ids = [enrollment.project_id for enrollment in project_enrollments]
+    enrollment_projects = {
+        project.id: project
+        for project in db.query(Project).filter(Project.id.in_(enrollment_project_ids)).all()
+    } if enrollment_project_ids else {}
 
     crop_codes = sorted({cycle.crop_code for cycle in cycles if cycle.crop_code})
     crop_names = {
@@ -476,6 +545,7 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         "farmer": _farmer_payload(farmer),
         "parcels": [_parcel_payload(db, parcel) for parcel in parcels],
         "soil_profiles": [_soil_profile_payload(profile) for profile in soil_profiles],
+        "project_enrollments": [_enrollment_payload(enrollment, enrollment_projects.get(enrollment.project_id)) for enrollment in project_enrollments],
         "crop_cycles": {
             "active": [cycle for cycle in cycle_payloads if cycle["status"] in active_statuses],
             "completed": [cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses],
@@ -484,6 +554,8 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         "summary": {
             "parcel_count": len(parcels),
             "soil_profile_count": len(soil_profiles),
+            "project_enrollment_count": len(project_enrollments),
+            "active_project_enrollment_count": len([enrollment for enrollment in project_enrollments if enrollment.status == "ACTIVE"]),
             "active_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] in active_statuses]),
             "completed_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses]),
             "archived_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] == "ARCHIVED"]),
@@ -538,11 +610,27 @@ def list_tenants(
 def _project_edit_policy(db: Session, project: Project, tenant_id: str) -> dict:
     from app.modules.workflow.models import CropCycle
 
-    farmer_count = db.query(Farmer).filter(
-        Farmer.tenant_id == tenant_id,
-        Farmer.project_id == project.id,
-        Farmer.status != "ARCHIVED",
-    ).count()
+    legacy_farmer_ids = {
+        row[0]
+        for row in db.query(Farmer.id)
+        .filter(
+            Farmer.tenant_id == tenant_id,
+            Farmer.project_id == project.id,
+            Farmer.status != "ARCHIVED",
+        )
+        .all()
+    }
+    enrolled_farmer_ids = {
+        row[0]
+        for row in db.query(FarmerProjectEnrollment.farmer_id)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.project_id == project.id,
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        )
+        .all()
+    }
+    farmer_count = len(legacy_farmer_ids | enrolled_farmer_ids)
     parcel_count = db.query(Parcel).filter(
         Parcel.tenant_id == tenant_id,
         Parcel.project_id == project.id,
@@ -800,6 +888,128 @@ def list_farmers(
     if status:
         query = query.filter(Farmer.status == status)
     return query.offset(offset).limit(limit).all()
+
+
+# --- Farmer Project Enrollment Endpoints ---
+
+@router.post("/farmers/{farmer_id}/project-enrollments", response_model=FarmerProjectEnrollmentResponse, status_code=201)
+def create_farmer_project_enrollment(
+    farmer_id: uuid.UUID,
+    body: FarmerProjectEnrollmentCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    """Attach a farmer profile to a project without duplicating the farmer.
+
+    Existing farmers.project_id is preserved as a legacy compatibility pointer.
+    If it is empty, this endpoint backfills it with the first project enrollment.
+    """
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    parcel_ids = [str(value) for value in body.parcel_ids]
+    if parcel_ids:
+        parcel_count = (
+            db.query(Parcel)
+            .filter(
+                Parcel.tenant_id == x_tenant_id,
+                Parcel.farmer_id == farmer_id,
+                Parcel.id.in_([uuid.UUID(value) for value in parcel_ids]),
+            )
+            .count()
+        )
+        if parcel_count != len(parcel_ids):
+            raise HTTPException(400, "All parcel_ids must belong to this farmer and tenant")
+
+    enrollment = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer_id,
+            FarmerProjectEnrollment.project_id == body.project_id,
+        )
+        .first()
+    )
+    if not enrollment:
+        enrollment = FarmerProjectEnrollment(
+            id=uuid.uuid4(),
+            tenant_id=x_tenant_id,
+            farmer_id=farmer_id,
+            project_id=body.project_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(enrollment)
+
+    enrollment.enrollment_method = body.enrollment_method
+    enrollment.enrollment_source = body.enrollment_source
+    enrollment.enrollment_batch_id = body.enrollment_batch_id
+    enrollment.enrolled_by = uuid.UUID(x_actor_id) if x_actor_id else None
+    enrollment.status = body.status
+    enrollment.parcel_ids = parcel_ids
+    enrollment.assigned_user_ids = [str(value) for value in body.assigned_user_ids]
+    enrollment.metadata_ = body.metadata or {}
+    enrollment.notes = body.notes
+    enrollment.updated_at = datetime.now(timezone.utc)
+
+    if farmer.project_id is None and enrollment.status in {"PENDING", "ACTIVE"}:
+        farmer.project_id = body.project_id
+        farmer.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(enrollment)
+    return _enrollment_payload(enrollment, project)
+
+
+@router.get("/farmers/{farmer_id}/project-enrollments", response_model=list[FarmerProjectEnrollmentResponse])
+def list_farmer_project_enrollments(
+    farmer_id: uuid.UUID,
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """List project memberships for a farmer."""
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    query = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.farmer_id == farmer_id,
+    )
+    if status:
+        query = query.filter(FarmerProjectEnrollment.status == status)
+    enrollments = query.order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).all()
+    project_ids = [enrollment.project_id for enrollment in enrollments]
+    projects = {project.id: project for project in db.query(Project).filter(Project.id.in_(project_ids)).all()} if project_ids else {}
+    return [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in enrollments]
+
+
+@router.get("/projects/{project_id}/farmer-enrollments", response_model=list[FarmerProjectEnrollmentResponse])
+def list_project_farmer_enrollments(
+    project_id: uuid.UUID,
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """List farmer memberships for a project."""
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    query = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.project_id == project_id,
+    )
+    if status:
+        query = query.filter(FarmerProjectEnrollment.status == status)
+    enrollments = query.order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).all()
+    return [_enrollment_payload(enrollment, project) for enrollment in enrollments]
 
 
 # --- Parcel Endpoints ---
