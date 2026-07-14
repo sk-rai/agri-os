@@ -740,6 +740,8 @@ export interface AdminDashboardResponse {
       csv_import_pending_count: number;
       product_csv_import_pending_count?: number;
       product_csv_import_invalid_count?: number;
+      project_enrollment_csv_import_pending_count?: number;
+      project_enrollment_csv_import_invalid_count?: number;
     };
   };
   crop_distribution: Array<{ crop_code: string; crop_cycle_count: number }>;

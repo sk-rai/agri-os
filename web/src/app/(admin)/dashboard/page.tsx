@@ -59,15 +59,16 @@ const readinessPriority: Record<string, number> = {
   "Workflow assignments": 4,
   "Input catalog": 5,
   "Product catalog": 6,
-  "Farmer sync": 7,
-  "Parcel geometry": 8,
-  "Activity evidence": 9,
-  "Sync health": 10,
+  "Project enrollment imports": 7,
+  "Farmer sync": 8,
+  "Parcel geometry": 9,
+  "Activity evidence": 10,
+  "Sync health": 11,
 };
 
 function readinessCategory(label: string) {
   if (["Project setup", "Crop setup", "Workflow runtime", "Workflow assignments", "Input catalog", "Product catalog"].includes(label)) return "Setup";
-  if (["Farmer sync", "Parcel geometry", "Activity evidence"].includes(label)) return "Field data";
+  if (["Project enrollment imports", "Farmer sync", "Parcel geometry", "Activity evidence"].includes(label)) return "Field data";
   return "Operations";
 }
 
@@ -349,6 +350,13 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
       href: "/products",
       tone: (backlog?.product_csv_import_invalid_count || 0) ? "red" : "blue",
       help: "Validated or invalid product catalog CSV batches that need review/apply.",
+    },
+    {
+      label: "Enrollment CSV imports",
+      count: (backlog?.project_enrollment_csv_import_pending_count || 0) + (backlog?.project_enrollment_csv_import_invalid_count || 0),
+      href: data?.filters.project_id ? `/project-enrollments?projectId=${data.filters.project_id}` : "/project-enrollments",
+      tone: (backlog?.project_enrollment_csv_import_invalid_count || 0) ? "red" : "blue",
+      help: "Validated or invalid farmer/project enrollment CSV batches that need review/apply.",
     },
     {
       label: "Failed sync events",

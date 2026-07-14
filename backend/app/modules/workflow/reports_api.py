@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -955,6 +955,14 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
         ProductCatalogImportBatch.status == "INVALID",
         ProductCatalogImportBatch.is_active == True,
     ).count()
+    enrollment_import_query = db.query(FarmerProjectEnrollmentImportBatch).filter(
+        FarmerProjectEnrollmentImportBatch.tenant_id == tenant_id,
+        FarmerProjectEnrollmentImportBatch.is_active == True,
+    )
+    if project_id:
+        enrollment_import_query = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.project_id == project_id)
+    enrollment_csv_pending_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "VALIDATED").count()
+    enrollment_csv_invalid_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "INVALID").count()
 
     return {
         "draft_workflow_count": len(draft_rows),
@@ -968,6 +976,8 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
         "csv_import_pending_count": csv_pending_count,
         "product_csv_import_pending_count": product_csv_pending_count,
         "product_csv_import_invalid_count": product_csv_invalid_count,
+        "project_enrollment_csv_import_pending_count": enrollment_csv_pending_count,
+        "project_enrollment_csv_import_invalid_count": enrollment_csv_invalid_count,
     }
 
 def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities, admin_backlog):
@@ -1120,6 +1130,11 @@ def system_readiness_report(
     active_package_count = db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.is_active == True, AgriculturalProductPackage.status == "ACTIVE").count()
     product_import_invalid_count = db.query(ProductCatalogImportBatch).filter(ProductCatalogImportBatch.tenant_id == x_tenant_id, ProductCatalogImportBatch.status == "INVALID", ProductCatalogImportBatch.is_active == True).count()
     product_import_pending_count = db.query(ProductCatalogImportBatch).filter(ProductCatalogImportBatch.tenant_id == x_tenant_id, ProductCatalogImportBatch.status == "VALIDATED", ProductCatalogImportBatch.is_active == True).count()
+    enrollment_import_query = db.query(FarmerProjectEnrollmentImportBatch).filter(FarmerProjectEnrollmentImportBatch.tenant_id == x_tenant_id, FarmerProjectEnrollmentImportBatch.is_active == True)
+    if project_id:
+        enrollment_import_query = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.project_id == project_id)
+    enrollment_import_invalid_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "INVALID").count()
+    enrollment_import_pending_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "VALIDATED").count()
     crop_taxonomy_count = db.query(CropTaxonomyNode).filter(CropTaxonomyNode.is_active == True).count()
     crop_propagation_count = db.query(CropPropagationType).filter(CropPropagationType.is_active == True).count()
     crop_catalog_count = db.query(Crop).filter(Crop.is_active == True).count()
@@ -1153,6 +1168,7 @@ def system_readiness_report(
         _readiness_item("CROP_SETUP", "Crop setup", crop_taxonomy_count > 0 and crop_propagation_count > 0 and crop_catalog_count > 0 and crop_import_invalid_count == 0, f"{crop_taxonomy_count} taxonomy nodes, {crop_propagation_count} propagation types, {crop_catalog_count} crops, {crop_import_invalid_count} invalid import batches", "/crop-taxonomy"),
         _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
         _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0 and active_package_count > 0 and product_import_invalid_count == 0, f"{manufacturer_count} manufacturers, {active_product_count} active products/brands, {active_package_count} active packages, {product_import_invalid_count} invalid import batches, {product_import_pending_count} pending apply", "/products", "WARN" if product_import_invalid_count else "INFO"),
+        _readiness_item("PROJECT_ENROLLMENT_IMPORTS", "Project enrollment imports", enrollment_import_invalid_count == 0, f"{enrollment_import_invalid_count} invalid import batches, {enrollment_import_pending_count} pending apply", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if enrollment_import_invalid_count else "INFO"),
         _readiness_item("FARMER_SYNC", "Farmer sync", farmer_count > 0, f"{farmer_count} farmers materialized", lookup_href),
         _readiness_item("PARCEL_GEOMETRY", "Parcel geometry", parcel_count > 0 and geometry_missing_count == 0, f"{geometry_captured_count} captured, {geometry_missing_count} missing", f"{lookup_href}{'&' if '?' in lookup_href else '?'}geometryStatus=MISSING"),
         _readiness_item("ACTIVITY_EVIDENCE", "Activity evidence", activity_count > 0, f"{activity_count} logged activities", activity_href),
