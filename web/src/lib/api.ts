@@ -995,6 +995,81 @@ export interface Conflict {
   created_at: string;
 }
 
+export interface FormFieldOptionContract {
+  value: string;
+  label: Record<string, string>;
+}
+
+export interface FormFieldContract {
+  id: string;
+  type: string;
+  label: Record<string, string>;
+  required: boolean;
+  source?: string | null;
+  options?: FormFieldOptionContract[] | null;
+  depends_on?: string | null;
+  depends_on_value?: string | null;
+  default_value?: string | null;
+  placeholder?: Record<string, string> | null;
+  validation?: Record<string, unknown> | null;
+  hint?: Record<string, string> | null;
+  canonical_field?: string | null;
+  android_hint?: Record<string, unknown> | null;
+  capture_modes?: string[] | null;
+  output_format?: string | null;
+  min_points?: number | null;
+  accuracy_required_meters?: number | null;
+  allow_offline_capture?: boolean;
+}
+
+export interface FormSchemaContract {
+  form_id: string;
+  version: string;
+  title: Record<string, string>;
+  description?: Record<string, string> | null;
+  fields: FormFieldContract[];
+  submit_endpoint: string;
+  submit_method: string;
+  submit_label?: Record<string, string> | null;
+}
+
+export interface ProfileFormContractSummary {
+  form_id: string;
+  version: string;
+  endpoint: string;
+  enabled: boolean;
+  feature_flag: string;
+  title: Record<string, string>;
+}
+
+export interface AppBootstrapResponse {
+  schema_version: string;
+  generated_at: string;
+  tenant: { id: string; exists: boolean; name: string; type: string };
+  project?: { id: string; name: string; status: string } | null;
+  feature_flags: Record<string, boolean>;
+  profile_forms: Record<string, ProfileFormContractSummary>;
+  forms: Array<{ form_id: string; version: string; title: Record<string, string>; endpoint: string }>;
+  branding: Record<string, unknown>;
+  localization: Record<string, unknown>;
+  units: Record<string, unknown>;
+  enabled_modules: string[];
+  self_service: Record<string, unknown>;
+  contracts?: Record<string, unknown>;
+}
+
+export interface EffectiveAppConfigResponse {
+  schema_version: string;
+  generated_at: string;
+  tenant: { id: string; name: string; type: string };
+  project: { id: string; name: string; status: string; crop_scope?: string[]; geography_scope?: Record<string, unknown> };
+  layers: { default: Record<string, unknown>; tenant: Record<string, unknown>; project: Record<string, unknown> };
+  effective_config: Record<string, unknown>;
+  section_sources: Record<string, string>;
+  profile_forms: Record<string, ProfileFormContractSummary>;
+  forms: Array<{ form_id: string; version: string; title: Record<string, string>; endpoint: string }>;
+}
+
 // Auth
 export interface AdminProjectAccessProfile {
   project_role_id: string;
@@ -1052,6 +1127,17 @@ export const projectsApi = {
   applyEnrollmentImport: (projectId: string, batchId: string, reason: string) =>
     api<ProjectEnrollmentImportBatch>(`/api/v1/projects/${projectId}/farmer-enrollments/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
 };
+
+export const appConfigApi = {
+  bootstrap: (projectId?: string) => {
+    const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    return api<AppBootstrapResponse>(`/api/v1/app-config/bootstrap${suffix}`);
+  },
+  effectiveProjectConfig: (projectId: string) =>
+    api<EffectiveAppConfigResponse>(`/api/v1/app-config/projects/${projectId}/effective-app-config`),
+  formSchema: (formId: string) => api<FormSchemaContract>(`/api/v1/forms/${formId}`),
+};
+
 
 // Dashboard
 export const dashboardApi = {
