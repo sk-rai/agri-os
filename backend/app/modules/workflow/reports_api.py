@@ -35,6 +35,7 @@ from app.modules.master_data.models import (
     ProjectInputAssignment,
     ProjectProductApproval,
 )
+from app.modules.workflow.forms import FORM_REGISTRY
 from app.modules.workflow.models import (
     CropActivity,
     CropCycle,
@@ -1143,6 +1144,12 @@ def system_readiness_report(
         + db.query(CropPropagationImportBatch).filter(CropPropagationImportBatch.status == "INVALID").count()
         + db.query(CropCatalogImportBatch).filter(CropCatalogImportBatch.status == "INVALID").count()
     )
+    required_profile_form_ids = {"farmer_registration", "parcel_registration", "soil_profile"}
+    profile_form_ids = set(FORM_REGISTRY.keys())
+    profile_form_missing = sorted(required_profile_form_ids - profile_form_ids)
+    profile_form_schemas = [FORM_REGISTRY[form_id] for form_id in required_profile_form_ids if form_id in FORM_REGISTRY]
+    profile_required_field_count = sum(1 for schema in profile_form_schemas for field in schema.fields if field.required)
+    profile_gps_field_count = sum(1 for schema in profile_form_schemas for field in schema.fields if field.type.startswith("GPS"))
 
     backlog = _admin_backlog_counts(db, tenant_id=x_tenant_id, project_id=project_id)
     sync_payload = sync_materialization_health_report(
@@ -1166,6 +1173,7 @@ def system_readiness_report(
         _readiness_item("WORKFLOW_RUNTIME", "Workflow runtime", published_workflow_count > 0 and backlog["workflow_validation_blocker_count"] == 0, f"{published_workflow_count} published workflows, {backlog['workflow_validation_blocker_count']} blockers", "/workflows?filter=validation-blockers"),
         _readiness_item("WORKFLOW_ASSIGNMENTS", "Workflow assignments", (not project_id) or workflow_enablement_count > 0, f"{workflow_enablement_count} project workflow assignment rows", "/project-workflows", "INFO"),
         _readiness_item("CROP_SETUP", "Crop setup", crop_taxonomy_count > 0 and crop_propagation_count > 0 and crop_catalog_count > 0 and crop_import_invalid_count == 0, f"{crop_taxonomy_count} taxonomy nodes, {crop_propagation_count} propagation types, {crop_catalog_count} crops, {crop_import_invalid_count} invalid import batches", "/crop-taxonomy"),
+        _readiness_item("PROFILE_FORMS", "Profile forms", not profile_form_missing and profile_gps_field_count >= 2, f"{len(profile_form_schemas)} profile forms, {profile_required_field_count} required fields, {profile_gps_field_count} GPS widgets, missing: {', '.join(profile_form_missing) if profile_form_missing else 'none'}", "/profile-forms"),
         _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
         _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0 and active_package_count > 0 and product_import_invalid_count == 0, f"{manufacturer_count} manufacturers, {active_product_count} active products/brands, {active_package_count} active packages, {product_import_invalid_count} invalid import batches, {product_import_pending_count} pending apply", "/products", "WARN" if product_import_invalid_count else "INFO"),
         _readiness_item("PROJECT_ENROLLMENT_IMPORTS", "Project enrollment imports", enrollment_import_invalid_count == 0, f"{enrollment_import_invalid_count} invalid import batches, {enrollment_import_pending_count} pending apply", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if enrollment_import_invalid_count else "INFO"),

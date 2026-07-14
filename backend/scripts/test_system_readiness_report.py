@@ -20,6 +20,7 @@ REQUIRED_CHECKS = {
     "WORKFLOW_RUNTIME",
     "WORKFLOW_ASSIGNMENTS",
     "CROP_SETUP",
+    "PROFILE_FORMS",
     "INPUT_CATALOG",
     "PRODUCT_CATALOG",
     "PROJECT_ENROLLMENT_IMPORTS",
@@ -100,6 +101,9 @@ def main():
         check("taxonomy" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports taxonomy detail")
         check("propagation" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports propagation detail")
         check("crops" in by_code["CROP_SETUP"]["detail"], "crop setup readiness reports crop catalog detail")
+        check(by_code["PROFILE_FORMS"]["href"] == "/profile-forms", "profile forms readiness links to profile form admin")
+        check("profile forms" in by_code["PROFILE_FORMS"]["detail"], "profile forms readiness reports form count")
+        check("GPS widgets" in by_code["PROFILE_FORMS"]["detail"], "profile forms readiness reports GPS widgets")
         check(by_code["PROJECT_ENROLLMENT_IMPORTS"]["href"].startswith("/project-enrollments"), "project enrollment import readiness links to enrollment admin")
         check("pending apply" in by_code["PROJECT_ENROLLMENT_IMPORTS"]["detail"], "project enrollment import readiness reports pending detail")
         check(by_code["PRODUCT_CATALOG"]["href"] == "/products", "product catalog readiness links to products admin")

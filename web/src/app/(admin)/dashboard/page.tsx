@@ -67,7 +67,7 @@ const readinessPriority: Record<string, number> = {
 };
 
 function readinessCategory(label: string) {
-  if (["Project setup", "Crop setup", "Workflow runtime", "Workflow assignments", "Input catalog", "Product catalog"].includes(label)) return "Setup";
+  if (["Project setup", "Crop setup", "Profile forms", "Workflow runtime", "Workflow assignments", "Input catalog", "Product catalog"].includes(label)) return "Setup";
   if (["Project enrollment imports", "Farmer sync", "Parcel geometry", "Activity evidence"].includes(label)) return "Field data";
   return "Operations";
 }
