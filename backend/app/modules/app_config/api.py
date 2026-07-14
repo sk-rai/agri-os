@@ -16,6 +16,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 from fastapi import Depends
 
+from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.farmer.models import Project, Tenant
@@ -107,6 +108,37 @@ def _form_versions() -> list[dict]:
     ]
 
 
+def _section_sources(tenant_config: Optional[dict], project_config: Optional[dict]) -> dict:
+    sources = {}
+    all_sections = set(DEFAULT_BOOTSTRAP_CONFIG.keys())
+    if isinstance(tenant_config, dict):
+        all_sections.update(tenant_config.keys())
+    if isinstance(project_config, dict):
+        all_sections.update(project_config.keys())
+    for section in sorted(all_sections):
+        if isinstance(project_config, dict) and section in project_config:
+            sources[section] = "project"
+        elif isinstance(tenant_config, dict) and section in tenant_config:
+            sources[section] = "tenant"
+        elif section in DEFAULT_BOOTSTRAP_CONFIG:
+            sources[section] = "default"
+        else:
+            sources[section] = "unknown"
+    return sources
+
+
+def _project_payload(project: Project) -> dict:
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "status": project.status,
+        "start_date": project.start_date.isoformat() if project.start_date else None,
+        "end_date": project.end_date.isoformat() if project.end_date else None,
+        "crop_scope": project.crop_scope or [],
+        "geography_scope": project.geography_scope or {},
+    }
+
+
 def _profile_form_contracts(feature_flags: dict) -> dict:
     contracts = {}
     for form_id, flag_name in PROFILE_FORM_FLAG_MAP.items():
@@ -166,15 +198,7 @@ def get_app_bootstrap_config(
             "name": tenant.name if tenant else "Default",
             "type": tenant.type if tenant else "SELF_SERVICE",
         },
-        "project": None if not project else {
-            "id": str(project.id),
-            "name": project.name,
-            "status": project.status,
-            "start_date": project.start_date.isoformat() if project.start_date else None,
-            "end_date": project.end_date.isoformat() if project.end_date else None,
-            "crop_scope": project.crop_scope or [],
-            "geography_scope": project.geography_scope or {},
-        },
+        "project": None if not project else _project_payload(project),
         "branding": config["branding"],
         "localization": config["localization"],
         "units": config["units"],
@@ -195,4 +219,49 @@ def get_app_bootstrap_config(
                 "gps_walk": "GPS_WALK returns Polygon GeoJSON, centroid_lat/centroid_lng, and computed_area_hectares.",
             },
         },
+    }
+
+
+@router.get("/projects/{project_id}/effective-app-config")
+def get_project_effective_app_config(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
+):
+    """Inspect effective app-config after default + tenant + project merge."""
+    tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.tenant_id == x_tenant_id, Project.is_active == True)
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    tenant_config = tenant.config or {}
+    project_config = project.config or {}
+    effective_config = _deep_merge(DEFAULT_BOOTSTRAP_CONFIG, tenant_config)
+    effective_config = _deep_merge(effective_config, project_config)
+
+    return {
+        "schema_version": "effective_app_config.v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tenant": {
+            "id": tenant.id,
+            "name": tenant.name,
+            "type": tenant.type,
+        },
+        "project": _project_payload(project),
+        "layers": {
+            "default": DEFAULT_BOOTSTRAP_CONFIG,
+            "tenant": tenant_config,
+            "project": project_config,
+        },
+        "effective_config": effective_config,
+        "section_sources": _section_sources(tenant_config, project_config),
+        "profile_forms": _profile_form_contracts(effective_config["feature_flags"]),
+        "forms": _form_versions(),
     }
