@@ -62,6 +62,89 @@ class FormSchema(BaseModel):
 
 # --- Form Definitions ---
 
+FARMER_REGISTRATION_FORM = FormSchema(
+    form_id="farmer_registration",
+    version="1.0.0",
+    title={"en": "Farmer Registration", "hi": "Farmer Registration"},
+    description={"en": "Create or update a farmer profile", "hi": "Create or update a farmer profile"},
+    submit_endpoint="/api/v1/farmers",
+    submit_method="POST",
+    submit_label={"en": "Save Farmer", "hi": "Save Farmer"},
+    fields=[
+        FormField(id="display_name", type="text", label={"en": "Farmer Name", "hi": "Farmer Name"}, required=False, placeholder={"en": "Full name", "hi": "Full name"}, canonical_field="farmer.display_name"),
+        FormField(id="mobile_number", type="text", label={"en": "Mobile Number", "hi": "Mobile Number"}, required=True, placeholder={"en": "+919900000001 or 9900000001", "hi": "+919900000001 or 9900000001"}, validation={"pattern": "^\\+?[0-9]{10,15}$"}, canonical_field="farmer.mobile_number", android_hint={"keyboard": "phone"}),
+        FormField(id="village_name_manual", type="text", label={"en": "Village", "hi": "Village"}, required=True, placeholder={"en": "Village name", "hi": "Village name"}, canonical_field="farmer.village_name_manual"),
+        FormField(id="primary_crop_code", type="dropdown", label={"en": "Primary Crop", "hi": "Primary Crop"}, required=False, source="/api/v1/master-data/crops", placeholder={"en": "Select primary crop", "hi": "Select primary crop"}, canonical_field="farmer.primary_crop_code"),
+        FormField(id="father_name", type="text", label={"en": "Father/Guardian Name", "hi": "Father/Guardian Name"}, required=False, canonical_field="farmer.father_name"),
+        FormField(id="age", type="number", label={"en": "Age", "hi": "Age"}, required=False, validation={"min": 1, "max": 120}, canonical_field="farmer.age"),
+        FormField(id="gender", type="single_select", label={"en": "Gender", "hi": "Gender"}, required=False, options=[FormFieldOption(value="MALE", label={"en": "Male", "hi": "Male"}), FormFieldOption(value="FEMALE", label={"en": "Female", "hi": "Female"}), FormFieldOption(value="OTHER", label={"en": "Other", "hi": "Other"})], canonical_field="farmer.gender"),
+        FormField(id="total_land_area", type="number", label={"en": "Total Land Area", "hi": "Total Land Area"}, required=False, validation={"min": 0}, canonical_field="farmer.total_land_area"),
+        FormField(id="total_land_unit", type="single_select", label={"en": "Land Unit", "hi": "Land Unit"}, required=False, default_value="BIGHA", options=[FormFieldOption(value="ACRE", label={"en": "Acre", "hi": "Acre"}), FormFieldOption(value="HECTARE", label={"en": "Hectare", "hi": "Hectare"}), FormFieldOption(value="BIGHA", label={"en": "Bigha", "hi": "Bigha"}), FormFieldOption(value="BISWA", label={"en": "Biswa", "hi": "Biswa"}), FormFieldOption(value="KATHA", label={"en": "Katha", "hi": "Katha"}), FormFieldOption(value="GUNTHA", label={"en": "Guntha", "hi": "Guntha"})], canonical_field="farmer.total_land_unit"),
+        FormField(id="language_preference", type="single_select", label={"en": "Preferred Language", "hi": "Preferred Language"}, required=False, default_value="hi", options=[FormFieldOption(value="en", label={"en": "English", "hi": "English"}), FormFieldOption(value="hi", label={"en": "Hindi", "hi": "Hindi"})], canonical_field="farmer.language_preference"),
+        FormField(id="enrollment_location", type="GPS_POINT", label={"en": "Enrollment Location", "hi": "Enrollment Location"}, required=False, capture_modes=["PIN_DROP", "CURRENT_LOCATION"], output_format="centroid_lat_lng", accuracy_required_meters=50, canonical_field="farmer.enrollment_gps", hint={"en": "Optional location captured during enrollment", "hi": "Optional location captured during enrollment"}),
+    ],
+)
+
+PARCEL_REGISTRATION_FORM = FormSchema(
+    form_id="parcel_registration",
+    version="1.0.0",
+    title={"en": "Land Parcel", "hi": "Land Parcel"},
+    description={"en": "Register a land parcel with optional GPS", "hi": "Register a land parcel with optional GPS"},
+    submit_endpoint="/api/v1/parcels",
+    submit_method="POST",
+    submit_label={"en": "Save Parcel", "hi": "Save Parcel"},
+    fields=[
+        FormField(id="farmer_id", type="dropdown", label={"en": "Farmer", "hi": "Farmer"}, required=True, source="local_farmers", canonical_field="parcel.farmer_id"),
+        FormField(id="local_name", type="text", label={"en": "Parcel Name", "hi": "Parcel Name"}, required=False, placeholder={"en": "e.g., North field", "hi": "e.g., North field"}, canonical_field="parcel.local_name"),
+        FormField(id="village_name_manual", type="text", label={"en": "Village", "hi": "Village"}, required=True, canonical_field="parcel.village_name_manual"),
+        FormField(id="survey_number", type="text", label={"en": "Survey/Khasra Number", "hi": "Survey/Khasra Number"}, required=False, canonical_field="parcel.survey_number"),
+        FormField(id="reported_area", type="number", label={"en": "Reported Area", "hi": "Reported Area"}, required=True, validation={"min": 0.01}, canonical_field="parcel.reported_area"),
+        FormField(id="reported_area_unit", type="single_select", label={"en": "Area Unit", "hi": "Area Unit"}, required=True, default_value="BIGHA", options=[FormFieldOption(value="ACRE", label={"en": "Acre", "hi": "Acre"}), FormFieldOption(value="HECTARE", label={"en": "Hectare", "hi": "Hectare"}), FormFieldOption(value="BIGHA", label={"en": "Bigha", "hi": "Bigha"}), FormFieldOption(value="BISWA", label={"en": "Biswa", "hi": "Biswa"}), FormFieldOption(value="KATHA", label={"en": "Katha", "hi": "Katha"}), FormFieldOption(value="GUNTHA", label={"en": "Guntha", "hi": "Guntha"})], canonical_field="parcel.reported_area_unit"),
+        FormField(id="ownership_type", type="single_select", label={"en": "Ownership", "hi": "Ownership"}, required=False, default_value="OWNED", options=[FormFieldOption(value="OWNED", label={"en": "Owned", "hi": "Owned"}), FormFieldOption(value="LEASED", label={"en": "Leased", "hi": "Leased"}), FormFieldOption(value="SHARED", label={"en": "Shared", "hi": "Shared"}), FormFieldOption(value="SHARECROP", label={"en": "Sharecrop", "hi": "Sharecrop"}), FormFieldOption(value="FAMILY", label={"en": "Family", "hi": "Family"})], canonical_field="parcel.ownership_type"),
+        FormField(id="annual_rent", type="number", label={"en": "Annual Rent", "hi": "Annual Rent"}, required=False, depends_on="ownership_type", depends_on_value="LEASED", validation={"min": 0}, canonical_field="parcel.annual_rent"),
+        FormField(id="irrigation_source", type="single_select", label={"en": "Irrigation Source", "hi": "Irrigation Source"}, required=False, options=[FormFieldOption(value="TUBEWELL_DIESEL", label={"en": "Tubewell (Diesel)", "hi": "Tubewell (Diesel)"}), FormFieldOption(value="TUBEWELL_ELECTRIC", label={"en": "Tubewell (Electric)", "hi": "Tubewell (Electric)"}), FormFieldOption(value="CANAL", label={"en": "Canal", "hi": "Canal"}), FormFieldOption(value="POND_TANK", label={"en": "Pond/Tank", "hi": "Pond/Tank"}), FormFieldOption(value="RAIN_FED", label={"en": "Rain-fed", "hi": "Rain-fed"})], canonical_field="parcel.irrigation_source"),
+        FormField(id="current_crop_code", type="dropdown", label={"en": "Current Crop", "hi": "Current Crop"}, required=False, source="/api/v1/master-data/crops", canonical_field="parcel.current_crop_code"),
+        FormField(id="soil_type_code", type="dropdown", label={"en": "Soil Type", "hi": "Soil Type"}, required=False, source="local_soil_types", canonical_field="parcel.soil_type_code"),
+        FormField(id="parcel_point", type="GPS_POINT", label={"en": "Pin Location", "hi": "Pin Location"}, required=False, capture_modes=["PIN_DROP", "CURRENT_LOCATION"], output_format="centroid_lat_lng", accuracy_required_meters=50, canonical_field="parcel.centroid", hint={"en": "Optional single GPS point", "hi": "Optional single GPS point"}),
+        FormField(id="parcel_boundary", type="GPS_POLYGON", label={"en": "Walk Boundary", "hi": "Walk Boundary"}, required=False, capture_modes=["GPS_WALK", "MANUAL_DRAW"], output_format="geojson_polygon", min_points=3, accuracy_required_meters=10, canonical_field="parcel.geojson", hint={"en": "Optional full boundary; can be captured later", "hi": "Optional full boundary; can be captured later"}),
+    ],
+)
+
+SOIL_PROFILE_FORM = FormSchema(
+    form_id="soil_profile",
+    version="1.0.0",
+    title={"en": "Soil Profile", "hi": "Soil Profile"},
+    description={"en": "Capture observed or lab-tested soil details", "hi": "Capture observed or lab-tested soil details"},
+    submit_endpoint="/api/v1/soil-profiles",
+    submit_method="POST",
+    submit_label={"en": "Save Soil Profile", "hi": "Save Soil Profile"},
+    fields=[
+        FormField(id="parcel_id", type="dropdown", label={"en": "Parcel", "hi": "Parcel"}, required=True, source="local_parcels", canonical_field="soil_profile.parcel_id"),
+        FormField(id="farmer_id", type="dropdown", label={"en": "Farmer", "hi": "Farmer"}, required=True, source="local_farmers", canonical_field="soil_profile.farmer_id"),
+        FormField(id="data_source", type="single_select", label={"en": "Data Source", "hi": "Data Source"}, required=True, default_value="MANUAL", options=[FormFieldOption(value="MANUAL", label={"en": "Manual Observation", "hi": "Manual Observation"}), FormFieldOption(value="INFERRED", label={"en": "Inferred", "hi": "Inferred"}), FormFieldOption(value="SHC_CARD", label={"en": "Soil Health Card", "hi": "Soil Health Card"}), FormFieldOption(value="LAB_REPORT", label={"en": "Lab Report", "hi": "Lab Report"})], canonical_field="soil_profile.data_source"),
+        FormField(id="soil_type_code", type="dropdown", label={"en": "Soil Type", "hi": "Soil Type"}, required=False, source="local_soil_types", canonical_field="soil_profile.soil_type_code"),
+        FormField(id="soil_texture", type="single_select", label={"en": "Texture", "hi": "Texture"}, required=False, options=[FormFieldOption(value="SANDY", label={"en": "Sandy", "hi": "Sandy"}), FormFieldOption(value="LOAMY", label={"en": "Loamy", "hi": "Loamy"}), FormFieldOption(value="CLAY", label={"en": "Clay", "hi": "Clay"}), FormFieldOption(value="SANDY_LOAM", label={"en": "Sandy Loam", "hi": "Sandy Loam"}), FormFieldOption(value="CLAY_LOAM", label={"en": "Clay Loam", "hi": "Clay Loam"})], canonical_field="soil_profile.soil_texture"),
+        FormField(id="soil_color", type="text", label={"en": "Soil Color", "hi": "Soil Color"}, required=False, canonical_field="soil_profile.soil_color"),
+        FormField(id="test_date", type="date", label={"en": "Test Date", "hi": "Test Date"}, required=False, default_value="today", depends_on="data_source", canonical_field="soil_profile.test_date"),
+        FormField(id="lab_name", type="text", label={"en": "Lab Name", "hi": "Lab Name"}, required=False, depends_on="data_source", depends_on_value="LAB_REPORT", canonical_field="soil_profile.lab_name"),
+        FormField(id="shc_card_number", type="text", label={"en": "SHC Card Number", "hi": "SHC Card Number"}, required=False, depends_on="data_source", depends_on_value="SHC_CARD", canonical_field="soil_profile.shc_card_number"),
+        FormField(id="ph", type="number", label={"en": "pH", "hi": "pH"}, required=False, validation={"min": 0, "max": 14}, canonical_field="soil_profile.ph"),
+        FormField(id="ec", type="number", label={"en": "EC (dS/m)", "hi": "EC (dS/m)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.ec"),
+        FormField(id="organic_carbon_oc", type="number", label={"en": "Organic Carbon (%)", "hi": "Organic Carbon (%)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.organic_carbon_oc"),
+        FormField(id="nitrogen_n", type="number", label={"en": "Nitrogen (N)", "hi": "Nitrogen (N)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.nitrogen_n"),
+        FormField(id="phosphorus_p", type="number", label={"en": "Phosphorus (P)", "hi": "Phosphorus (P)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.phosphorus_p"),
+        FormField(id="potassium_k", type="number", label={"en": "Potassium (K)", "hi": "Potassium (K)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.potassium_k"),
+        FormField(id="sulphur_s", type="number", label={"en": "Sulphur (S)", "hi": "Sulphur (S)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.sulphur_s"),
+        FormField(id="zinc_zn", type="number", label={"en": "Zinc (Zn)", "hi": "Zinc (Zn)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.zinc_zn"),
+        FormField(id="iron_fe", type="number", label={"en": "Iron (Fe)", "hi": "Iron (Fe)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.iron_fe"),
+        FormField(id="copper_cu", type="number", label={"en": "Copper (Cu)", "hi": "Copper (Cu)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.copper_cu"),
+        FormField(id="manganese_mn", type="number", label={"en": "Manganese (Mn)", "hi": "Manganese (Mn)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.manganese_mn"),
+        FormField(id="boron_bo", type="number", label={"en": "Boron (B)", "hi": "Boron (B)"}, required=False, validation={"min": 0}, canonical_field="soil_profile.boron_bo"),
+        FormField(id="notes", type="text", label={"en": "Notes", "hi": "Notes"}, required=False, canonical_field="soil_profile.notes"),
+    ],
+)
+
+
 CROP_CYCLE_CREATE_FORM = FormSchema(
     form_id="crop_cycle_create",
     version="1.3.0",
@@ -281,6 +364,9 @@ ACTIVITY_LOG_FORM = FormSchema(
 )
 
 FORM_REGISTRY = {
+    "farmer_registration": FARMER_REGISTRATION_FORM,
+    "parcel_registration": PARCEL_REGISTRATION_FORM,
+    "soil_profile": SOIL_PROFILE_FORM,
     "crop_cycle_create": CROP_CYCLE_CREATE_FORM,
     "activity_log": ACTIVITY_LOG_FORM,
 }
