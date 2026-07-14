@@ -17,10 +17,10 @@ from sqlalchemy.orm import Session
 from fastapi import Depends
 from pydantic import BaseModel, Field
 
-from app.core.admin_auth import AdminPermission, require_admin_permission
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.config import settings
 from app.core.database import get_db
-from app.modules.farmer.models import Project, Tenant
+from app.modules.farmer.models import Project, ProjectAppConfigAuditEvent, Tenant
 from app.modules.workflow.forms import FORM_REGISTRY
 
 
@@ -143,6 +143,22 @@ def _project_payload(project: Project) -> dict:
         "end_date": project.end_date.isoformat() if project.end_date else None,
         "crop_scope": project.crop_scope or [],
         "geography_scope": project.geography_scope or {},
+    }
+
+
+def _app_config_audit_payload(event: ProjectAppConfigAuditEvent) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "project_id": str(event.project_id),
+        "actor_id": str(event.actor_id),
+        "action": event.action,
+        "patched_sections": event.patched_sections or [],
+        "before_config": event.before_config or {},
+        "after_config": event.after_config or {},
+        "config_patch": event.config_patch or {},
+        "reason": event.reason,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
     }
 
 
@@ -283,7 +299,7 @@ def update_project_app_config(
     request: AppConfigPatchRequest,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
 ):
     """Patch project-level runtime app config and return effective config."""
     tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
@@ -299,10 +315,25 @@ def update_project_app_config(
     if not isinstance(request.config_patch, dict) or not request.config_patch:
         raise HTTPException(400, "config_patch is required")
 
-    current_config = project.config or {}
-    project.config = _deep_merge(current_config, request.config_patch)
+    current_config = deepcopy(project.config or {})
+    updated_config = _deep_merge(current_config, request.config_patch)
+    project.config = updated_config
     project.updated_at = datetime.now(timezone.utc)
+    audit_event = ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="UPDATE_PROJECT_APP_CONFIG",
+        patched_sections=sorted(request.config_patch.keys()),
+        before_config=current_config,
+        after_config=updated_config,
+        config_patch=request.config_patch,
+        reason=request.reason,
+        created_at=datetime.now(timezone.utc),
+    )
     db.add(project)
+    db.add(audit_event)
     db.commit()
     db.refresh(project)
 
@@ -310,5 +341,41 @@ def update_project_app_config(
     payload["update"] = {
         "reason": request.reason,
         "patched_sections": sorted(request.config_patch.keys()),
+        "audit_event": _app_config_audit_payload(audit_event),
     }
     return payload
+
+
+@router.get("/projects/{project_id}/config/audit")
+def list_project_app_config_audit(
+    project_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
+):
+    """Return recent project runtime app-config audit events."""
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.tenant_id == x_tenant_id, Project.is_active == True)
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+    events = (
+        db.query(ProjectAppConfigAuditEvent)
+        .filter(
+            ProjectAppConfigAuditEvent.tenant_id == x_tenant_id,
+            ProjectAppConfigAuditEvent.project_id == project_id,
+        )
+        .order_by(ProjectAppConfigAuditEvent.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "schema_version": "project_app_config_audit.v1",
+        "tenant_id": x_tenant_id,
+        "project": _project_payload(project),
+        "count": len(events),
+        "events": [_app_config_audit_payload(event) for event in events],
+    }

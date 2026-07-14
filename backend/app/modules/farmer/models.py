@@ -88,6 +88,30 @@ class Project(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class ProjectAppConfigAuditEvent(Base, UUIDPrimaryKey):
+    """Immutable audit event for project runtime app-config changes."""
+
+    __tablename__ = "project_app_config_audit_events"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    actor_id = Column(UUID(as_uuid=True), nullable=False)
+    action = Column(String(50), nullable=False, default="UPDATE_PROJECT_APP_CONFIG")
+    patched_sections = Column(JSONB, default=list)
+    before_config = Column(JSONB)
+    after_config = Column(JSONB)
+    config_patch = Column(JSONB, default=dict)
+    reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_project_app_config_audit_tenant_created", "tenant_id", "created_at"),
+        Index("idx_project_app_config_audit_project_created", "project_id", "created_at"),
+        Index("idx_project_app_config_audit_actor", "actor_id"),
+        Index("idx_project_app_config_audit_action", "action"),
+    )
+
+
 class ProjectRole(Base, UUIDPrimaryKey, AuditMixin):
     """User assigned to a project with a specific role and territory scope.
 

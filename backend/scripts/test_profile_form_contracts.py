@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Project, Tenant
+from app.modules.farmer.models import Project, ProjectAppConfigAuditEvent, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -132,6 +132,18 @@ def main():
     check(patched["profile_forms"]["parcel_registration"]["enabled"] is True, "Parcel profile form flag is enabled by project patch")
     check(patched["profile_forms"]["soil_profile"]["enabled"] is False, "Unpatched soil profile flag remains disabled")
     check(patched["layers"]["project"]["feature_flags"]["backend_driven_farmer_forms"] is True, "Project layer stores farmer flag")
+    check(patched["update"]["audit_event"]["reason"] == "Enable profile forms in regression", "Patch response includes audit reason")
+    check("feature_flags" in patched["update"]["audit_event"]["patched_sections"], "Patch response includes patched sections")
+
+    audit = client.get(f"/api/v1/app-config/projects/{project.id}/config/audit", headers=headers)
+    check(audit.status_code == 200, "Project app config audit returns 200", audit.text[:500])
+    audit_payload = audit.json()
+    check(audit_payload["schema_version"] == "project_app_config_audit.v1", "Project app config audit schema is stable")
+    check(audit_payload["count"] >= 1, "Project app config audit returns events")
+    latest_event = audit_payload["events"][0]
+    check(latest_event["action"] == "UPDATE_PROJECT_APP_CONFIG", "Project app config audit records action")
+    check(latest_event["reason"] == "Enable profile forms in regression", "Project app config audit records reason")
+    check(latest_event["config_patch"]["feature_flags"]["backend_driven_farmer_forms"] is True, "Project app config audit records config patch")
 
     project_bootstrap = client.get(f"/api/v1/app-config/bootstrap?project_id={project.id}", headers={"X-Tenant-ID": "default"})
     check(project_bootstrap.status_code == 200, "Project bootstrap returns 200 after patch", project_bootstrap.text[:400])
@@ -139,6 +151,7 @@ def main():
     check(project_payload["profile_forms"]["farmer_registration"]["enabled"] is True, "Project bootstrap advertises farmer profile flag")
     check(project_payload["profile_forms"]["parcel_registration"]["enabled"] is True, "Project bootstrap advertises parcel profile flag")
 
+    db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
     db.commit()
     if admin:
@@ -152,6 +165,7 @@ def main():
     if admin:
         delete_test_admin(db, admin.id)
     if project:
+        db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
         db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
         db.commit()
     db.close()

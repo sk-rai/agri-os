@@ -1070,6 +1070,28 @@ export interface EffectiveAppConfigResponse {
   forms: Array<{ form_id: string; version: string; title: Record<string, string>; endpoint: string }>;
 }
 
+export interface ProjectAppConfigAuditEvent {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  actor_id: string;
+  action: string;
+  patched_sections: string[];
+  before_config: Record<string, unknown>;
+  after_config: Record<string, unknown>;
+  config_patch: Record<string, unknown>;
+  reason?: string | null;
+  created_at?: string | null;
+}
+
+export interface ProjectAppConfigAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: { id: string; name: string; status: string };
+  count: number;
+  events: ProjectAppConfigAuditEvent[];
+}
+
 // Auth
 export interface AdminProjectAccessProfile {
   project_role_id: string;
@@ -1137,6 +1159,8 @@ export const appConfigApi = {
     api<EffectiveAppConfigResponse>(`/api/v1/app-config/projects/${projectId}/effective-app-config`),
   updateProjectConfig: (projectId: string, configPatch: Record<string, unknown>, reason: string) =>
     api<EffectiveAppConfigResponse>(`/api/v1/app-config/projects/${projectId}/config`, { method: "PATCH", body: { config_patch: configPatch, reason } }),
+  projectConfigAudit: (projectId: string, limit = 20) =>
+    api<ProjectAppConfigAuditResponse>(`/api/v1/app-config/projects/${projectId}/config/audit?limit=${limit}`),
   formSchema: (formId: string) => api<FormSchemaContract>(`/api/v1/forms/${formId}`),
 };
 

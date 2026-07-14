@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { appConfigApi, type AppBootstrapResponse, type EffectiveAppConfigResponse, type FormFieldContract, type FormSchemaContract, type ProfileFormContractSummary } from "@/lib/api";
+import { appConfigApi, type AppBootstrapResponse, type EffectiveAppConfigResponse, type FormFieldContract, type FormSchemaContract, type ProfileFormContractSummary, type ProjectAppConfigAuditResponse } from "@/lib/api";
 
 const PROFILE_FORM_ORDER = ["farmer_registration", "parcel_registration", "soil_profile"];
 
@@ -29,6 +29,7 @@ export default function ProfileFormsPage() {
   const [updateReason, setUpdateReason] = useState("Enable backend-driven profile forms for project testing");
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [audit, setAudit] = useState<ProjectAppConfigAuditResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,9 +40,11 @@ export default function ProfileFormsPage() {
         const nextContext = projectId ? await appConfigApi.effectiveProjectConfig(projectId) : await appConfigApi.bootstrap();
         const profileForms = Object.values(nextContext.profile_forms || {});
         const loadedSchemas = await Promise.all(profileForms.map((form) => appConfigApi.formSchema(form.form_id)));
+        const auditPayload = projectId ? await appConfigApi.projectConfigAudit(projectId, 10) : null;
         if (!cancelled) {
           setContext(nextContext);
           setSchemas(Object.fromEntries(loadedSchemas.map((schema) => [schema.form_id, schema])));
+          setAudit(auditPayload);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load profile form contracts");
@@ -71,6 +74,7 @@ export default function ProfileFormsPage() {
     setProjectIdInput("");
     setProjectId("");
     setUpdateMessage(null);
+    setAudit(null);
   }
 
   async function toggleProfileFlag(flag: string, enabled: boolean) {
@@ -80,7 +84,9 @@ export default function ProfileFormsPage() {
     setUpdateMessage(null);
     try {
       const updated = await appConfigApi.updateProjectConfig(projectId, { feature_flags: { [flag]: enabled } }, updateReason || "Update project profile form feature flag");
+      const auditPayload = await appConfigApi.projectConfigAudit(projectId, 10);
       setContext(updated);
+      setAudit(auditPayload);
       setUpdateMessage(`${flag} ${enabled ? "enabled" : "disabled"} for this project.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update project profile form flag");
@@ -117,6 +123,7 @@ export default function ProfileFormsPage() {
         busy={updateBusy}
         message={updateMessage}
       />
+      {audit ? <ProjectConfigAuditPanel audit={audit} /> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {orderedForms.map((form) => <FormSummaryCard key={form.form_id} form={form} schema={schemas[form.form_id]} />)}
       </div>
@@ -187,6 +194,32 @@ function ProfileFlagControls({ context, projectId, reason, onReasonChange, onTog
         </button>
       </div>)}
     </div>
+  </section>;
+}
+
+function ProjectConfigAuditPanel({ audit }: { audit: ProjectAppConfigAuditResponse }) {
+  return <section className="mt-6 rounded bg-white p-5 shadow">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Project app-config audit</h2>
+        <p className="mt-1 text-sm text-gray-500">Recent project runtime configuration changes, including profile form flag toggles.</p>
+      </div>
+      <span className="rounded bg-gray-100 px-3 py-1 text-xs text-gray-700">{audit.count} event(s)</span>
+    </div>
+    {audit.events.length ? <div className="mt-4 overflow-hidden rounded border">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50"><tr>{["When", "Action", "Reason", "Sections", "Patch"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
+        <tbody className="divide-y">
+          {audit.events.map((event) => <tr key={event.id}>
+            <td className="p-3 text-xs text-gray-500">{event.created_at || "-"}<div className="mt-1 font-mono text-[11px] text-gray-400">{event.actor_id}</div></td>
+            <td className="p-3"><span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700">{event.action}</span></td>
+            <td className="p-3 text-xs text-gray-700">{event.reason || "-"}</td>
+            <td className="p-3 text-xs text-gray-600">{event.patched_sections.join(", ") || "-"}</td>
+            <td className="p-3"><details className="text-xs"><summary className="cursor-pointer text-gray-500">View JSON</summary><pre className="mt-2 max-h-72 overflow-auto rounded bg-gray-950 p-3 text-[11px] text-gray-100">{JSON.stringify(event.config_patch, null, 2)}</pre></details></td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div> : <p className="mt-4 rounded bg-gray-50 p-3 text-sm text-gray-500">No project app-config audit events yet.</p>}
   </section>;
 }
 
