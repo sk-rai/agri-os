@@ -25,7 +25,7 @@ from app.modules.sync.models import (
     SyncConflict,
     AuditChainEntry,
 )
-from app.modules.farmer.models import Farmer, Parcel
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
 
 
 def _uuid_or_none(value) -> Optional[uuid.UUID]:
@@ -48,6 +48,16 @@ def _first_payload_value(payload: dict, *keys: str):
         if key in payload and payload[key] is not None:
             return payload[key]
     return None
+
+
+def _uuid_string_list_or_empty(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        raise ValueError("expected a list of UUID values")
+    return [str(uuid.UUID(str(item))) for item in value if item]
 
 
 def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
@@ -351,6 +361,127 @@ def _materialize_parcel_geometry_event(db: Session, tenant_id: str, actor_id: st
     parcel.updated_at = datetime.now(timezone.utc)
 
 
+def _materialize_farmer_project_enrollment_event(
+    db: Session,
+    tenant_id: str,
+    actor_id: str,
+    event: SyncEvent,
+) -> None:
+    """Upsert accepted offline project enrollment events into membership table.
+
+    Android/project-led enrollment can arrive through sync before the web admin
+    flow is used. The membership row is the durable source of truth; the legacy
+    farmers.project_id column is only backfilled for compatibility with older
+    screens and reports.
+    """
+    payload = event.payload or {}
+    enrollment_id = _uuid_or_none(
+        event.entity_id
+        or _first_payload_value(payload, "id", "enrollment_id", "enrollmentId")
+    )
+
+    def find_existing():
+        if enrollment_id:
+            existing = db.query(FarmerProjectEnrollment).filter(
+                FarmerProjectEnrollment.id == enrollment_id,
+                FarmerProjectEnrollment.tenant_id == tenant_id,
+            ).first()
+            if existing:
+                return existing
+
+        farmer_lookup = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+        project_lookup = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+        if farmer_lookup and project_lookup:
+            return db.query(FarmerProjectEnrollment).filter(
+                FarmerProjectEnrollment.tenant_id == tenant_id,
+                FarmerProjectEnrollment.farmer_id == farmer_lookup,
+                FarmerProjectEnrollment.project_id == project_lookup,
+            ).first()
+        return None
+
+    if event.operation == "DELETE":
+        enrollment = find_existing()
+        if enrollment:
+            enrollment.status = "ARCHIVED"
+            enrollment.is_active = False
+            enrollment.updated_at = datetime.now(timezone.utc)
+        return
+
+    farmer_id = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+    project_id = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+    if not farmer_id or not project_id:
+        raise ValueError("farmer project enrollment sync requires farmer_id and project_id")
+
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
+    if not farmer:
+        raise ValueError("farmer project enrollment sync references unknown farmer")
+
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
+    if not project:
+        raise ValueError("farmer project enrollment sync references unknown project")
+
+    enrollment = find_existing()
+    if not enrollment:
+        enrollment = FarmerProjectEnrollment(
+            id=enrollment_id or uuid.uuid4(),
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            project_id=project_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(enrollment)
+
+    enrollment.farmer_id = farmer_id
+    enrollment.project_id = project_id
+    enrollment.enrollment_method = str(
+        _first_payload_value(payload, "enrollment_method", "enrollmentMethod")
+        or enrollment.enrollment_method
+        or "SYNC_MATERIALIZED"
+    ).upper()
+    enrollment.enrollment_source = _first_payload_value(
+        payload,
+        "enrollment_source",
+        "enrollmentSource",
+    ) or enrollment.enrollment_source or "sync"
+    enrollment.enrollment_batch_id = _first_payload_value(
+        payload,
+        "enrollment_batch_id",
+        "enrollmentBatchId",
+    ) or enrollment.enrollment_batch_id
+    enrollment.enrolled_by = _uuid_or_none(
+        _first_payload_value(payload, "enrolled_by", "enrolledBy")
+    ) or _uuid_or_none(actor_id)
+    enrollment.status = str(_first_payload_value(payload, "status") or enrollment.status or "ACTIVE").upper()
+
+    parcel_ids = _first_payload_value(payload, "parcel_ids", "parcelIds")
+    if parcel_ids is not None:
+        enrollment.parcel_ids = _uuid_string_list_or_empty(parcel_ids)
+
+    assigned_user_ids = _first_payload_value(payload, "assigned_user_ids", "assignedUserIds")
+    if assigned_user_ids is not None:
+        enrollment.assigned_user_ids = _uuid_string_list_or_empty(assigned_user_ids)
+
+    metadata = _first_payload_value(payload, "metadata", "metadata_")
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("farmer project enrollment metadata must be an object")
+        enrollment.metadata_ = metadata
+    elif enrollment.metadata_ is None:
+        enrollment.metadata_ = {}
+
+    notes = _first_payload_value(payload, "notes")
+    if notes is not None:
+        enrollment.notes = notes
+
+    enrollment.is_active = enrollment.status != "ARCHIVED"
+    enrollment.updated_at = datetime.now(timezone.utc)
+
+    if not farmer.project_id and enrollment.status in ("ACTIVE", "PENDING"):
+        farmer.project_id = project_id
+        farmer.updated_at = datetime.now(timezone.utc)
+
+
 def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
     entity_type = (event.entity_type or "").lower()
     if entity_type == "farmer":
@@ -359,6 +490,8 @@ def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, ev
         _materialize_parcel_event(db, tenant_id, event)
     elif entity_type in ("parcel_geometry", "parcelgeometry"):
         _materialize_parcel_geometry_event(db, tenant_id, actor_id, event)
+    elif entity_type in ("farmer_project_enrollment", "farmerprojectenrollment", "project_enrollment", "projectenrollment"):
+        _materialize_farmer_project_enrollment_event(db, tenant_id, actor_id, event)
 
 
 # --- Schemas for sync events ---
