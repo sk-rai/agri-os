@@ -15,6 +15,7 @@ import uuid
 from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 from fastapi import Depends
+from pydantic import BaseModel, Field
 
 from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.config import settings
@@ -32,6 +33,12 @@ PROFILE_FORM_FLAG_MAP = {
     "soil_profile": "backend_driven_soil_forms",
 }
 
+
+
+
+class AppConfigPatchRequest(BaseModel):
+    config_patch: dict = Field(default_factory=dict)
+    reason: str = Field(..., min_length=3, max_length=500)
 
 DEFAULT_BOOTSTRAP_CONFIG = {
     "branding": {
@@ -139,6 +146,32 @@ def _project_payload(project: Project) -> dict:
     }
 
 
+def _effective_config_payload(tenant: Tenant, project: Project) -> dict:
+    tenant_config = tenant.config or {}
+    project_config = project.config or {}
+    effective_config = _deep_merge(DEFAULT_BOOTSTRAP_CONFIG, tenant_config)
+    effective_config = _deep_merge(effective_config, project_config)
+    return {
+        "schema_version": "effective_app_config.v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tenant": {
+            "id": tenant.id,
+            "name": tenant.name,
+            "type": tenant.type,
+        },
+        "project": _project_payload(project),
+        "layers": {
+            "default": DEFAULT_BOOTSTRAP_CONFIG,
+            "tenant": tenant_config,
+            "project": project_config,
+        },
+        "effective_config": effective_config,
+        "section_sources": _section_sources(tenant_config, project_config),
+        "profile_forms": _profile_form_contracts(effective_config["feature_flags"]),
+        "forms": _form_versions(),
+    }
+
+
 def _profile_form_contracts(feature_flags: dict) -> dict:
     contracts = {}
     for form_id, flag_name in PROFILE_FORM_FLAG_MAP.items():
@@ -241,27 +274,41 @@ def get_project_effective_app_config(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    tenant_config = tenant.config or {}
-    project_config = project.config or {}
-    effective_config = _deep_merge(DEFAULT_BOOTSTRAP_CONFIG, tenant_config)
-    effective_config = _deep_merge(effective_config, project_config)
+    return _effective_config_payload(tenant, project)
 
-    return {
-        "schema_version": "effective_app_config.v1",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "tenant": {
-            "id": tenant.id,
-            "name": tenant.name,
-            "type": tenant.type,
-        },
-        "project": _project_payload(project),
-        "layers": {
-            "default": DEFAULT_BOOTSTRAP_CONFIG,
-            "tenant": tenant_config,
-            "project": project_config,
-        },
-        "effective_config": effective_config,
-        "section_sources": _section_sources(tenant_config, project_config),
-        "profile_forms": _profile_form_contracts(effective_config["feature_flags"]),
-        "forms": _form_versions(),
+
+@router.patch("/projects/{project_id}/config")
+def update_project_app_config(
+    project_id: uuid.UUID,
+    request: AppConfigPatchRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
+):
+    """Patch project-level runtime app config and return effective config."""
+    tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.tenant_id == x_tenant_id, Project.is_active == True)
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+    if not isinstance(request.config_patch, dict) or not request.config_patch:
+        raise HTTPException(400, "config_patch is required")
+
+    current_config = project.config or {}
+    project.config = _deep_merge(current_config, request.config_patch)
+    project.updated_at = datetime.now(timezone.utc)
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    payload = _effective_config_payload(tenant, project)
+    payload["update"] = {
+        "reason": request.reason,
+        "patched_sections": sorted(request.config_patch.keys()),
     }
+    return payload

@@ -1135,6 +1135,8 @@ export const appConfigApi = {
   },
   effectiveProjectConfig: (projectId: string) =>
     api<EffectiveAppConfigResponse>(`/api/v1/app-config/projects/${projectId}/effective-app-config`),
+  updateProjectConfig: (projectId: string, configPatch: Record<string, unknown>, reason: string) =>
+    api<EffectiveAppConfigResponse>(`/api/v1/app-config/projects/${projectId}/config`, { method: "PATCH", body: { config_patch: configPatch, reason } }),
   formSchema: (formId: string) => api<FormSchemaContract>(`/api/v1/forms/${formId}`),
 };
 

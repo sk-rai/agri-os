@@ -26,6 +26,9 @@ export default function ProfileFormsPage() {
   const [schemas, setSchemas] = useState<Record<string, FormSchemaContract>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updateReason, setUpdateReason] = useState("Enable backend-driven profile forms for project testing");
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +70,23 @@ export default function ProfileFormsPage() {
   function clearProject() {
     setProjectIdInput("");
     setProjectId("");
+    setUpdateMessage(null);
+  }
+
+  async function toggleProfileFlag(flag: string, enabled: boolean) {
+    if (!projectId) return;
+    setUpdateBusy(true);
+    setError(null);
+    setUpdateMessage(null);
+    try {
+      const updated = await appConfigApi.updateProjectConfig(projectId, { feature_flags: { [flag]: enabled } }, updateReason || "Update project profile form feature flag");
+      setContext(updated);
+      setUpdateMessage(`${flag} ${enabled ? "enabled" : "disabled"} for this project.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update project profile form flag");
+    } finally {
+      setUpdateBusy(false);
+    }
   }
 
   return <div>
@@ -88,6 +108,15 @@ export default function ProfileFormsPage() {
 
     {context && !loading ? <>
       <ContextPanel context={context} />
+      <ProfileFlagControls
+        context={context}
+        projectId={projectId}
+        reason={updateReason}
+        onReasonChange={setUpdateReason}
+        onToggle={toggleProfileFlag}
+        busy={updateBusy}
+        message={updateMessage}
+      />
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {orderedForms.map((form) => <FormSummaryCard key={form.form_id} form={form} schema={schemas[form.form_id]} />)}
       </div>
@@ -123,6 +152,41 @@ function ContextPanel({ context }: { context: EffectiveContext }) {
         {Object.entries(sources).map(([section, source]) => <span key={section} className="rounded bg-white px-2 py-1 text-gray-700">{section}: <b>{source}</b></span>)}
       </div>
     </div> : null}
+  </section>;
+}
+
+function ProfileFlagControls({ context, projectId, reason, onReasonChange, onToggle, busy, message }: { context: EffectiveContext; projectId: string; reason: string; onReasonChange: (value: string) => void; onToggle: (flag: string, enabled: boolean) => void; busy: boolean; message: string | null }) {
+  const forms = Object.values(context.profile_forms || {}).sort((a, b) => PROFILE_FORM_ORDER.indexOf(a.form_id) - PROFILE_FORM_ORDER.indexOf(b.form_id));
+  return <section className="mt-6 rounded bg-white p-5 shadow">
+    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Project profile form activation</h2>
+        <p className="mt-1 text-sm text-gray-500">Toggle backend-driven farmer, parcel, and soil profile forms for the selected project. Tenant/default flags remain read-only here.</p>
+      </div>
+      <span className={`rounded px-3 py-1 text-xs ${projectId ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>{projectId ? "Project scoped" : "Read-only until Project ID is selected"}</span>
+    </div>
+    {!projectId ? <p className="mt-4 rounded bg-amber-50 p-3 text-sm text-amber-800">Enter a Project ID above to enable project-level feature flag controls. This avoids accidental tenant-wide rollout.</p> : null}
+    {projectId ? <label className="mt-4 block text-xs text-gray-500">Change reason<input value={reason} onChange={(event) => onReasonChange(event.target.value)} disabled={busy} className="mt-1 w-full rounded border p-2 text-sm text-gray-900 disabled:opacity-50" /></label> : null}
+    {message ? <p className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{message}</p> : null}
+    <div className="mt-4 grid gap-3 md:grid-cols-3">
+      {forms.map((form) => <div key={form.form_id} className="rounded border p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-gray-900">{label(form.title)}</p>
+            <p className="mt-1 font-mono text-[11px] text-gray-400">{form.feature_flag}</p>
+          </div>
+          <span className={`rounded px-2 py-1 text-xs ${form.enabled ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>{form.enabled ? "Enabled" : "Disabled"}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggle(form.feature_flag, !form.enabled)}
+          disabled={!projectId || busy}
+          className={`mt-4 w-full rounded px-3 py-2 text-sm font-medium disabled:opacity-50 ${form.enabled ? "border text-gray-700" : "bg-green-700 text-white"}`}
+        >
+          {busy ? "Saving..." : form.enabled ? "Disable for project" : "Enable for project"}
+        </button>
+      </div>)}
+    </div>
   </section>;
 }
 

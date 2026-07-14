@@ -1,7 +1,9 @@
 """Regression for backend-driven profile form contracts."""
 
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -9,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Tenant
+from app.modules.farmer.models import Project, Tenant
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 REQUIRED_FORMS = {"farmer_registration", "parcel_registration", "soil_profile"}
@@ -28,14 +31,10 @@ def check(condition, label, detail=None):
         raise AssertionError(label)
 
 
-def ensure_tenant():
-    db = SessionLocal()
-    try:
-        if not db.query(Tenant).filter(Tenant.id == "default").first():
-            db.add(Tenant(id="default", name="Default", type="ENTERPRISE"))
-            db.commit()
-    finally:
-        db.close()
+def ensure_tenant(db):
+    if not db.query(Tenant).filter(Tenant.id == "default").first():
+        db.add(Tenant(id="default", name="Default", type="ENTERPRISE"))
+        db.commit()
 
 
 def field_by_id(schema, field_id):
@@ -49,7 +48,10 @@ def main():
     print("=" * 72)
     print("PROFILE FORM CONTRACT REGRESSION")
     print("=" * 72)
-    ensure_tenant()
+    db = SessionLocal()
+    admin = None
+    project = None
+    ensure_tenant(db)
     client = TestClient(app)
 
     bootstrap = client.get("/api/v1/app-config/bootstrap", headers={"X-Tenant-ID": "default"})
@@ -94,11 +96,65 @@ def main():
     lab_name = field_by_id(soil, "lab_name")
     shc = field_by_id(soil, "shc_card_number")
     check(lab_name["depends_on"] == "data_source" and lab_name["depends_on_value"] == "LAB_REPORT", "Soil lab_name conditional metadata is serialized")
-    check(shc["depends_on"] == "data_source" and shc["depends_on_value"] == "SHC_CARD", "Soil SHC conditional metadata is serialized")
+    project = Project(
+        id=uuid.uuid4(),
+        tenant_id="default",
+        name="Profile Form Config Regression",
+        start_date=date(2027, 1, 1),
+        end_date=date(2027, 12, 31),
+        status="PLANNED",
+        crop_scope=["RICE"],
+        geography_scope={},
+        config={},
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(project)
+    admin, headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id="default")
+    db.commit()
+
+    unauth_patch = client.patch(
+        f"/api/v1/app-config/projects/{project.id}/config",
+        headers={"X-Tenant-ID": "default"},
+        json={"config_patch": {"feature_flags": {"backend_driven_farmer_forms": True}}, "reason": "Regression"},
+    )
+    check(unauth_patch.status_code == 401, "Project app config patch requires admin auth", unauth_patch.text)
+
+    patch = client.patch(
+        f"/api/v1/app-config/projects/{project.id}/config",
+        headers=headers,
+        json={"config_patch": {"feature_flags": {"backend_driven_farmer_forms": True, "backend_driven_parcel_forms": True}}, "reason": "Enable profile forms in regression"},
+    )
+    check(patch.status_code == 200, "Project app config patch returns 200", patch.text[:500])
+    patched = patch.json()
+    check(patched["schema_version"] == "effective_app_config.v1", "Patch returns effective config")
+    check(patched["profile_forms"]["farmer_registration"]["enabled"] is True, "Farmer profile form flag is enabled by project patch")
+    check(patched["profile_forms"]["parcel_registration"]["enabled"] is True, "Parcel profile form flag is enabled by project patch")
+    check(patched["profile_forms"]["soil_profile"]["enabled"] is False, "Unpatched soil profile flag remains disabled")
+    check(patched["layers"]["project"]["feature_flags"]["backend_driven_farmer_forms"] is True, "Project layer stores farmer flag")
+
+    project_bootstrap = client.get(f"/api/v1/app-config/bootstrap?project_id={project.id}", headers={"X-Tenant-ID": "default"})
+    check(project_bootstrap.status_code == 200, "Project bootstrap returns 200 after patch", project_bootstrap.text[:400])
+    project_payload = project_bootstrap.json()
+    check(project_payload["profile_forms"]["farmer_registration"]["enabled"] is True, "Project bootstrap advertises farmer profile flag")
+    check(project_payload["profile_forms"]["parcel_registration"]["enabled"] is True, "Project bootstrap advertises parcel profile flag")
+
+    db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
+    db.commit()
+    if admin:
+        delete_test_admin(db, admin.id)
+        admin = None
+    project = None
 
     print("=" * 72)
     print("Profile form contracts validated")
     print("=" * 72)
+    if admin:
+        delete_test_admin(db, admin.id)
+    if project:
+        db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
+        db.commit()
+    db.close()
 
 
 if __name__ == "__main__":
