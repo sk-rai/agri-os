@@ -502,6 +502,51 @@ export interface AdminLookupParcel {
   trace_url: string;
 }
 
+
+export interface ProjectEnrollmentCsvValidationRow {
+  row_number: number;
+  mobile_number: string;
+  action: "CREATE" | "UPDATE" | "UNCHANGED" | "INVALID" | string;
+  errors: Array<{ field: string; code: string; message: string }>;
+  warnings: Array<{ field: string; code: string; message: string }>;
+  normalized: Record<string, unknown>;
+}
+
+export interface ProjectEnrollmentCsvValidationResponse {
+  schema_version: string;
+  mode: "VALIDATE_ONLY" | string;
+  project_id: string;
+  file_name?: string | null;
+  can_apply: boolean;
+  summary: { total: number; create: number; update: number; unchanged: number; invalid: number; warnings: number; errors: number };
+  rows: ProjectEnrollmentCsvValidationRow[];
+  message: string;
+  applied_counts?: Record<string, number>;
+  apply_reason?: string;
+  applied_by?: string;
+}
+
+export interface ProjectEnrollmentImportBatch {
+  batch_id: string;
+  project_id: string;
+  file_name?: string | null;
+  status: "VALIDATED" | "INVALID" | "APPLIED" | "EXPIRED" | "STALE" | string;
+  can_apply: boolean;
+  expires_at: string;
+  applied_at?: string | null;
+  created_at: string;
+  report: ProjectEnrollmentCsvValidationResponse;
+}
+
+export interface ProjectEnrollmentImportHistory {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  status?: string | null;
+  count: number;
+  imports: ProjectEnrollmentImportBatch[];
+}
+
 export interface ProjectEnrollmentReportRow {
   id: string;
   tenant_id: string;
@@ -991,6 +1036,19 @@ export const projectsApi = {
   create: (data: Partial<Project>) => api<Project>("/api/v1/projects", { method: "POST", body: data }),
   assignRole: (projectId: string, data: { user_id: string; role: string; territory_scope: Record<string, unknown> }) =>
     api(`/api/v1/projects/${projectId}/roles`, { method: "POST", body: data }),
+  downloadEnrollmentTemplate: (projectId: string) =>
+    apiDownload(`/api/v1/projects/${projectId}/farmer-enrollments/csv/template`, "agri-os-project-enrollment-template.csv"),
+  validateEnrollmentCsv: (projectId: string, file: File) =>
+    apiUpload<ProjectEnrollmentImportBatch>(`/api/v1/projects/${projectId}/farmer-enrollments/csv/validate`, file),
+  enrollmentImportHistory: (projectId: string, params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<ProjectEnrollmentImportHistory>(`/api/v1/projects/${projectId}/farmer-enrollments/csv/imports${suffix}`);
+  },
+  applyEnrollmentImport: (projectId: string, batchId: string, reason: string) =>
+    api<ProjectEnrollmentImportBatch>(`/api/v1/projects/${projectId}/farmer-enrollments/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
 };
 
 // Dashboard

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { reportsApi, type ProjectEnrollmentReportResponse } from "@/lib/api";
+import { projectsApi, reportsApi, type ProjectEnrollmentImportBatch, type ProjectEnrollmentImportHistory, type ProjectEnrollmentReportResponse } from "@/lib/api";
 
 function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
   for (const key of keys) {
@@ -31,6 +31,12 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
   const [report, setReport] = useState<ProjectEnrollmentReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [importHistory, setImportHistory] = useState<ProjectEnrollmentImportHistory | null>(null);
+  const [latestImport, setLatestImport] = useState<ProjectEnrollmentImportBatch | null>(null);
+  const [importReason, setImportReason] = useState("Bulk project enrollment from CSV");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const load = useCallback(async (next: Filters) => {
     setLoading(true);
@@ -53,6 +59,20 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
 
   useEffect(() => { load(submitted); }, [load, submitted]);
 
+  const loadImportHistory = useCallback(async (projectId: string) => {
+    if (!projectId) {
+      setImportHistory(null);
+      return;
+    }
+    try {
+      setImportHistory(await projectsApi.enrollmentImportHistory(projectId, { limit: 10 }));
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Failed to load enrollment import history");
+    }
+  }, []);
+
+  useEffect(() => { loadImportHistory(submitted.projectId); }, [loadImportHistory, submitted.projectId]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitted({ ...filters });
@@ -62,6 +82,53 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
     const empty = { query: "", projectId: "", farmerId: "", status: "", enrollmentSource: "" };
     setFilters(empty);
     setSubmitted(empty);
+  }
+
+  async function downloadTemplate() {
+    if (!submitted.projectId) {
+      setImportError("Set a Project ID filter before downloading the project enrollment template.");
+      return;
+    }
+    setImportError(null);
+    await projectsApi.downloadEnrollmentTemplate(submitted.projectId);
+  }
+
+  async function validateCsv() {
+    if (!submitted.projectId) {
+      setImportError("Set a Project ID filter before validating a project enrollment CSV.");
+      return;
+    }
+    if (!selectedFile) {
+      setImportError("Choose a CSV file first.");
+      return;
+    }
+    setImportBusy(true);
+    setImportError(null);
+    try {
+      const batch = await projectsApi.validateEnrollmentCsv(submitted.projectId, selectedFile);
+      setLatestImport(batch);
+      await loadImportHistory(submitted.projectId);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Failed to validate enrollment CSV");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function applyImport(batchId: string) {
+    if (!submitted.projectId) return;
+    setImportBusy(true);
+    setImportError(null);
+    try {
+      const applied = await projectsApi.applyEnrollmentImport(submitted.projectId, batchId, importReason || "Bulk project enrollment from CSV");
+      setLatestImport(applied);
+      await loadImportHistory(submitted.projectId);
+      await load(submitted);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Failed to apply enrollment import");
+    } finally {
+      setImportBusy(false);
+    }
   }
 
   return <div>
@@ -86,6 +153,43 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
 
     {error && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
+
+
+    <section className="mb-6 rounded bg-white p-5 shadow">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Bulk enrollment CSV</h2>
+          <p className="mt-1 text-sm text-gray-500">Validate and apply farmer enrollments for one project. Set the Project ID filter above to activate this panel.</p>
+        </div>
+        <button type="button" onClick={downloadTemplate} disabled={!submitted.projectId || importBusy} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Download template</button>
+      </div>
+
+      {!submitted.projectId ? <p className="mt-4 rounded bg-amber-50 p-3 text-sm text-amber-800">Choose a Project ID filter, then apply filters. CSV imports are intentionally project-scoped.</p> : null}
+      {importError ? <p className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">{importError}</p> : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <label className="text-xs text-gray-500">CSV file<input type="file" accept=".csv,text/csv" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} disabled={!submitted.projectId || importBusy} className="mt-1 w-full rounded border p-2 text-sm text-gray-900 disabled:opacity-50" /></label>
+        <label className="text-xs text-gray-500">Apply reason<input value={importReason} onChange={(event) => setImportReason(event.target.value)} disabled={!submitted.projectId || importBusy} className="mt-1 w-full rounded border p-2 text-sm text-gray-900 disabled:opacity-50" /></label>
+        <button type="button" onClick={validateCsv} disabled={!submitted.projectId || !selectedFile || importBusy} className="rounded bg-gray-900 px-5 py-2 text-sm font-medium text-white disabled:opacity-50">{importBusy ? "Working..." : "Validate CSV"}</button>
+      </div>
+
+      {latestImport ? <ImportSummary batch={latestImport} onApply={applyImport} busy={importBusy} /> : null}
+
+      {importHistory?.imports.length ? <div className="mt-5 overflow-hidden rounded border">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50"><tr>{["Batch", "Status", "Summary", "Created", "Action"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
+          <tbody className="divide-y">
+            {importHistory.imports.map((batch) => <tr key={batch.batch_id}>
+              <td className="p-3"><div className="font-medium text-gray-900">{batch.file_name || "CSV import"}</div><div className="font-mono text-[11px] text-gray-400">{batch.batch_id}</div></td>
+              <td className="p-3"><span className={`rounded px-2 py-1 text-xs ${batch.status === "VALIDATED" ? "bg-blue-50 text-blue-700" : batch.status === "APPLIED" ? "bg-green-50 text-green-700" : batch.status === "INVALID" ? "bg-red-50 text-red-700" : "bg-gray-100 text-gray-600"}`}>{batch.status}</span></td>
+              <td className="p-3 text-xs text-gray-600">{batch.report.summary.total} rows - {batch.report.summary.create} create - {batch.report.summary.update} update - {batch.report.summary.errors} errors</td>
+              <td className="p-3 text-xs text-gray-500">{batch.created_at}</td>
+              <td className="p-3">{batch.can_apply ? <button type="button" onClick={() => applyImport(batch.batch_id)} disabled={importBusy} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">Apply</button> : <span className="text-xs text-gray-400">No action</span>}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div> : submitted.projectId ? <p className="mt-4 text-sm text-gray-400">No CSV import history for this project yet.</p> : null}
+    </section>
     <div className="mb-6 grid gap-4 md:grid-cols-5">
       <Metric label="Enrollments" value={report?.summary.count ?? 0} />
       <Metric label="Active" value={report?.summary.active_count ?? 0} />
@@ -115,4 +219,30 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
 
 function Metric({ label, value }: { label: string; value: number }) {
   return <div className="rounded bg-white p-4 shadow"><p className="text-xs uppercase text-gray-400">{label}</p><p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p></div>;
+}
+
+
+function ImportSummary({ batch, onApply, busy }: { batch: ProjectEnrollmentImportBatch; onApply: (batchId: string) => void; busy: boolean }) {
+  const rowsWithIssues = batch.report.rows.filter((row) => row.errors.length || row.warnings.length).slice(0, 8);
+  return <div className="mt-5 rounded border bg-gray-50 p-4">
+    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div>
+        <p className="font-medium text-gray-900">Latest validation: {batch.status}</p>
+        <p className="mt-1 text-sm text-gray-600">{batch.report.message}</p>
+        <p className="mt-1 text-xs text-gray-500">{batch.report.summary.total} rows - {batch.report.summary.create} create - {batch.report.summary.update} update - {batch.report.summary.invalid} invalid - {batch.report.summary.errors} errors</p>
+      </div>
+      {batch.can_apply ? <button type="button" onClick={() => onApply(batch.batch_id)} disabled={busy} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply import</button> : null}
+    </div>
+    {batch.report.applied_counts ? <div className="mt-3 grid gap-2 text-xs md:grid-cols-4">
+      {Object.entries(batch.report.applied_counts).map(([key, value]) => <div key={key} className="rounded bg-white p-2"><span className="text-gray-400">{key}</span><div className="font-semibold text-gray-900">{String(value)}</div></div>)}
+    </div> : null}
+    {rowsWithIssues.length ? <div className="mt-4 space-y-2">
+      <p className="text-xs font-semibold uppercase text-gray-400">Rows needing attention</p>
+      {rowsWithIssues.map((row) => <div key={row.row_number} className="rounded bg-white p-3 text-xs">
+        <div className="font-medium text-gray-800">Row {row.row_number} - {row.mobile_number || "No mobile"} - {row.action}</div>
+        {row.errors.map((issue) => <div key={`e-${issue.field}-${issue.code}`} className="mt-1 text-red-700">Error: {issue.field} - {issue.message}</div>)}
+        {row.warnings.map((issue) => <div key={`w-${issue.field}-${issue.code}`} className="mt-1 text-amber-700">Warning: {issue.field} - {issue.message}</div>)}
+      </div>)}
+    </div> : null}
+  </div>;
 }
