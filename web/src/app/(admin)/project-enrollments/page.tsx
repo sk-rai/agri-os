@@ -34,6 +34,7 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importHistory, setImportHistory] = useState<ProjectEnrollmentImportHistory | null>(null);
   const [latestImport, setLatestImport] = useState<ProjectEnrollmentImportBatch | null>(null);
+  const [selectedImport, setSelectedImport] = useState<ProjectEnrollmentImportBatch | null>(null);
   const [importReason, setImportReason] = useState("Bulk project enrollment from CSV");
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
   const loadImportHistory = useCallback(async (projectId: string) => {
     if (!projectId) {
       setImportHistory(null);
+      setSelectedImport(null);
       return;
     }
     try {
@@ -107,6 +109,7 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
     try {
       const batch = await projectsApi.validateEnrollmentCsv(submitted.projectId, selectedFile);
       setLatestImport(batch);
+      setSelectedImport(batch);
       await loadImportHistory(submitted.projectId);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Failed to validate enrollment CSV");
@@ -122,6 +125,7 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
     try {
       const applied = await projectsApi.applyEnrollmentImport(submitted.projectId, batchId, importReason || "Bulk project enrollment from CSV");
       setLatestImport(applied);
+      setSelectedImport(applied);
       await loadImportHistory(submitted.projectId);
       await load(submitted);
     } catch (e) {
@@ -190,11 +194,16 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
               <td className="p-3"><span className={`rounded px-2 py-1 text-xs ${batch.status === "VALIDATED" ? "bg-blue-50 text-blue-700" : batch.status === "APPLIED" ? "bg-green-50 text-green-700" : batch.status === "INVALID" ? "bg-red-50 text-red-700" : "bg-gray-100 text-gray-600"}`}>{batch.status}</span></td>
               <td className="p-3 text-xs text-gray-600">{batch.report.summary.total} rows - {batch.report.summary.create} create - {batch.report.summary.update} update - {batch.report.summary.errors} errors</td>
               <td className="p-3 text-xs text-gray-500">{batch.created_at}</td>
-              <td className="p-3">{batch.can_apply ? <button type="button" onClick={() => applyImport(batch.batch_id)} disabled={importBusy} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">Apply</button> : <span className="text-xs text-gray-400">No action</span>}</td>
+              <td className="p-3"><div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setSelectedImport(batch)} className="rounded border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Details</button>
+                {batch.can_apply ? <button type="button" onClick={() => applyImport(batch.batch_id)} disabled={importBusy} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">Apply</button> : <span className="py-1.5 text-xs text-gray-400">No action</span>}
+              </div></td>
             </tr>)}
           </tbody>
         </table>
       </div> : submitted.projectId ? <p className="mt-4 text-sm text-gray-400">No CSV import history for this project yet.</p> : null}
+
+      {selectedImport ? <ImportDetail batch={selectedImport} onApply={applyImport} busy={importBusy} /> : null}
     </section>
     <div className="mb-6 grid gap-4 md:grid-cols-5">
       <Metric label="Enrollments" value={report?.summary.count ?? 0} />
@@ -250,5 +259,71 @@ function ImportSummary({ batch, onApply, busy }: { batch: ProjectEnrollmentImpor
         {row.warnings.map((issue) => <div key={`w-${issue.field}-${issue.code}`} className="mt-1 text-amber-700">Warning: {issue.field} - {issue.message}</div>)}
       </div>)}
     </div> : null}
+  </div>;
+}
+
+
+function ImportDetail({ batch, onApply, busy }: { batch: ProjectEnrollmentImportBatch; onApply: (batchId: string) => void; busy: boolean }) {
+  const rowsWithIssues = batch.report.rows.filter((row) => row.errors.length || row.warnings.length);
+  const previewRows = batch.report.rows.slice(0, 12);
+  const metadata = [
+    ["Batch ID", batch.batch_id],
+    ["Project ID", batch.project_id],
+    ["File", batch.file_name || "CSV import"],
+    ["Status", batch.status],
+    ["Created", batch.created_at],
+    ["Expires", batch.expires_at],
+    ["Applied", batch.applied_at || "Not applied"],
+    ["Applied by", batch.report.applied_by || "-"],
+    ["Reason", batch.report.apply_reason || "-"],
+  ];
+  return <div className="mt-5 rounded border bg-white p-4">
+    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900">Import batch detail</h3>
+        <p className="mt-1 text-sm text-gray-500">Read-only trace of the uploaded file, validation payload, apply status, row issues, and applied result.</p>
+      </div>
+      {batch.can_apply ? <button type="button" onClick={() => onApply(batch.batch_id)} disabled={busy} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply this batch</button> : null}
+    </div>
+
+    <div className="mt-4 grid gap-2 text-xs md:grid-cols-3">
+      {metadata.map(([label, value]) => <div key={label} className="rounded bg-gray-50 p-3">
+        <div className="uppercase tracking-wide text-gray-400">{label}</div>
+        <div className="mt-1 break-all font-medium text-gray-900">{value}</div>
+      </div>)}
+    </div>
+
+    <div className="mt-4 grid gap-2 text-xs md:grid-cols-7">
+      {Object.entries(batch.report.summary).map(([key, value]) => <div key={key} className="rounded border p-3">
+        <div className="uppercase tracking-wide text-gray-400">{key}</div>
+        <div className="mt-1 text-lg font-semibold text-gray-900">{String(value)}</div>
+      </div>)}
+    </div>
+
+    {batch.report.applied_counts ? <div className="mt-4 rounded bg-green-50 p-3">
+      <p className="text-xs font-semibold uppercase text-green-800">Applied counts</p>
+      <div className="mt-2 grid gap-2 text-xs md:grid-cols-4">
+        {Object.entries(batch.report.applied_counts).map(([key, value]) => <div key={key} className="rounded bg-white p-2"><span className="text-gray-400">{key}</span><div className="font-semibold text-gray-900">{String(value)}</div></div>)}
+      </div>
+    </div> : null}
+
+    {rowsWithIssues.length ? <div className="mt-4 rounded bg-amber-50 p-3">
+      <p className="text-xs font-semibold uppercase text-amber-800">Rows with warnings/errors ({rowsWithIssues.length})</p>
+      <div className="mt-2 space-y-2">
+        {rowsWithIssues.slice(0, 20).map((row) => <div key={row.row_number} className="rounded bg-white p-3 text-xs">
+          <div className="font-medium text-gray-800">Row {row.row_number} - {row.mobile_number || "No mobile"} - {row.action}</div>
+          {row.errors.map((issue) => <div key={`detail-e-${row.row_number}-${issue.field}-${issue.code}`} className="mt-1 text-red-700">Error: {issue.field} - {issue.message}</div>)}
+          {row.warnings.map((issue) => <div key={`detail-w-${row.row_number}-${issue.field}-${issue.code}`} className="mt-1 text-amber-700">Warning: {issue.field} - {issue.message}</div>)}
+        </div>)}
+      </div>
+    </div> : <p className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">No row-level warnings or errors recorded for this batch.</p>}
+
+    <details className="mt-4 rounded border p-3 text-xs">
+      <summary className="cursor-pointer font-semibold text-gray-700">Preview normalized row payloads ({batch.report.rows.length} rows)</summary>
+      <div className="mt-3 space-y-2">
+        {previewRows.map((row) => <pre key={`payload-${row.row_number}`} className="overflow-auto rounded bg-gray-950 p-3 text-[11px] text-gray-100">{JSON.stringify({ row_number: row.row_number, action: row.action, mobile_number: row.mobile_number, normalized: row.normalized }, null, 2)}</pre>)}
+      </div>
+      {batch.report.rows.length > previewRows.length ? <p className="mt-2 text-gray-500">Showing first {previewRows.length} rows only.</p> : null}
+    </details>
   </div>;
 }
