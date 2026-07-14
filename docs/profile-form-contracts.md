@@ -198,3 +198,12 @@ When enabled, Android should:
 7. Submit to each form's `submit_endpoint` or sync equivalent.
 
 A consolidated Android implementation note should be produced after backend contracts stabilize further.
+
+## Regression commands
+
+Run after changing bootstrap/profile form contracts or Android renderer discovery metadata:
+
+```bash
+cd ~/projects/farmint/backend
+../venv/bin/python scripts/run_platform_config_regressions.py
+```
