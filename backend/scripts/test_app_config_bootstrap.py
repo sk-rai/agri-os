@@ -51,6 +51,8 @@ def main():
         check(public_payload["tenant"]["id"] == "default", "Public bootstrap uses default tenant context")
         check(public_payload["feature_flags"]["white_label_runtime_branding"] is True, "White-label feature flag is advertised")
         check(any(form["form_id"] == "activity_log" for form in public_payload["forms"]), "Activity log form version is advertised")
+        check(public_payload["profile_forms"]["farmer_registration"]["endpoint"] == "/api/v1/forms/farmer_registration", "Public bootstrap advertises farmer profile form")
+        check(public_payload["profile_forms"]["farmer_registration"]["enabled"] is False, "Profile forms are disabled by default")
 
         tenant = Tenant(
             id=tenant_id,
@@ -113,6 +115,8 @@ def main():
         check(tenant_payload["localization"]["default_language"] == "hi", "Tenant localization override applied")
         check(tenant_payload["units"]["default_area_unit"] == "ACRE", "Tenant unit override applied")
         check(tenant_payload["feature_flags"]["backend_driven_farmer_forms"] is True, "Tenant feature flag override applied")
+        check(tenant_payload["profile_forms"]["farmer_registration"]["enabled"] is True, "Tenant farmer form contract is enabled")
+        check(tenant_payload["profile_forms"]["parcel_registration"]["enabled"] is False, "Tenant parcel form contract remains disabled")
         check(tenant_payload["feature_flags"]["media_attachments"] is False, "Unspecified feature flag default is preserved")
 
         project_response = client.get(
@@ -128,6 +132,9 @@ def main():
         check(project_payload["branding"]["accent_color"] == "#AA7700", "Project accent color override applied")
         check(project_payload["feature_flags"]["backend_driven_farmer_forms"] is True, "Tenant feature flag survives project merge")
         check(project_payload["feature_flags"]["backend_driven_parcel_forms"] is True, "Project feature flag override applied")
+        check(project_payload["profile_forms"]["farmer_registration"]["enabled"] is True, "Project farmer form contract remains enabled")
+        check(project_payload["profile_forms"]["parcel_registration"]["enabled"] is True, "Project parcel form contract is enabled")
+        check(project_payload["profile_forms"]["soil_profile"]["enabled"] is False, "Project soil form contract remains disabled")
         check(project_payload["contracts"]["profile_hydration"]["schema_version"] == "profile_hydration.v1", "Hydration contract advertised")
 
         missing_response = client.get(

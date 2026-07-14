@@ -25,6 +25,13 @@ from app.modules.workflow.forms import FORM_REGISTRY
 router = APIRouter(prefix="/api/v1/app-config", tags=["app-config"])
 
 
+PROFILE_FORM_FLAG_MAP = {
+    "farmer_registration": "backend_driven_farmer_forms",
+    "parcel_registration": "backend_driven_parcel_forms",
+    "soil_profile": "backend_driven_soil_forms",
+}
+
+
 DEFAULT_BOOTSTRAP_CONFIG = {
     "branding": {
         "app_name": "Agri-OS",
@@ -100,6 +107,23 @@ def _form_versions() -> list[dict]:
     ]
 
 
+def _profile_form_contracts(feature_flags: dict) -> dict:
+    contracts = {}
+    for form_id, flag_name in PROFILE_FORM_FLAG_MAP.items():
+        schema = FORM_REGISTRY.get(form_id)
+        if not schema:
+            continue
+        contracts[form_id] = {
+            "form_id": form_id,
+            "version": schema.version,
+            "endpoint": f"/api/v1/forms/{form_id}",
+            "enabled": bool(feature_flags.get(flag_name)),
+            "feature_flag": flag_name,
+            "title": schema.title,
+        }
+    return contracts
+
+
 @router.get("/bootstrap")
 def get_app_bootstrap_config(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -158,6 +182,7 @@ def get_app_bootstrap_config(
         "feature_flags": config["feature_flags"],
         "self_service": config["self_service"],
         "forms": _form_versions(),
+        "profile_forms": _profile_form_contracts(config["feature_flags"]),
         "contracts": {
             "profile_hydration": {
                 "schema_version": "profile_hydration.v1",
