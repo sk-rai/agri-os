@@ -37,6 +37,7 @@ const navSections: NavSection[] = [
     label: "Traceability",
     items: [
       { href: "/activity-usage", label: "Activity Usage", icon: "Trend" },
+      { href: "/project-enrollments", label: "Project Enrollments", icon: "Enroll" },
       { href: "/lookup", label: "Lookup", icon: "Search" },
     ],
   },

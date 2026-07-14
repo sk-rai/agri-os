@@ -18,6 +18,7 @@ BACKEND_ROOT = SCRIPT_DIR.parent
 REGRESSION_SCRIPTS = [
     "test_activity_usage_report.py",
     "test_system_readiness_report.py",
+    "test_project_enrollment_report.py",
 ]
 
 

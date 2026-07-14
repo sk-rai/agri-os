@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, Parcel, Project
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -178,6 +178,197 @@ def _decimal_sum(values):
             total += Decimal(str(value))
             found = True
     return str(total) if found else "0"
+
+
+def _profile_completion_for_report(farmer: Farmer, parcel_count: int, soil_profile_count: int = 0) -> dict:
+    missing = []
+    if not farmer.display_name:
+        missing.append("display_name")
+    if not farmer.village_id and not farmer.village_name_manual:
+        missing.append("village")
+    if parcel_count == 0:
+        missing.append("parcel")
+    return {
+        "is_complete_for_home": len(missing) == 0,
+        "missing_fields": missing,
+        "parcel_count": parcel_count,
+        "soil_profile_count": soil_profile_count,
+    }
+
+
+def _launch_decision_for_report(farmer: Farmer, enrollments: list[FarmerProjectEnrollment], completion: dict) -> str:
+    active_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "ACTIVE"]
+    if farmer.status not in {"ACTIVE", "PENDING"}:
+        return "SHOW_REGISTRATION"
+    if len(active_enrollments) > 1:
+        return "SHOW_PROJECT_PICKER"
+    if not completion["is_complete_for_home"]:
+        return "SHOW_PROFILE_COMPLETION"
+    return "SHOW_HOME"
+
+
+def _project_enrollment_report_rows(
+    *,
+    db: Session,
+    tenant_id: str,
+    project_id: Optional[uuid.UUID],
+    farmer_id: Optional[uuid.UUID],
+    status: Optional[str],
+    enrollment_source: Optional[str],
+    q: Optional[str],
+    limit: int,
+):
+    query = (
+        db.query(FarmerProjectEnrollment, Farmer, Project)
+        .join(Farmer, Farmer.id == FarmerProjectEnrollment.farmer_id)
+        .join(Project, Project.id == FarmerProjectEnrollment.project_id)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            Farmer.tenant_id == tenant_id,
+            Project.tenant_id == tenant_id,
+        )
+    )
+    if project_id:
+        query = query.filter(FarmerProjectEnrollment.project_id == project_id)
+    if farmer_id:
+        query = query.filter(FarmerProjectEnrollment.farmer_id == farmer_id)
+    if status:
+        query = query.filter(FarmerProjectEnrollment.status == status.upper())
+    if enrollment_source:
+        query = query.filter(FarmerProjectEnrollment.enrollment_source.ilike(f"%{enrollment_source.strip()}%"))
+
+    term = (q or "").strip()
+    uuid_value = _safe_uuid(term) if term else None
+    if term:
+        like = f"%{term}%"
+        condition = (
+            Farmer.display_name.ilike(like)
+            | Farmer.mobile_number.ilike(like)
+            | Farmer.village_name_manual.ilike(like)
+            | Project.name.ilike(like)
+            | FarmerProjectEnrollment.enrollment_method.ilike(like)
+            | FarmerProjectEnrollment.enrollment_source.ilike(like)
+            | FarmerProjectEnrollment.status.ilike(like)
+        )
+        if uuid_value:
+            condition = (
+                condition
+                | (FarmerProjectEnrollment.id == uuid_value)
+                | (FarmerProjectEnrollment.farmer_id == uuid_value)
+                | (FarmerProjectEnrollment.project_id == uuid_value)
+                | (Farmer.id == uuid_value)
+                | (Project.id == uuid_value)
+            )
+        query = query.filter(condition)
+
+    records = query.order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).limit(limit).all()
+    farmer_ids = {farmer.id for _, farmer, _ in records}
+    parcel_ids = {uuid.UUID(str(parcel_id)) for enrollment, _, _ in records for parcel_id in (enrollment.parcel_ids or []) if parcel_id}
+
+    parcel_counts = {owner_id: 0 for owner_id in farmer_ids}
+    if farmer_ids:
+        for parcel in db.query(Parcel).filter(
+            Parcel.tenant_id == tenant_id,
+            Parcel.farmer_id.in_(farmer_ids),
+            Parcel.status != "ARCHIVED",
+        ).all():
+            parcel_counts[parcel.farmer_id] = parcel_counts.get(parcel.farmer_id, 0) + 1
+
+    parcels = {
+        parcel.id: parcel
+        for parcel in db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.id.in_(parcel_ids)).all()
+    } if parcel_ids else {}
+
+    enrollments_by_farmer = {}
+    if farmer_ids:
+        all_enrollments = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id.in_(farmer_ids),
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        ).all()
+        for enrollment in all_enrollments:
+            enrollments_by_farmer.setdefault(enrollment.farmer_id, []).append(enrollment)
+
+    soil_counts = {owner_id: 0 for owner_id in farmer_ids}
+    try:
+        from app.modules.farmer.soil_profile import SoilProfile
+        if farmer_ids:
+            for profile in db.query(SoilProfile).filter(
+                SoilProfile.tenant_id == tenant_id,
+                SoilProfile.farmer_id.in_(farmer_ids),
+            ).all():
+                soil_counts[profile.farmer_id] = soil_counts.get(profile.farmer_id, 0) + 1
+    except Exception:
+        pass
+
+    rows = []
+    for enrollment, farmer, project in records:
+        linked_parcels = [parcels.get(uuid.UUID(str(parcel_id))) for parcel_id in (enrollment.parcel_ids or []) if parcel_id]
+        linked_parcels = [parcel for parcel in linked_parcels if parcel]
+        completion = _profile_completion_for_report(farmer, parcel_counts.get(farmer.id, 0), soil_counts.get(farmer.id, 0))
+        farmer_enrollments = enrollments_by_farmer.get(farmer.id, [])
+        decision = _launch_decision_for_report(farmer, farmer_enrollments, completion)
+        active_count = len([item for item in farmer_enrollments if item.status == "ACTIVE"])
+        rows.append({
+            "id": str(enrollment.id),
+            "tenant_id": enrollment.tenant_id,
+            "farmer_id": str(farmer.id),
+            "farmer_name": farmer.display_name,
+            "farmer_mobile": farmer.mobile_number,
+            "farmer_status": farmer.status,
+            "village": farmer.village_name_manual,
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "project_status": project.status,
+            "enrollment_method": enrollment.enrollment_method,
+            "enrollment_source": enrollment.enrollment_source,
+            "enrollment_batch_id": enrollment.enrollment_batch_id,
+            "enrolled_by": str(enrollment.enrolled_by) if enrollment.enrolled_by else None,
+            "status": enrollment.status,
+            "parcel_ids": enrollment.parcel_ids or [],
+            "parcel_labels": [parcel.survey_number or parcel.local_name or str(parcel.id) for parcel in linked_parcels],
+            "assigned_user_ids": enrollment.assigned_user_ids or [],
+            "metadata": enrollment.metadata_ or {},
+            "notes": enrollment.notes,
+            "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+            "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None,
+            "launch_context": {
+                "recommended_navigation": decision,
+                "project_selection_required": active_count > 1,
+                "active_project_count": active_count,
+                "profile_completion": completion,
+                "bootstrap_endpoint": f"/api/v1/app-config/bootstrap?project_id={project.id}" if active_count == 1 and enrollment.status == "ACTIVE" else "/api/v1/app-config/bootstrap",
+                "launch_context_endpoint": f"/api/v1/farmers/{farmer.id}/launch-context",
+            },
+        })
+    return rows
+
+
+def _project_enrollment_report_payload(tenant_id: str, rows: list[dict], filters: dict) -> dict:
+    by_status = defaultdict(int)
+    by_source = defaultdict(int)
+    navigation = defaultdict(int)
+    for row in rows:
+        by_status[row["status"] or "UNKNOWN"] += 1
+        by_source[row["enrollment_source"] or row["enrollment_method"] or "UNKNOWN"] += 1
+        navigation[row["launch_context"]["recommended_navigation"]] += 1
+    return {
+        "schema_version": "project_enrollment_report.v1",
+        "tenant_id": tenant_id,
+        "filters": filters,
+        "summary": {
+            "count": len(rows),
+            "active_count": by_status.get("ACTIVE", 0),
+            "pending_count": by_status.get("PENDING", 0),
+            "archived_count": by_status.get("ARCHIVED", 0),
+            "project_picker_count": navigation.get("SHOW_PROJECT_PICKER", 0),
+            "profile_completion_count": navigation.get("SHOW_PROFILE_COMPLETION", 0),
+            "by_status": dict(sorted(by_status.items())),
+            "by_source": dict(sorted(by_source.items())),
+            "by_recommended_navigation": dict(sorted(navigation.items())),
+        },
+        "enrollments": rows,
+    }
 
 
 def _activity_usage_rows(
@@ -440,6 +631,53 @@ def _sync_materialization_status(entity_type: str, entity_id, farmers_by_id, par
         parcel = parcels_by_id.get(entity_id)
         return bool(parcel and parcel.geometry_source and parcel.geometry_source != "NONE")
     return None
+
+
+@router.get("/project-enrollments")
+def project_enrollment_report(
+    project_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    status: Optional[str] = Query(None),
+    enrollment_source: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Read-only admin visibility into farmer/project enrollment membership."""
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+    if farmer_id:
+        farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+        if not farmer:
+            raise HTTPException(404, "Farmer not found")
+
+    normalized_status = status.upper() if status else None
+    if normalized_status and normalized_status not in {"PENDING", "ACTIVE", "COMPLETED", "ARCHIVED", "CANCELLED"}:
+        raise HTTPException(400, "status must be PENDING, ACTIVE, COMPLETED, ARCHIVED, or CANCELLED")
+
+    filters = {
+        "project_id": str(project_id) if project_id else None,
+        "farmer_id": str(farmer_id) if farmer_id else None,
+        "status": normalized_status,
+        "enrollment_source": enrollment_source,
+        "q": q or "",
+        "limit": limit,
+    }
+    rows = _project_enrollment_report_rows(
+        db=db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        farmer_id=farmer_id,
+        status=normalized_status,
+        enrollment_source=enrollment_source,
+        q=q,
+        limit=limit,
+    )
+    return _project_enrollment_report_payload(x_tenant_id, rows, filters)
 
 
 @router.get("/sync-health")

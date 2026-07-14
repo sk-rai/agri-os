@@ -501,6 +501,67 @@ export interface AdminLookupParcel {
   activity_count: number;
   trace_url: string;
 }
+
+export interface ProjectEnrollmentReportRow {
+  id: string;
+  tenant_id: string;
+  farmer_id: string;
+  farmer_name?: string | null;
+  farmer_mobile?: string | null;
+  farmer_status?: string | null;
+  village?: string | null;
+  project_id: string;
+  project_name: string;
+  project_status?: string | null;
+  enrollment_method: string;
+  enrollment_source?: string | null;
+  enrollment_batch_id?: string | null;
+  enrolled_by?: string | null;
+  status: string;
+  parcel_ids: string[];
+  parcel_labels: string[];
+  assigned_user_ids: string[];
+  metadata: Record<string, unknown>;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  launch_context: {
+    recommended_navigation: string;
+    project_selection_required: boolean;
+    active_project_count: number;
+    profile_completion: { is_complete_for_home: boolean; missing_fields: string[]; parcel_count: number; soil_profile_count: number };
+    bootstrap_endpoint: string;
+    launch_context_endpoint: string;
+  };
+}
+
+export interface ProjectEnrollmentReportResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: { project_id?: string | null; farmer_id?: string | null; status?: string | null; enrollment_source?: string | null; q?: string; limit: number };
+  summary: {
+    count: number;
+    active_count: number;
+    pending_count: number;
+    archived_count: number;
+    project_picker_count: number;
+    profile_completion_count: number;
+    by_status: Record<string, number>;
+    by_source: Record<string, number>;
+    by_recommended_navigation: Record<string, number>;
+  };
+  enrollments: ProjectEnrollmentReportRow[];
+}
+
+export interface ProjectEnrollmentReportParams {
+  query?: string;
+  projectId?: string;
+  farmerId?: string;
+  status?: string;
+  enrollmentSource?: string;
+  limit?: number;
+}
+
 export interface AdminLookupResponse {
   schema_version: string;
   tenant_id: string;
@@ -684,6 +745,18 @@ function syncHealthQuery(params?: SyncHealthParams): string {
   return query.toString() ? `?${query.toString()}` : "";
 }
 
+
+function projectEnrollmentReportQuery(params?: ProjectEnrollmentReportParams): string {
+  const query = new URLSearchParams();
+  if (params?.query) query.set("q", params.query);
+  if (params?.projectId) query.set("project_id", params.projectId);
+  if (params?.farmerId) query.set("farmer_id", params.farmerId);
+  if (params?.status) query.set("status", params.status);
+  if (params?.enrollmentSource) query.set("enrollment_source", params.enrollmentSource);
+  query.set("limit", String(params?.limit || 50));
+  return `?${query.toString()}`;
+}
+
 function adminLookupQuery(params?: AdminLookupParams): string {
   const query = new URLSearchParams();
   query.set("q", params?.query || "");
@@ -808,6 +881,7 @@ export const reportsApi = {
   cropCycleTrace: (cycleId: string) => api<CropCycleTraceResponse>(`/api/v1/reports/crop-cycles/${cycleId}/trace`),
   farmerTrace: (farmerId: string) => api<FarmerTraceResponse>(`/api/v1/reports/farmers/${farmerId}/trace`),
   parcelTrace: (parcelId: string) => api<ParcelTraceResponse>(`/api/v1/reports/parcels/${parcelId}/trace`),
+  projectEnrollments: (params?: ProjectEnrollmentReportParams) => api<ProjectEnrollmentReportResponse>(`/api/v1/reports/project-enrollments${projectEnrollmentReportQuery(params)}`),
   lookup: (params?: string | AdminLookupParams, limit = 25) => {
     const queryParams = typeof params === "string" ? { query: params, limit } : params;
     return api<AdminLookupResponse>(`/api/v1/reports/lookup${adminLookupQuery(queryParams)}`);

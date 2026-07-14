@@ -1,0 +1,156 @@
+"""Regression for read-only admin project enrollment visibility report."""
+
+from datetime import date, datetime, timezone
+from pathlib import Path
+import sys
+import uuid
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from fastapi.testclient import TestClient
+
+from app.core.database import SessionLocal
+from app.main import app
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
+
+
+def check(condition, label, detail=None):
+    print(f"  {'PASS' if condition else 'FAIL'} {label}")
+    if detail is not None:
+        print(f"       {detail}")
+    if not condition:
+        raise AssertionError(label)
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def main():
+    print("=" * 72)
+    print("PROJECT ENROLLMENT REPORT REGRESSION")
+    print("=" * 72)
+
+    tenant_id = "default"
+    farmer_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+    parcel_id = uuid.uuid4()
+    enrollment_id = uuid.uuid4()
+    mobile = f"+9196{uuid.uuid4().int % 100000000:08d}"
+    admin = None
+
+    db = SessionLocal()
+    try:
+        if not db.query(Tenant).filter(Tenant.id == tenant_id).first():
+            db.add(Tenant(id=tenant_id, name="Default", type="ENTERPRISE", created_at=now(), updated_at=now()))
+            db.flush()
+        project = Project(
+            id=project_id,
+            tenant_id=tenant_id,
+            name="Enrollment Report Project",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 12, 31),
+            status="ACTIVE",
+            crop_scope=["RICE"],
+            geography_scope={},
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add(project)
+        db.flush()
+        farmer = Farmer(
+            id=farmer_id,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            mobile_number=mobile,
+            display_name="Enrollment Report Farmer",
+            village_name_manual="Report Village",
+            status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add(farmer)
+        db.flush()
+        parcel = Parcel(
+            id=parcel_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            project_id=project_id,
+            survey_number="ENR-001",
+            reported_area=2,
+            reported_area_unit="ACRE",
+            ownership_type="OWNED",
+            status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        )
+        enrollment = FarmerProjectEnrollment(
+            id=enrollment_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            project_id=project_id,
+            enrollment_method="SYNC_MATERIALIZED",
+            enrollment_source="android_sync_regression",
+            status="ACTIVE",
+            parcel_ids=[str(parcel_id)],
+            assigned_user_ids=[],
+            metadata_={"source": "report_regression"},
+            notes="report test",
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add_all([parcel, enrollment])
+        admin, headers = create_test_admin(db, role="ADMIN_VIEWER", tenant_id=tenant_id)
+        db.commit()
+
+        client = TestClient(app)
+        unauth = client.get("/api/v1/reports/project-enrollments", headers={"X-Tenant-ID": tenant_id})
+        check(unauth.status_code == 401, "Project enrollment report requires admin auth", unauth.text)
+
+        response = client.get(f"/api/v1/reports/project-enrollments?project_id={project_id}&status=ACTIVE", headers=headers)
+        check(response.status_code == 200, "Project enrollment report returns 200", response.text[:500])
+        payload = response.json()
+        check(payload["schema_version"] == "project_enrollment_report.v1", "Schema version is stable")
+        check(payload["tenant_id"] == tenant_id, "Tenant is echoed")
+        check(payload["filters"]["project_id"] == str(project_id), "Project filter is echoed")
+        check(payload["summary"]["active_count"] >= 1, "Summary counts active enrollment")
+        rows = [row for row in payload["enrollments"] if row["id"] == str(enrollment_id)]
+        check(len(rows) == 1, "Report includes seeded enrollment")
+        row = rows[0]
+        check(row["farmer_id"] == str(farmer_id), "Row includes farmer id")
+        check(row["project_id"] == str(project_id), "Row includes project id")
+        check(row["enrollment_method"] == "SYNC_MATERIALIZED", "Row includes enrollment method")
+        check(row["enrollment_source"] == "android_sync_regression", "Row includes enrollment source")
+        check(row["parcel_labels"] == ["ENR-001"], "Row includes linked parcel label")
+        check(row["launch_context"]["recommended_navigation"] == "SHOW_HOME", "Launch decision is reported")
+        check(row["launch_context"]["project_selection_required"] is False, "Launch picker flag is reported")
+        check(row["launch_context"]["profile_completion"]["is_complete_for_home"] is True, "Profile completion is reported")
+
+        source_response = client.get("/api/v1/reports/project-enrollments?enrollment_source=android_sync", headers=headers)
+        check(source_response.status_code == 200, "Enrollment source filter returns 200", source_response.text[:300])
+        check(any(item["id"] == str(enrollment_id) for item in source_response.json()["enrollments"]), "Source filter includes seeded row")
+
+        invalid = client.get("/api/v1/reports/project-enrollments?status=BAD", headers=headers)
+        check(invalid.status_code == 400, "Invalid status is rejected", invalid.text)
+    finally:
+        cleanup = SessionLocal()
+        try:
+            cleanup.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.id == enrollment_id).delete(synchronize_session=False)
+            cleanup.query(Parcel).filter(Parcel.id == parcel_id).delete(synchronize_session=False)
+            cleanup.query(Farmer).filter(Farmer.id == farmer_id).delete(synchronize_session=False)
+            cleanup.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
+            cleanup.commit()
+            if admin:
+                delete_test_admin(cleanup, admin.id)
+        finally:
+            cleanup.close()
+        db.close()
+
+    print("=" * 72)
+    print("Project enrollment report validated")
+    print("=" * 72)
+
+
+if __name__ == "__main__":
+    main()
