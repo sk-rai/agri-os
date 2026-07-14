@@ -213,6 +213,28 @@ class FarmerProjectEnrollment(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class FarmerProjectEnrollmentImportBatch(Base, UUIDPrimaryKey, AuditMixin):
+    """Validated bulk project enrollment CSV batch awaiting explicit apply."""
+
+    __tablename__ = "farmer_project_enrollment_import_batches"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    actor_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    file_name = Column(String(255))
+    status = Column(String(20), nullable=False, default="VALIDATED", index=True)
+    normalized_rows = Column(JSONB, nullable=False, default=list)
+    validation_report = Column(JSONB, nullable=False, default=dict)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    applied_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_farmer_project_enrollment_import_tenant_created", "tenant_id", "created_at"),
+        Index("idx_farmer_project_enrollment_import_project_status", "project_id", "status"),
+        Index("idx_farmer_project_enrollment_import_status_expiry", "status", "expires_at"),
+    )
+
+
 class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     """A piece of agricultural land belonging to a farmer.
 

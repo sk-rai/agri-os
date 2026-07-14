@@ -11,13 +11,16 @@ GET  /api/v1/parcels                    — List parcels (tenant-scoped)
 PATCH /api/v1/parcels/{id}/geometry     — Add/update GPS data (progressive)
 """
 
+import csv
+import io
 import json
 import uuid
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -25,7 +28,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment
+from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -231,6 +234,10 @@ class DuplicateFarmerArchiveRequest(BaseModel):
     duplicate_farmer_ids: list[uuid.UUID] = Field(..., min_length=1)
     reason: Optional[str] = None
     force: bool = False
+
+
+class FarmerProjectEnrollmentImportApplyRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
 
 
 
@@ -651,6 +658,166 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
             "pin_drop": "PIN_DROP returns geometry_source plus centroid_lat/centroid_lng. geojson is null for MVP because backend does not store Point geometry in PostGIS.",
             "gps_walk": "GPS_WALK returns geometry_source, centroid_lat/centroid_lng, computed_area_hectares, and Polygon GeoJSON when captured.",
         },
+    }
+
+
+ENROLLMENT_CSV_COLUMNS = [
+    "farmer_id",
+    "mobile_number",
+    "display_name",
+    "father_name",
+    "village_name_manual",
+    "language_preference",
+    "primary_crop_code",
+    "parcel_ids",
+    "assigned_user_ids",
+    "enrollment_status",
+    "enrollment_source",
+    "notes",
+    "metadata_json",
+]
+ENROLLMENT_CSV_REQUIRED_COLUMNS = {"mobile_number", "display_name", "village_name_manual"}
+ENROLLMENT_CSV_MAX_FILE_BYTES = 2 * 1024 * 1024
+ENROLLMENT_CSV_MAX_ROWS = 5000
+ENROLLMENT_VALID_STATUSES = {"PENDING", "ACTIVE", "COMPLETED", "ARCHIVED", "CANCELLED"}
+
+
+def _csv_response(rows: list[dict], fieldnames: list[str], file_name: str) -> Response:
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
+
+
+def _split_uuid_list(raw: Optional[str], field: str, errors: list[dict]) -> list[str]:
+    values = [value.strip() for value in (raw or "").replace(",", "|").split("|") if value.strip()]
+    normalized = []
+    for value in values:
+        try:
+            normalized.append(str(uuid.UUID(value)))
+        except ValueError:
+            errors.append({"field": field, "code": "INVALID_UUID", "message": f"Invalid UUID: {value}"})
+    return normalized
+
+
+def _parse_metadata_json(raw: Optional[str], errors: list[dict]) -> dict:
+    value = (raw or "").strip()
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        errors.append({"field": "metadata_json", "code": "INVALID_JSON", "message": "metadata_json must be valid JSON"})
+        return {}
+    if not isinstance(parsed, dict):
+        errors.append({"field": "metadata_json", "code": "INVALID_JSON_TYPE", "message": "metadata_json must be a JSON object"})
+        return {}
+    return parsed
+
+
+def _enrollment_import_batch_payload(batch: FarmerProjectEnrollmentImportBatch) -> dict:
+    report = batch.validation_report or {}
+    return {
+        "batch_id": str(batch.id),
+        "project_id": str(batch.project_id),
+        "file_name": batch.file_name,
+        "status": batch.status,
+        "can_apply": batch.status == "VALIDATED" and report.get("can_apply", False) and batch.expires_at > datetime.now(timezone.utc),
+        "expires_at": batch.expires_at.isoformat(),
+        "applied_at": batch.applied_at.isoformat() if batch.applied_at else None,
+        "created_at": batch.created_at.isoformat(),
+        "report": report,
+    }
+
+
+async def _read_enrollment_csv_upload(file: UploadFile) -> str:
+    content = await file.read(ENROLLMENT_CSV_MAX_FILE_BYTES + 1)
+    if len(content) > ENROLLMENT_CSV_MAX_FILE_BYTES:
+        raise HTTPException(413, "CSV file exceeds 2 MB")
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded")
+
+
+def _normalize_enrollment_csv_row(raw: dict[str, str], row_number: int, existing_by_mobile: dict[str, Farmer]) -> dict:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    mobile_raw = (raw.get("mobile_number") or "").strip()
+    try:
+        mobile_number = normalize_mobile_number(mobile_raw)
+    except Exception:
+        mobile_number = mobile_raw
+        errors.append({"field": "mobile_number", "code": "INVALID_MOBILE", "message": "Use a 10-digit Indian mobile or +91 format"})
+
+    farmer_id_raw = (raw.get("farmer_id") or "").strip()
+    farmer_id = None
+    if farmer_id_raw:
+        try:
+            farmer_id = str(uuid.UUID(farmer_id_raw))
+        except ValueError:
+            errors.append({"field": "farmer_id", "code": "INVALID_UUID", "message": "farmer_id must be a UUID"})
+
+    display_name = (raw.get("display_name") or "").strip()
+    village_name_manual = (raw.get("village_name_manual") or "").strip()
+    status = ((raw.get("enrollment_status") or "ACTIVE").strip() or "ACTIVE").upper()
+    if not display_name:
+        errors.append({"field": "display_name", "code": "REQUIRED", "message": "display_name is required"})
+    if not village_name_manual:
+        errors.append({"field": "village_name_manual", "code": "REQUIRED", "message": "village_name_manual is required"})
+    if status not in ENROLLMENT_VALID_STATUSES:
+        errors.append({"field": "enrollment_status", "code": "INVALID_STATUS", "message": "Use PENDING, ACTIVE, COMPLETED, ARCHIVED, or CANCELLED"})
+
+    parcel_ids = _split_uuid_list(raw.get("parcel_ids"), "parcel_ids", errors)
+    assigned_user_ids = _split_uuid_list(raw.get("assigned_user_ids"), "assigned_user_ids", errors)
+    metadata = _parse_metadata_json(raw.get("metadata_json"), errors)
+    action = "INVALID" if errors else ("UPDATE" if mobile_number in existing_by_mobile else "CREATE")
+    normalized = {
+        "farmer_id": farmer_id,
+        "mobile_number": mobile_number,
+        "display_name": display_name,
+        "father_name": (raw.get("father_name") or "").strip() or None,
+        "village_name_manual": village_name_manual,
+        "language_preference": (raw.get("language_preference") or "hi").strip() or "hi",
+        "primary_crop_code": (raw.get("primary_crop_code") or "").strip().upper() or None,
+        "parcel_ids": parcel_ids,
+        "assigned_user_ids": assigned_user_ids,
+        "enrollment_status": status,
+        "enrollment_source": (raw.get("enrollment_source") or "bulk_csv").strip() or "bulk_csv",
+        "notes": (raw.get("notes") or "").strip() or None,
+        "metadata": metadata,
+    }
+    return {"row_number": row_number, "mobile_number": mobile_number, "action": action, "errors": errors, "warnings": warnings, "normalized": normalized}
+
+
+def _enrollment_validation_report(rows: list[dict], file_name: str, project_id: uuid.UUID) -> dict:
+    summary = {"total": len(rows), "create": 0, "update": 0, "unchanged": 0, "invalid": 0, "warnings": 0, "errors": 0}
+    for row in rows:
+        summary["warnings"] += len(row["warnings"])
+        summary["errors"] += len(row["errors"])
+        if row["action"] == "CREATE":
+            summary["create"] += 1
+        elif row["action"] == "UPDATE":
+            summary["update"] += 1
+        elif row["action"] == "INVALID":
+            summary["invalid"] += 1
+        else:
+            summary["unchanged"] += 1
+    can_apply = summary["errors"] == 0
+    return {
+        "schema_version": "project_enrollment_csv_validation.v1",
+        "mode": "VALIDATE_ONLY",
+        "project_id": str(project_id),
+        "file_name": file_name,
+        "can_apply": can_apply,
+        "summary": summary,
+        "rows": rows,
+        "message": "Validation passed. Enrollment CSV can be applied." if can_apply else "Validation failed. Fix errors and upload again.",
     }
 
 
@@ -1079,6 +1246,234 @@ def list_farmers(
 
 
 # --- Farmer Project Enrollment Endpoints ---
+
+@router.get("/projects/{project_id}/farmer-enrollments/csv/template")
+def download_project_enrollment_csv_template(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    return _csv_response([
+        {
+            "farmer_id": "",
+            "mobile_number": "9900000001",
+            "display_name": "Example Farmer",
+            "father_name": "Example Parent",
+            "village_name_manual": "Example Village",
+            "language_preference": "hi",
+            "primary_crop_code": "RICE",
+            "parcel_ids": "",
+            "assigned_user_ids": "",
+            "enrollment_status": "ACTIVE",
+            "enrollment_source": "bulk_csv",
+            "notes": "Initial project enrollment",
+            "metadata_json": "{}",
+        }
+    ], ENROLLMENT_CSV_COLUMNS, "agri-os-project-enrollment-template.csv")
+
+
+@router.post("/projects/{project_id}/farmer-enrollments/csv/validate")
+async def validate_project_enrollment_csv(
+    project_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    text = await _read_enrollment_csv_upload(file)
+    reader = csv.DictReader(io.StringIO(text))
+    headers = set(reader.fieldnames or [])
+    missing = sorted(ENROLLMENT_CSV_REQUIRED_COLUMNS - headers)
+    if missing:
+        raise HTTPException(400, {"error": "MISSING_COLUMNS", "columns": missing})
+    raw_rows = list(reader)
+    if not raw_rows:
+        raise HTTPException(400, "CSV contains no data rows")
+    if len(raw_rows) > ENROLLMENT_CSV_MAX_ROWS:
+        raise HTTPException(413, "CSV exceeds 5000 rows")
+
+    existing_by_mobile = {
+        row.mobile_number: row
+        for row in db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id).all()
+    }
+    rows = [_normalize_enrollment_csv_row(raw, index, existing_by_mobile) for index, raw in enumerate(raw_rows, start=2)]
+    seen_mobile: set[str] = set()
+    for row in rows:
+        mobile = row["mobile_number"]
+        if mobile in seen_mobile:
+            row["errors"].append({"field": "mobile_number", "code": "DUPLICATE_MOBILE_IN_FILE", "message": f"Mobile also appears earlier in this file: {mobile}"})
+            row["action"] = "INVALID"
+        seen_mobile.add(mobile)
+
+    report = _enrollment_validation_report(rows, file.filename or "project-enrollments.csv", project_id)
+    now = datetime.now(timezone.utc)
+    batch = FarmerProjectEnrollmentImportBatch(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        actor_id=principal.user_id,
+        file_name=(file.filename or "project-enrollments.csv")[:255],
+        status="VALIDATED" if report["can_apply"] else "INVALID",
+        normalized_rows=[row["normalized"] for row in rows if not row["errors"]],
+        validation_report=report,
+        expires_at=now + timedelta(hours=2),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(batch)
+    db.commit()
+    return _enrollment_import_batch_payload(batch)
+
+
+@router.get("/projects/{project_id}/farmer-enrollments/csv/imports")
+def list_project_enrollment_imports(
+    project_id: uuid.UUID,
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
+):
+    query = db.query(FarmerProjectEnrollmentImportBatch).filter(
+        FarmerProjectEnrollmentImportBatch.tenant_id == x_tenant_id,
+        FarmerProjectEnrollmentImportBatch.project_id == project_id,
+        FarmerProjectEnrollmentImportBatch.is_active == True,
+    )
+    if status:
+        query = query.filter(FarmerProjectEnrollmentImportBatch.status == status.upper())
+    rows = query.order_by(FarmerProjectEnrollmentImportBatch.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "project_enrollment_imports.v1",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "status": status.upper() if status else None,
+        "count": len(rows),
+        "imports": [_enrollment_import_batch_payload(row) for row in rows],
+    }
+
+
+@router.post("/projects/{project_id}/farmer-enrollments/csv/imports/{batch_id}/apply")
+def apply_project_enrollment_import(
+    project_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    body: FarmerProjectEnrollmentImportApplyRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
+):
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    batch = db.query(FarmerProjectEnrollmentImportBatch).filter(
+        FarmerProjectEnrollmentImportBatch.id == batch_id,
+        FarmerProjectEnrollmentImportBatch.tenant_id == x_tenant_id,
+        FarmerProjectEnrollmentImportBatch.project_id == project_id,
+        FarmerProjectEnrollmentImportBatch.is_active == True,
+    ).first()
+    if not batch:
+        raise HTTPException(404, "Import batch not found")
+    if batch.status != "VALIDATED":
+        raise HTTPException(409, f"Import batch status is {batch.status}")
+    now = datetime.now(timezone.utc)
+    if batch.expires_at <= now:
+        batch.status = "EXPIRED"
+        batch.updated_at = now
+        db.commit()
+        raise HTTPException(409, "Import batch has expired; validate the CSV again")
+
+    applied = {"farmers_created": 0, "farmers_updated": 0, "enrollments_created": 0, "enrollments_updated": 0}
+    for row in batch.normalized_rows or []:
+        farmer = None
+        if row.get("farmer_id"):
+            farmer = db.query(Farmer).filter(Farmer.id == uuid.UUID(row["farmer_id"]), Farmer.tenant_id == x_tenant_id).first()
+            if not farmer:
+                batch.status = "STALE"
+                batch.updated_at = now
+                db.commit()
+                raise HTTPException(409, f"Farmer no longer exists: {row['farmer_id']}")
+        if not farmer:
+            farmer = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.mobile_number == row["mobile_number"]).first()
+        if farmer:
+            applied["farmers_updated"] += 1
+            if row.get("display_name"):
+                farmer.display_name = row["display_name"]
+            if row.get("father_name"):
+                farmer.father_name = row["father_name"]
+            if row.get("village_name_manual"):
+                farmer.village_name_manual = row["village_name_manual"]
+            if row.get("primary_crop_code"):
+                farmer.primary_crop_code = row["primary_crop_code"]
+        else:
+            farmer = Farmer(
+                id=uuid.uuid4(),
+                tenant_id=x_tenant_id,
+                project_id=project_id,
+                mobile_number=row["mobile_number"],
+                display_name=row.get("display_name"),
+                father_name=row.get("father_name"),
+                village_name_manual=row.get("village_name_manual"),
+                language_preference=row.get("language_preference") or "hi",
+                primary_crop_code=row.get("primary_crop_code"),
+                enrollment_method="BULK_IMPORT",
+                enrolled_by=principal.user_id,
+                status="ACTIVE",
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(farmer)
+            db.flush()
+            applied["farmers_created"] += 1
+        farmer.updated_at = now
+
+        enrollment = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.project_id == project_id,
+        ).first()
+        if enrollment:
+            applied["enrollments_updated"] += 1
+        else:
+            enrollment = FarmerProjectEnrollment(
+                id=uuid.uuid4(),
+                tenant_id=x_tenant_id,
+                farmer_id=farmer.id,
+                project_id=project_id,
+                created_at=now,
+            )
+            db.add(enrollment)
+            applied["enrollments_created"] += 1
+        enrollment.enrollment_method = "BULK_IMPORT"
+        enrollment.enrollment_source = row.get("enrollment_source") or "bulk_csv"
+        enrollment.enrollment_batch_id = str(batch.id)
+        enrollment.enrolled_by = principal.user_id
+        enrollment.status = row.get("enrollment_status") or "ACTIVE"
+        enrollment.parcel_ids = row.get("parcel_ids") or []
+        enrollment.assigned_user_ids = row.get("assigned_user_ids") or []
+        enrollment.metadata_ = row.get("metadata") or {}
+        enrollment.notes = row.get("notes") or body.reason
+        enrollment.updated_at = now
+        if farmer.project_id is None and enrollment.status in {"PENDING", "ACTIVE"}:
+            farmer.project_id = project_id
+
+    batch.status = "APPLIED"
+    batch.applied_at = now
+    batch.updated_at = now
+    report = dict(batch.validation_report or {})
+    report["applied_counts"] = applied
+    report["apply_reason"] = body.reason
+    report["applied_by"] = str(principal.user_id)
+    batch.validation_report = report
+    db.commit()
+    db.refresh(batch)
+    return _enrollment_import_batch_payload(batch)
+
 
 @router.post("/farmers/{farmer_id}/project-enrollments", response_model=FarmerProjectEnrollmentResponse, status_code=201)
 def create_farmer_project_enrollment(
