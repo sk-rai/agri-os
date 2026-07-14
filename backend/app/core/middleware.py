@@ -18,6 +18,7 @@ TENANT_EXEMPT_PATHS = [
     "/openapi.json",
     "/api/v1/master-data/",  # Master data is shared (MVP)
     "/api/v1/auth/",  # Auth endpoints don't require tenant yet
+    "/api/v1/app-config/",  # Runtime bootstrap is safe before login/tenant selection
     "/api/v1/tenants",  # Tenant creation doesn't require existing tenant
     "/api/v1/soil-profiles/infer",  # Soil inference is geography-based, no tenant
     "/api/v1/forms",  # Form schemas are cacheable, no tenant context needed
