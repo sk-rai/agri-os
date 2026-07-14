@@ -93,6 +93,15 @@ class ProjectAppConfigResponse(BaseModel):
     message: Optional[str] = None
 
 
+class TenantAppConfigResponse(BaseModel):
+    schema_version: str
+    tenant_id: str
+    updated: bool
+    config: dict
+    applied_sections: list[str]
+    message: Optional[str] = None
+
+
 class RoleAssign(BaseModel):
     user_id: uuid.UUID
     role: str = Field(..., pattern=r"^(DEALER|FIELD_AGENT|AGRONOMIST|MANAGER|ENTERPRISE_ADMIN)$")
@@ -652,6 +661,54 @@ def list_tenants(
         .order_by(Tenant.name)
         .all()
     )
+
+
+@router.patch("/tenants/{tenant_id}/app-config", response_model=TenantAppConfigResponse)
+def update_tenant_app_config(
+    tenant_id: str,
+    body: ProjectAppConfigPatch,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    """Update tenant-level runtime app configuration.
+
+    Tenant app-config defines white-label/default behavior. Project app-config
+    can still override tenant defaults through /projects/{project_id}/app-config.
+    """
+    if tenant_id != x_tenant_id:
+        raise HTTPException(403, {
+            "error": "TENANT_ID_MISMATCH",
+            "message": "Path tenant_id must match X-Tenant-ID.",
+        })
+    if principal.role != "ENTERPRISE_ADMIN":
+        raise HTTPException(403, {
+            "error": "ENTERPRISE_ADMIN_REQUIRED",
+            "message": "Only enterprise admins can update tenant app-config.",
+            "current_role": principal.role,
+        })
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    patch_payload = _project_app_config_patch_payload(body)
+    if not patch_payload:
+        raise HTTPException(400, "At least one app-config section must be provided")
+
+    tenant.config = _deep_merge_config(tenant.config or {}, patch_payload)
+    tenant.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(tenant)
+
+    return {
+        "schema_version": "tenant_app_config.v1",
+        "tenant_id": tenant_id,
+        "updated": True,
+        "config": tenant.config or {},
+        "applied_sections": sorted(patch_payload.keys()),
+        "message": "Tenant app-config updated.",
+    }
 
 
 # --- Project Endpoints ---
