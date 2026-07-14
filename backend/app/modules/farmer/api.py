@@ -71,6 +71,28 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 
+class ProjectAppConfigPatch(BaseModel):
+    branding: Optional[dict] = None
+    localization: Optional[dict] = None
+    units: Optional[dict] = None
+    enabled_modules: Optional[list[str]] = None
+    feature_flags: Optional[dict] = None
+    self_service: Optional[dict] = None
+    reason: Optional[str] = Field(None, min_length=3, max_length=500)
+
+
+class ProjectAppConfigResponse(BaseModel):
+    schema_version: str
+    project_id: str
+    tenant_id: str
+    updated: bool
+    config: dict
+    edit_policy: dict
+    applied_sections: list[str]
+    blocked_sections: list[str] = Field(default_factory=list)
+    message: Optional[str] = None
+
+
 class RoleAssign(BaseModel):
     user_id: uuid.UUID
     role: str = Field(..., pattern=r"^(DEALER|FIELD_AGENT|AGRONOMIST|MANAGER|ENTERPRISE_ADMIN)$")
@@ -201,6 +223,33 @@ class DuplicateFarmerArchiveRequest(BaseModel):
     reason: Optional[str] = None
     force: bool = False
 
+
+
+PROJECT_APP_CONFIG_SECTIONS = {
+    "branding",
+    "localization",
+    "units",
+    "enabled_modules",
+    "feature_flags",
+    "self_service",
+}
+PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS = {"branding"}
+
+
+def _deep_merge_config(base: dict, override: dict) -> dict:
+    result = dict(base or {})
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge_config(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _project_app_config_patch_payload(body: ProjectAppConfigPatch) -> dict:
+    payload = body.model_dump(exclude_none=True)
+    payload.pop("reason", None)
+    return {key: value for key, value in payload.items() if key in PROJECT_APP_CONFIG_SECTIONS}
 
 
 def normalize_mobile_number(mobile_number: str) -> str:
@@ -743,6 +792,61 @@ def get_project_edit_policy(
     if not project:
         raise HTTPException(404, "Project not found")
     return _project_edit_policy(db, project, x_tenant_id)
+
+
+@router.patch("/projects/{project_id}/app-config", response_model=ProjectAppConfigResponse)
+def update_project_app_config(
+    project_id: uuid.UUID,
+    body: ProjectAppConfigPatch,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)),
+):
+    """Safely update runtime app/project configuration.
+
+    Planned empty projects can update all supported app-config sections. Once a
+    project is active or farmers/parcels/crop cycles exist, only display-level
+    branding changes are allowed; risky behavior-changing sections are blocked.
+    """
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    patch_payload = _project_app_config_patch_payload(body)
+    if not patch_payload:
+        raise HTTPException(400, "At least one app-config section must be provided")
+
+    edit_policy = _project_edit_policy(db, project, x_tenant_id)
+    requested_sections = set(patch_payload.keys())
+    blocked_sections = []
+    if not edit_policy["can_edit_core_config"]:
+        blocked_sections = sorted(requested_sections - PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS)
+        if blocked_sections:
+            raise HTTPException(409, {
+                "error": "PROJECT_APP_CONFIG_LOCKED",
+                "message": "Project has enrolled/runtime data; only branding app-config changes are allowed.",
+                "blocked_sections": blocked_sections,
+                "allowed_sections": sorted(PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS),
+                "edit_policy": edit_policy,
+            })
+
+    before_config = project.config or {}
+    project.config = _deep_merge_config(before_config, patch_payload)
+    project.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "schema_version": "project_app_config.v1",
+        "project_id": str(project.id),
+        "tenant_id": x_tenant_id,
+        "updated": True,
+        "config": project.config or {},
+        "edit_policy": _project_edit_policy(db, project, x_tenant_id),
+        "applied_sections": sorted(requested_sections),
+        "blocked_sections": [],
+        "message": "Project app-config updated.",
+    }
 
 
 @router.post("/projects/{project_id}/roles", status_code=201)
