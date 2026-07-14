@@ -57,6 +57,7 @@ def main():
             created_at=now(),
             updated_at=now(),
         ))
+        db.flush()
         db.add(Project(
             id=project_id,
             tenant_id=tenant_id,
@@ -69,6 +70,7 @@ def main():
             created_at=now(),
             updated_at=now(),
         ))
+        db.flush()
         db.add(Farmer(
             id=farmer_id,
             tenant_id=tenant_id,
@@ -81,6 +83,7 @@ def main():
             created_at=now(),
             updated_at=now(),
         ))
+        db.flush()
         db.add(Parcel(
             id=parcel_id,
             tenant_id=tenant_id,
