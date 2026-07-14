@@ -160,6 +160,12 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Bulk enrollment CSV</h2>
           <p className="mt-1 text-sm text-gray-500">Validate and apply farmer enrollments for one project. Set the Project ID filter above to activate this panel.</p>
+          <div className="mt-3 grid gap-2 text-xs text-gray-600 md:grid-cols-4">
+            <div className="rounded bg-gray-50 p-3"><span className="font-semibold text-gray-900">1. Scope</span><p className="mt-1">Filter to one project before downloading or validating.</p></div>
+            <div className="rounded bg-gray-50 p-3"><span className="font-semibold text-gray-900">2. Validate</span><p className="mt-1">Upload CSV to preview creates, updates, warnings, and errors.</p></div>
+            <div className="rounded bg-gray-50 p-3"><span className="font-semibold text-gray-900">3. Apply</span><p className="mt-1">Only VALIDATED batches can be applied, with a reason.</p></div>
+            <div className="rounded bg-gray-50 p-3"><span className="font-semibold text-gray-900">4. Review</span><p className="mt-1">Dashboard readiness highlights invalid or pending batches.</p></div>
+          </div>
         </div>
         <button type="button" onClick={downloadTemplate} disabled={!submitted.projectId || importBusy} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Download template</button>
       </div>
