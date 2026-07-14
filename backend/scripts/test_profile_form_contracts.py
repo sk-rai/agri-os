@@ -53,6 +53,7 @@ def main():
     project = None
     ensure_tenant(db)
     client = TestClient(app)
+    admin, headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id="default")
 
     bootstrap = client.get("/api/v1/app-config/bootstrap", headers={"X-Tenant-ID": "default"})
     check(bootstrap.status_code == 200, "Bootstrap returns 200", bootstrap.text[:400])
@@ -79,6 +80,15 @@ def main():
         check(isinstance(schema["fields"], list) and len(schema["fields"]) > 0, f"{form_id} has fields")
         check(all("id" in field and "type" in field and "label" in field for field in schema["fields"]), f"{form_id} fields include id/type/label")
 
+    validation = client.get("/api/v1/app-config/profile-forms/validation", headers=headers)
+    check(validation.status_code == 200, "Profile form validation returns 200", validation.text[:500])
+    validation_payload = validation.json()
+    check(validation_payload["schema_version"] == "profile_form_validation.v1", "Profile form validation schema is stable")
+    check(validation_payload["ready"] is True, "Profile form validation reports ready")
+    check(validation_payload["summary"]["form_count"] == 3, "Profile form validation counts required forms")
+    check(validation_payload["summary"]["gps_field_count"] >= 3, "Profile form validation counts GPS widgets")
+    check(validation_payload["summary"]["error_count"] == 0, "Profile form validation has no errors")
+
     farmer = schemas["farmer_registration"]
     check(field_by_id(farmer, "mobile_number") is not None, "Farmer form includes mobile_number")
     check(field_by_id(farmer, "mobile_number")["required"] is True, "Farmer mobile_number is required")
@@ -96,6 +106,8 @@ def main():
     lab_name = field_by_id(soil, "lab_name")
     shc = field_by_id(soil, "shc_card_number")
     check(lab_name["depends_on"] == "data_source" and lab_name["depends_on_value"] == "LAB_REPORT", "Soil lab_name conditional metadata is serialized")
+    check(shc["depends_on"] == "data_source" and shc["depends_on_value"] == "SHC_CARD", "Soil SHC conditional metadata is serialized")
+
     project = Project(
         id=uuid.uuid4(),
         tenant_id="default",
@@ -110,7 +122,6 @@ def main():
         updated_at=datetime.now(timezone.utc),
     )
     db.add(project)
-    admin, headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id="default")
     db.commit()
 
     unauth_patch = client.patch(
@@ -144,6 +155,13 @@ def main():
     check(latest_event["action"] == "UPDATE_PROJECT_APP_CONFIG", "Project app config audit records action")
     check(latest_event["reason"] == "Enable profile forms in regression", "Project app config audit records reason")
     check(latest_event["config_patch"]["feature_flags"]["backend_driven_farmer_forms"] is True, "Project app config audit records config patch")
+
+    project_validation = client.get(f"/api/v1/app-config/profile-forms/validation?project_id={project.id}", headers=headers)
+    check(project_validation.status_code == 200, "Project profile form validation returns 200", project_validation.text[:500])
+    project_validation_payload = project_validation.json()
+    check(project_validation_payload["filters"]["project_id"] == str(project.id), "Project profile form validation echoes project id")
+    check(project_validation_payload["summary"]["enabled_count"] == 2, "Project profile form validation reflects enabled project flags")
+    check(project_validation_payload["ready"] is True, "Project profile form validation reports ready")
 
     project_bootstrap = client.get(f"/api/v1/app-config/bootstrap?project_id={project.id}", headers={"X-Tenant-ID": "default"})
     check(project_bootstrap.status_code == 200, "Project bootstrap returns 200 after patch", project_bootstrap.text[:400])

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { appConfigApi, type AppBootstrapResponse, type EffectiveAppConfigResponse, type FormFieldContract, type FormSchemaContract, type ProfileFormContractSummary, type ProjectAppConfigAuditResponse } from "@/lib/api";
+import { appConfigApi, type AppBootstrapResponse, type EffectiveAppConfigResponse, type FormFieldContract, type FormSchemaContract, type ProfileFormContractSummary, type ProjectAppConfigAuditResponse, type ProfileFormValidationResponse } from "@/lib/api";
 
 const PROFILE_FORM_ORDER = ["farmer_registration", "parcel_registration", "soil_profile"];
 
@@ -30,6 +30,7 @@ export default function ProfileFormsPage() {
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [audit, setAudit] = useState<ProjectAppConfigAuditResponse | null>(null);
+  const [validation, setValidation] = useState<ProfileFormValidationResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,10 +42,12 @@ export default function ProfileFormsPage() {
         const profileForms = Object.values(nextContext.profile_forms || {});
         const loadedSchemas = await Promise.all(profileForms.map((form) => appConfigApi.formSchema(form.form_id)));
         const auditPayload = projectId ? await appConfigApi.projectConfigAudit(projectId, 10) : null;
+        const validationPayload = await appConfigApi.profileFormValidation(projectId || undefined);
         if (!cancelled) {
           setContext(nextContext);
           setSchemas(Object.fromEntries(loadedSchemas.map((schema) => [schema.form_id, schema])));
           setAudit(auditPayload);
+          setValidation(validationPayload);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load profile form contracts");
@@ -75,6 +78,7 @@ export default function ProfileFormsPage() {
     setProjectId("");
     setUpdateMessage(null);
     setAudit(null);
+    setValidation(null);
   }
 
   async function toggleProfileFlag(flag: string, enabled: boolean) {
@@ -85,8 +89,10 @@ export default function ProfileFormsPage() {
     try {
       const updated = await appConfigApi.updateProjectConfig(projectId, { feature_flags: { [flag]: enabled } }, updateReason || "Update project profile form feature flag");
       const auditPayload = await appConfigApi.projectConfigAudit(projectId, 10);
+      const validationPayload = await appConfigApi.profileFormValidation(projectId);
       setContext(updated);
       setAudit(auditPayload);
+      setValidation(validationPayload);
       setUpdateMessage(`${flag} ${enabled ? "enabled" : "disabled"} for this project.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update project profile form flag");
@@ -123,6 +129,7 @@ export default function ProfileFormsPage() {
         busy={updateBusy}
         message={updateMessage}
       />
+      {validation ? <ProfileFormValidationPanel validation={validation} /> : null}
       {audit ? <ProjectConfigAuditPanel audit={audit} /> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {orderedForms.map((form) => <FormSummaryCard key={form.form_id} form={form} schema={schemas[form.form_id]} />)}
@@ -194,6 +201,40 @@ function ProfileFlagControls({ context, projectId, reason, onReasonChange, onTog
         </button>
       </div>)}
     </div>
+  </section>;
+}
+
+function ProfileFormValidationPanel({ validation }: { validation: ProfileFormValidationResponse }) {
+  return <section className="mt-6 rounded bg-white p-5 shadow">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Profile form validation</h2>
+        <p className="mt-1 text-sm text-gray-500">Backend contract checks for Android-renderable farmer, parcel, and soil profile forms.</p>
+      </div>
+      <span className={`rounded px-3 py-1 text-xs ${validation.ready ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{validation.ready ? "Ready" : "Needs attention"}</span>
+    </div>
+    <div className="mt-4 grid gap-2 text-xs md:grid-cols-6">
+      <Mini label="Forms" value={String(validation.summary.form_count)} />
+      <Mini label="Enabled" value={String(validation.summary.enabled_count)} />
+      <Mini label="Fields" value={String(validation.summary.field_count)} />
+      <Mini label="GPS" value={String(validation.summary.gps_field_count)} />
+      <Mini label="Errors" value={String(validation.summary.error_count)} />
+      <Mini label="Warnings" value={String(validation.summary.warning_count)} />
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-3">
+      {validation.forms.map((form) => <div key={form.form_id} className="rounded border p-3 text-xs">
+        <div className="flex items-start justify-between gap-2">
+          <div><p className="font-semibold text-gray-900">{label(form.title)}</p><p className="font-mono text-[11px] text-gray-400">{form.form_id}</p></div>
+          <span className={`rounded px-2 py-1 ${form.ready ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{form.ready ? "OK" : "Issue"}</span>
+        </div>
+        <div className="mt-2 text-gray-500">{form.field_count} fields, {form.required_field_count} required, {form.gps_field_count} GPS, {form.error_count} errors, {form.warning_count} warnings</div>
+      </div>)}
+    </div>
+    {validation.errors.length || validation.warnings.length ? <div className="mt-4 space-y-2">
+      {[...validation.errors.map((issue) => ({ ...issue, severity: "Error" })), ...validation.warnings.map((issue) => ({ ...issue, severity: "Warning" }))].map((issue, index) => <div key={`${issue.severity}-${issue.form_id}-${issue.field_id || "form"}-${issue.code}-${index}`} className={`rounded p-3 text-xs ${issue.severity === "Error" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800"}`}>
+        <span className="font-semibold">{issue.severity}: {issue.code}</span> <span className="font-mono">{issue.form_id}{issue.field_id ? `.${issue.field_id}` : ""}</span> - {issue.message}
+      </div>)}
+    </div> : <p className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">No validation errors or warnings.</p>}
   </section>;
 }
 

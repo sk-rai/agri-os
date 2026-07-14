@@ -1092,6 +1092,38 @@ export interface ProjectAppConfigAuditResponse {
   events: ProjectAppConfigAuditEvent[];
 }
 
+export interface ProfileFormValidationIssue {
+  form_id: string;
+  field_id?: string | null;
+  code: string;
+  message: string;
+}
+
+export interface ProfileFormValidationForm {
+  form_id: string;
+  title?: Record<string, string>;
+  version?: string;
+  enabled: boolean;
+  ready: boolean;
+  field_count: number;
+  required_field_count: number;
+  gps_field_count: number;
+  error_count: number;
+  warning_count: number;
+}
+
+export interface ProfileFormValidationResponse {
+  schema_version: string;
+  tenant: { id: string; name: string; type: string };
+  project?: { id: string; name: string; status: string } | null;
+  filters: { project_id?: string | null };
+  ready: boolean;
+  summary: { form_count: number; enabled_count: number; error_count: number; warning_count: number; field_count: number; gps_field_count: number };
+  forms: ProfileFormValidationForm[];
+  errors: ProfileFormValidationIssue[];
+  warnings: ProfileFormValidationIssue[];
+}
+
 // Auth
 export interface AdminProjectAccessProfile {
   project_role_id: string;
@@ -1161,6 +1193,10 @@ export const appConfigApi = {
     api<EffectiveAppConfigResponse>(`/api/v1/app-config/projects/${projectId}/config`, { method: "PATCH", body: { config_patch: configPatch, reason } }),
   projectConfigAudit: (projectId: string, limit = 20) =>
     api<ProjectAppConfigAuditResponse>(`/api/v1/app-config/projects/${projectId}/config/audit?limit=${limit}`),
+  profileFormValidation: (projectId?: string) => {
+    const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    return api<ProfileFormValidationResponse>(`/api/v1/app-config/profile-forms/validation${suffix}`);
+  },
   formSchema: (formId: string) => api<FormSchemaContract>(`/api/v1/forms/${formId}`),
 };
 

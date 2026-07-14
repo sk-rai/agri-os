@@ -188,6 +188,108 @@ def _effective_config_payload(tenant: Tenant, project: Project) -> dict:
     }
 
 
+def _validate_profile_forms(feature_flags: dict) -> dict:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    form_reports: list[dict] = []
+    required_form_ids = set(PROFILE_FORM_FLAG_MAP.keys())
+
+    for form_id in sorted(required_form_ids):
+        schema = FORM_REGISTRY.get(form_id)
+        flag_name = PROFILE_FORM_FLAG_MAP[form_id]
+        enabled = bool(feature_flags.get(flag_name))
+        if not schema:
+            errors.append({
+                "form_id": form_id,
+                "field_id": None,
+                "code": "MISSING_FORM",
+                "message": f"Required profile form {form_id} is missing from FORM_REGISTRY.",
+            })
+            form_reports.append({
+                "form_id": form_id,
+                "enabled": enabled,
+                "ready": False,
+                "field_count": 0,
+                "required_field_count": 0,
+                "gps_field_count": 0,
+                "error_count": 1,
+                "warning_count": 0,
+            })
+            continue
+
+        field_ids = {field.id for field in schema.fields}
+        option_values_by_field = {
+            field.id: {option.value for option in field.options or []}
+            for field in schema.fields
+            if field.options
+        }
+        form_error_start = len(errors)
+        form_warning_start = len(warnings)
+
+        if not schema.submit_endpoint:
+            errors.append({"form_id": form_id, "field_id": None, "code": "MISSING_SUBMIT_ENDPOINT", "message": "Form submit_endpoint is required."})
+        if schema.submit_method not in {"POST", "PUT", "PATCH"}:
+            errors.append({"form_id": form_id, "field_id": None, "code": "UNSUPPORTED_SUBMIT_METHOD", "message": f"Unsupported submit_method {schema.submit_method}."})
+        if not schema.fields:
+            errors.append({"form_id": form_id, "field_id": None, "code": "NO_FIELDS", "message": "Form must contain at least one field."})
+
+        for field in schema.fields:
+            if not field.id:
+                errors.append({"form_id": form_id, "field_id": None, "code": "MISSING_FIELD_ID", "message": "Field id is required."})
+            if not field.type:
+                errors.append({"form_id": form_id, "field_id": field.id, "code": "MISSING_FIELD_TYPE", "message": "Field type is required."})
+            if not field.label or not field.label.get("en"):
+                warnings.append({"form_id": form_id, "field_id": field.id, "code": "MISSING_EN_LABEL", "message": "Field should include an English label fallback."})
+            if field.depends_on:
+                if field.depends_on not in field_ids:
+                    errors.append({"form_id": form_id, "field_id": field.id, "code": "UNKNOWN_DEPENDENCY", "message": f"depends_on references unknown field {field.depends_on}."})
+                elif field.depends_on_value and field.depends_on in option_values_by_field and field.depends_on_value not in option_values_by_field[field.depends_on]:
+                    errors.append({"form_id": form_id, "field_id": field.id, "code": "INVALID_DEPENDS_ON_VALUE", "message": f"depends_on_value {field.depends_on_value} is not an option for {field.depends_on}."})
+            if field.type == "GPS_POINT":
+                if field.output_format not in {"centroid_lat_lng", "geojson_point", "lat_lng"}:
+                    warnings.append({"form_id": form_id, "field_id": field.id, "code": "GPS_POINT_OUTPUT_FORMAT", "message": "GPS_POINT should declare a centroid/point output_format."})
+                if not field.capture_modes:
+                    warnings.append({"form_id": form_id, "field_id": field.id, "code": "GPS_CAPTURE_MODES_MISSING", "message": "GPS_POINT should declare capture_modes."})
+            if field.type == "GPS_POLYGON":
+                if field.output_format != "geojson_polygon":
+                    errors.append({"form_id": form_id, "field_id": field.id, "code": "GPS_POLYGON_OUTPUT_FORMAT", "message": "GPS_POLYGON must use geojson_polygon output_format."})
+                if not field.min_points or field.min_points < 3:
+                    errors.append({"form_id": form_id, "field_id": field.id, "code": "GPS_POLYGON_MIN_POINTS", "message": "GPS_POLYGON must require at least 3 points."})
+                if not field.capture_modes:
+                    warnings.append({"form_id": form_id, "field_id": field.id, "code": "GPS_CAPTURE_MODES_MISSING", "message": "GPS_POLYGON should declare capture_modes."})
+
+        form_error_count = len(errors) - form_error_start
+        form_warning_count = len(warnings) - form_warning_start
+        form_reports.append({
+            "form_id": form_id,
+            "title": schema.title,
+            "version": schema.version,
+            "enabled": enabled,
+            "ready": form_error_count == 0,
+            "field_count": len(schema.fields),
+            "required_field_count": sum(1 for field in schema.fields if field.required),
+            "gps_field_count": sum(1 for field in schema.fields if field.type.startswith("GPS")),
+            "error_count": form_error_count,
+            "warning_count": form_warning_count,
+        })
+
+    enabled_count = sum(1 for form in form_reports if form.get("enabled"))
+    return {
+        "ready": len(errors) == 0,
+        "summary": {
+            "form_count": len(form_reports),
+            "enabled_count": enabled_count,
+            "error_count": len(errors),
+            "warning_count": len(warnings),
+            "field_count": sum(form.get("field_count", 0) for form in form_reports),
+            "gps_field_count": sum(form.get("gps_field_count", 0) for form in form_reports),
+        },
+        "forms": form_reports,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
 def _profile_form_contracts(feature_flags: dict) -> dict:
     contracts = {}
     for form_id, flag_name in PROFILE_FORM_FLAG_MAP.items():
@@ -268,6 +370,48 @@ def get_app_bootstrap_config(
                 "gps_walk": "GPS_WALK returns Polygon GeoJSON, centroid_lat/centroid_lng, and computed_area_hectares.",
             },
         },
+    }
+
+
+
+
+@router.get("/profile-forms/validation")
+def validate_profile_form_contracts(
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Validate effective backend-driven profile form contracts for Android rendering."""
+    tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    project = None
+    if project_id:
+        project = (
+            db.query(Project)
+            .filter(Project.id == project_id, Project.tenant_id == x_tenant_id, Project.is_active == True)
+            .first()
+        )
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+    config = _deep_merge(DEFAULT_BOOTSTRAP_CONFIG, tenant.config or {})
+    if project:
+        config = _deep_merge(config, project.config or {})
+
+    validation = _validate_profile_forms(config.get("feature_flags", {}))
+    return {
+        "schema_version": "profile_form_validation.v1",
+        "tenant": {"id": tenant.id, "name": tenant.name, "type": tenant.type},
+        "project": None if not project else _project_payload(project),
+        "filters": {"project_id": str(project_id) if project_id else None},
+        "ready": validation["ready"],
+        "summary": validation["summary"],
+        "forms": validation["forms"],
+        "errors": validation["errors"],
+        "warnings": validation["warnings"],
     }
 
 
