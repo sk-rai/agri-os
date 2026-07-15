@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
-from app.modules.media.models import MediaAsset, MediaAttachment, QueryMessage, QueryThread
+from app.modules.media.models import MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
 
 
 def now():
@@ -93,6 +93,8 @@ def main():
     detail_body = detail.json()
     check(len(detail_body["messages"]) == 1, "Detail includes messages")
     check(detail_body["media_attachment_count"] == 1, "Detail aggregates message attachments")
+    audit_actions = [event["action"] for event in detail_body.get("audit_events", [])]
+    check("CREATE_THREAD" in audit_actions, "Audit includes thread creation")
 
     print("\n[3] Add agronomist text reply")
     reply = client.post(f"/api/v1/query-threads/{thread_id}/messages", headers=headers, json={
@@ -106,11 +108,16 @@ def main():
     updated = client.get(f"/api/v1/query-threads/{thread_id}", headers=headers).json()
     check(updated["status"] == "ANSWERED", "Agronomist reply marks open thread answered")
     check(len(updated["messages"]) == 2, "Detail includes reply")
+    audit_actions = [event["action"] for event in updated.get("audit_events", [])]
+    check("ADD_MESSAGE" in audit_actions, "Audit includes admin/agronomist reply")
 
     print("\n[4] Status transition and isolation")
     status = client.patch(f"/api/v1/query-threads/{thread_id}/status", headers=headers, json={"status": "CLOSED", "reason": "Resolved by agronomist"})
     check(status.status_code == 200, "Close query thread returns 200", status.text)
     check(status.json()["status"] == "CLOSED", "Thread status closed")
+    status_audit = [event for event in status.json().get("audit_events", []) if event["action"] == "UPDATE_STATUS"]
+    check(bool(status_audit), "Audit includes status update")
+    check(status_audit[-1]["reason"] == "Resolved by agronomist", "Status audit stores reason")
     invalid = client.post("/api/v1/query-threads", headers=headers, json={"farmer_id": str(farmer_id), "subject": "Bad", "category": "ALIEN"})
     check(invalid.status_code == 422, "Invalid category rejected", invalid.text[:200])
     isolated = client.get(f"/api/v1/query-threads/{thread_id}", headers={"X-Tenant-ID": "default"})
@@ -121,6 +128,7 @@ def main():
     try:
         db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(MediaAsset).filter(MediaAsset.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(QueryThreadAudit).filter(QueryThreadAudit.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(QueryMessage).filter(QueryMessage.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(QueryThread).filter(QueryThread.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)

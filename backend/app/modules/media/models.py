@@ -4,9 +4,11 @@ Metadata-only foundation for photos, audio, documents, and future object storage
 Binary upload/storage can be added behind these stable records without changing
 Android entity linkage semantics.
 """
+import uuid
 
 from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 from app.shared.models import AuditMixin, UUIDPrimaryKey
@@ -178,3 +180,21 @@ class QueryMessage(Base, UUIDPrimaryKey, AuditMixin):
         CheckConstraint("sender_type IN ('FARMER', 'FIELD_AGENT', 'AGRONOMIST', 'ADMIN', 'SYSTEM')", name="ck_query_message_sender_type"),
         CheckConstraint("message_type IN ('TEXT', 'AUDIO', 'PHOTO', 'DOCUMENT', 'SYSTEM')", name="ck_query_message_type"),
     )
+
+
+class QueryThreadAudit(Base):
+    __tablename__ = "query_thread_audit_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    thread_id = Column(UUID(as_uuid=True), ForeignKey("query_threads.id"), nullable=False, index=True)
+    action = Column(String(50), nullable=False, index=True)
+    actor_type = Column(String(50), nullable=True)
+    actor_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    before = Column(JSONB, nullable=True)
+    after = Column(JSONB, nullable=True)
+    reason = Column(Text, nullable=True)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    thread = relationship("QueryThread")

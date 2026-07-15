@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.media.api import PURPOSES, _asset_payload, _attachment_payload, _iso
-from app.modules.media.models import MediaAsset, MediaAttachment, QueryMessage, QueryThread
+from app.modules.media.models import MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
 
 router = APIRouter(prefix="/api/v1/query-threads", tags=["query-threads"])
 
@@ -43,6 +43,53 @@ def _thread_payload(thread: QueryThread, message_count: int = 0, attachment_coun
         "created_at": _iso(thread.created_at),
         "updated_at": _iso(thread.updated_at),
     }
+
+
+def _audit_payload(event: QueryThreadAudit) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "thread_id": str(event.thread_id),
+        "action": event.action,
+        "actor_type": event.actor_type,
+        "actor_id": str(event.actor_id) if event.actor_id else None,
+        "before": event.before or {},
+        "after": event.after or {},
+        "reason": event.reason,
+        "metadata": event.metadata_ or {},
+        "created_at": _iso(event.created_at),
+    }
+
+
+def _record_audit(
+    db: Session,
+    *,
+    tenant_id: str,
+    thread_id,
+    action: str,
+    actor_type: Optional[str] = None,
+    actor_id=None,
+    before: Optional[dict] = None,
+    after: Optional[dict] = None,
+    reason: Optional[str] = None,
+    metadata: Optional[dict] = None,
+    timestamp: Optional[datetime] = None,
+):
+    event = QueryThreadAudit(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        thread_id=thread_id,
+        action=action,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        before=before or {},
+        after=after or {},
+        reason=reason,
+        metadata_=metadata or {},
+        created_at=timestamp or datetime.now(timezone.utc),
+    )
+    db.add(event)
+    return event
 
 
 def _message_payload(message: QueryMessage, attachment_count: int = 0) -> dict:
@@ -229,6 +276,18 @@ def create_query_thread(
     if body.initial_message:
         message, attachments = _create_message(db, tenant_id=x_tenant_id, thread=thread, body=body.initial_message, timestamp=timestamp)
 
+    _record_audit(
+        db,
+        tenant_id=x_tenant_id,
+        thread_id=thread.id,
+        action="CREATE_THREAD",
+        actor_type=body.initial_message.sender_type if body.initial_message else "SYSTEM",
+        actor_id=body.initial_message.sender_id if body.initial_message else None,
+        after={"status": thread.status, "subject": thread.subject, "category": thread.category, "priority": thread.priority},
+        metadata={"has_initial_message": bool(body.initial_message)},
+        timestamp=timestamp,
+    )
+
     db.commit()
     db.refresh(thread)
     payload = _thread_payload(thread, 1 if message else 0, len(attachments))
@@ -316,6 +375,11 @@ def get_query_thread(
         message_payload["media_attachments"] = [_attachment_payload(attachment, asset) for attachment, asset in attachments]
         payload["messages"].append(message_payload)
     payload["media_attachment_count"] = sum(message["media_attachment_count"] for message in payload["messages"])
+    audit_events = db.query(QueryThreadAudit).filter(
+        QueryThreadAudit.tenant_id == x_tenant_id,
+        QueryThreadAudit.thread_id == thread.id,
+    ).order_by(QueryThreadAudit.created_at.asc()).all()
+    payload["audit_events"] = [_audit_payload(event) for event in audit_events]
     return payload
 
 
@@ -331,6 +395,17 @@ def create_query_message(
         raise HTTPException(404, "Query thread not found")
     timestamp = datetime.now(timezone.utc)
     message, attachments = _create_message(db, tenant_id=x_tenant_id, thread=thread, body=body, timestamp=timestamp)
+    _record_audit(
+        db,
+        tenant_id=x_tenant_id,
+        thread_id=thread.id,
+        action="ADD_MESSAGE",
+        actor_type=body.sender_type,
+        actor_id=body.sender_id,
+        after={"message_id": str(message.id), "message_type": message.message_type, "status": thread.status},
+        metadata={"media_attachment_count": len(attachments)},
+        timestamp=timestamp,
+    )
     db.commit()
     db.refresh(message)
     payload = _message_payload(message, len(attachments))
@@ -349,16 +424,37 @@ def update_query_thread_status(
     thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == x_tenant_id, QueryThread.is_active == True).first()
     if not thread:
         raise HTTPException(404, "Query thread not found")
+    before = {"status": thread.status, "assigned_to": str(thread.assigned_to) if thread.assigned_to else None}
+    timestamp = datetime.now(timezone.utc)
     metadata = thread.metadata_ or {}
     history = metadata.get("status_history") or []
-    history.append({"from_status": thread.status, "to_status": body.status, "reason": body.reason, "at": datetime.now(timezone.utc).isoformat()})
+    history.append({"from_status": thread.status, "to_status": body.status, "reason": body.reason, "at": timestamp.isoformat()})
     metadata["status_history"] = history
     thread.status = body.status
     if body.assigned_to is not None:
         thread.assigned_to = body.assigned_to
     thread.metadata_ = metadata
-    thread.updated_at = datetime.now(timezone.utc)
+    thread.updated_at = timestamp
+    _record_audit(
+        db,
+        tenant_id=x_tenant_id,
+        thread_id=thread.id,
+        action="UPDATE_STATUS",
+        actor_type="ADMIN",
+        actor_id=body.assigned_to,
+        before=before,
+        after={"status": thread.status, "assigned_to": str(thread.assigned_to) if thread.assigned_to else None},
+        reason=body.reason,
+        timestamp=timestamp,
+    )
     db.add(thread)
     db.commit()
     db.refresh(thread)
-    return _thread_payload(thread, db.query(QueryMessage).filter(QueryMessage.tenant_id == x_tenant_id, QueryMessage.thread_id == thread.id, QueryMessage.is_active == True).count())
+    messages = db.query(QueryMessage).filter(QueryMessage.tenant_id == x_tenant_id, QueryMessage.thread_id == thread.id, QueryMessage.is_active == True).order_by(QueryMessage.created_at.asc()).all()
+    payload = _thread_payload(thread, len(messages), 0)
+    audit_events = db.query(QueryThreadAudit).filter(
+        QueryThreadAudit.tenant_id == x_tenant_id,
+        QueryThreadAudit.thread_id == thread.id,
+    ).order_by(QueryThreadAudit.created_at.asc()).all()
+    payload["audit_events"] = [_audit_payload(event) for event in audit_events]
+    return payload
