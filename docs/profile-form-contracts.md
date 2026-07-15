@@ -183,6 +183,53 @@ Recommended future validations:
 - country/tenant-specific fields are gated by config
 - removing a required field is blocked when active projects/farmers depend on it
 
+## Android profile/project lifecycle context
+
+After mobile login, Android should hydrate the farmer profile before deciding whether to show registration, home, project picker, or self-service mode. The current lifecycle-aware endpoints are:
+
+- `GET /api/v1/farmers/by-mobile/{mobile}`
+- `GET /api/v1/farmers/me/profile`
+- `GET /api/v1/farmers/{farmer_id}/launch-context`
+
+These responses include `project_enrollments`, `farmer_context`, and `enrollment_lifecycle`.
+
+`farmer_context` is the high-level launch decision helper:
+
+| Field | Meaning |
+| --- | --- |
+| `mode` | `PROJECT`, `PROJECT_PICKER`, or `SELF_SERVICE` |
+| `reason` | Machine-readable explanation such as `ACTIVE_PROJECT_ENROLLMENT`, `MULTIPLE_ACTIVE_PROJECTS`, `NO_ACTIVE_PROJECT_AFTER_COMPLETED_PROJECT`, or `NO_PROJECT_ENROLLMENT` |
+| `can_continue_independently` | True when Android can keep the farmer in self-service mode instead of returning to registration |
+| `active_project_count` | Number of active project memberships |
+| `completed_project_count` | Number of completed project memberships |
+| `project_selection_required` | True when Android should ask the user to choose an active project context |
+| `active_project_candidate` | The single active project enrollment when one unambiguous project context exists |
+
+`enrollment_lifecycle` is the lower-level status summary Android can use for edge cases and future UI:
+
+| Field | Meaning |
+| --- | --- |
+| `status_counts` | Counts by enrollment status |
+| `active_count` / `pending_count` | Open project memberships |
+| `completed_count` / `cancelled_count` | Closed project memberships |
+| `active_pending_count` | `active_count + pending_count` |
+| `has_open_enrollments` | True if the farmer is still attached to a live/pending project |
+| `can_continue_independently` | True if there are no active/pending project memberships |
+| `latest_event` / `events` | Recent lifecycle audit events when available |
+
+Expected Android behavior:
+
+1. If no profile exists, continue farmer enrollment.
+2. If profile exists and `project_selection_required=true`, show project picker.
+3. If one active project exists, use the project bootstrap context.
+4. If all project enrollments are completed/cancelled/archived, keep the farmer in self-service mode. Do not force re-registration.
+5. If an independent farmer later joins a company project, preserve the same `farmer_id` and add/update project enrollment locally after hydration/sync.
+
+This supports both important lifecycle transitions:
+
+- project farmer becomes unaffiliated after project completion and continues independently;
+- independent farmer later becomes enrolled in a company/FPO/insurance/input-company project.
+
 ## Android rollout guidance
 
 For now, Android should continue using existing tested screens unless a relevant backend-driven feature flag is enabled.
