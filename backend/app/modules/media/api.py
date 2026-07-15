@@ -105,6 +105,23 @@ def _field_event_payload(event: FieldEventReport, attachment_count: int = 0) -> 
     }
 
 
+class FieldEventAttachmentCreate(BaseModel):
+    media_asset_id: uuid.UUID
+    purpose: str = "GENERAL"
+    caption: Optional[str] = None
+    display_order: int = 0
+    is_primary: bool = False
+    metadata: dict = Field(default_factory=dict)
+
+    @field_validator("purpose")
+    @classmethod
+    def validate_purpose(cls, value: str) -> str:
+        normalized = value.upper()
+        if normalized not in PURPOSES:
+            raise ValueError(f"purpose must be one of {sorted(PURPOSES)}")
+        return normalized
+
+
 class FieldEventCreate(BaseModel):
     id: Optional[uuid.UUID] = None
     project_id: Optional[uuid.UUID] = None
@@ -126,6 +143,7 @@ class FieldEventCreate(BaseModel):
     external_event_id: Optional[str] = Field(None, max_length=120)
     status: str = "REPORTED"
     metadata: dict = Field(default_factory=dict)
+    media_attachments: list[FieldEventAttachmentCreate] = Field(default_factory=list)
 
     @field_validator("event_type")
     @classmethod
@@ -418,6 +436,13 @@ def create_field_event_report(
     if body.parcel_id and not db.query(Parcel).filter(Parcel.id == body.parcel_id, Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == body.farmer_id).first():
         raise HTTPException(404, "Parcel not found")
 
+    attachment_assets = []
+    for attachment in body.media_attachments:
+        asset = db.query(MediaAsset).filter(MediaAsset.id == attachment.media_asset_id, MediaAsset.tenant_id == x_tenant_id).first()
+        if not asset:
+            raise HTTPException(404, f"Media asset {attachment.media_asset_id} not found")
+        attachment_assets.append((attachment, asset))
+
     timestamp = datetime.now(timezone.utc)
     event = FieldEventReport(
         id=body.id or uuid.uuid4(),
@@ -446,9 +471,32 @@ def create_field_event_report(
         updated_at=timestamp,
     )
     db.add(event)
+    db.flush()
+
+    created_attachments = []
+    for attachment_body, asset in attachment_assets:
+        attachment = MediaAttachment(
+            tenant_id=x_tenant_id,
+            media_asset_id=asset.id,
+            entity_type="FIELD_EVENT",
+            entity_id=event.id,
+            purpose=attachment_body.purpose,
+            caption=attachment_body.caption,
+            display_order=attachment_body.display_order,
+            is_primary=attachment_body.is_primary,
+            metadata_=attachment_body.metadata or {},
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        db.add(attachment)
+        created_attachments.append((attachment, asset))
+
     db.commit()
     db.refresh(event)
-    return _field_event_payload(event)
+    payload = _field_event_payload(event, len(created_attachments))
+    if created_attachments:
+        payload["media_attachments"] = [_attachment_payload(attachment, asset) for attachment, asset in created_attachments]
+    return payload
 
 
 @field_events_router.get("")

@@ -78,14 +78,44 @@ def main():
     check(event["severity"] == "HIGH", "Severity normalized")
     check(event["status"] == "REPORTED", "Event starts reported")
 
-    print("\n[2] List filters")
+    print("\n[2] Create field event with inline media attachment")
+    inline_asset_response = client.post("/api/v1/media/assets", headers=headers, json={
+        "project_id": str(project_id),
+        "farmer_id": str(farmer_id),
+        "uploaded_by": str(actor_id),
+        "media_type": "AUDIO",
+        "mime_type": "audio/mpeg",
+        "upload_status": "UPLOADED",
+        "storage_key": "field-events/farmer-note.mp3",
+    })
+    check(inline_asset_response.status_code == 201, "Create inline evidence media asset returns 201", inline_asset_response.text)
+    inline_response = client.post("/api/v1/field-events", headers=headers, json={
+        "project_id": str(project_id),
+        "farmer_id": str(farmer_id),
+        "parcel_id": str(parcel_id),
+        "event_type": "rain",
+        "severity": "medium",
+        "description": "Farmer submitted audio note with rainfall report",
+        "media_attachments": [{
+            "media_asset_id": inline_asset_response.json()["id"],
+            "purpose": "AUDIO_NOTE",
+            "caption": "Rainfall audio note",
+            "is_primary": True,
+        }],
+    })
+    check(inline_response.status_code == 201, "Create field event with inline media returns 201", inline_response.text)
+    inline_event = inline_response.json()
+    check(inline_event["media_attachment_count"] == 1, "Inline create counts attached media")
+    check(inline_event["media_attachments"][0]["asset"]["media_type"] == "AUDIO", "Inline create embeds attached audio")
+
+    print("\n[3] List filters")
     list_response = client.get(f"/api/v1/field-events?project_id={project_id}&event_type=PEST&severity=HIGH", headers=headers)
     check(list_response.status_code == 200, "List field events returns 200", list_response.text)
     listed = list_response.json()
     check(listed["count"] == 1, "Filtered list returns one event")
     check(listed["events"][0]["id"] == event_id, "Filtered list returns created event")
 
-    print("\n[3] Attach media to field event")
+    print("\n[4] Attach media to field event")
     asset_response = client.post("/api/v1/media/assets", headers=headers, json={
         "project_id": str(project_id),
         "farmer_id": str(farmer_id),
@@ -111,19 +141,19 @@ def main():
     check(detail["media_attachment_count"] == 1, "Field event detail counts media")
     check(detail["media_attachments"][0]["asset"]["media_type"] == "PHOTO", "Field event detail embeds media")
 
-    print("\n[4] Status transition")
+    print("\n[5] Status transition")
     status_response = client.patch(f"/api/v1/field-events/{event_id}/status", headers=headers, json={"status": "UNDER_REVIEW", "reason": "Assigned to agronomist"})
     check(status_response.status_code == 200, "Field event status patch returns 200", status_response.text)
     patched = status_response.json()
     check(patched["status"] == "UNDER_REVIEW", "Field event status updated")
 
-    print("\n[5] Validation and isolation")
+    print("\n[6] Validation and isolation")
     invalid_response = client.post("/api/v1/field-events", headers=headers, json={"farmer_id": str(farmer_id), "event_type": "METEOR", "severity": "HIGH"})
     check(invalid_response.status_code == 422, "Invalid field event type rejected", invalid_response.text[:200])
     other_tenant_detail = client.get(f"/api/v1/field-events/{event_id}", headers={"X-Tenant-ID": "default"})
     check(other_tenant_detail.status_code == 404, "Field event is tenant isolated", other_tenant_detail.text)
 
-    print("\n[6] Cleanup")
+    print("\n[7] Cleanup")
     db = SessionLocal()
     try:
         db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id).delete(synchronize_session=False)
