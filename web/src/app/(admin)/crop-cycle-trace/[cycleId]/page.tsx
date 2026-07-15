@@ -64,6 +64,8 @@ export default function CropCycleTracePage({ params }: { params: { cycleId: stri
       ]} />
     </div>
 
+    <MediaSummary attachments={trace.media_attachments || {}} />
+
     <div className="mb-6 rounded bg-white p-5 shadow">
       <h2 className="mb-4 text-lg font-bold text-gray-900">Stage timeline</h2>
       <div className="space-y-3">
@@ -128,4 +130,25 @@ function InfoSection({ title, rows }: { title: string; rows: Array<[string, stri
 
 function Mini({ label, value }: { label: string; value?: string | number | null }) {
   return <div><div className="text-xs uppercase text-gray-400">{label}</div><div className="font-mono text-gray-800">{value || "-"}</div></div>;
+}
+
+function MediaSummary({ attachments }: { attachments: NonNullable<CropCycleTraceResponse["media_attachments"]> }) {
+  const groups = Object.entries(attachments);
+  const total = groups.reduce((sum, [, rows]) => sum + rows.length, 0);
+  return <section className="mb-6 rounded bg-white p-5 shadow">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 className="text-lg font-bold text-gray-900">Media traceability</h2>
+        <p className="text-sm text-gray-500">Shared media attachments linked to this cycle, farmer, or parcel.</p>
+      </div>
+      <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">{total} item(s)</span>
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-3">
+      {groups.map(([group, rows]) => <div key={group} className="rounded border p-3">
+        <div className="text-xs uppercase text-gray-400">{group}</div>
+        <div className="mt-1 text-2xl font-bold text-gray-900">{rows.length}</div>
+        {rows.slice(0, 2).map((item) => <div key={item.id} className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-600">{item.purpose} - {item.asset.media_type} - {item.asset.upload_status}</div>)}
+      </div>)}
+    </div>
+  </section>;
 }

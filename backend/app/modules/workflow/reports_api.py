@@ -1,4 +1,4 @@
-﻿"""Read-only workflow reporting APIs for admin dashboards."""
+"""Read-only workflow reporting APIs for admin dashboards."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
+from app.modules.media.models import MediaAsset, MediaAttachment
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -539,6 +540,72 @@ def _activity_usage_payload(
     }
 
 
+def _media_asset_trace_payload(asset: MediaAsset) -> dict:
+    return {
+        "id": str(asset.id),
+        "media_type": asset.media_type,
+        "mime_type": asset.mime_type,
+        "upload_status": asset.upload_status,
+        "storage_url": asset.storage_url,
+        "thumbnail_url": asset.thumbnail_url,
+        "sha256_hash": asset.sha256_hash,
+        "size_bytes": asset.size_bytes,
+        "duration_seconds": asset.duration_seconds,
+        "capture_lat": asset.capture_lat,
+        "capture_lng": asset.capture_lng,
+        "capture_accuracy_meters": asset.capture_accuracy_meters,
+        "captured_at": asset.captured_at.isoformat() if asset.captured_at else None,
+        "metadata": asset.metadata_ or {},
+    }
+
+
+def _media_attachment_trace_payload(attachment: MediaAttachment, asset: MediaAsset) -> dict:
+    return {
+        "id": str(attachment.id),
+        "media_asset_id": str(attachment.media_asset_id),
+        "entity_type": attachment.entity_type,
+        "entity_id": str(attachment.entity_id),
+        "purpose": attachment.purpose,
+        "caption": attachment.caption,
+        "display_order": attachment.display_order,
+        "is_primary": attachment.is_primary,
+        "metadata": attachment.metadata_ or {},
+        "asset": _media_asset_trace_payload(asset),
+        "created_at": attachment.created_at.isoformat() if attachment.created_at else None,
+        "updated_at": attachment.updated_at.isoformat() if attachment.updated_at else None,
+    }
+
+
+def _media_attachments_for_entity(db: Session, tenant_id: str, entity_type: str, entity_id, limit: int = 25) -> list[dict]:
+    if not entity_id:
+        return []
+    rows = (
+        db.query(MediaAttachment, MediaAsset)
+        .join(MediaAsset, MediaAsset.id == MediaAttachment.media_asset_id)
+        .filter(
+            MediaAttachment.tenant_id == tenant_id,
+            MediaAttachment.entity_type == entity_type,
+            MediaAttachment.entity_id == entity_id,
+            MediaAttachment.is_active == True,
+        )
+        .order_by(MediaAttachment.display_order.asc(), MediaAttachment.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_media_attachment_trace_payload(attachment, asset) for attachment, asset in rows]
+
+
+def _media_attachment_count(db: Session, tenant_id: str, entity_type: str, entity_id) -> int:
+    if not entity_id:
+        return 0
+    return db.query(MediaAttachment).filter(
+        MediaAttachment.tenant_id == tenant_id,
+        MediaAttachment.entity_type == entity_type,
+        MediaAttachment.entity_id == entity_id,
+        MediaAttachment.is_active == True,
+    ).count()
+
+
 def _activity_usage_csv(rows):
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=ACTIVITY_USAGE_CSV_COLUMNS, extrasaction="ignore")
@@ -568,7 +635,7 @@ def _csv_stream(csv_text: str, filename: str):
 
 
 
-def _activity_trace_row(activity, cycle, stage, farmer, parcel):
+def _activity_trace_row(activity, cycle, stage, farmer, parcel, media_attachment_count: int = 0):
     return {
         "activity_id": str(activity.id),
         "activity_date": activity.activity_date.isoformat() if activity.activity_date else None,
@@ -614,6 +681,7 @@ def _activity_trace_row(activity, cycle, stage, farmer, parcel):
         "created_at": activity.created_at.isoformat() if activity.created_at else None,
         "updated_at": activity.updated_at.isoformat() if activity.updated_at else None,
         "notes": activity.notes,
+        "media_attachment_count": media_attachment_count,
     }
 
 
@@ -1340,7 +1408,7 @@ def _farmer_enrollment_trace_row(enrollment: FarmerProjectEnrollment, project: O
     }
 
 
-def _parcel_trace_payload(*, parcel, farmer, project, cycles, activities, tenant_id):
+def _parcel_trace_payload(*, db: Session, parcel, farmer, project, cycles, activities, tenant_id):
     activities_by_cycle = defaultdict(list)
     total_cost_by_cycle = defaultdict(list)
     variance_count = 0
@@ -1378,6 +1446,7 @@ def _parcel_trace_payload(*, parcel, farmer, project, cycles, activities, tenant
             "status": parcel.status,
             "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
             "updated_at": parcel.updated_at.isoformat() if parcel.updated_at else None,
+            "media_attachments": _media_attachments_for_entity(db, tenant_id, "PARCEL", parcel.id),
         },
         "farmer": {
             "id": str(farmer.id),
@@ -1437,7 +1506,7 @@ def parcel_trace_report(
         .all()
     )
     activities = [_activity_trace_row(activity, cycle, stage, row_farmer, row_parcel) for activity, cycle, stage, row_farmer, row_parcel in activity_rows_raw]
-    return _parcel_trace_payload(parcel=parcel, farmer=farmer, project=project, cycles=cycles, activities=activities, tenant_id=x_tenant_id)
+    return _parcel_trace_payload(db=db, parcel=parcel, farmer=farmer, project=project, cycles=cycles, activities=activities, tenant_id=x_tenant_id)
 
 
 @router.get("/farmers/{farmer_id}/trace")
@@ -1538,6 +1607,7 @@ def farmer_trace_report(
             "status": farmer.status,
             "created_at": farmer.created_at.isoformat() if farmer.created_at else None,
             "updated_at": farmer.updated_at.isoformat() if farmer.updated_at else None,
+            "media_attachments": _media_attachments_for_entity(db, x_tenant_id, "FARMER", farmer.id),
         },
         "project": {
             "id": str(project.id),
@@ -2521,7 +2591,17 @@ def crop_cycle_trace_report(
         .order_by(CropActivity.activity_date.asc(), CropActivity.created_at.asc())
         .all()
     )
-    activity_rows = [_activity_trace_row(activity, cycle, stage_by_id.get(activity.stage_instance_id), farmer, parcel) for activity in activities]
+    activity_rows = [
+        _activity_trace_row(
+            activity,
+            cycle,
+            stage_by_id.get(activity.stage_instance_id),
+            farmer,
+            parcel,
+            _media_attachment_count(db, x_tenant_id, "CROP_ACTIVITY", activity.id),
+        )
+        for activity in activities
+    ]
     activity_count_by_stage = defaultdict(int)
     cost_by_stage = defaultdict(Decimal)
     for row in activity_rows:
@@ -2574,6 +2654,7 @@ def crop_cycle_trace_report(
             "notes": cycle.notes,
             "created_at": cycle.created_at.isoformat() if cycle.created_at else None,
             "updated_at": cycle.updated_at.isoformat() if cycle.updated_at else None,
+            "media_attachments": _media_attachments_for_entity(db, x_tenant_id, "CROP_CYCLE", cycle.id),
         },
         "project": {"id": str(project.id), "name": project.name, "status": project.status} if project else None,
         "farmer": {
@@ -2603,6 +2684,11 @@ def crop_cycle_trace_report(
         },
         "stages": stage_rows,
         "activities": activity_rows,
+        "media_attachments": {
+            "crop_cycle": _media_attachments_for_entity(db, x_tenant_id, "CROP_CYCLE", cycle.id),
+            "farmer": _media_attachments_for_entity(db, x_tenant_id, "FARMER", cycle.farmer_id),
+            "parcel": _media_attachments_for_entity(db, x_tenant_id, "PARCEL", cycle.parcel_id),
+        },
     }
 
 

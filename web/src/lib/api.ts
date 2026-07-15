@@ -233,6 +233,36 @@ export type CropCatalogImportHistory = CropTaxonomyImportHistory;
 
 
 
+export interface MediaAssetTrace {
+  id: string;
+  media_type: string;
+  mime_type: string;
+  upload_status: string;
+  storage_url?: string | null;
+  thumbnail_url?: string | null;
+  sha256_hash?: string | null;
+  size_bytes?: number | null;
+  duration_seconds?: number | null;
+  capture_lat?: string | null;
+  capture_lng?: string | null;
+  capture_accuracy_meters?: string | null;
+  captured_at?: string | null;
+  metadata?: Record<string, unknown>;
+}
+export interface MediaAttachmentTrace {
+  id: string;
+  media_asset_id: string;
+  entity_type: string;
+  entity_id: string;
+  purpose: string;
+  caption?: string | null;
+  display_order: number;
+  is_primary: boolean;
+  metadata?: Record<string, unknown>;
+  asset: MediaAssetTrace;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
 export interface ActivityUsageRow {
   activity_id: string;
   activity_date?: string | null;
@@ -278,6 +308,7 @@ export interface ActivityUsageRow {
   created_at?: string | null;
   updated_at?: string | null;
   notes?: string | null;
+  media_attachment_count?: number;
 }
 
 export interface ActivityUsageReportResponse {
@@ -378,6 +409,7 @@ export interface CropCycleTraceResponse {
   summary: { stage_count: number; activity_count: number; total_cost: string; variance_count: number };
   stages: CropCycleTraceStage[];
   activities: ActivityUsageRow[];
+  media_attachments?: Record<string, MediaAttachmentTrace[]>;
 }
 export interface FarmerTraceParcel {
   id: string;
@@ -400,6 +432,7 @@ export interface FarmerTraceParcel {
   completed_cycle_count: number;
   activity_count: number;
   total_cost: string;
+  media_attachments?: MediaAttachmentTrace[];
 }
 export interface FarmerTraceCycle {
   id: string;

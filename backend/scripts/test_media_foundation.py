@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.media.models import MediaAsset, MediaAttachment
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def now():
@@ -38,11 +39,14 @@ def main():
     parcel_id = uuid.uuid4()
     actor_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id}
+    admin_id = None
 
     db = SessionLocal()
     try:
         db.add(Tenant(id=tenant_id, name="Media Test Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
         db.commit()
+        admin, headers = create_test_admin(db, tenant_id=tenant_id)
+        admin_id = admin.id
         db.add(Project(id=project_id, tenant_id=tenant_id, name="Media Test Project", start_date=date(2026, 7, 1), end_date=date(2026, 12, 31), status="PLANNED", crop_scope=["RICE"], geography_scope={}, created_at=now(), updated_at=now()))
         db.commit()
         db.add(Farmer(id=farmer_id, tenant_id=tenant_id, project_id=project_id, mobile_number=f"+9197{uuid.uuid4().int % 100000000:08d}", display_name="Media Farmer", village_name_manual="Media Village", status="ACTIVE", created_at=now(), updated_at=now()))
@@ -132,7 +136,14 @@ def main():
     check(listed["count"] == 1, "Parcel listing returns one attachment")
     check(listed["attachments"][0]["asset"]["upload_status"] == "UPLOADED", "Listing includes asset upload status")
 
-    print("\n[6] Validation and tenant isolation")
+    print("\n[6] Admin parcel trace includes media attachments")
+    trace_response = client.get(f"/api/v1/reports/parcels/{parcel_id}/trace", headers=headers)
+    check(trace_response.status_code == 200, "Parcel trace returns 200", trace_response.text[:300])
+    trace = trace_response.json()
+    check(len(trace["parcel"].get("media_attachments", [])) == 1, "Parcel trace includes parcel media attachment")
+    check(trace["parcel"]["media_attachments"][0]["asset"]["media_type"] == "PHOTO", "Parcel trace embeds media asset summary")
+
+    print("\n[7] Validation and tenant isolation")
     invalid_response = client.post("/api/v1/media/assets", headers=headers, json={"media_type": "BINARY", "mime_type": "application/octet-stream"})
     check(invalid_response.status_code == 422, "Invalid media type rejected", invalid_response.text[:200])
     missing_asset_attach = client.post("/api/v1/media/attachments", headers=headers, json={"media_asset_id": str(uuid.uuid4()), "entity_type": "FARMER", "entity_id": str(farmer_id), "purpose": "GENERAL"})
@@ -140,7 +151,7 @@ def main():
     other_tenant_get = client.get(f"/api/v1/media/assets/{asset_id}", headers={"X-Tenant-ID": "default"})
     check(other_tenant_get.status_code == 404, "Asset is tenant isolated", other_tenant_get.text)
 
-    print("\n[7] Cleanup")
+    print("\n[8] Cleanup")
     db = SessionLocal()
     try:
         db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id).delete(synchronize_session=False)
@@ -148,6 +159,8 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        if admin_id:
+            delete_test_admin(db, admin_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

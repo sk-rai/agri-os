@@ -66,6 +66,8 @@ export default function ParcelTracePage({ params }: { params: { parcelId: string
       ]} action={trace.farmer?.id ? <Link href={`/farmer-trace/${trace.farmer.id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open farmer</Link> : undefined} />
     </div>
 
+    <MediaPanel title="Parcel media attachments" attachments={trace.parcel.media_attachments || []} />
+
     <section className="mb-6 overflow-hidden rounded bg-white shadow">
       <div className="border-b p-5">
         <h2 className="text-lg font-bold text-gray-900">Crop cycles on this parcel</h2>
@@ -127,4 +129,38 @@ function InfoSection({ title, rows, action }: { title: string; rows: Array<[stri
       </div>)}
     </dl>
   </section>;
+}
+
+
+function MediaPanel({ title, attachments }: { title: string; attachments: NonNullable<ParcelTraceResponse["parcel"]["media_attachments"]> }) {
+  return <section className="mb-6 rounded bg-white p-5 shadow">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+        <p className="text-sm text-gray-500">Photos, audio notes, and documents linked through the shared media foundation.</p>
+      </div>
+      <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">{attachments.length} item(s)</span>
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-2">
+      {attachments.map((attachment) => <div key={attachment.id} className="rounded border p-3 text-sm">
+        <div className="flex items-start justify-between gap-2">
+          <div><div className="font-semibold text-gray-900">{attachment.purpose}</div><div className="font-mono text-xs text-gray-500">{attachment.media_asset_id}</div></div>
+          <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700">{attachment.asset.media_type}</span>
+        </div>
+        <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+          <Mini label="Status" value={attachment.asset.upload_status} />
+          <Mini label="MIME" value={attachment.asset.mime_type} />
+          <Mini label="Size" value={attachment.asset.size_bytes ?? "-"} />
+          <Mini label="Captured" value={attachment.asset.captured_at} />
+        </div>
+        {attachment.caption ? <p className="mt-2 text-xs text-gray-600">{attachment.caption}</p> : null}
+      </div>)}
+      {attachments.length === 0 ? <p className="text-sm text-gray-400">No media attachments linked yet.</p> : null}
+    </div>
+  </section>;
+}
+
+
+function Mini({ label, value }: { label: string; value?: string | number | null }) {
+  return <div><div className="text-xs uppercase text-gray-400">{label}</div><div className="font-mono text-gray-800">{value || "-"}</div></div>;
 }
