@@ -1318,6 +1318,28 @@ def _farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle):
 
 
 
+def _farmer_enrollment_trace_row(enrollment: FarmerProjectEnrollment, project: Optional[Project]) -> dict:
+    metadata = enrollment.metadata_ or {}
+    return {
+        "id": str(enrollment.id),
+        "project_id": str(enrollment.project_id),
+        "project_name": project.name if project else None,
+        "project_status": project.status if project else None,
+        "status": enrollment.status,
+        "enrollment_method": enrollment.enrollment_method,
+        "enrollment_source": enrollment.enrollment_source,
+        "enrollment_batch_id": enrollment.enrollment_batch_id,
+        "enrolled_by": str(enrollment.enrolled_by) if enrollment.enrolled_by else None,
+        "parcel_ids": [str(value) for value in (enrollment.parcel_ids or [])],
+        "assigned_user_ids": [str(value) for value in (enrollment.assigned_user_ids or [])],
+        "metadata": metadata,
+        "lifecycle_events": metadata.get("lifecycle_events") or [],
+        "notes": enrollment.notes,
+        "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+        "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None,
+    }
+
+
 def _parcel_trace_payload(*, parcel, farmer, project, cycles, activities, tenant_id):
     activities_by_cycle = defaultdict(list)
     total_cost_by_cycle = defaultdict(list)
@@ -1430,6 +1452,21 @@ def farmer_trace_report(
         raise HTTPException(404, "Farmer not found")
 
     project = db.query(Project).filter(Project.id == farmer.project_id).first() if farmer.project_id else None
+    enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        )
+        .order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc())
+        .all()
+    )
+    enrollment_project_ids = [enrollment.project_id for enrollment in enrollments]
+    enrollment_projects = {
+        row.id: row
+        for row in db.query(Project).filter(Project.tenant_id == x_tenant_id, Project.id.in_(enrollment_project_ids)).all()
+    } if enrollment_project_ids else {}
     parcels = (
         db.query(Parcel)
         .filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id)
@@ -1475,6 +1512,17 @@ def farmer_trace_report(
             if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
                 variance_count += 1
 
+    enrollment_rows = [_farmer_enrollment_trace_row(enrollment, enrollment_projects.get(enrollment.project_id)) for enrollment in enrollments]
+    enrollment_status_counts = defaultdict(int)
+    lifecycle_events = []
+    for row in enrollment_rows:
+        enrollment_status_counts[row["status"] or "UNKNOWN"] += 1
+        for event in row.get("lifecycle_events") or []:
+            lifecycle_events.append({**event, "enrollment_id": row["id"], "project_id": row["project_id"], "project_name": row.get("project_name")})
+    lifecycle_events.sort(key=lambda item: item.get("at") or "", reverse=True)
+    active_enrollment_count = enrollment_status_counts.get("ACTIVE", 0)
+    pending_enrollment_count = enrollment_status_counts.get("PENDING", 0)
+
     return {
         "schema_version": "farmer_trace.v1",
         "tenant_id": x_tenant_id,
@@ -1504,6 +1552,19 @@ def farmer_trace_report(
             "activity_count": len(activities),
             "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
             "variance_count": variance_count,
+        },
+        "project_enrollments": enrollment_rows,
+        "enrollment_lifecycle": {
+            "status_counts": dict(sorted(enrollment_status_counts.items())),
+            "active_count": active_enrollment_count,
+            "pending_count": pending_enrollment_count,
+            "active_pending_count": active_enrollment_count + pending_enrollment_count,
+            "total_enrollment_count": len(enrollment_rows),
+            "has_open_enrollments": (active_enrollment_count + pending_enrollment_count) > 0,
+            "can_continue_independently": (active_enrollment_count + pending_enrollment_count) == 0,
+            "latest_event": lifecycle_events[0] if lifecycle_events else None,
+            "events": lifecycle_events[:25],
+            "project_enrollments_url": f"/project-enrollments?farmerId={farmer.id}",
         },
         "parcels": [_farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel) for parcel in parcels],
         "crop_cycles": [_farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle) for cycle in cycles],

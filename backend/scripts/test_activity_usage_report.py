@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
 from app.modules.master_data.models import AgriculturalInput, AgriculturalProduct, AgriculturalProductPackage, CropStageInputRule, Manufacturer, ProjectProductApproval
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance, WorkflowTemplate, WorkflowTemplateVersion
 from app.modules.sync.models import SyncProcessedEvent
@@ -41,6 +41,7 @@ def cleanup(db, *, admin=None, farmer_id, parcel_id, project_id, cycle_id=None):
         db.query(AgriculturalProductPackage).filter(AgriculturalProductPackage.product_id == product.id).delete(synchronize_session=False)
         db.query(AgriculturalProduct).filter(AgriculturalProduct.id == product.id).delete(synchronize_session=False)
     db.query(Manufacturer).filter(Manufacturer.code == MFG).delete(synchronize_session=False)
+    db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.farmer_id == farmer_id).delete(synchronize_session=False)
     db.query(Parcel).filter(Parcel.id == parcel_id).delete(synchronize_session=False)
     db.query(Farmer).filter(Farmer.id == farmer_id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
@@ -63,6 +64,8 @@ def main():
         farmer = Farmer(id=farmer_id, tenant_id=TENANT, project_id=project_id, mobile_number="996" + str(farmer_id.int)[-7:], village_name_manual="Report Village", primary_crop_code="RICE", display_name="Report Farmer", status="ACTIVE", created_at=now(), updated_at=now())
         parcel = Parcel(id=parcel_id, tenant_id=TENANT, farmer_id=farmer_id, project_id=project_id, village_name_manual="Report Village", reported_area=1, reported_area_unit="ACRE", survey_number="REPORT-" + str(parcel_id)[:8], ownership_type="OWNED", status="ACTIVE", created_at=now(), updated_at=now())
         db.add(project); db.flush(); db.add_all([farmer, parcel]); db.flush()
+        enrollment = FarmerProjectEnrollment(id=uuid.uuid4(), tenant_id=TENANT, farmer_id=farmer_id, project_id=project_id, enrollment_method="WEB_ADMIN", enrollment_source="activity_usage_regression", status="ACTIVE", parcel_ids=[str(parcel_id)], assigned_user_ids=[], metadata_={"lifecycle_events": [{"action": "ENROLLED", "to_status": "ACTIVE", "at": now().isoformat(), "reason": "activity usage regression"}]}, notes="Activity usage regression enrollment", created_at=now(), updated_at=now())
+        db.add(enrollment); db.flush()
         mfg = Manufacturer(id=uuid.uuid4(), code=MFG, canonical_name="Report Usage Agro", country="India", aliases=[], created_at=now(), updated_at=now()); db.add(mfg); db.flush()
         product = AgriculturalProduct(id=uuid.uuid4(), code=PRODUCT, canonical_input_id=urea.id, manufacturer_id=mfg.id, brand_name="Report Usage Urea", composition="46% N", registration_number="REPORT-USAGE-UREA-001", country="India", status="ACTIVE", created_at=now(), updated_at=now()); db.add(product); db.flush()
         package = AgriculturalProductPackage(id=uuid.uuid4(), product_id=product.id, sku=SKU, quantity="45", unit="kg", pack_label="45 kg bag", status="ACTIVE", created_at=now(), updated_at=now())
@@ -205,6 +208,9 @@ def main():
         check(farmer_trace["summary"]["parcel_count"] == 1, "farmer trace parcel count is correct")
         check(farmer_trace["summary"]["crop_cycle_count"] == 1 and farmer_trace["summary"]["activity_count"] == 1, "farmer trace cycle/activity counts are correct")
         check(farmer_trace["summary"]["total_cost"] == "1200.00" and farmer_trace["summary"]["variance_count"] == 1, "farmer trace summary totals are correct")
+        check(farmer_trace["enrollment_lifecycle"]["active_pending_count"] == 1, "farmer trace reports open project enrollment lifecycle")
+        check(farmer_trace["enrollment_lifecycle"]["project_enrollments_url"] == f"/project-enrollments?farmerId={farmer_id}", "farmer trace links to filtered project enrollments")
+        check(farmer_trace["project_enrollments"][0]["project_id"] == str(project_id), "farmer trace includes project enrollment rows")
         check(farmer_trace["parcels"][0]["id"] == str(parcel_id) and farmer_trace["parcels"][0]["activity_count"] == 1, "farmer trace includes parcel usage")
         check(farmer_trace["crop_cycles"][0]["id"] == str(cycle_id) and farmer_trace["crop_cycles"][0]["workflow_template_version_id"] == str(workflow_version.id), "farmer trace includes cycle usage")
         check(farmer_trace["activities"][0]["activity_id"] == str(activity.id), "farmer trace includes activity row")

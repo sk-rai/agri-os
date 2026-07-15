@@ -64,6 +64,43 @@ export default function FarmerTracePage({ params }: { params: { farmerId: string
     </div>
 
     <section className="mb-6 rounded bg-white p-5 shadow">
+      <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Project enrollment lifecycle</h2>
+          <p className="text-sm text-gray-500">Shows whether this farmer is currently project-affiliated or can continue independently.</p>
+        </div>
+        <Link href={trace.enrollment_lifecycle.project_enrollments_url} className="rounded border px-3 py-2 text-sm text-blue-600">Open enrollments</Link>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <Mini label="Open enrollments" value={trace.enrollment_lifecycle.active_pending_count} />
+        <Mini label="Active" value={trace.enrollment_lifecycle.active_count} />
+        <Mini label="Pending" value={trace.enrollment_lifecycle.pending_count} />
+        <Mini label="Independent mode" value={trace.enrollment_lifecycle.can_continue_independently ? "Allowed" : "Project context active"} />
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {trace.project_enrollments.map((enrollment) => <div key={enrollment.id} className="rounded border p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold text-gray-900">{enrollment.project_name || enrollment.project_id}</div>
+              <div className="font-mono text-xs text-gray-500">{enrollment.id}</div>
+            </div>
+            <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">{enrollment.status}</span>
+          </div>
+          <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+            <Mini label="Project status" value={enrollment.project_status} />
+            <Mini label="Method/source" value={[enrollment.enrollment_method, enrollment.enrollment_source].filter(Boolean).join(" / ")} />
+            <Mini label="Parcels linked" value={enrollment.parcel_ids.length} />
+            <Mini label="Updated" value={enrollment.updated_at} />
+          </div>
+          {enrollment.lifecycle_events.length > 0 && <div className="mt-3 rounded bg-gray-50 p-3 text-xs text-gray-600">
+            Latest event: <span className="font-mono">{formatTraceValue(enrollment.lifecycle_events[0])}</span>
+          </div>}
+        </div>)}
+        {trace.project_enrollments.length === 0 && <p className="text-sm text-gray-400">No project memberships found. This farmer is currently independent/unaffiliated.</p>}
+      </div>
+    </section>
+
+    <section className="mb-6 rounded bg-white p-5 shadow">
       <h2 className="mb-4 text-lg font-bold text-gray-900">Parcels</h2>
       <div className="grid gap-3 lg:grid-cols-2">
         {trace.parcels.map((parcel) => <div key={parcel.id} className="rounded border p-4">
@@ -155,4 +192,14 @@ function InfoSection({ title, rows }: { title: string; rows: Array<[string, stri
 
 function Mini({ label, value }: { label: string; value?: string | number | null }) {
   return <div><div className="text-xs uppercase text-gray-400">{label}</div><div className="font-mono text-gray-800">{value || "-"}</div></div>;
+}
+
+function formatTraceValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }

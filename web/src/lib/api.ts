@@ -416,6 +416,36 @@ export interface FarmerTraceCycle {
   activity_count: number;
   total_cost: string;
 }
+export interface FarmerTraceEnrollment {
+  id: string;
+  project_id: string;
+  project_name?: string | null;
+  project_status?: string | null;
+  status: string;
+  enrollment_method?: string | null;
+  enrollment_source?: string | null;
+  enrollment_batch_id?: string | null;
+  enrolled_by?: string | null;
+  parcel_ids: string[];
+  assigned_user_ids: string[];
+  metadata?: Record<string, unknown>;
+  lifecycle_events: Array<Record<string, unknown>>;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+export interface FarmerTraceEnrollmentLifecycle {
+  status_counts: Record<string, number>;
+  active_count: number;
+  pending_count: number;
+  active_pending_count: number;
+  total_enrollment_count: number;
+  has_open_enrollments: boolean;
+  can_continue_independently: boolean;
+  latest_event?: Record<string, unknown> | null;
+  events: Array<Record<string, unknown>>;
+  project_enrollments_url: string;
+}
 export interface FarmerTraceResponse {
   schema_version: string;
   tenant_id: string;
@@ -430,6 +460,8 @@ export interface FarmerTraceResponse {
     total_cost: string;
     variance_count: number;
   };
+  project_enrollments: FarmerTraceEnrollment[];
+  enrollment_lifecycle: FarmerTraceEnrollmentLifecycle;
   parcels: FarmerTraceParcel[];
   crop_cycles: FarmerTraceCycle[];
   activities: ActivityUsageRow[];
