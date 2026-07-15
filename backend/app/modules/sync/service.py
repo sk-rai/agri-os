@@ -26,6 +26,7 @@ from app.modules.sync.models import (
     AuditChainEntry,
 )
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
+from app.modules.media.models import FieldEventReport
 
 
 def _uuid_or_none(value) -> Optional[uuid.UUID]:
@@ -482,6 +483,112 @@ def _materialize_farmer_project_enrollment_event(
         farmer.updated_at = datetime.now(timezone.utc)
 
 
+
+FIELD_EVENT_TYPES = {"RAIN", "PEST", "DISEASE", "HAILSTORM", "LOCUST", "FLOOD", "DROUGHT_STRESS", "THUNDERSTORM_WIND", "HEAT_STRESS", "COLD_STRESS", "IRRIGATION_FAILURE", "OTHER"}
+FIELD_EVENT_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+FIELD_EVENT_SOURCES = {"FARMER_ANDROID", "FIELD_AGENT_ANDROID", "ADMIN_WEB", "EXTERNAL_API", "IOT_DEVICE"}
+FIELD_EVENT_STATUSES = {"REPORTED", "UNDER_REVIEW", "ADVISORY_SENT", "RESOLVED", "DISMISSED"}
+
+
+def _normalized_choice(value, allowed: set[str], default: str, label: str) -> str:
+    normalized = str(value or default).upper()
+    if normalized not in allowed:
+        raise ValueError(f"{label} must be one of {sorted(allowed)}")
+    return normalized
+
+
+def _datetime_or_now(value) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    return datetime.now(timezone.utc)
+
+
+def _string_or_none(value) -> Optional[str]:
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def _validate_tenant_reference(db: Session, tenant_id: str, model, value, label: str):
+    if value and not db.query(model).filter(model.id == value, model.tenant_id == tenant_id).first():
+        raise ValueError(f"field event sync references unknown {label}")
+
+
+def _materialize_field_event_report_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
+    """Upsert accepted offline field event reports into operational table."""
+    payload = event.payload or {}
+    report_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "id", "event_id", "eventId"))
+    if not report_id:
+        raise ValueError("FIELD_EVENT_REPORT requires entity_id or payload.id")
+
+    report = db.query(FieldEventReport).filter(
+        FieldEventReport.id == report_id,
+        FieldEventReport.tenant_id == tenant_id,
+    ).first()
+
+    if event.operation == "DELETE":
+        if report:
+            report.is_active = False
+            report.status = "DISMISSED"
+            report.updated_at = datetime.now(timezone.utc)
+        return
+
+    farmer_id = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+    if not farmer_id:
+        raise ValueError("FIELD_EVENT_REPORT requires farmer_id")
+
+    project_id = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+    parcel_id = _uuid_or_none(_first_payload_value(payload, "parcel_id", "parcelId"))
+    crop_cycle_id = _uuid_or_none(_first_payload_value(payload, "crop_cycle_id", "cropCycleId"))
+
+    _validate_tenant_reference(db, tenant_id, Farmer, farmer_id, "farmer")
+    _validate_tenant_reference(db, tenant_id, Project, project_id, "project")
+    _validate_tenant_reference(db, tenant_id, Parcel, parcel_id, "parcel")
+
+    now_ts = datetime.now(timezone.utc)
+    if not report:
+        report = FieldEventReport(
+            id=report_id,
+            tenant_id=tenant_id,
+            created_at=now_ts,
+            updated_at=now_ts,
+        )
+        db.add(report)
+
+    report.project_id = project_id
+    report.farmer_id = farmer_id
+    report.parcel_id = parcel_id
+    report.crop_cycle_id = crop_cycle_id
+    report.stage_code = _string_or_none(_first_payload_value(payload, "stage_code", "stageCode"))
+    report.event_type = _normalized_choice(_first_payload_value(payload, "event_type", "eventType"), FIELD_EVENT_TYPES, "OTHER", "field event type")
+    report.severity = _normalized_choice(_first_payload_value(payload, "severity"), FIELD_EVENT_SEVERITIES, "MEDIUM", "field event severity")
+    report.event_date = _datetime_or_now(_first_payload_value(payload, "event_date", "eventDate", "occurred_at", "occurredAt"))
+    report.reported_at = _datetime_or_now(_first_payload_value(payload, "reported_at", "reportedAt"))
+    report.lat = _string_or_none(_first_payload_value(payload, "lat", "latitude"))
+    report.lng = _string_or_none(_first_payload_value(payload, "lng", "longitude"))
+    report.accuracy_meters = _string_or_none(_first_payload_value(payload, "accuracy_meters", "accuracyMeters"))
+    report.description = _string_or_none(_first_payload_value(payload, "description", "notes"))
+    report.estimated_area_affected = _string_or_none(_first_payload_value(payload, "estimated_area_affected", "estimatedAreaAffected"))
+    report.estimated_loss_percent = _string_or_none(_first_payload_value(payload, "estimated_loss_percent", "estimatedLossPercent"))
+    report.source = _normalized_choice(_first_payload_value(payload, "source"), FIELD_EVENT_SOURCES, "FARMER_ANDROID", "field event source")
+    report.external_source = _string_or_none(_first_payload_value(payload, "external_source", "externalSource"))
+    report.external_event_id = _string_or_none(_first_payload_value(payload, "external_event_id", "externalEventId"))
+    report.status = _normalized_choice(_first_payload_value(payload, "status"), FIELD_EVENT_STATUSES, "REPORTED", "field event status")
+
+    metadata = _first_payload_value(payload, "metadata", "metadata_")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("field event metadata must be an object")
+    report.metadata_ = metadata or report.metadata_ or {}
+    report.is_active = report.status != "DISMISSED"
+    report.updated_at = now_ts
+
+
 def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
     entity_type = (event.entity_type or "").lower()
     if entity_type == "farmer":
@@ -492,6 +599,8 @@ def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, ev
         _materialize_parcel_geometry_event(db, tenant_id, actor_id, event)
     elif entity_type in ("farmer_project_enrollment", "farmerprojectenrollment", "project_enrollment", "projectenrollment"):
         _materialize_farmer_project_enrollment_event(db, tenant_id, actor_id, event)
+    elif entity_type in ("field_event_report", "fieldeventreport", "field_event", "fieldevent"):
+        _materialize_field_event_report_event(db, tenant_id, event)
 
 
 # --- Schemas for sync events ---
