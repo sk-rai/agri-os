@@ -822,6 +822,9 @@ export interface AdminDashboardResponse {
     active_cycle_count: number;
     completed_cycle_count: number;
     activity_count: number;
+    field_event_count?: number;
+    unresolved_field_event_count?: number;
+    high_priority_field_event_count?: number;
     total_cost: string;
     variance_count: number;
     geometry_captured_count: number;
@@ -846,6 +849,9 @@ export interface AdminDashboardResponse {
   cycle_status_distribution: Array<{ status: string; crop_cycle_count: number }>;
   geometry_coverage: Array<{ geometry_source: string; parcel_count: number }>;
   activity_count_by_type: Array<{ activity_type: string; activity_count: number }>;
+  field_event_count_by_type?: Array<{ event_type: string; field_event_count: number }>;
+  field_event_count_by_severity?: Array<{ severity: string; field_event_count: number }>;
+  recent_field_events?: Array<{ id: string; project_id?: string | null; farmer_id: string; parcel_id?: string | null; crop_cycle_id?: string | null; stage_code?: string | null; event_type: string; severity: string; status: string; event_date: string; reported_at: string; description?: string | null }>;
   projects: AdminLookupProject[];
   farmers: AdminLookupFarmer[];
   parcels: AdminLookupParcel[];

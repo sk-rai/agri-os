@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
-from app.modules.media.models import MediaAsset, MediaAttachment
+from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -1049,7 +1049,7 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
         "project_enrollment_csv_import_invalid_count": enrollment_csv_invalid_count,
     }
 
-def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities, admin_backlog):
+def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities, field_events, admin_backlog):
     cycles_by_project = defaultdict(list)
     cycles_by_farmer = defaultdict(list)
     cycles_by_parcel = defaultdict(list)
@@ -1059,6 +1059,10 @@ def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit
     cycle_status_distribution = defaultdict(int)
     geometry_coverage = defaultdict(int)
     activity_count_by_type = defaultdict(int)
+    field_event_count_by_type = defaultdict(int)
+    field_event_count_by_severity = defaultdict(int)
+    unresolved_field_event_count = 0
+    high_priority_field_event_count = 0
     variance_count = 0
 
     farmers_by_id = {farmer.id: farmer for farmer in farmers}
@@ -1074,6 +1078,14 @@ def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit
 
     for parcel in parcels:
         geometry_coverage[parcel.geometry_source or "MISSING"] += 1
+
+    for field_event in field_events:
+        field_event_count_by_type[field_event.event_type or "UNKNOWN"] += 1
+        field_event_count_by_severity[field_event.severity or "UNKNOWN"] += 1
+        if field_event.status not in {"RESOLVED", "DISMISSED"}:
+            unresolved_field_event_count += 1
+        if field_event.status not in {"RESOLVED", "DISMISSED"} and field_event.severity in {"HIGH", "CRITICAL"}:
+            high_priority_field_event_count += 1
 
     for row in activities:
         if row.get("farmer_id"):
@@ -1102,6 +1114,9 @@ def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit
             "active_cycle_count": sum(1 for cycle in cycles if cycle.status == "ACTIVE"),
             "completed_cycle_count": sum(1 for cycle in cycles if cycle.status == "COMPLETED"),
             "activity_count": len(activities),
+            "field_event_count": len(field_events),
+            "unresolved_field_event_count": unresolved_field_event_count,
+            "high_priority_field_event_count": high_priority_field_event_count,
             "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
             "variance_count": variance_count,
             "geometry_captured_count": sum(1 for parcel in parcels if parcel.geometry_source and parcel.geometry_source != "NONE"),
@@ -1123,6 +1138,31 @@ def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit
         "activity_count_by_type": [
             {"activity_type": key, "activity_count": value}
             for key, value in sorted(activity_count_by_type.items())
+        ],
+        "field_event_count_by_type": [
+            {"event_type": key, "field_event_count": value}
+            for key, value in sorted(field_event_count_by_type.items())
+        ],
+        "field_event_count_by_severity": [
+            {"severity": key, "field_event_count": value}
+            for key, value in sorted(field_event_count_by_severity.items())
+        ],
+        "recent_field_events": [
+            {
+                "id": str(event.id),
+                "project_id": str(event.project_id) if event.project_id else None,
+                "farmer_id": str(event.farmer_id),
+                "parcel_id": str(event.parcel_id) if event.parcel_id else None,
+                "crop_cycle_id": str(event.crop_cycle_id) if event.crop_cycle_id else None,
+                "stage_code": event.stage_code,
+                "event_type": event.event_type,
+                "severity": event.severity,
+                "status": event.status,
+                "event_date": _iso(event.event_date),
+                "reported_at": _iso(event.reported_at),
+                "description": event.description,
+            }
+            for event in field_events[:limit]
         ],
         "projects": [_admin_project_row(project, cycles_by_project) for project in projects[:limit]],
         "farmers": [_admin_farmer_row(farmer, cycles_by_farmer, activities_by_farmer) for farmer in farmers[:limit]],
@@ -1297,6 +1337,10 @@ def admin_dashboard_report(
         parcel_query = parcel_query.filter(Parcel.project_id == project_id)
         cycle_query = cycle_query.filter(CropCycle.project_id == project_id)
 
+    field_event_query = db.query(FieldEventReport).filter(FieldEventReport.tenant_id == x_tenant_id, FieldEventReport.is_active == True)
+    if project_id:
+        field_event_query = field_event_query.filter(FieldEventReport.project_id == project_id)
+
     activity_query = (
         db.query(CropActivity, CropCycle, CropStageInstance, Farmer, Parcel)
         .join(CropCycle, CropCycle.id == CropActivity.crop_cycle_id)
@@ -1309,14 +1353,17 @@ def admin_dashboard_report(
         activity_query = activity_query.filter(CropCycle.project_id == project_id)
     if date_from:
         activity_query = activity_query.filter(CropActivity.activity_date >= date_from)
+        field_event_query = field_event_query.filter(FieldEventReport.event_date >= date_from)
     if date_to:
         activity_query = activity_query.filter(CropActivity.activity_date <= date_to)
+        field_event_query = field_event_query.filter(FieldEventReport.event_date <= date_to)
 
     projects = project_query.order_by(Project.updated_at.desc(), Project.created_at.desc()).all()
     farmers = farmer_query.order_by(Farmer.updated_at.desc(), Farmer.created_at.desc()).all()
     parcels = parcel_query.order_by(Parcel.updated_at.desc(), Parcel.created_at.desc()).all()
     cycles = cycle_query.order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc()).all()
     activity_rows_raw = activity_query.order_by(CropActivity.activity_date.desc(), CropActivity.created_at.desc()).all()
+    field_events = field_event_query.order_by(FieldEventReport.reported_at.desc(), FieldEventReport.created_at.desc()).all()
     activities = [
         _activity_trace_row(activity, cycle, stage, farmer, parcel)
         for activity, cycle, stage, farmer, parcel in activity_rows_raw
@@ -1335,6 +1382,7 @@ def admin_dashboard_report(
         parcels=parcels,
         cycles=cycles,
         activities=activities,
+        field_events=field_events,
         admin_backlog=admin_backlog,
     )
 

@@ -43,6 +43,10 @@ function dashboardActivityHref(data: AdminDashboardResponse, params: Record<stri
   })}`;
 }
 
+function dashboardFieldEventsHref(data: AdminDashboardResponse | null, params: Record<string, string | number | null | undefined> = {}) {
+  return `/field-events${compactQuery({ projectId: data?.filters.project_id, ...params })}`;
+}
+
 function dashboardProjectTraceHref(data: AdminDashboardResponse, params: Record<string, string | number | null | undefined> = {}) {
   if (!data.filters.project_id) return "/lookup";
   return `/project-trace/${data.filters.project_id}${compactQuery({
@@ -215,6 +219,7 @@ export default function DashboardPage() {
             <StatCard label="Active cycles" value={summary.active_cycle_count} tone="yellow" href={dashboardProjectTraceHref(data, { cycleStatus: "ACTIVE" })} />
             <StatCard label="Completed cycles" value={summary.completed_cycle_count} tone="green" href={dashboardProjectTraceHref(data, { cycleStatus: "COMPLETED" })} />
             <StatCard label="Activities" value={summary.activity_count} tone="blue" href={dashboardActivityHref(data)} />
+            <StatCard label="Field events" value={summary.field_event_count || 0} tone="yellow" href={dashboardFieldEventsHref(data)} />
             <StatCard label="Activity cost" value={`INR ${summary.total_cost}`} tone="slate" href={dashboardActivityHref(data)} />
           </div>
 
@@ -360,6 +365,20 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
       help: "Validated or invalid farmer/project enrollment CSV batches that need review/apply.",
     },
     {
+      label: "High priority field events",
+      count: summary?.high_priority_field_event_count || 0,
+      href: dashboardFieldEventsHref(data),
+      tone: "red",
+      help: "Unresolved farmer/field-agent reports marked HIGH or CRITICAL, such as pest, hail, flood, or crop stress.",
+    },
+    {
+      label: "Unresolved field events",
+      count: summary?.unresolved_field_event_count || 0,
+      href: dashboardFieldEventsHref(data),
+      tone: "amber",
+      help: "Ground-level rain, pest, disease, hail, locust, and stress reports still open for review.",
+    },
+    {
       label: "Failed sync events",
       count: syncSummary?.failed_count || 0,
       href: "/sync-health?status=FAILED",
@@ -493,6 +512,14 @@ function CommandCenterPanel({ data, syncHealth }: { data: AdminDashboardResponse
       metric: summary ? `${summary.geometry_missing_count} missing GPS` : "Search",
       accent: "border-amber-200 bg-amber-50 text-amber-900",
       destination: "Farmer and parcel lookup",
+    },
+    {
+      title: "Field events",
+      description: "Review farmer and field-agent reports for rain, pest, disease, hail, flood, crop stress, and other local events.",
+      href: `/field-events${projectQuery}`,
+      metric: summary ? `${summary.unresolved_field_event_count || 0} open` : "Events",
+      accent: summary && (summary.high_priority_field_event_count || 0) > 0 ? "border-red-200 bg-red-50 text-red-900" : "border-orange-200 bg-orange-50 text-orange-900",
+      destination: "Field event reports",
     },
     {
       title: "Sync operations",

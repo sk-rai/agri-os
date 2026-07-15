@@ -20,6 +20,16 @@ export default function FieldEventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    setProjectId(query.get("projectId") || "");
+    setFarmerId(query.get("farmerId") || "");
+    setParcelId(query.get("parcelId") || "");
+    setEventType(query.get("eventType") || "");
+    setSeverity(query.get("severity") || "");
+    setStatus(query.get("status") || "");
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
