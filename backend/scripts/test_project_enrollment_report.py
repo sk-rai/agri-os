@@ -35,8 +35,11 @@ def main():
     tenant_id = "default"
     farmer_id = uuid.uuid4()
     project_id = uuid.uuid4()
+    bulk_project_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     enrollment_id = uuid.uuid4()
+    bulk_farmer_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+    bulk_enrollment_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
     mobile = f"+9196{uuid.uuid4().int % 100000000:08d}"
     admin = None
 
@@ -154,6 +157,87 @@ def main():
         check(audit_event is not None, "Enrollment lifecycle status update is audited")
         check(audit_event.after_config["status"] == "COMPLETED", "Audit stores after status")
         check(audit_event.reason == "Regression project completed", "Audit stores reason")
+
+        bulk_project = Project(
+            id=bulk_project_id,
+            tenant_id=tenant_id,
+            name="Bulk Enrollment Lifecycle Project",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 12, 31),
+            status="ACTIVE",
+            crop_scope=["RICE"],
+            geography_scope={},
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add(bulk_project)
+        db.flush()
+        bulk_statuses = ["ACTIVE", "PENDING", "COMPLETED"]
+        for index, farmer_uuid in enumerate(bulk_farmer_ids):
+            db.add(Farmer(
+                id=farmer_uuid,
+                tenant_id=tenant_id,
+                project_id=bulk_project_id,
+                mobile_number=f"+9197{uuid.uuid4().int % 100000000:08d}",
+                display_name=f"Bulk Lifecycle Farmer {index + 1}",
+                village_name_manual="Bulk Village",
+                status="ACTIVE",
+                created_at=now(),
+                updated_at=now(),
+            ))
+            db.add(FarmerProjectEnrollment(
+                id=bulk_enrollment_ids[index],
+                tenant_id=tenant_id,
+                farmer_id=farmer_uuid,
+                project_id=bulk_project_id,
+                enrollment_method="WEB_ADMIN",
+                enrollment_source="bulk_lifecycle_regression",
+                status=bulk_statuses[index],
+                parcel_ids=[],
+                assigned_user_ids=[],
+                metadata_={"source": "bulk_lifecycle_regression"},
+                notes="bulk lifecycle test",
+                created_at=now(),
+                updated_at=now(),
+            ))
+        db.commit()
+
+        preview = client.get(
+            f"/api/v1/projects/{bulk_project_id}/farmer-enrollments/lifecycle-preview?target_status=COMPLETED",
+            headers=editor_headers,
+        )
+        check(preview.status_code == 200, "Bulk lifecycle preview returns 200", preview.text[:500])
+        preview_payload = preview.json()
+        check(preview_payload["affected_count"] == 2, "Bulk preview counts active and pending enrollments")
+        check(preview_payload["can_apply"] is True, "Bulk preview is applyable")
+
+        bulk_apply = client.post(
+            f"/api/v1/projects/{bulk_project_id}/farmer-enrollments/lifecycle-apply",
+            headers=editor_headers,
+            json={"target_status": "COMPLETED", "reason": "Regression bulk project completed"},
+        )
+        check(bulk_apply.status_code == 200, "Bulk lifecycle apply returns 200", bulk_apply.text[:500])
+        bulk_payload = bulk_apply.json()
+        check(bulk_payload["updated_count"] == 2, "Bulk apply updates two enrollments")
+        check(bulk_payload["skipped_count"] == 1, "Bulk apply skips already terminal rows")
+
+        db.expire_all()
+        bulk_rows = db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.project_id == bulk_project_id).all()
+        statuses = {str(row.id): row.status for row in bulk_rows}
+        check(statuses[str(bulk_enrollment_ids[0])] == "COMPLETED", "Bulk active row completed")
+        check(statuses[str(bulk_enrollment_ids[1])] == "COMPLETED", "Bulk pending row completed")
+        check(statuses[str(bulk_enrollment_ids[2])] == "COMPLETED", "Bulk pre-completed row remains completed")
+
+        bulk_hydration = client.get(f"/api/v1/farmers/by-mobile/{db.query(Farmer).filter(Farmer.id == bulk_farmer_ids[0]).first().mobile_number}", headers={"X-Tenant-ID": tenant_id})
+        check(bulk_hydration.status_code == 200, "Hydration returns after bulk lifecycle update", bulk_hydration.text[:300])
+        check(bulk_hydration.json()["farmer_context"]["mode"] == "SELF_SERVICE", "Bulk completed farmer falls back to self-service")
+
+        bulk_audit = db.query(ProjectAppConfigAuditEvent).filter(
+            ProjectAppConfigAuditEvent.project_id == bulk_project_id,
+            ProjectAppConfigAuditEvent.action == "BULK_UPDATE_PROJECT_ENROLLMENT_STATUS_SUMMARY",
+        ).order_by(ProjectAppConfigAuditEvent.created_at.desc()).first()
+        check(bulk_audit is not None, "Bulk lifecycle summary is audited")
+        check(bulk_audit.after_config["updated_count"] == 2, "Bulk audit stores update count")
         delete_test_admin(db, editor.id)
 
         invalid = client.get("/api/v1/reports/project-enrollments?status=BAD", headers=headers)
@@ -161,11 +245,11 @@ def main():
     finally:
         cleanup = SessionLocal()
         try:
-            cleanup.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project_id).delete(synchronize_session=False)
-            cleanup.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.id == enrollment_id).delete(synchronize_session=False)
+            cleanup.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id.in_([project_id, bulk_project_id])).delete(synchronize_session=False)
+            cleanup.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.project_id.in_([project_id, bulk_project_id])).delete(synchronize_session=False)
             cleanup.query(Parcel).filter(Parcel.id == parcel_id).delete(synchronize_session=False)
-            cleanup.query(Farmer).filter(Farmer.id == farmer_id).delete(synchronize_session=False)
-            cleanup.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
+            cleanup.query(Farmer).filter(Farmer.id.in_([farmer_id] + bulk_farmer_ids)).delete(synchronize_session=False)
+            cleanup.query(Project).filter(Project.id.in_([project_id, bulk_project_id])).delete(synchronize_session=False)
             cleanup.commit()
             if admin:
                 delete_test_admin(cleanup, admin.id)

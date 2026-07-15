@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { projectsApi, reportsApi, type ProjectEnrollmentImportBatch, type ProjectEnrollmentImportHistory, type ProjectEnrollmentReportResponse } from "@/lib/api";
+import { projectsApi, reportsApi, type ProjectEnrollmentImportBatch, type ProjectEnrollmentImportHistory, type ProjectEnrollmentLifecycleApplyResponse, type ProjectEnrollmentLifecyclePreview, type ProjectEnrollmentReportResponse } from "@/lib/api";
 
 function paramValue(searchParams: Record<string, string | string[] | undefined> | undefined, ...keys: string[]) {
   for (const key of keys) {
@@ -40,6 +40,12 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
   const [importError, setImportError] = useState<string | null>(null);
   const [lifecycleBusyId, setLifecycleBusyId] = useState<string | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [bulkLifecycleBusy, setBulkLifecycleBusy] = useState(false);
+  const [bulkLifecycleTarget, setBulkLifecycleTarget] = useState<"COMPLETED" | "CANCELLED">("COMPLETED");
+  const [bulkLifecycleReason, setBulkLifecycleReason] = useState("Project completed; move farmers to self-service context");
+  const [bulkLifecyclePreview, setBulkLifecyclePreview] = useState<ProjectEnrollmentLifecyclePreview | null>(null);
+  const [bulkLifecycleResult, setBulkLifecycleResult] = useState<ProjectEnrollmentLifecycleApplyResponse | null>(null);
+  const [bulkLifecycleError, setBulkLifecycleError] = useState<string | null>(null);
 
   const load = useCallback(async (next: Filters) => {
     setLoading(true);
@@ -136,6 +142,43 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
     }
   }
 
+  async function previewBulkLifecycle() {
+    if (!submitted.projectId) {
+      setBulkLifecycleError("Set a Project ID filter before previewing a project lifecycle action.");
+      return;
+    }
+    setBulkLifecycleBusy(true);
+    setBulkLifecycleError(null);
+    setBulkLifecycleResult(null);
+    try {
+      setBulkLifecyclePreview(await projectsApi.previewEnrollmentLifecycle(submitted.projectId, bulkLifecycleTarget));
+    } catch (e) {
+      setBulkLifecycleError(e instanceof Error ? e.message : "Failed to preview project lifecycle action");
+    } finally {
+      setBulkLifecycleBusy(false);
+    }
+  }
+
+  async function applyBulkLifecycle() {
+    if (!submitted.projectId) return;
+    if (!bulkLifecycleReason.trim()) {
+      setBulkLifecycleError("Reason is required before applying a project lifecycle action.");
+      return;
+    }
+    setBulkLifecycleBusy(true);
+    setBulkLifecycleError(null);
+    try {
+      const result = await projectsApi.applyEnrollmentLifecycle(submitted.projectId, bulkLifecycleTarget, bulkLifecycleReason);
+      setBulkLifecycleResult(result);
+      setBulkLifecyclePreview(null);
+      await load(submitted);
+    } catch (e) {
+      setBulkLifecycleError(e instanceof Error ? e.message : "Failed to apply project lifecycle action");
+    } finally {
+      setBulkLifecycleBusy(false);
+    }
+  }
+
   async function applyImport(batchId: string) {
     if (!submitted.projectId) return;
     setImportBusy(true);
@@ -224,6 +267,30 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
 
       {selectedImport ? <ImportDetail batch={selectedImport} onApply={applyImport} busy={importBusy} /> : null}
     </section>
+
+    <section className="mb-6 rounded bg-white p-5 shadow">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Project lifecycle bulk action</h2>
+          <p className="mt-1 text-sm text-gray-500">Preview and complete/cancel all ACTIVE or PENDING enrollments for the selected project. Farmers with no remaining active project will continue in self-service mode.</p>
+        </div>
+        <button type="button" onClick={previewBulkLifecycle} disabled={!submitted.projectId || bulkLifecycleBusy} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{bulkLifecycleBusy ? "Working..." : "Preview impact"}</button>
+      </div>
+      {!submitted.projectId ? <p className="mt-4 rounded bg-amber-50 p-3 text-sm text-amber-800">Choose a Project ID filter, then apply filters. Bulk lifecycle actions are intentionally project-scoped.</p> : null}
+      {bulkLifecycleError ? <p className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">{bulkLifecycleError}</p> : null}
+      <div className="mt-4 grid gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
+        <label className="text-xs text-gray-500">Target status<select value={bulkLifecycleTarget} onChange={(event) => setBulkLifecycleTarget(event.target.value as "COMPLETED" | "CANCELLED")} disabled={!submitted.projectId || bulkLifecycleBusy} className="mt-1 w-full rounded border p-2 text-sm text-gray-900 disabled:opacity-50"><option value="COMPLETED">COMPLETED</option><option value="CANCELLED">CANCELLED</option></select></label>
+        <label className="text-xs text-gray-500">Reason<input value={bulkLifecycleReason} onChange={(event) => setBulkLifecycleReason(event.target.value)} disabled={!submitted.projectId || bulkLifecycleBusy} className="mt-1 w-full rounded border p-2 text-sm text-gray-900 disabled:opacity-50" /></label>
+        <button type="button" onClick={applyBulkLifecycle} disabled={!submitted.projectId || bulkLifecycleBusy || !bulkLifecyclePreview?.can_apply} className="rounded bg-green-700 px-5 py-2 text-sm font-medium text-white disabled:opacity-50">Apply bulk action</button>
+      </div>
+      {bulkLifecyclePreview ? <div className="mt-4 rounded border bg-gray-50 p-4 text-sm">
+        <p className="font-medium text-gray-900">{bulkLifecyclePreview.message}</p>
+        <p className="mt-1 text-xs text-gray-500">Source statuses: {bulkLifecyclePreview.source_statuses.join(", ")} - Active: {bulkLifecyclePreview.by_status.ACTIVE || 0} - Pending: {bulkLifecyclePreview.by_status.PENDING || 0}</p>
+        {!bulkLifecyclePreview.can_apply ? <p className="mt-2 text-xs text-amber-700">No ACTIVE/PENDING enrollments are available for this project.</p> : null}
+      </div> : null}
+      {bulkLifecycleResult ? <div className="mt-4 rounded border border-green-100 bg-green-50 p-4 text-sm text-green-800">Updated {bulkLifecycleResult.updated_count} enrollment(s), skipped {bulkLifecycleResult.skipped_count}. Target status: {bulkLifecycleResult.target_status}.</div> : null}
+    </section>
+
     <div className="mb-6 grid gap-4 md:grid-cols-5">
       <Metric label="Enrollments" value={report?.summary.count ?? 0} />
       <Metric label="Active" value={report?.summary.active_count ?? 0} />

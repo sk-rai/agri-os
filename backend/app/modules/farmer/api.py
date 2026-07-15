@@ -245,6 +245,11 @@ class FarmerProjectEnrollmentStatusPatch(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
+class ProjectEnrollmentLifecycleApplyRequest(BaseModel):
+    target_status: str = Field(..., pattern=r"^(COMPLETED|CANCELLED|ARCHIVED|ACTIVE|PENDING)$")
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
 PROJECT_APP_CONFIG_SECTIONS = {
     "branding",
     "localization",
@@ -1592,6 +1597,60 @@ def create_farmer_project_enrollment(
     return _enrollment_payload(enrollment, project)
 
 
+PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES = {"ACTIVE", "PENDING"}
+
+
+def _update_enrollment_lifecycle_status(
+    db: Session,
+    *,
+    tenant_id: str,
+    enrollment: FarmerProjectEnrollment,
+    project: Project,
+    target_status: str,
+    reason: str,
+    actor_id: uuid.UUID,
+    action: str = "UPDATE_PROJECT_ENROLLMENT_STATUS",
+) -> dict:
+    before = _enrollment_payload(enrollment, project)
+    if enrollment.status == target_status:
+        return before
+    if enrollment.status == "ARCHIVED":
+        raise HTTPException(409, "Archived project enrollment cannot be updated")
+
+    enrollment.status = target_status
+    enrollment.updated_at = datetime.now(timezone.utc)
+    metadata = dict(enrollment.metadata_ or {})
+    lifecycle_events = list(metadata.get("lifecycle_events") or [])
+    lifecycle_events.append({
+        "action": action,
+        "from_status": before["status"],
+        "to_status": target_status,
+        "reason": reason,
+        "actor_id": str(actor_id),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    metadata["lifecycle_events"] = lifecycle_events[-20:]
+    metadata["last_lifecycle_change"] = lifecycle_events[-1]
+    enrollment.metadata_ = metadata
+
+    db.flush()
+    after = _enrollment_payload(enrollment, project)
+    db.add(ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        project_id=enrollment.project_id,
+        actor_id=actor_id,
+        action=action,
+        patched_sections=["farmer_project_enrollment.status"],
+        before_config=before,
+        after_config=after,
+        config_patch={"enrollment_id": str(enrollment.id), "status": target_status},
+        reason=reason,
+        created_at=datetime.now(timezone.utc),
+    ))
+    return after
+
+
 @router.patch("/farmer-project-enrollments/{enrollment_id}/status", response_model=FarmerProjectEnrollmentResponse)
 def update_farmer_project_enrollment_status(
     enrollment_id: uuid.UUID,
@@ -1620,47 +1679,121 @@ def update_farmer_project_enrollment_status(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    before = _enrollment_payload(enrollment, project)
-    if enrollment.status == body.status:
-        return before
+    payload = _update_enrollment_lifecycle_status(
+        db,
+        tenant_id=x_tenant_id,
+        enrollment=enrollment,
+        project=project,
+        target_status=body.status,
+        reason=body.reason,
+        actor_id=principal.user_id,
+    )
+    db.commit()
+    db.refresh(enrollment)
+    return _enrollment_payload(enrollment, project) if payload else _enrollment_payload(enrollment, project)
 
-    if enrollment.status == "ARCHIVED":
-        raise HTTPException(409, "Archived project enrollment cannot be updated")
 
-    enrollment.status = body.status
-    enrollment.updated_at = datetime.now(timezone.utc)
-    metadata = dict(enrollment.metadata_ or {})
-    lifecycle_events = list(metadata.get("lifecycle_events") or [])
-    lifecycle_events.append({
-        "action": "UPDATE_PROJECT_ENROLLMENT_STATUS",
-        "from_status": before["status"],
-        "to_status": body.status,
-        "reason": body.reason,
-        "actor_id": str(principal.user_id),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-    metadata["lifecycle_events"] = lifecycle_events[-20:]
-    metadata["last_lifecycle_change"] = lifecycle_events[-1]
-    enrollment.metadata_ = metadata
+@router.get("/projects/{project_id}/farmer-enrollments/lifecycle-preview")
+def preview_project_enrollment_lifecycle(
+    project_id: uuid.UUID,
+    target_status: str = Query(..., pattern=r"^(COMPLETED|CANCELLED|ARCHIVED|ACTIVE|PENDING)$"),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
+):
+    """Preview bulk enrollment lifecycle update for a project."""
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    query = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.project_id == project_id,
+        FarmerProjectEnrollment.status.in_(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES),
+    )
+    affected = query.count()
+    by_status = {
+        status: db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+            FarmerProjectEnrollment.status == status,
+        ).count()
+        for status in sorted(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES)
+    }
+    return {
+        "schema_version": "project_enrollment_lifecycle_preview.v1",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "target_status": target_status,
+        "source_statuses": sorted(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES),
+        "affected_count": affected,
+        "by_status": by_status,
+        "can_apply": affected > 0,
+        "message": f"{affected} ACTIVE/PENDING enrollment(s) would be marked {target_status}.",
+    }
 
-    db.flush()
-    after = _enrollment_payload(enrollment, project)
+
+@router.post("/projects/{project_id}/farmer-enrollments/lifecycle-apply")
+def apply_project_enrollment_lifecycle(
+    project_id: uuid.UUID,
+    body: ProjectEnrollmentLifecycleApplyRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)),
+):
+    """Bulk update ACTIVE/PENDING project enrollments with a single reason."""
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+            FarmerProjectEnrollment.status.in_(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES),
+        )
+        .order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc())
+        .all()
+    )
+    updated = []
+    skipped = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.project_id == project_id,
+    ).count() - len(enrollments)
+    for enrollment in enrollments:
+        updated.append(_update_enrollment_lifecycle_status(
+            db,
+            tenant_id=x_tenant_id,
+            enrollment=enrollment,
+            project=project,
+            target_status=body.target_status,
+            reason=body.reason,
+            actor_id=principal.user_id,
+            action="BULK_UPDATE_PROJECT_ENROLLMENT_STATUS",
+        ))
     db.add(ProjectAppConfigAuditEvent(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
-        project_id=enrollment.project_id,
+        project_id=project_id,
         actor_id=principal.user_id,
-        action="UPDATE_PROJECT_ENROLLMENT_STATUS",
-        patched_sections=["farmer_project_enrollment.status"],
-        before_config=before,
-        after_config=after,
-        config_patch={"enrollment_id": str(enrollment.id), "status": body.status},
+        action="BULK_UPDATE_PROJECT_ENROLLMENT_STATUS_SUMMARY",
+        patched_sections=["farmer_project_enrollments.status"],
+        before_config={"source_statuses": sorted(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES)},
+        after_config={"target_status": body.target_status, "updated_count": len(updated), "skipped_count": skipped},
+        config_patch={"target_status": body.target_status, "enrollment_ids": [item["id"] for item in updated]},
         reason=body.reason,
         created_at=datetime.now(timezone.utc),
     ))
     db.commit()
-    db.refresh(enrollment)
-    return _enrollment_payload(enrollment, project)
+    return {
+        "schema_version": "project_enrollment_lifecycle_apply.v1",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "target_status": body.target_status,
+        "updated_count": len(updated),
+        "skipped_count": skipped,
+        "updated_enrollment_ids": [item["id"] for item in updated],
+        "reason": body.reason,
+    }
 
 
 @router.get("/farmers/{farmer_id}/project-enrollments", response_model=list[FarmerProjectEnrollmentResponse])

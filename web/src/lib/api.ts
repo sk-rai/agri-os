@@ -547,6 +547,29 @@ export interface ProjectEnrollmentImportHistory {
   imports: ProjectEnrollmentImportBatch[];
 }
 
+export interface ProjectEnrollmentLifecyclePreview {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  target_status: string;
+  source_statuses: string[];
+  affected_count: number;
+  by_status: Record<string, number>;
+  can_apply: boolean;
+  message: string;
+}
+
+export interface ProjectEnrollmentLifecycleApplyResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id: string;
+  target_status: string;
+  updated_count: number;
+  skipped_count: number;
+  updated_enrollment_ids: string[];
+  reason: string;
+}
+
 export interface ProjectEnrollmentReportRow {
   id: string;
   tenant_id: string;
@@ -1182,6 +1205,10 @@ export const projectsApi = {
     api<ProjectEnrollmentImportBatch>(`/api/v1/projects/${projectId}/farmer-enrollments/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
   updateEnrollmentStatus: (enrollmentId: string, status: "COMPLETED" | "CANCELLED" | "ARCHIVED" | "ACTIVE" | "PENDING", reason: string) =>
     api(`/api/v1/farmer-project-enrollments/${enrollmentId}/status`, { method: "PATCH", body: { status, reason } }),
+  previewEnrollmentLifecycle: (projectId: string, targetStatus: "COMPLETED" | "CANCELLED" | "ARCHIVED" | "ACTIVE" | "PENDING") =>
+    api<ProjectEnrollmentLifecyclePreview>(`/api/v1/projects/${projectId}/farmer-enrollments/lifecycle-preview?target_status=${encodeURIComponent(targetStatus)}`),
+  applyEnrollmentLifecycle: (projectId: string, targetStatus: "COMPLETED" | "CANCELLED" | "ARCHIVED" | "ACTIVE" | "PENDING", reason: string) =>
+    api<ProjectEnrollmentLifecycleApplyResponse>(`/api/v1/projects/${projectId}/farmer-enrollments/lifecycle-apply`, { method: "POST", body: { target_status: targetStatus, reason } }),
 };
 
 export const appConfigApi = {
