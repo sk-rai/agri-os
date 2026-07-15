@@ -1180,6 +1180,8 @@ export const projectsApi = {
   },
   applyEnrollmentImport: (projectId: string, batchId: string, reason: string) =>
     api<ProjectEnrollmentImportBatch>(`/api/v1/projects/${projectId}/farmer-enrollments/csv/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
+  updateEnrollmentStatus: (enrollmentId: string, status: "COMPLETED" | "CANCELLED" | "ARCHIVED" | "ACTIVE" | "PENDING", reason: string) =>
+    api(`/api/v1/farmer-project-enrollments/${enrollmentId}/status`, { method: "PATCH", body: { status, reason } }),
 };
 
 export const appConfigApi = {

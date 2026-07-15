@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch
+from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -239,6 +239,10 @@ class DuplicateFarmerArchiveRequest(BaseModel):
 class FarmerProjectEnrollmentImportApplyRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
+
+class FarmerProjectEnrollmentStatusPatch(BaseModel):
+    status: str = Field(..., pattern=r"^(COMPLETED|CANCELLED|ARCHIVED|ACTIVE|PENDING)$")
+    reason: str = Field(..., min_length=3, max_length=500)
 
 
 PROJECT_APP_CONFIG_SECTIONS = {
@@ -1583,6 +1587,77 @@ def create_farmer_project_enrollment(
         farmer.project_id = body.project_id
         farmer.updated_at = datetime.now(timezone.utc)
 
+    db.commit()
+    db.refresh(enrollment)
+    return _enrollment_payload(enrollment, project)
+
+
+@router.patch("/farmer-project-enrollments/{enrollment_id}/status", response_model=FarmerProjectEnrollmentResponse)
+def update_farmer_project_enrollment_status(
+    enrollment_id: uuid.UUID,
+    body: FarmerProjectEnrollmentStatusPatch,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT)),
+):
+    """Update a project enrollment lifecycle status with reason and audit.
+
+    Completing or cancelling the last active project enrollment does not deactivate
+    the farmer; profile hydration/launch context will move them to SELF_SERVICE.
+    """
+    enrollment = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.id == enrollment_id,
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        )
+        .first()
+    )
+    if not enrollment:
+        raise HTTPException(404, "Project enrollment not found")
+
+    project = db.query(Project).filter(Project.id == enrollment.project_id, Project.tenant_id == x_tenant_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    before = _enrollment_payload(enrollment, project)
+    if enrollment.status == body.status:
+        return before
+
+    if enrollment.status == "ARCHIVED":
+        raise HTTPException(409, "Archived project enrollment cannot be updated")
+
+    enrollment.status = body.status
+    enrollment.updated_at = datetime.now(timezone.utc)
+    metadata = dict(enrollment.metadata_ or {})
+    lifecycle_events = list(metadata.get("lifecycle_events") or [])
+    lifecycle_events.append({
+        "action": "UPDATE_PROJECT_ENROLLMENT_STATUS",
+        "from_status": before["status"],
+        "to_status": body.status,
+        "reason": body.reason,
+        "actor_id": str(principal.user_id),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    metadata["lifecycle_events"] = lifecycle_events[-20:]
+    metadata["last_lifecycle_change"] = lifecycle_events[-1]
+    enrollment.metadata_ = metadata
+
+    db.flush()
+    after = _enrollment_payload(enrollment, project)
+    db.add(ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=enrollment.project_id,
+        actor_id=principal.user_id,
+        action="UPDATE_PROJECT_ENROLLMENT_STATUS",
+        patched_sections=["farmer_project_enrollment.status"],
+        before_config=before,
+        after_config=after,
+        config_patch={"enrollment_id": str(enrollment.id), "status": body.status},
+        reason=body.reason,
+        created_at=datetime.now(timezone.utc),
+    ))
     db.commit()
     db.refresh(enrollment)
     return _enrollment_payload(enrollment, project)

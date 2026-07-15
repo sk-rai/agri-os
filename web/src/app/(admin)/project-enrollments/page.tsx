@@ -38,6 +38,8 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
   const [importReason, setImportReason] = useState("Bulk project enrollment from CSV");
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [lifecycleBusyId, setLifecycleBusyId] = useState<string | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
   const load = useCallback(async (next: Filters) => {
     setLoading(true);
@@ -118,6 +120,22 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
     }
   }
 
+  async function updateEnrollmentStatus(enrollmentId: string, status: "COMPLETED" | "CANCELLED") {
+    const defaultReason = status === "COMPLETED" ? "Project enrollment completed" : "Project enrollment cancelled";
+    const reason = window.prompt(`Reason for marking this enrollment ${status}?`, defaultReason);
+    if (!reason) return;
+    setLifecycleBusyId(enrollmentId);
+    setLifecycleError(null);
+    try {
+      await projectsApi.updateEnrollmentStatus(enrollmentId, status, reason);
+      await load(submitted);
+    } catch (e) {
+      setLifecycleError(e instanceof Error ? e.message : "Failed to update enrollment status");
+    } finally {
+      setLifecycleBusyId(null);
+    }
+  }
+
   async function applyImport(batchId: string) {
     if (!submitted.projectId) return;
     setImportBusy(true);
@@ -156,6 +174,7 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
     </form>
 
     {error && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    {lifecycleError && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{lifecycleError}</p>}
 
 
 
@@ -215,7 +234,7 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
 
     <div className="overflow-hidden rounded bg-white shadow">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50"><tr>{["Farmer", "Project", "Status/source", "Parcels", "Launch", "Trace"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
+        <thead className="bg-gray-50"><tr>{["Farmer", "Project", "Status/source", "Parcels", "Launch", "Lifecycle", "Trace"].map((head) => <th key={head} className="p-3 text-left">{head}</th>)}</tr></thead>
         <tbody className="divide-y">
           {(report?.enrollments || []).map((row) => <tr key={row.id}>
             <td className="p-3"><div className="font-medium text-gray-900">{row.farmer_name || "Unnamed farmer"}</div><div className="text-xs text-gray-500">{row.farmer_mobile || "-"}</div><div className="font-mono text-[11px] text-gray-400">{row.farmer_id}</div></td>
@@ -223,9 +242,10 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
             <td className="p-3"><span className={`rounded px-2 py-1 text-xs ${row.status === "ACTIVE" ? "bg-green-50 text-green-700" : row.status === "PENDING" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-600"}`}>{row.status}</span><div className="mt-2 text-xs text-gray-500">{row.enrollment_method}</div><div className="text-xs text-gray-400">{row.enrollment_source || "No source"}</div></td>
             <td className="p-3"><div>{row.parcel_labels.length ? row.parcel_labels.join(", ") : "No linked parcel"}</div><div className="text-xs text-gray-400">{row.parcel_ids.length} linked</div></td>
             <td className="p-3"><div className="font-medium text-gray-900">{row.launch_context.recommended_navigation}</div><div className="text-xs text-gray-500">{row.launch_context.active_project_count} active project(s)</div>{row.launch_context.profile_completion.missing_fields.length ? <div className="text-xs text-amber-700">Missing: {row.launch_context.profile_completion.missing_fields.join(", ")}</div> : <div className="text-xs text-green-700">Profile ready</div>}</td>
+            <td className="p-3"><EnrollmentLifecycleActions row={row} busy={lifecycleBusyId === row.id} onUpdate={updateEnrollmentStatus} /></td>
             <td className="p-3"><div className="flex flex-col gap-1"><Link href={`/farmer-trace/${row.farmer_id}`} className="text-blue-600 hover:underline">Farmer trace</Link><Link href={`/project-trace/${row.project_id}`} className="text-blue-600 hover:underline">Project trace</Link></div></td>
           </tr>)}
-          {!loading && (report?.enrollments.length || 0) === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">No project enrollments match these filters.</td></tr>}
+          {!loading && (report?.enrollments.length || 0) === 0 && <tr><td colSpan={7} className="p-8 text-center text-gray-400">No project enrollments match these filters.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -234,6 +254,17 @@ export default function ProjectEnrollmentsPage({ searchParams }: { searchParams?
 
 function Metric({ label, value }: { label: string; value: number }) {
   return <div className="rounded bg-white p-4 shadow"><p className="text-xs uppercase text-gray-400">{label}</p><p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p></div>;
+}
+
+function EnrollmentLifecycleActions({ row, busy, onUpdate }: { row: ProjectEnrollmentReportResponse["enrollments"][number]; busy: boolean; onUpdate: (id: string, status: "COMPLETED" | "CANCELLED") => void }) {
+  if (!["ACTIVE", "PENDING"].includes(row.status)) {
+    return <span className="text-xs text-gray-400">No lifecycle action</span>;
+  }
+  return <div className="flex flex-col gap-2">
+    <button type="button" onClick={() => onUpdate(row.id, "COMPLETED")} disabled={busy} className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{busy ? "Updating..." : "Complete"}</button>
+    <button type="button" onClick={() => onUpdate(row.id, "CANCELLED")} disabled={busy} className="rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Cancel</button>
+    <p className="text-[11px] text-gray-400">Completing the last active project returns farmer to self-service.</p>
+  </div>;
 }
 
 

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, ProjectAppConfigAuditEvent, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -131,11 +131,37 @@ def main():
         check(source_response.status_code == 200, "Enrollment source filter returns 200", source_response.text[:300])
         check(any(item["id"] == str(enrollment_id) for item in source_response.json()["enrollments"]), "Source filter includes seeded row")
 
+        editor, editor_headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id=tenant_id)
+        complete_response = client.patch(
+            f"/api/v1/farmer-project-enrollments/{enrollment_id}/status",
+            headers=editor_headers,
+            json={"status": "COMPLETED", "reason": "Regression project completed"},
+        )
+        check(complete_response.status_code == 200, "Enrollment lifecycle status update returns 200", complete_response.text[:500])
+        complete_payload = complete_response.json()
+        check(complete_payload["status"] == "COMPLETED", "Enrollment status is completed")
+        check(complete_payload["metadata"]["last_lifecycle_change"]["to_status"] == "COMPLETED", "Lifecycle metadata records new status")
+        check(complete_payload["metadata"]["last_lifecycle_change"]["reason"] == "Regression project completed", "Lifecycle metadata records reason")
+
+        hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers={"X-Tenant-ID": tenant_id})
+        check(hydration.status_code == 200, "Hydration returns after lifecycle update", hydration.text[:300])
+        check(hydration.json()["farmer_context"]["mode"] == "SELF_SERVICE", "Farmer falls back to self-service after completed enrollment")
+
+        audit_event = db.query(ProjectAppConfigAuditEvent).filter(
+            ProjectAppConfigAuditEvent.project_id == project_id,
+            ProjectAppConfigAuditEvent.action == "UPDATE_PROJECT_ENROLLMENT_STATUS",
+        ).order_by(ProjectAppConfigAuditEvent.created_at.desc()).first()
+        check(audit_event is not None, "Enrollment lifecycle status update is audited")
+        check(audit_event.after_config["status"] == "COMPLETED", "Audit stores after status")
+        check(audit_event.reason == "Regression project completed", "Audit stores reason")
+        delete_test_admin(db, editor.id)
+
         invalid = client.get("/api/v1/reports/project-enrollments?status=BAD", headers=headers)
         check(invalid.status_code == 400, "Invalid status is rejected", invalid.text)
     finally:
         cleanup = SessionLocal()
         try:
+            cleanup.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project_id).delete(synchronize_session=False)
             cleanup.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.id == enrollment_id).delete(synchronize_session=False)
             cleanup.query(Parcel).filter(Parcel.id == parcel_id).delete(synchronize_session=False)
             cleanup.query(Farmer).filter(Farmer.id == farmer_id).delete(synchronize_session=False)
