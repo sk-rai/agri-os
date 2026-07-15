@@ -125,3 +125,56 @@ class FieldEventReport(Base, UUIDPrimaryKey, AuditMixin):
         CheckConstraint("source IN ('FARMER_ANDROID', 'FIELD_AGENT_ANDROID', 'ADMIN_WEB', 'EXTERNAL_API', 'IOT_DEVICE')", name="ck_field_event_source"),
         CheckConstraint("status IN ('REPORTED', 'UNDER_REVIEW', 'ADVISORY_SENT', 'RESOLVED', 'DISMISSED')", name="ck_field_event_status"),
     )
+
+
+
+class QueryThread(Base, UUIDPrimaryKey, AuditMixin):
+    __tablename__ = "query_threads"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=False)
+    parcel_id = Column(UUID(as_uuid=True), ForeignKey("parcels.id"))
+    crop_cycle_id = Column(UUID(as_uuid=True), ForeignKey("crop_cycles.id"))
+    stage_code = Column(String(50))
+
+    subject = Column(String(200), nullable=False)
+    category = Column(String(40), nullable=False, default="OTHER")
+    priority = Column(String(20), nullable=False, default="MEDIUM")
+    status = Column(String(30), nullable=False, default="OPEN")
+    assigned_to = Column(UUID(as_uuid=True))
+    last_message_at = Column(DateTime(timezone=True))
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_query_thread_tenant", "tenant_id"),
+        Index("idx_query_thread_project", "project_id"),
+        Index("idx_query_thread_farmer", "farmer_id"),
+        Index("idx_query_thread_parcel", "parcel_id"),
+        Index("idx_query_thread_status", "status"),
+        Index("idx_query_thread_category", "category"),
+        Index("idx_query_thread_last_message", "last_message_at"),
+        CheckConstraint("category IN ('CROP_HEALTH', 'INPUT_USAGE', 'IRRIGATION', 'MARKET', 'INSURANCE', 'TECH_SUPPORT', 'OTHER')", name="ck_query_thread_category"),
+        CheckConstraint("priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')", name="ck_query_thread_priority"),
+        CheckConstraint("status IN ('OPEN', 'ASSIGNED', 'ANSWERED', 'CLOSED')", name="ck_query_thread_status"),
+    )
+
+
+class QueryMessage(Base, UUIDPrimaryKey, AuditMixin):
+    __tablename__ = "query_messages"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    thread_id = Column(UUID(as_uuid=True), ForeignKey("query_threads.id"), nullable=False)
+    sender_type = Column(String(30), nullable=False)
+    sender_id = Column(UUID(as_uuid=True))
+    message_type = Column(String(20), nullable=False, default="TEXT")
+    body_text = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_query_message_tenant", "tenant_id"),
+        Index("idx_query_message_thread", "thread_id"),
+        Index("idx_query_message_sender", "sender_type", "sender_id"),
+        CheckConstraint("sender_type IN ('FARMER', 'FIELD_AGENT', 'AGRONOMIST', 'ADMIN', 'SYSTEM')", name="ck_query_message_sender_type"),
+        CheckConstraint("message_type IN ('TEXT', 'AUDIO', 'PHOTO', 'DOCUMENT', 'SYSTEM')", name="ck_query_message_type"),
+    )
