@@ -601,6 +601,41 @@ def _farmer_context_payload(
     }
 
 
+def _enrollment_lifecycle_payload(enrollments: list[FarmerProjectEnrollment]) -> dict:
+    status_counts: dict[str, int] = {}
+    lifecycle_events = []
+    for enrollment in enrollments:
+        status = enrollment.status or "UNKNOWN"
+        status_counts[status] = status_counts.get(status, 0) + 1
+        metadata = enrollment.metadata_ or {}
+        for event in metadata.get("lifecycle_events") or []:
+            lifecycle_events.append({
+                **event,
+                "enrollment_id": str(enrollment.id),
+                "project_id": str(enrollment.project_id),
+                "status": enrollment.status,
+            })
+    lifecycle_events.sort(key=lambda item: item.get("at") or "", reverse=True)
+    active_count = status_counts.get("ACTIVE", 0)
+    pending_count = status_counts.get("PENDING", 0)
+    completed_count = status_counts.get("COMPLETED", 0)
+    cancelled_count = status_counts.get("CANCELLED", 0)
+    active_pending_count = active_count + pending_count
+    return {
+        "status_counts": dict(sorted(status_counts.items())),
+        "active_count": active_count,
+        "pending_count": pending_count,
+        "completed_count": completed_count,
+        "cancelled_count": cancelled_count,
+        "active_pending_count": active_pending_count,
+        "total_enrollment_count": len(enrollments),
+        "has_open_enrollments": active_pending_count > 0,
+        "can_continue_independently": active_pending_count == 0,
+        "latest_event": lifecycle_events[0] if lifecycle_events else None,
+        "events": lifecycle_events[:25],
+    }
+
+
 def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer]) -> dict:
     from app.modules.farmer.soil_profile import SoilProfile
     from app.modules.master_data.models import Crop
@@ -686,6 +721,7 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         "soil_profiles": [_soil_profile_payload(profile) for profile in soil_profiles],
         "project_enrollments": [_enrollment_payload(enrollment, enrollment_projects.get(enrollment.project_id)) for enrollment in project_enrollments],
         "farmer_context": _farmer_context_payload(project_enrollments, enrollment_projects),
+        "enrollment_lifecycle": _enrollment_lifecycle_payload(project_enrollments),
         "crop_cycles": {
             "active": [cycle for cycle in cycle_payloads if cycle["status"] in active_statuses],
             "completed": [cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses],
@@ -1891,6 +1927,7 @@ def get_farmer_launch_context(
         "farmer": _farmer_payload(farmer),
         "project_enrollments": [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in enrollments],
         "farmer_context": farmer_context,
+        "enrollment_lifecycle": _enrollment_lifecycle_payload(enrollments),
         "active_project_count": len(active_enrollments),
         "active_project_candidate": active_project_candidate,
         "project_selection_required": project_selection_required,

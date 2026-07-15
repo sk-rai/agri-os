@@ -150,11 +150,14 @@ def main():
     check(body["farmer_context"]["mode"] == "PROJECT", "Hydration context selects project mode")
     check(body["farmer_context"]["reason"] == "ACTIVE_PROJECT_ENROLLMENT", "Hydration context explains active project")
     check(body["farmer_context"]["can_continue_independently"] is False, "Active project farmer is not in independent mode")
+    check(body["enrollment_lifecycle"]["active_pending_count"] == 1, "Hydration lifecycle reports open enrollment")
+    check(body["enrollment_lifecycle"]["can_continue_independently"] is False, "Hydration lifecycle blocks independent mode for active project")
 
     launch_context = client.get(f"/api/v1/farmers/{farmer_id}/launch-context", headers=headers)
     check(launch_context.status_code == 200, "Launch context returns 200", launch_context.text[:300])
     launch_body = launch_context.json()
     check(launch_body["farmer_context"]["mode"] == "PROJECT", "Launch context selects project mode")
+    check(launch_body["enrollment_lifecycle"]["active_count"] == 1, "Launch lifecycle reports one active project")
     check(launch_body["active_project_candidate"]["project_id"] == str(project_id), "Launch context exposes active project candidate")
 
     print("\n[3] List endpoints expose membership")
@@ -193,11 +196,14 @@ def main():
     check(completed_body["farmer_context"]["mode"] == "SELF_SERVICE", "Completed project farmer falls back to self-service mode")
     check(completed_body["farmer_context"]["reason"] == "NO_ACTIVE_PROJECT_AFTER_COMPLETED_PROJECT", "Self-service reason references completed project")
     check(completed_body["farmer_context"]["can_continue_independently"] is True, "Farmer can continue independently after project completion")
+    check(completed_body["enrollment_lifecycle"]["active_pending_count"] == 0, "Completed hydration lifecycle has no open enrollments")
+    check(completed_body["enrollment_lifecycle"]["completed_count"] == 1, "Completed hydration lifecycle counts completed enrollment")
 
     completed_launch = client.get(f"/api/v1/farmers/{farmer_id}/launch-context", headers=headers)
     check(completed_launch.status_code == 200, "Launch context still works after project completion", completed_launch.text[:300])
     completed_launch_body = completed_launch.json()
     check(completed_launch_body["farmer_context"]["mode"] == "SELF_SERVICE", "Launch context falls back to self-service mode")
+    check(completed_launch_body["enrollment_lifecycle"]["can_continue_independently"] is True, "Completed launch lifecycle allows independent mode")
     check(completed_launch_body["active_project_candidate"] is None, "No active project candidate after completion")
     db = SessionLocal()
     try:
