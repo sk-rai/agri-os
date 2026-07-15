@@ -1,6 +1,6 @@
 # Media, communication, and field-event foundation
 
-Status: architecture/API contract checkpoint; no runtime implementation yet  
+Status: media + field-event foundation implemented; query/advisory foundations pending  
 Primary consumers: Android offline queue, admin web, future agronomist/dealer workflows
 
 ## Why this module family matters
@@ -25,7 +25,7 @@ Do not build separate photo/audio/document mechanisms for activity logs, farmer 
 
 ## Proposed phase 1: shared media asset and attachment primitive
 
-Candidate records:
+Implemented records:
 
 - `MediaAsset`
 - `MediaAttachment`
@@ -63,10 +63,11 @@ Candidate `MediaAttachment` fields:
 - `is_primary`
 - `created_at`
 
-Candidate first API shape:
+Implemented API shape:
 
 - `POST /api/v1/media/assets` - create metadata record / upload intent
 - `POST /api/v1/media/assets/{asset_id}/complete` - mark upload complete after storage write
+- `GET /api/v1/media/assets/{asset_id}` - read media metadata
 - `POST /api/v1/media/attachments` - attach existing asset to entity
 - `GET /api/v1/media/attachments?entity_type=...&entity_id=...` - read attachments for UI
 
@@ -74,10 +75,13 @@ For MVP, if direct binary upload is too much, Android can sync media metadata fi
 
 ## Proposed phase 2: field event reports
 
-Candidate records:
+Implemented record:
 
-- `FieldEventType`
 - `FieldEventReport`
+
+Future configurable record:
+
+- `FieldEventType` / workflow-level event capture rules
 
 Candidate event types:
 
@@ -115,13 +119,212 @@ Candidate `FieldEventReport` fields:
 - `status`: `REPORTED`, `UNDER_REVIEW`, `ADVISORY_SENT`, `RESOLVED`, `DISMISSED`
 - `metadata` JSONB
 
-Candidate APIs:
+Implemented APIs:
 
 - `POST /api/v1/field-events`
 - `GET /api/v1/field-events?project_id=&farmer_id=&parcel_id=&event_type=&severity=&status=`
 - `GET /api/v1/field-events/{event_id}`
 - `PATCH /api/v1/field-events/{event_id}/status`
 - attach media through shared `MediaAttachment` APIs
+- direct field event creation can also include inline `media_attachments` referencing existing `media_asset_id` values
+- offline sync materializes `FIELD_EVENT_REPORT` / `FIELD_EVENT` events and links media attachments
+
+
+## Current Android contract: media + field events
+
+### Online/direct-submit flow
+
+Use this when Android has network access and can call APIs directly.
+
+1. Register each photo/audio/document as a media asset.
+
+```http
+POST /api/v1/media/assets
+```
+
+Example body:
+
+```json
+{
+  "project_id": "optional-project-uuid",
+  "farmer_id": "farmer-uuid",
+  "uploaded_by": "actor-user-uuid",
+  "media_type": "AUDIO",
+  "mime_type": "audio/mpeg",
+  "upload_status": "UPLOADED",
+  "storage_key": "field-events/audio-note.mp3",
+  "capture_lat": "26.8467",
+  "capture_lng": "80.9462",
+  "capture_accuracy_meters": "12.5",
+  "captured_at": "2026-07-15T09:35:00+05:30"
+}
+```
+
+2. Create a field event and attach existing assets in one request.
+
+```http
+POST /api/v1/field-events
+```
+
+Example body:
+
+```json
+{
+  "project_id": "optional-project-uuid",
+  "farmer_id": "farmer-uuid",
+  "parcel_id": "parcel-uuid",
+  "crop_cycle_id": "optional-cycle-uuid",
+  "stage_code": "TILLERING",
+  "event_type": "PEST",
+  "severity": "HIGH",
+  "event_date": "2026-07-15T09:30:00+05:30",
+  "lat": "26.8467",
+  "lng": "80.9462",
+  "accuracy_meters": "12.5",
+  "description": "Brown planthopper observed in patches",
+  "source": "FARMER_ANDROID",
+  "metadata": { "local_temp_id": "field-event-1" },
+  "media_attachments": [
+    {
+      "media_asset_id": "media-asset-uuid",
+      "purpose": "DISEASE_PHOTO",
+      "caption": "Pest evidence photo",
+      "is_primary": true
+    }
+  ]
+}
+```
+
+The response includes `media_attachment_count` and, when created inline, a `media_attachments` array. Detail reads always include embedded attachment metadata.
+
+```http
+GET /api/v1/field-events/{event_id}
+```
+
+### Offline sync flow
+
+Use this when Android stores field events in Room and syncs later. The backend preserves Android/local UUIDs as backend IDs.
+
+```http
+POST /api/v1/sync/events
+```
+
+Example event payload:
+
+```json
+{
+  "event_id": "sync-event-uuid",
+  "entity_type": "FIELD_EVENT_REPORT",
+  "entity_id": "field-event-uuid",
+  "operation": "CREATE",
+  "payload": {
+    "project_id": "optional-project-uuid",
+    "farmer_id": "farmer-uuid",
+    "parcel_id": "parcel-uuid",
+    "stage_code": "TILLERING",
+    "event_type": "RAIN",
+    "severity": "HIGH",
+    "event_date": "2026-07-15T09:30:00+05:30",
+    "reported_at": "2026-07-15T09:35:00+05:30",
+    "description": "Heavy rainfall reported offline",
+    "source": "FARMER_ANDROID",
+    "status": "REPORTED",
+    "media_attachments": [
+      {
+        "media_asset_id": "already-synced-media-asset-uuid",
+        "purpose": "AUDIO_NOTE",
+        "caption": "Offline farmer audio note",
+        "is_primary": true,
+        "metadata": { "source": "android_room" }
+      }
+    ]
+  },
+  "version": 1,
+  "dependency_ids": []
+}
+```
+
+Important sequencing for offline sync:
+
+- sync/create the referenced `MEDIA_ASSET` record first, or call direct `POST /api/v1/media/assets` when online;
+- then sync `FIELD_EVENT_REPORT` with `media_attachments`;
+- backend will fail the event if `media_asset_id` is unknown for the tenant;
+- repeated sync/update of the same `FIELD_EVENT_REPORT` is idempotent and does not duplicate the event row or attachment row for the same asset/entity pair.
+
+### Current enums
+
+Field event types:
+
+- `RAIN`
+- `PEST`
+- `DISEASE`
+- `HAILSTORM`
+- `LOCUST`
+- `FLOOD`
+- `DROUGHT_STRESS`
+- `THUNDERSTORM_WIND`
+- `HEAT_STRESS`
+- `COLD_STRESS`
+- `IRRIGATION_FAILURE`
+- `OTHER`
+
+Severity values:
+
+- `LOW`
+- `MEDIUM`
+- `HIGH`
+- `CRITICAL`
+
+Status values:
+
+- `REPORTED`
+- `UNDER_REVIEW`
+- `ADVISORY_SENT`
+- `RESOLVED`
+- `DISMISSED`
+
+Media attachment purposes currently include:
+
+- `STAGE_EVIDENCE`
+- `ACTIVITY_EVIDENCE`
+- `DISEASE_PHOTO`
+- `SOIL_CARD`
+- `PARCEL_BOUNDARY`
+- `QUERY_ATTACHMENT`
+- `ADVISORY_ATTACHMENT`
+- `AUDIO_NOTE`
+- `GENERAL`
+
+### Admin visibility implemented
+
+Admin has:
+
+- `/field-events` read-only list/detail screen;
+- field event dashboard stat card;
+- high-priority and unresolved field-event attention queues;
+- field event detail with linked photo/audio/document metadata;
+- field events included in operational dashboard response.
+
+### Configurability boundary
+
+Current field-event types are backend enums, not yet configured by crop, stage, project, or recommendation.
+
+The desired next workflow-builder extension is a stage/recommendation event-capture rule model, for example:
+
+```json
+{
+  "stage_code": "TILLERING",
+  "enabled_event_types": ["PEST", "DISEASE", "RAIN"],
+  "required_media_types": ["PHOTO"],
+  "allow_audio_note": true,
+  "require_gps": true,
+  "severity_scale": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+  "visible_to": ["FARMER", "FIELD_AGENT"],
+  "triggers_advisory_review": true
+}
+```
+
+Android should therefore treat current event types as a backend-driven list in future, but for the current MVP it can hardcode/render the enum values above or fetch app/bootstrap contracts once added.
 
 ## Proposed phase 3: advisory/broadcast campaigns
 
