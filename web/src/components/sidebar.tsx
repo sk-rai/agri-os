@@ -39,6 +39,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/activity-usage", label: "Activity Usage", icon: "Trend" },
       { href: "/project-enrollments", label: "Project Enrollments", icon: "Enroll" },
+      { href: "/field-events", label: "Field Events", icon: "Event" },
       { href: "/lookup", label: "Lookup", icon: "Search" },
     ],
   },

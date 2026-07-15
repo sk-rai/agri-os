@@ -2557,3 +2557,56 @@ export const productCatalogApi = {
   approveProduct: (projectId:string, code:string, body:Record<string,unknown>) => api<{product:AgriculturalProductDto}>(`/api/v1/product-catalog/projects/${projectId}/products/${code}`, {method:"PUT", body}),
   audit: (params?: { entityType?: string; entityCode?: string; limit?: number }) => { const q=new URLSearchParams(); if(params?.entityType)q.set("entity_type",params.entityType); if(params?.entityCode)q.set("entity_code",params.entityCode); if(params?.limit)q.set("limit",String(params.limit)); const suffix=q.toString()?`?${q}`:""; return api<ProductCatalogAuditResponse>(`/api/v1/product-catalog/audit${suffix}`); },
 };
+
+
+// Field event reporting
+export interface FieldEventReportDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  farmer_id: string;
+  parcel_id?: string | null;
+  crop_cycle_id?: string | null;
+  stage_code?: string | null;
+  event_type: string;
+  severity: string;
+  event_date?: string | null;
+  reported_at?: string | null;
+  lat?: string | null;
+  lng?: string | null;
+  accuracy_meters?: string | null;
+  description?: string | null;
+  estimated_area_affected?: string | null;
+  estimated_loss_percent?: string | null;
+  source: string;
+  external_source?: string | null;
+  external_event_id?: string | null;
+  status: string;
+  metadata?: Record<string, unknown>;
+  media_attachment_count: number;
+  media_attachments?: MediaAttachmentTrace[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+export interface FieldEventReportListResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  events: FieldEventReportDto[];
+}
+export const fieldEventsApi = {
+  list: (params?: { projectId?: string; farmerId?: string; parcelId?: string; eventType?: string; severity?: string; status?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.farmerId) q.set("farmer_id", params.farmerId);
+    if (params?.parcelId) q.set("parcel_id", params.parcelId);
+    if (params?.eventType) q.set("event_type", params.eventType);
+    if (params?.severity) q.set("severity", params.severity);
+    if (params?.status) q.set("status", params.status);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<FieldEventReportListResponse>(`/api/v1/field-events${suffix}`);
+  },
+  detail: (eventId: string) => api<FieldEventReportDto>(`/api/v1/field-events/${eventId}`),
+};
