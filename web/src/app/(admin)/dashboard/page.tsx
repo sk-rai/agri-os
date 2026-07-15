@@ -60,15 +60,16 @@ const readinessPriority: Record<string, number> = {
   "Input catalog": 5,
   "Product catalog": 6,
   "Project enrollment imports": 7,
-  "Farmer sync": 8,
-  "Parcel geometry": 9,
-  "Activity evidence": 10,
-  "Sync health": 11,
+  "Project enrollment lifecycle": 8,
+  "Farmer sync": 9,
+  "Parcel geometry": 10,
+  "Activity evidence": 11,
+  "Sync health": 12,
 };
 
 function readinessCategory(label: string) {
   if (["Project setup", "Crop setup", "Profile forms", "Workflow runtime", "Workflow assignments", "Input catalog", "Product catalog"].includes(label)) return "Setup";
-  if (["Project enrollment imports", "Farmer sync", "Parcel geometry", "Activity evidence"].includes(label)) return "Field data";
+  if (["Project enrollment imports", "Project enrollment lifecycle", "Farmer sync", "Parcel geometry", "Activity evidence"].includes(label)) return "Field data";
   return "Operations";
 }
 

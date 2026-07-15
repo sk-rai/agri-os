@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Project, Tenant
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Project, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -24,6 +24,7 @@ REQUIRED_CHECKS = {
     "INPUT_CATALOG",
     "PRODUCT_CATALOG",
     "PROJECT_ENROLLMENT_IMPORTS",
+    "PROJECT_ENROLLMENT_LIFECYCLE",
     "FARMER_SYNC",
     "PARCEL_GEOMETRY",
     "ACTIVITY_EVIDENCE",
@@ -76,6 +77,8 @@ def main():
     db = SessionLocal()
     admin = None
     project = None
+    readiness_farmer = None
+    readiness_enrollment = None
     try:
         ensure_tenant(db)
         client = TestClient(app)
@@ -119,6 +122,35 @@ def main():
         check("project_enrollment_csv_import_invalid_count" in backlog, "dashboard backlog reports invalid project enrollment CSV imports")
 
         project = create_project(db)
+        readiness_farmer = Farmer(
+            id=uuid.uuid4(),
+            tenant_id="default",
+            project_id=project.id,
+            mobile_number=f"+9195{uuid.uuid4().int % 100000000:08d}",
+            display_name="Readiness Enrollment Farmer",
+            village_name_manual="Readiness Village",
+            status="ACTIVE",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        readiness_enrollment = FarmerProjectEnrollment(
+            id=uuid.uuid4(),
+            tenant_id="default",
+            farmer_id=readiness_farmer.id,
+            project_id=project.id,
+            enrollment_method="WEB_ADMIN",
+            enrollment_source="system_readiness_regression",
+            status="ACTIVE",
+            parcel_ids=[],
+            assigned_user_ids=[],
+            metadata_={},
+            notes="readiness lifecycle test",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add_all([readiness_farmer, readiness_enrollment])
+        db.commit()
+
         scoped_response = client.get(f"/api/v1/reports/system-readiness?project_id={project.id}", headers=headers)
         check(scoped_response.status_code == 200, "project-scoped system readiness returns 200", scoped_response.text[:500])
         scoped = scoped_response.json()
@@ -127,6 +159,9 @@ def main():
         scoped_by_code = {item["code"]: item for item in scoped["checks"]}
         check(scoped_by_code["PROJECT_SETUP"]["ready"] is True, "project-scoped project setup is ready for seeded project")
         check(scoped_by_code["WORKFLOW_ASSIGNMENTS"]["severity"] in {"OK", "INFO"}, "project-scoped workflow assignment check is informational or ready")
+        check(scoped_by_code["PROJECT_ENROLLMENT_LIFECYCLE"]["ready"] is False, "project-scoped lifecycle flags open enrollments")
+        check(scoped_by_code["PROJECT_ENROLLMENT_LIFECYCLE"]["href"] == f"/project-enrollments?projectId={project.id}", "project-scoped lifecycle links to project enrollments")
+        check("active/pending" in scoped_by_code["PROJECT_ENROLLMENT_LIFECYCLE"]["detail"], "project-scoped lifecycle reports open enrollment detail")
         check(scoped_by_code["FARMER_SYNC"]["href"].startswith(f"/lookup?projectId={project.id}"), "project-scoped farmer sync links to project lookup")
 
         missing_project_id = uuid.uuid4()
@@ -135,6 +170,8 @@ def main():
     finally:
         db.rollback()
         if project:
+            db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.project_id == project.id).delete(synchronize_session=False)
+            db.query(Farmer).filter(Farmer.project_id == project.id).delete(synchronize_session=False)
             db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
             db.commit()
         if admin:

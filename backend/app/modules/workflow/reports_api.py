@@ -1136,6 +1136,13 @@ def system_readiness_report(
         enrollment_import_query = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.project_id == project_id)
     enrollment_import_invalid_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "INVALID").count()
     enrollment_import_pending_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "VALIDATED").count()
+    enrollment_lifecycle_query = db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.tenant_id == x_tenant_id)
+    if project_id:
+        enrollment_lifecycle_query = enrollment_lifecycle_query.filter(FarmerProjectEnrollment.project_id == project_id)
+    enrollment_active_count = enrollment_lifecycle_query.filter(FarmerProjectEnrollment.status == "ACTIVE").count()
+    enrollment_pending_count = enrollment_lifecycle_query.filter(FarmerProjectEnrollment.status == "PENDING").count()
+    enrollment_open_count = enrollment_active_count + enrollment_pending_count
+    enrollment_total_count = enrollment_lifecycle_query.count()
     crop_taxonomy_count = db.query(CropTaxonomyNode).filter(CropTaxonomyNode.is_active == True).count()
     crop_propagation_count = db.query(CropPropagationType).filter(CropPropagationType.is_active == True).count()
     crop_catalog_count = db.query(Crop).filter(Crop.is_active == True).count()
@@ -1177,6 +1184,7 @@ def system_readiness_report(
         _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
         _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0 and active_package_count > 0 and product_import_invalid_count == 0, f"{manufacturer_count} manufacturers, {active_product_count} active products/brands, {active_package_count} active packages, {product_import_invalid_count} invalid import batches, {product_import_pending_count} pending apply", "/products", "WARN" if product_import_invalid_count else "INFO"),
         _readiness_item("PROJECT_ENROLLMENT_IMPORTS", "Project enrollment imports", enrollment_import_invalid_count == 0, f"{enrollment_import_invalid_count} invalid import batches, {enrollment_import_pending_count} pending apply", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if enrollment_import_invalid_count else "INFO"),
+        _readiness_item("PROJECT_ENROLLMENT_LIFECYCLE", "Project enrollment lifecycle", (not project_id) or enrollment_open_count == 0, f"{enrollment_open_count} active/pending enrollment rows, {enrollment_total_count} total", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if project_id else "INFO"),
         _readiness_item("FARMER_SYNC", "Farmer sync", farmer_count > 0, f"{farmer_count} farmers materialized", lookup_href),
         _readiness_item("PARCEL_GEOMETRY", "Parcel geometry", parcel_count > 0 and geometry_missing_count == 0, f"{geometry_captured_count} captured, {geometry_missing_count} missing", f"{lookup_href}{'&' if '?' in lookup_href else '?'}geometryStatus=MISSING"),
         _readiness_item("ACTIVITY_EVIDENCE", "Activity evidence", activity_count > 0, f"{activity_count} logged activities", activity_href),
