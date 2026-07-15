@@ -2665,16 +2665,21 @@ export interface QueryThreadListResponse {
   threads: QueryThreadDto[];
 }
 export const queryThreadsApi = {
-  list: (params?: { projectId?: string; farmerId?: string; parcelId?: string; status?: string; category?: string; limit?: number }) => {
+  list: (params?: { projectId?: string; farmerId?: string; parcelId?: string; status?: string; category?: string; priority?: string; limit?: number }) => {
     const q = new URLSearchParams();
     if (params?.projectId) q.set("project_id", params.projectId);
     if (params?.farmerId) q.set("farmer_id", params.farmerId);
     if (params?.parcelId) q.set("parcel_id", params.parcelId);
     if (params?.status) q.set("status", params.status);
     if (params?.category) q.set("category", params.category);
+    if (params?.priority) q.set("priority", params.priority);
     if (params?.limit) q.set("limit", String(params.limit));
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<QueryThreadListResponse>(`/api/v1/query-threads${suffix}`);
   },
   detail: (threadId: string) => api<QueryThreadDto>(`/api/v1/query-threads/${threadId}`),
+  addMessage: (threadId: string, body: { sender_type?: string; sender_id?: string; message_type?: string; body_text?: string; metadata?: Record<string, unknown>; media_attachments?: unknown[] }) =>
+    api<QueryMessageDto>(`/api/v1/query-threads/${threadId}/messages`, { method: "POST", body: JSON.stringify(body) }),
+  updateStatus: (threadId: string, body: { status: string; assigned_to?: string | null; reason?: string }) =>
+    api<QueryThreadDto>(`/api/v1/query-threads/${threadId}/status`, { method: "PATCH", body: JSON.stringify(body) }),
 };

@@ -6,6 +6,7 @@ import { queryThreadsApi, type QueryThreadDto, type QueryThreadListResponse } fr
 
 const STATUSES = ["", "OPEN", "ASSIGNED", "ANSWERED", "CLOSED"];
 const CATEGORIES = ["", "CROP_HEALTH", "INPUT_USAGE", "IRRIGATION", "MARKET", "INSURANCE", "TECH_SUPPORT", "OTHER"];
+const PRIORITIES = ["", "LOW", "MEDIUM", "HIGH", "URGENT"];
 
 export default function QueryThreadsPage() {
   const [projectId, setProjectId] = useState("");
@@ -13,6 +14,10 @@ export default function QueryThreadsPage() {
   const [parcelId, setParcelId] = useState("");
   const [status, setStatus] = useState("");
   const [category, setCategory] = useState("");
+  const [priority, setPriority] = useState("");
+  const [replyText, setReplyText] = useState("");
+  const [assignTo, setAssignTo] = useState("");
+  const [actionReason, setActionReason] = useState("");
   const [payload, setPayload] = useState<QueryThreadListResponse | null>(null);
   const [selected, setSelected] = useState<QueryThreadDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +30,7 @@ export default function QueryThreadsPage() {
     setParcelId(query.get("parcelId") || "");
     setStatus(query.get("status") || "");
     setCategory(query.get("category") || "");
+    setPriority(query.get("priority") || "");
   }, []);
 
   const load = useCallback(async () => {
@@ -37,6 +43,7 @@ export default function QueryThreadsPage() {
         parcelId: parcelId.trim() || undefined,
         status: status || undefined,
         category: category || undefined,
+        priority: priority || undefined,
         limit: 100,
       });
       setPayload(next);
@@ -46,7 +53,7 @@ export default function QueryThreadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [category, farmerId, parcelId, projectId, status]);
+  }, [category, farmerId, parcelId, priority, projectId, status]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -70,6 +77,7 @@ export default function QueryThreadsPage() {
     setParcelId("");
     setStatus("");
     setCategory("");
+    setPriority("");
     setLoading(true);
     setError(null);
     try {
@@ -95,6 +103,7 @@ export default function QueryThreadsPage() {
         <Input label="Parcel ID" value={parcelId} onChange={setParcelId} />
         <Select label="Status" value={status} onChange={setStatus} options={STATUSES} />
         <Select label="Category" value={category} onChange={setCategory} options={CATEGORIES} />
+        <Select label="Priority" value={priority} onChange={setPriority} options={PRIORITIES} />
       </div>
       <div className="mt-4 flex gap-2">
         <button type="submit" disabled={loading} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply filters</button>
@@ -129,12 +138,53 @@ export default function QueryThreadsPage() {
         </table>
       </section>
 
-      <QueryDetail thread={selected} />
+      <QueryDetail thread={selected} replyText={replyText} setReplyText={setReplyText} assignTo={assignTo} setAssignTo={setAssignTo} actionReason={actionReason} setActionReason={setActionReason} onRefresh={openDetail} />
     </div> : null}
   </div>;
 }
 
-function QueryDetail({ thread }: { thread: QueryThreadDto | null }) {
+function QueryDetail({
+  thread,
+  replyText,
+  setReplyText,
+  assignTo,
+  setAssignTo,
+  actionReason,
+  setActionReason,
+  onRefresh,
+}: {
+  thread: QueryThreadDto | null;
+  replyText: string;
+  setReplyText: (value: string) => void;
+  assignTo: string;
+  setAssignTo: (value: string) => void;
+  actionReason: string;
+  setActionReason: (value: string) => void;
+  onRefresh: (threadId: string) => Promise<void>;
+}) {
+  async function submitReply(event: FormEvent) {
+    event.preventDefault();
+    if (!thread || !replyText.trim()) return;
+    await queryThreadsApi.addMessage(thread.id, {
+      sender_type: "ADMIN",
+      message_type: "TEXT",
+      body_text: replyText.trim(),
+      metadata: { source: "admin_query_inbox" },
+    });
+    setReplyText("");
+    await onRefresh(thread.id);
+  }
+
+  async function updateStatus(nextStatus: string) {
+    if (!thread) return;
+    await queryThreadsApi.updateStatus(thread.id, {
+      status: nextStatus,
+      assigned_to: assignTo.trim() || undefined,
+      reason: actionReason.trim() || undefined,
+    });
+    await onRefresh(thread.id);
+  }
+
   if (!thread) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a query thread to inspect messages, media, farmer/parcel IDs, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
     <div className="flex items-start justify-between gap-3">
@@ -152,6 +202,23 @@ function QueryDetail({ thread }: { thread: QueryThreadDto | null }) {
       <Mini label="Stage" value={thread.stage_code || "-"} />
       <Mini label="Assigned to" value={thread.assigned_to || "-"} />
     </div>
+    <div className="mt-5 rounded border bg-gray-50 p-3">
+      <h3 className="text-sm font-semibold text-gray-900">Admin actions</h3>
+      <form onSubmit={submitReply} className="mt-3 space-y-2">
+        <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} rows={3} placeholder="Write a text reply for the farmer..." className="w-full rounded border p-2 text-sm" />
+        <button type="submit" disabled={!replyText.trim()} className="rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Send reply</button>
+      </form>
+      <div className="mt-4 grid gap-2">
+        <Input label="Assign to user ID" value={assignTo} onChange={setAssignTo} />
+        <Input label="Action reason" value={actionReason} onChange={setActionReason} />
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void updateStatus("ASSIGNED")} className="rounded border px-3 py-2 text-sm">Assign</button>
+          <button type="button" onClick={() => void updateStatus("ANSWERED")} className="rounded border px-3 py-2 text-sm">Mark answered</button>
+          <button type="button" onClick={() => void updateStatus("CLOSED")} className="rounded border px-3 py-2 text-sm">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div className="mt-5">
       <h3 className="text-sm font-semibold text-gray-900">Messages</h3>
       <div className="mt-3 space-y-3">
