@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -1554,6 +1554,70 @@ def _apply_project_cycle_filters(query, *, farmer_id, parcel_id, crop_code, seas
     return query
 
 
+def _project_enrollment_lifecycle_trace(db: Session, *, tenant_id: str, project_id: uuid.UUID) -> dict:
+    enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+        )
+        .all()
+    )
+    by_status = defaultdict(int)
+    for enrollment in enrollments:
+        by_status[enrollment.status or "UNKNOWN"] += 1
+
+    lifecycle_events = (
+        db.query(ProjectAppConfigAuditEvent)
+        .filter(
+            ProjectAppConfigAuditEvent.tenant_id == tenant_id,
+            ProjectAppConfigAuditEvent.project_id == project_id,
+            ProjectAppConfigAuditEvent.action.in_([
+                "UPDATE_PROJECT_ENROLLMENT_STATUS",
+                "BULK_UPDATE_PROJECT_ENROLLMENT_STATUS",
+                "BULK_UPDATE_PROJECT_ENROLLMENT_STATUS_SUMMARY",
+            ]),
+        )
+        .order_by(ProjectAppConfigAuditEvent.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    active_pending_count = by_status.get("ACTIVE", 0) + by_status.get("PENDING", 0)
+    return {
+        "schema_version": "project_enrollment_lifecycle_trace.v1",
+        "status_counts": [
+            {"status": status, "count": by_status.get(status, 0)}
+            for status in ["ACTIVE", "PENDING", "COMPLETED", "CANCELLED", "ARCHIVED"]
+            if by_status.get(status, 0) or status in {"ACTIVE", "PENDING"}
+        ],
+        "active_pending_count": active_pending_count,
+        "has_open_enrollments": active_pending_count > 0,
+        "total_enrollment_count": len(enrollments),
+        "latest_event": None if not lifecycle_events else {
+            "id": str(lifecycle_events[0].id),
+            "action": lifecycle_events[0].action,
+            "actor_id": str(lifecycle_events[0].actor_id),
+            "reason": lifecycle_events[0].reason,
+            "created_at": lifecycle_events[0].created_at.isoformat() if lifecycle_events[0].created_at else None,
+            "after": lifecycle_events[0].after_config or {},
+        },
+        "events": [
+            {
+                "id": str(event.id),
+                "action": event.action,
+                "actor_id": str(event.actor_id),
+                "reason": event.reason,
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+                "before": event.before_config or {},
+                "after": event.after_config or {},
+                "patch": event.config_patch or {},
+            }
+            for event in lifecycle_events
+        ],
+        "project_enrollments_url": f"/project-enrollments?projectId={project_id}",
+    }
+
+
 def _project_trace_activity_query(
     db: Session,
     *,
@@ -1740,6 +1804,7 @@ def project_trace_report(
         .all()
     )
     activities = [_activity_trace_row(activity, cycle, stage, farmer, parcel) for activity, cycle, stage, farmer, parcel in activity_rows_raw]
+    enrollment_lifecycle = _project_enrollment_lifecycle_trace(db, tenant_id=x_tenant_id, project_id=project.id)
 
     parcels_by_farmer = defaultdict(int)
     cycles_by_farmer = defaultdict(int)
@@ -1832,6 +1897,7 @@ def project_trace_report(
             {"crop_code": key[0], "stage_code": key[1], "activity_count": value}
             for key, value in sorted(activity_count_by_crop_stage.items())
         ],
+        "enrollment_lifecycle": enrollment_lifecycle,
         "farmers": [
             {
                 "id": str(farmer.id),

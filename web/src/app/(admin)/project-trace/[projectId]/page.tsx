@@ -140,6 +140,38 @@ export default function ProjectTracePage({ params, searchParams }: { params: { p
       <Card label="Variances" value={trace.summary.variance_count} />
     </div>
 
+    <section className="mb-6 rounded bg-white p-5 shadow">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Enrollment lifecycle</h2>
+          <p className="mt-1 text-sm text-gray-500">Project membership status, closure readiness, and latest lifecycle audit events.</p>
+        </div>
+        <Link href={trace.enrollment_lifecycle.project_enrollments_url} className="rounded border px-3 py-2 text-sm text-blue-600">Open enrollments</Link>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
+        {trace.enrollment_lifecycle.status_counts.map((row) => <div key={row.status} className="rounded bg-gray-50 p-3">
+          <p className="text-xs uppercase text-gray-400">{row.status}</p>
+          <p className="mt-1 text-xl font-semibold text-gray-900">{row.count}</p>
+        </div>)}
+      </div>
+      <div className={`mt-4 rounded p-3 text-sm ${trace.enrollment_lifecycle.has_open_enrollments ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-800"}`}>
+        {trace.enrollment_lifecycle.has_open_enrollments ? `${trace.enrollment_lifecycle.active_pending_count} active/pending enrollment(s) remain open.` : "No active/pending project enrollments remain. Farmers without another active project can continue in self-service mode."}
+      </div>
+      {trace.enrollment_lifecycle.latest_event ? <div className="mt-4 rounded border p-3 text-sm">
+        <p className="font-medium text-gray-900">Latest lifecycle event: {trace.enrollment_lifecycle.latest_event.action}</p>
+        <p className="mt-1 text-gray-600">{trace.enrollment_lifecycle.latest_event.reason || "No reason captured"}</p>
+        <p className="mt-1 text-xs text-gray-400">Actor {trace.enrollment_lifecycle.latest_event.actor_id} - {trace.enrollment_lifecycle.latest_event.created_at || "-"}</p>
+      </div> : <p className="mt-4 text-sm text-gray-400">No lifecycle audit events yet.</p>}
+      {trace.enrollment_lifecycle.events.length ? <div className="mt-4 space-y-2">
+        <p className="text-xs font-semibold uppercase text-gray-400">Recent lifecycle audit</p>
+        {trace.enrollment_lifecycle.events.slice(0, 5).map((event) => <div key={event.id} className="rounded bg-gray-50 p-3 text-xs">
+          <div className="font-medium text-gray-900">{event.action}</div>
+          <div className="mt-1 text-gray-600">{event.reason || "No reason captured"}</div>
+          <div className="mt-1 text-gray-400">{event.created_at || "-"}</div>
+        </div>)}
+      </div> : null}
+    </section>
+
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
       <SummaryList title="Crop distribution" rows={trace.crop_distribution.map((row) => `${row.crop_code}: ${row.crop_cycle_count} cycles`)} />
       <SummaryList title="Geometry coverage" rows={trace.geometry_coverage.map((row) => `${row.geometry_source}: ${row.parcel_count} parcels`)} footer={`${trace.summary.geometry_captured_count} captured / ${trace.summary.geometry_missing_count} missing`} />

@@ -238,6 +238,17 @@ def main():
         ).order_by(ProjectAppConfigAuditEvent.created_at.desc()).first()
         check(bulk_audit is not None, "Bulk lifecycle summary is audited")
         check(bulk_audit.after_config["updated_count"] == 2, "Bulk audit stores update count")
+
+        trace_response = client.get(f"/api/v1/reports/projects/{bulk_project_id}/trace", headers=headers)
+        check(trace_response.status_code == 200, "Project trace returns enrollment lifecycle", trace_response.text[:500])
+        trace_payload = trace_response.json()
+        lifecycle = trace_payload["enrollment_lifecycle"]
+        status_counts = {row["status"]: row["count"] for row in lifecycle["status_counts"]}
+        check(status_counts.get("COMPLETED") == 3, "Project trace counts completed enrollments")
+        check(lifecycle["active_pending_count"] == 0, "Project trace shows no open enrollments")
+        check(lifecycle["has_open_enrollments"] is False, "Project trace marks lifecycle closed")
+        check(lifecycle["latest_event"]["action"] == "BULK_UPDATE_PROJECT_ENROLLMENT_STATUS_SUMMARY", "Project trace exposes latest lifecycle audit")
+        check(lifecycle["project_enrollments_url"].endswith(str(bulk_project_id)), "Project trace links to filtered enrollments")
         delete_test_admin(db, editor.id)
 
         invalid = client.get("/api/v1/reports/project-enrollments?status=BAD", headers=headers)

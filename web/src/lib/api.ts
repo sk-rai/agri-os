@@ -676,6 +676,16 @@ export interface ProjectTraceResponse {
   geometry_coverage: Array<{ geometry_source: string; parcel_count: number }>;
   activity_count_by_type: Array<{ activity_type: string; activity_count: number }>;
   activity_count_by_crop_stage: Array<{ crop_code: string; stage_code: string; activity_count: number }>;
+  enrollment_lifecycle: {
+    schema_version: string;
+    status_counts: Array<{ status: string; count: number }>;
+    active_pending_count: number;
+    has_open_enrollments: boolean;
+    total_enrollment_count: number;
+    latest_event?: { id: string; action: string; actor_id: string; reason?: string | null; created_at?: string | null; after: Record<string, unknown> } | null;
+    events: Array<{ id: string; action: string; actor_id: string; reason?: string | null; created_at?: string | null; before: Record<string, unknown>; after: Record<string, unknown>; patch: Record<string, unknown> }>;
+    project_enrollments_url: string;
+  };
   farmers: Array<AdminLookupFarmer & { parcel_count: number }>;
   parcels: AdminLookupParcel[];
   crop_cycles: FarmerTraceCycle[];
