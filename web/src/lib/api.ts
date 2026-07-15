@@ -2616,3 +2616,62 @@ export const fieldEventsApi = {
   },
   detail: (eventId: string) => api<FieldEventReportDto>(`/api/v1/field-events/${eventId}`),
 };
+
+
+// Farmer query threads
+export interface QueryMessageDto {
+  id: string;
+  tenant_id: string;
+  thread_id: string;
+  sender_type: string;
+  sender_id?: string | null;
+  message_type: string;
+  body_text?: string | null;
+  metadata?: Record<string, unknown>;
+  media_attachment_count: number;
+  media_attachments?: MediaAttachmentTrace[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+export interface QueryThreadDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  farmer_id: string;
+  parcel_id?: string | null;
+  crop_cycle_id?: string | null;
+  stage_code?: string | null;
+  subject: string;
+  category: string;
+  priority: string;
+  status: string;
+  assigned_to?: string | null;
+  last_message_at?: string | null;
+  metadata?: Record<string, unknown>;
+  message_count: number;
+  media_attachment_count: number;
+  messages?: QueryMessageDto[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+export interface QueryThreadListResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  threads: QueryThreadDto[];
+}
+export const queryThreadsApi = {
+  list: (params?: { projectId?: string; farmerId?: string; parcelId?: string; status?: string; category?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.farmerId) q.set("farmer_id", params.farmerId);
+    if (params?.parcelId) q.set("parcel_id", params.parcelId);
+    if (params?.status) q.set("status", params.status);
+    if (params?.category) q.set("category", params.category);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<QueryThreadListResponse>(`/api/v1/query-threads${suffix}`);
+  },
+  detail: (threadId: string) => api<QueryThreadDto>(`/api/v1/query-threads/${threadId}`),
+};
