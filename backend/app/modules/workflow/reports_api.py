@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
-from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
+from app.modules.media.models import FieldEventReport, QueryThread, MediaAsset, MediaAttachment
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,

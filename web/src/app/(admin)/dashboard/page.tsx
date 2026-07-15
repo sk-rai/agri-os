@@ -43,6 +43,16 @@ function dashboardActivityHref(data: AdminDashboardResponse, params: Record<stri
   })}`;
 }
 
+function dashboardQueryThreadsHref(data: AdminDashboardResponse | null, params?: { status?: string; priority?: string }) {
+  const q = new URLSearchParams();
+  const projectId = data?.filters?.project_id;
+  if (projectId) q.set("projectId", String(projectId));
+  if (params?.status) q.set("status", params.status);
+  if (params?.priority) q.set("priority", params.priority);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return `/query-threads${suffix}`;
+}
+
 function dashboardFieldEventsHref(data: AdminDashboardResponse | null, params: Record<string, string | number | null | undefined> = {}) {
   return `/field-events${compactQuery({ projectId: data?.filters.project_id, ...params })}`;
 }
@@ -220,6 +230,8 @@ export default function DashboardPage() {
             <StatCard label="Completed cycles" value={summary.completed_cycle_count} tone="green" href={dashboardProjectTraceHref(data, { cycleStatus: "COMPLETED" })} />
             <StatCard label="Activities" value={summary.activity_count} tone="blue" href={dashboardActivityHref(data)} />
             <StatCard label="Field events" value={summary.field_event_count || 0} tone="yellow" href={dashboardFieldEventsHref(data)} />
+            <StatCard label="Open queries" value={summary.open_query_count || 0} tone="purple" href={dashboardQueryThreadsHref(data, { status: "OPEN" })} />
+            <StatCard label="Urgent queries" value={summary.urgent_open_query_count || 0} tone="yellow" href={dashboardQueryThreadsHref(data, { status: "OPEN" })} />
             <StatCard label="Activity cost" value={`INR ${summary.total_cost}`} tone="slate" href={dashboardActivityHref(data)} />
           </div>
 

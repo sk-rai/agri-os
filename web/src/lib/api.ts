@@ -823,6 +823,9 @@ export interface AdminDashboardResponse {
     completed_cycle_count: number;
     activity_count: number;
     field_event_count?: number;
+  query_thread_count?: number;
+  open_query_count?: number;
+  urgent_open_query_count?: number;
     unresolved_field_event_count?: number;
     high_priority_field_event_count?: number;
     total_cost: string;
