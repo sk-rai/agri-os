@@ -554,6 +554,44 @@ def _launch_navigation_decision(farmer: Farmer, enrollments: list[FarmerProjectE
     return "SHOW_HOME"
 
 
+def _farmer_context_payload(
+    enrollments: list[FarmerProjectEnrollment],
+    projects: dict[uuid.UUID, Project],
+) -> dict:
+    active_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "ACTIVE"]
+    completed_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "COMPLETED"]
+    selected_enrollment = active_enrollments[0] if len(active_enrollments) == 1 else None
+    selected_project = projects.get(selected_enrollment.project_id) if selected_enrollment else None
+
+    if len(active_enrollments) > 1:
+        mode = "PROJECT_PICKER"
+        reason = "MULTIPLE_ACTIVE_PROJECTS"
+    elif selected_enrollment:
+        mode = "PROJECT"
+        reason = "ACTIVE_PROJECT_ENROLLMENT"
+    elif completed_enrollments:
+        mode = "SELF_SERVICE"
+        reason = "NO_ACTIVE_PROJECT_AFTER_COMPLETED_PROJECT"
+    else:
+        mode = "SELF_SERVICE"
+        reason = "NO_PROJECT_ENROLLMENT"
+
+    return {
+        "mode": mode,
+        "reason": reason,
+        "can_continue_independently": len(active_enrollments) == 0,
+        "active_project_count": len(active_enrollments),
+        "completed_project_count": len(completed_enrollments),
+        "project_selection_required": len(active_enrollments) > 1,
+        "active_project_candidate": None if not selected_enrollment else _enrollment_payload(selected_enrollment, selected_project),
+        "notes": [
+            "Farmer identity is independent from project participation.",
+            "When no ACTIVE project enrollment exists, Android should continue in SELF_SERVICE context rather than sending the farmer back to registration.",
+            "If a company later enrolls the same farmer, keep the farmer_id/local linkage and add or update a project_enrollment row.",
+        ],
+    }
+
+
 def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer]) -> dict:
     from app.modules.farmer.soil_profile import SoilProfile
     from app.modules.master_data.models import Crop
@@ -638,6 +676,7 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         "parcels": [_parcel_payload(db, parcel) for parcel in parcels],
         "soil_profiles": [_soil_profile_payload(profile) for profile in soil_profiles],
         "project_enrollments": [_enrollment_payload(enrollment, enrollment_projects.get(enrollment.project_id)) for enrollment in project_enrollments],
+        "farmer_context": _farmer_context_payload(project_enrollments, enrollment_projects),
         "crop_cycles": {
             "active": [cycle for cycle in cycle_payloads if cycle["status"] in active_statuses],
             "completed": [cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses],
@@ -1619,8 +1658,8 @@ def get_farmer_launch_context(
     project_ids = [enrollment.project_id for enrollment in enrollments]
     projects = {project.id: project for project in db.query(Project).filter(Project.id.in_(project_ids)).all()} if project_ids else {}
     active_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "ACTIVE"]
-    selected_enrollment = active_enrollments[0] if len(active_enrollments) == 1 else None
-    selected_project = projects.get(selected_enrollment.project_id) if selected_enrollment else None
+    farmer_context = _farmer_context_payload(enrollments, projects)
+    active_project_candidate = farmer_context["active_project_candidate"]
 
     parcel_count = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer_id, Parcel.status != "ARCHIVED").count()
     try:
@@ -1634,8 +1673,8 @@ def get_farmer_launch_context(
     project_selection_required = len(active_enrollments) > 1
 
     bootstrap_endpoint = "/api/v1/app-config/bootstrap"
-    if selected_project:
-        bootstrap_endpoint = f"/api/v1/app-config/bootstrap?project_id={selected_project.id}"
+    if active_project_candidate:
+        bootstrap_endpoint = f"/api/v1/app-config/bootstrap?project_id={active_project_candidate['project_id']}"
 
     return {
         "schema_version": "farmer_launch_context.v1",
@@ -1643,8 +1682,9 @@ def get_farmer_launch_context(
         "tenant_id": x_tenant_id,
         "farmer": _farmer_payload(farmer),
         "project_enrollments": [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in enrollments],
+        "farmer_context": farmer_context,
         "active_project_count": len(active_enrollments),
-        "active_project_candidate": None if not selected_enrollment else _enrollment_payload(selected_enrollment, selected_project),
+        "active_project_candidate": active_project_candidate,
         "project_selection_required": project_selection_required,
         "profile_completion": completion,
         "recommended_navigation": decision,

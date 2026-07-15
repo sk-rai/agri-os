@@ -4,9 +4,11 @@ Validates the Phase 2 enrollment foundation:
 - a direct/self farmer can exist without farmers.project_id
 - farmer can be attached to a project through farmer_project_enrollments
 - first active enrollment backfills legacy farmers.project_id for compatibility
-- hydration includes project_enrollments
+- hydration includes project_enrollments and farmer_context
+- launch context tells Android whether to use project or self-service mode
 - farmer/project listing endpoints expose the membership
 - repeat POST updates the existing membership instead of duplicating it
+- completed project enrollment keeps the farmer usable in independent mode
 """
 
 from datetime import date, datetime, timezone
@@ -145,6 +147,15 @@ def main():
     check(body["summary"]["project_enrollment_count"] == 1, "Hydration summary counts project enrollment")
     check(body["summary"]["active_project_enrollment_count"] == 1, "Hydration summary counts active enrollment")
     check(body["project_enrollments"][0]["project_id"] == str(project_id), "Hydration includes enrollment project id")
+    check(body["farmer_context"]["mode"] == "PROJECT", "Hydration context selects project mode")
+    check(body["farmer_context"]["reason"] == "ACTIVE_PROJECT_ENROLLMENT", "Hydration context explains active project")
+    check(body["farmer_context"]["can_continue_independently"] is False, "Active project farmer is not in independent mode")
+
+    launch_context = client.get(f"/api/v1/farmers/{farmer_id}/launch-context", headers=headers)
+    check(launch_context.status_code == 200, "Launch context returns 200", launch_context.text[:300])
+    launch_body = launch_context.json()
+    check(launch_body["farmer_context"]["mode"] == "PROJECT", "Launch context selects project mode")
+    check(launch_body["active_project_candidate"]["project_id"] == str(project_id), "Launch context exposes active project candidate")
 
     print("\n[3] List endpoints expose membership")
     farmer_list = client.get(f"/api/v1/farmers/{farmer_id}/project-enrollments", headers=headers)
@@ -163,7 +174,7 @@ def main():
             "project_id": str(project_id),
             "enrollment_method": "WEB_ADMIN",
             "enrollment_source": "regression-update",
-            "status": "PENDING",
+            "status": "COMPLETED",
             "parcel_ids": [str(parcel_id)],
             "assigned_user_ids": [],
             "metadata": {"channel": "updated"},
@@ -173,7 +184,21 @@ def main():
     check(update_response.status_code == 201, "Update enrollment returns 201", update_response.text)
     updated = update_response.json()
     check(updated["enrollment_method"] == "WEB_ADMIN", "Enrollment method updated")
-    check(updated["status"] == "PENDING", "Enrollment status updated")
+    check(updated["status"] == "COMPLETED", "Enrollment status updated to completed")
+
+    completed_hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers={"X-Tenant-ID": tenant_id})
+    check(completed_hydration.status_code == 200, "Hydration still works after project completion", completed_hydration.text[:300])
+    completed_body = completed_hydration.json()
+    check(completed_body["summary"]["active_project_enrollment_count"] == 0, "Completed enrollment is no longer active")
+    check(completed_body["farmer_context"]["mode"] == "SELF_SERVICE", "Completed project farmer falls back to self-service mode")
+    check(completed_body["farmer_context"]["reason"] == "NO_ACTIVE_PROJECT_AFTER_COMPLETED_PROJECT", "Self-service reason references completed project")
+    check(completed_body["farmer_context"]["can_continue_independently"] is True, "Farmer can continue independently after project completion")
+
+    completed_launch = client.get(f"/api/v1/farmers/{farmer_id}/launch-context", headers=headers)
+    check(completed_launch.status_code == 200, "Launch context still works after project completion", completed_launch.text[:300])
+    completed_launch_body = completed_launch.json()
+    check(completed_launch_body["farmer_context"]["mode"] == "SELF_SERVICE", "Launch context falls back to self-service mode")
+    check(completed_launch_body["active_project_candidate"] is None, "No active project candidate after completion")
     db = SessionLocal()
     try:
         enrollment_count = db.query(FarmerProjectEnrollment).filter(
