@@ -80,3 +80,48 @@ class MediaAttachment(Base, UUIDPrimaryKey, AuditMixin):
             name="ck_media_attachment_purpose",
         ),
     )
+
+
+class FieldEventReport(Base, UUIDPrimaryKey, AuditMixin):
+    __tablename__ = "field_event_reports"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=False)
+    parcel_id = Column(UUID(as_uuid=True), ForeignKey("parcels.id"))
+    crop_cycle_id = Column(UUID(as_uuid=True), ForeignKey("crop_cycles.id"))
+    stage_code = Column(String(50))
+
+    event_type = Column(String(40), nullable=False)
+    severity = Column(String(20), nullable=False, default="MEDIUM")
+    event_date = Column(DateTime(timezone=True), nullable=False)
+    reported_at = Column(DateTime(timezone=True), nullable=False)
+
+    lat = Column(String(40))
+    lng = Column(String(40))
+    accuracy_meters = Column(String(40))
+    description = Column(Text)
+    estimated_area_affected = Column(String(40))
+    estimated_loss_percent = Column(String(40))
+
+    source = Column(String(40), nullable=False, default="FARMER_ANDROID")
+    external_source = Column(String(100))
+    external_event_id = Column(String(120))
+    status = Column(String(30), nullable=False, default="REPORTED")
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_field_event_tenant", "tenant_id"),
+        Index("idx_field_event_project", "project_id"),
+        Index("idx_field_event_farmer", "farmer_id"),
+        Index("idx_field_event_parcel", "parcel_id"),
+        Index("idx_field_event_cycle", "crop_cycle_id"),
+        Index("idx_field_event_type", "event_type"),
+        Index("idx_field_event_severity", "severity"),
+        Index("idx_field_event_status", "status"),
+        Index("idx_field_event_reported_at", "reported_at"),
+        CheckConstraint("event_type IN ('RAIN', 'PEST', 'DISEASE', 'HAILSTORM', 'LOCUST', 'FLOOD', 'DROUGHT_STRESS', 'THUNDERSTORM_WIND', 'HEAT_STRESS', 'COLD_STRESS', 'IRRIGATION_FAILURE', 'OTHER')", name="ck_field_event_type"),
+        CheckConstraint("severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')", name="ck_field_event_severity"),
+        CheckConstraint("source IN ('FARMER_ANDROID', 'FIELD_AGENT_ANDROID', 'ADMIN_WEB', 'EXTERNAL_API', 'IOT_DEVICE')", name="ck_field_event_source"),
+        CheckConstraint("status IN ('REPORTED', 'UNDER_REVIEW', 'ADVISORY_SENT', 'RESOLVED', 'DISMISSED')", name="ck_field_event_status"),
+    )
