@@ -26,7 +26,7 @@ from app.modules.sync.models import (
     AuditChainEntry,
 )
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
-from app.modules.media.models import FieldEventReport
+from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
 
 
 def _uuid_or_none(value) -> Optional[uuid.UUID]:
@@ -520,6 +520,64 @@ def _validate_tenant_reference(db: Session, tenant_id: str, model, value, label:
         raise ValueError(f"field event sync references unknown {label}")
 
 
+
+def _field_event_attachment_payloads(payload: dict) -> list[dict]:
+    attachments = _first_payload_value(payload, "media_attachments", "mediaAttachments", "attachments")
+    if attachments is None:
+        return []
+    if not isinstance(attachments, list):
+        raise ValueError("field event media_attachments must be a list")
+    return attachments
+
+
+def _materialize_field_event_media_attachments(db: Session, tenant_id: str, report_id: uuid.UUID, payload: dict, timestamp: datetime) -> None:
+    for index, item in enumerate(_field_event_attachment_payloads(payload)):
+        if not isinstance(item, dict):
+            raise ValueError("field event media attachment must be an object")
+        asset_id = _uuid_or_none(_first_payload_value(item, "media_asset_id", "mediaAssetId", "asset_id", "assetId"))
+        if not asset_id:
+            raise ValueError("field event media attachment requires media_asset_id")
+        asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id, MediaAsset.tenant_id == tenant_id).first()
+        if not asset:
+            raise ValueError(f"field event sync references unknown media asset {asset_id}")
+
+        attachment_id = _uuid_or_none(_first_payload_value(item, "id", "attachment_id", "attachmentId"))
+        query = db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id)
+        if attachment_id:
+            attachment = query.filter(MediaAttachment.id == attachment_id).first()
+        else:
+            attachment = query.filter(
+                MediaAttachment.media_asset_id == asset_id,
+                MediaAttachment.entity_type == "FIELD_EVENT",
+                MediaAttachment.entity_id == report_id,
+            ).first()
+
+        if not attachment:
+            attachment = MediaAttachment(
+                id=attachment_id or uuid.uuid4(),
+                tenant_id=tenant_id,
+                media_asset_id=asset_id,
+                entity_type="FIELD_EVENT",
+                entity_id=report_id,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+            db.add(attachment)
+
+        attachment.media_asset_id = asset_id
+        attachment.entity_type = "FIELD_EVENT"
+        attachment.entity_id = report_id
+        attachment.purpose = str(_first_payload_value(item, "purpose") or attachment.purpose or "GENERAL").upper()
+        attachment.caption = _string_or_none(_first_payload_value(item, "caption"))
+        attachment.display_order = int(_first_payload_value(item, "display_order", "displayOrder") or index)
+        attachment.is_primary = bool(_first_payload_value(item, "is_primary", "isPrimary") or False)
+        metadata = _first_payload_value(item, "metadata", "metadata_")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError("field event media attachment metadata must be an object")
+        attachment.metadata_ = metadata or attachment.metadata_ or {}
+        attachment.updated_at = timestamp
+
+
 def _materialize_field_event_report_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
     """Upsert accepted offline field event reports into operational table."""
     payload = event.payload or {}
@@ -587,6 +645,7 @@ def _materialize_field_event_report_event(db: Session, tenant_id: str, event: Sy
     report.metadata_ = metadata or report.metadata_ or {}
     report.is_active = report.status != "DISMISSED"
     report.updated_at = now_ts
+    _materialize_field_event_media_attachments(db, tenant_id, report.id, payload, now_ts)
 
 
 def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:

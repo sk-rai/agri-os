@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
-from app.modules.media.models import FieldEventReport
+from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
 from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessedEvent
 
 
@@ -39,6 +39,7 @@ def main():
     project_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     report_id = uuid.uuid4()
+    media_asset_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
 
     db = SessionLocal()
@@ -50,6 +51,8 @@ def main():
         db.add(Farmer(id=farmer_id, tenant_id=tenant_id, mobile_number=f"+9198{uuid.uuid4().int % 100000000:08d}", display_name="Field Event Farmer", village_name_manual="Event Village", status="ACTIVE", created_at=now(), updated_at=now()))
         db.flush()
         db.add(Parcel(id=parcel_id, tenant_id=tenant_id, farmer_id=farmer_id, village_name_manual="Event Village", reported_area=5, reported_area_unit="ACRE", ownership_type="OWNED", status="ACTIVE", created_at=now(), updated_at=now()))
+        db.flush()
+        db.add(MediaAsset(id=media_asset_id, tenant_id=tenant_id, project_id=project_id, farmer_id=farmer_id, uploaded_by=uuid.UUID(actor_id), media_type="AUDIO", mime_type="audio/mpeg", upload_status="UPLOADED", storage_key="sync-field-events/audio-note.mp3", created_at=now(), updated_at=now()))
         db.commit()
     finally:
         db.close()
@@ -84,6 +87,13 @@ def main():
                     "source": "farmer_android",
                     "status": "reported",
                     "metadata": {"offline": True},
+                    "media_attachments": [{
+                        "media_asset_id": str(media_asset_id),
+                        "purpose": "AUDIO_NOTE",
+                        "caption": "Offline farmer audio note",
+                        "is_primary": True,
+                        "metadata": {"source": "android_room"},
+                    }],
                 },
                 "version": 1,
                 "dependency_ids": [],
@@ -108,6 +118,10 @@ def main():
         check(report.source == "FARMER_ANDROID", "Source normalized")
         check(report.status == "REPORTED", "Status normalized")
         check(report.metadata_ == {"offline": True}, "Metadata stored")
+        attachment = db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id, MediaAttachment.entity_type == "FIELD_EVENT", MediaAttachment.entity_id == report_id).first()
+        check(attachment is not None, "Field event media attachment is materialized")
+        check(attachment.media_asset_id == media_asset_id, "Attachment links synced media asset")
+        check(attachment.purpose == "AUDIO_NOTE", "Attachment stores purpose")
     finally:
         db.close()
 
@@ -153,9 +167,16 @@ def main():
     list_response = client.get(f"/api/v1/field-events?farmer_id={farmer_id}", headers={"X-Tenant-ID": tenant_id})
     check(list_response.status_code == 200, "Field events API lists synced report", list_response.text[:300])
     check(list_response.json()["events"][0]["id"] == str(report_id), "List response preserves report id")
+    detail_response = client.get(f"/api/v1/field-events/{report_id}", headers={"X-Tenant-ID": tenant_id})
+    check(detail_response.status_code == 200, "Field event detail returns synced attachment", detail_response.text[:300])
+    detail = detail_response.json()
+    check(detail["media_attachment_count"] == 1, "Detail counts synced media attachment")
+    check(detail["media_attachments"][0]["asset"]["media_type"] == "AUDIO", "Detail embeds synced audio asset")
 
     db = SessionLocal()
     try:
+        db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(MediaAsset).filter(MediaAsset.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(FieldEventReport).filter(FieldEventReport.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(SyncProcessedEvent).filter(SyncProcessedEvent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(SyncConflict).filter(SyncConflict.tenant_id == tenant_id).delete(synchronize_session=False)
