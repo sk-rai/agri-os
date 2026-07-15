@@ -120,6 +120,7 @@ export default function ProfileFormsPage() {
 
     {context && !loading ? <>
       <ContextPanel context={context} />
+      <RuntimeConfigPanel context={context} />
       <ProfileFlagControls
         context={context}
         projectId={projectId}
@@ -162,6 +163,60 @@ function ContextPanel({ context }: { context: EffectiveContext }) {
     </div>
     {sources ? <div className="mt-4 rounded bg-gray-50 p-3">
       <p className="text-xs font-semibold uppercase text-gray-400">Config section sources</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        {Object.entries(sources).map(([section, source]) => <span key={section} className="rounded bg-white px-2 py-1 text-gray-700">{section}: <b>{source}</b></span>)}
+      </div>
+    </div> : null}
+  </section>;
+}
+
+function RuntimeConfigPanel({ context }: { context: EffectiveContext }) {
+  const isProjectContext = "effective_config" in context;
+  const effective = isProjectContext ? context.effective_config : context;
+  const branding = (effective.branding || {}) as Record<string, unknown>;
+  const localization = (effective.localization || {}) as Record<string, unknown>;
+  const units = (effective.units || {}) as Record<string, unknown>;
+  const selfService = (effective.self_service || {}) as Record<string, unknown>;
+  const featureFlags = ((isProjectContext ? effective.feature_flags : context.feature_flags) || {}) as Record<string, boolean>;
+  const enabledModules = ((effective.enabled_modules || []) as string[]);
+  const sources = isProjectContext ? context.section_sources : null;
+  const flags = Object.entries(featureFlags).sort(([a], [b]) => a.localeCompare(b));
+
+  return <section className="mt-6 rounded bg-white p-5 shadow">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Runtime app configuration</h2>
+        <p className="mt-1 text-sm text-gray-500">Read-only Android/web bootstrap view for white-labelling, locale, units, modules, and feature flags.</p>
+      </div>
+      <span className="rounded bg-blue-50 px-3 py-1 text-xs text-blue-700">{isProjectContext ? "Effective project config" : "Tenant/default bootstrap"}</span>
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <Mini label="App name" value={textValue(branding.app_name)} />
+      <Mini label="Primary color" value={textValue(branding.primary_color)} />
+      <Mini label="Default language" value={textValue(localization.default_language)} />
+      <Mini label="Country/timezone" value={[textValue(localization.country_code), textValue(localization.timezone)].filter((value) => value !== "-").join(" / ") || "-"} />
+      <Mini label="Currency" value={textValue(units.currency)} />
+      <Mini label="Area unit" value={textValue(units.default_area_unit)} />
+      <Mini label="Self registration" value={selfService.allow_direct_farmer_registration === false ? "Disabled" : "Allowed"} />
+      <Mini label="Project invite required" value={selfService.requires_project_invite ? "Yes" : "No"} />
+    </div>
+    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="rounded border p-4">
+        <p className="text-xs font-semibold uppercase text-gray-400">Enabled modules</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {enabledModules.map((module) => <span key={module} className="rounded bg-green-50 px-2 py-1 text-xs text-green-700">{module}</span>)}
+          {enabledModules.length === 0 ? <span className="text-sm text-gray-400">No modules advertised.</span> : null}
+        </div>
+      </div>
+      <div className="rounded border p-4">
+        <p className="text-xs font-semibold uppercase text-gray-400">Feature flags</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {flags.map(([flag, enabled]) => <span key={flag} className={`rounded px-2 py-1 text-xs ${enabled ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>{flag}: <b>{enabled ? "ON" : "OFF"}</b></span>)}
+        </div>
+      </div>
+    </div>
+    {sources ? <div className="mt-4 rounded bg-gray-50 p-3">
+      <p className="text-xs font-semibold uppercase text-gray-400">Effective section source</p>
       <div className="mt-2 flex flex-wrap gap-2 text-xs">
         {Object.entries(sources).map(([section, source]) => <span key={section} className="rounded bg-white px-2 py-1 text-gray-700">{section}: <b>{source}</b></span>)}
       </div>
@@ -322,4 +377,11 @@ function FieldRow({ field }: { field: FormFieldContract }) {
 
 function Mini({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return <div className="rounded bg-gray-50 p-2"><div className="text-[10px] uppercase tracking-wide text-gray-400">{label}</div><div className={`mt-1 break-all font-medium text-gray-900 ${mono ? "font-mono text-[11px]" : ""}`}>{value}</div></div>;
+}
+
+function textValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
