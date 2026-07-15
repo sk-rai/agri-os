@@ -12,6 +12,7 @@ The next platform step is to bring farmer profile, land parcel, soil profile, me
 
 See also: [Backend-driven profile form contracts](profile-form-contracts.md) for the current farmer/parcel/soil form rendering contract and rollout semantics.
 See also: [Runtime app configuration and white-labelling contract](runtime-app-config-and-whitelabel.md) for bootstrap, branding, locale, unit, module, and feature-flag semantics.
+See also: [Media, communication, and field-event foundation](media-communication-field-events-foundation.md) for the next evidence/advisory/query/event module family.
 
 ## Current backend foundation
 
