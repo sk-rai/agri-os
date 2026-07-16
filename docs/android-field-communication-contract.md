@@ -434,6 +434,22 @@ Query audit includes:
 
 \- before/after snapshots where applicable.
 
+\## Broadcast/advisory Android contract
+
+
+
+The broadcast/advisory module supports backend-authored multimedia advisories targeted to farmers through generated delivery rows.
+
+
+
+Current Android-facing endpoint:
+
+
+
+```text
+
+GET /api/v1/broadcasts/farmers/{farmer\_id}/broadcasts?language\_code=hi\&include\_read=true
+
 
 
 \## Future broadcast/advisory targeting
