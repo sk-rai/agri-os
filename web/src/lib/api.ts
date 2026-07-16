@@ -846,6 +846,9 @@ export interface AdminDashboardResponse {
       product_csv_import_invalid_count?: number;
       project_enrollment_csv_import_pending_count?: number;
       project_enrollment_csv_import_invalid_count?: number;
+      broadcast_draft_count?: number;
+      broadcast_published_count?: number;
+      broadcast_pending_delivery_count?: number;
     };
   };
   crop_distribution: Array<{ crop_code: string; crop_cycle_count: number }>;

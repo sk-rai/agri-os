@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
-from app.modules.media.models import FieldEventReport, QueryThread, MediaAsset, MediaAttachment
+from app.modules.media.models import BroadcastAuditEvent, BroadcastCampaign, BroadcastDelivery, FieldEventReport, QueryThread, MediaAsset, MediaAttachment
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -1033,6 +1033,17 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
     enrollment_csv_pending_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "VALIDATED").count()
     enrollment_csv_invalid_count = enrollment_import_query.filter(FarmerProjectEnrollmentImportBatch.status == "INVALID").count()
 
+    broadcast_query = db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True)
+    if project_id:
+        broadcast_query = broadcast_query.filter(BroadcastCampaign.project_id == project_id)
+    broadcast_draft_count = broadcast_query.filter(BroadcastCampaign.status == "DRAFT").count()
+    broadcast_published_count = broadcast_query.filter(BroadcastCampaign.status == "PUBLISHED").count()
+    broadcast_delivery_query = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id)
+    if project_id:
+        campaign_ids = [row[0] for row in db.query(BroadcastCampaign.id).filter(BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.project_id == project_id).all()]
+        broadcast_delivery_query = broadcast_delivery_query.filter(BroadcastDelivery.campaign_id.in_(campaign_ids or [uuid.uuid4()]))
+    broadcast_pending_delivery_count = broadcast_delivery_query.filter(BroadcastDelivery.delivery_status == "PENDING").count()
+
     return {
         "draft_workflow_count": len(draft_rows),
         "workflow_validation_blocker_count": validation_blocker_count,
@@ -1047,6 +1058,9 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
         "product_csv_import_invalid_count": product_csv_invalid_count,
         "project_enrollment_csv_import_pending_count": enrollment_csv_pending_count,
         "project_enrollment_csv_import_invalid_count": enrollment_csv_invalid_count,
+        "broadcast_draft_count": broadcast_draft_count,
+        "broadcast_published_count": broadcast_published_count,
+        "broadcast_pending_delivery_count": broadcast_pending_delivery_count,
     }
 
 def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities, field_events, admin_backlog):
@@ -1266,6 +1280,14 @@ def system_readiness_report(
     profile_required_field_count = sum(1 for schema in profile_form_schemas for field in schema.fields if field.required)
     profile_gps_field_count = sum(1 for schema in profile_form_schemas for field in schema.fields if field.type.startswith("GPS"))
 
+    broadcast_query = db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True)
+    if project_id:
+        broadcast_query = broadcast_query.filter(BroadcastCampaign.project_id == project_id)
+    broadcast_campaign_count = broadcast_query.count()
+    broadcast_published_count = broadcast_query.filter(BroadcastCampaign.status == "PUBLISHED").count()
+    broadcast_delivery_count = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id).count()
+    broadcast_audit_count = db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == x_tenant_id).count()
+
     backlog = _admin_backlog_counts(db, tenant_id=x_tenant_id, project_id=project_id)
     sync_payload = sync_materialization_health_report(
         project_id=project_id,
@@ -1291,6 +1313,7 @@ def system_readiness_report(
         _readiness_item("PROFILE_FORMS", "Profile forms", not profile_form_missing and profile_gps_field_count >= 2, f"{len(profile_form_schemas)} profile forms, {profile_required_field_count} required fields, {profile_gps_field_count} GPS widgets, missing: {', '.join(profile_form_missing) if profile_form_missing else 'none'}", "/profile-forms"),
         _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
         _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0 and active_package_count > 0 and product_import_invalid_count == 0, f"{manufacturer_count} manufacturers, {active_product_count} active products/brands, {active_package_count} active packages, {product_import_invalid_count} invalid import batches, {product_import_pending_count} pending apply", "/products", "WARN" if product_import_invalid_count else "INFO"),
+        _readiness_item("BROADCASTS", "Broadcasts", broadcast_campaign_count > 0 and (broadcast_published_count > 0 or not project_id), f"{broadcast_campaign_count} campaigns, {broadcast_published_count} published, {broadcast_delivery_count} deliveries, {broadcast_audit_count} audit events", "/broadcasts", "INFO"),
         _readiness_item("PROJECT_ENROLLMENT_IMPORTS", "Project enrollment imports", enrollment_import_invalid_count == 0, f"{enrollment_import_invalid_count} invalid import batches, {enrollment_import_pending_count} pending apply", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if enrollment_import_invalid_count else "INFO"),
         _readiness_item("PROJECT_ENROLLMENT_LIFECYCLE", "Project enrollment lifecycle", (not project_id) or enrollment_open_count == 0, f"{enrollment_open_count} active/pending enrollment rows, {enrollment_total_count} total", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if project_id else "INFO"),
         _readiness_item("FARMER_SYNC", "Farmer sync", farmer_count > 0, f"{farmer_count} farmers materialized", lookup_href),

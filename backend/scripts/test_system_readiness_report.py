@@ -23,6 +23,7 @@ REQUIRED_CHECKS = {
     "PROFILE_FORMS",
     "INPUT_CATALOG",
     "PRODUCT_CATALOG",
+    "BROADCASTS",
     "PROJECT_ENROLLMENT_IMPORTS",
     "PROJECT_ENROLLMENT_LIFECYCLE",
     "FARMER_SYNC",
@@ -113,6 +114,9 @@ def main():
         check("manufacturers" in by_code["PRODUCT_CATALOG"]["detail"], "product catalog readiness reports manufacturer detail")
         check("active packages" in by_code["PRODUCT_CATALOG"]["detail"], "product catalog readiness reports package detail")
         check("pending apply" in by_code["PRODUCT_CATALOG"]["detail"], "product catalog readiness reports pending import detail")
+        check(by_code["BROADCASTS"]["href"] == "/broadcasts", "broadcast readiness links to broadcasts admin")
+        check("campaigns" in by_code["BROADCASTS"]["detail"], "broadcast readiness reports campaign detail")
+        check("deliveries" in by_code["BROADCASTS"]["detail"], "broadcast readiness reports delivery detail")
         dashboard_response = client.get("/api/v1/reports/admin-dashboard", headers=headers)
         check(dashboard_response.status_code == 200, "admin dashboard returns product backlog fields", dashboard_response.text[:300])
         backlog = dashboard_response.json()["summary"]["admin_backlog"]
@@ -120,6 +124,9 @@ def main():
         check("product_csv_import_invalid_count" in backlog, "dashboard backlog reports invalid product CSV imports")
         check("project_enrollment_csv_import_pending_count" in backlog, "dashboard backlog reports pending project enrollment CSV imports")
         check("project_enrollment_csv_import_invalid_count" in backlog, "dashboard backlog reports invalid project enrollment CSV imports")
+        check("broadcast_draft_count" in backlog, "dashboard backlog reports draft broadcasts")
+        check("broadcast_published_count" in backlog, "dashboard backlog reports published broadcasts")
+        check("broadcast_pending_delivery_count" in backlog, "dashboard backlog reports pending broadcast deliveries")
 
         project = create_project(db)
         readiness_farmer = Farmer(
