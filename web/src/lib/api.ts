@@ -2821,6 +2821,30 @@ export interface BroadcastDeliveriesResponse {
   deliveries: BroadcastDeliveryDto[];
 }
 
+export interface BroadcastAuditEventDto {
+  id: string;
+  tenant_id: string;
+  campaign_id: string;
+  delivery_id?: string | null;
+  action: string;
+  actor_type?: string | null;
+  actor_id?: string | null;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  reason?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export interface BroadcastAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  campaign_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  events: BroadcastAuditEventDto[];
+}
+
 export const broadcastsApi = {
   list: (params?: { projectId?: string; status?: string; category?: string; priority?: string; limit?: number }) => {
     const q = new URLSearchParams();
@@ -2853,6 +2877,13 @@ export const broadcastsApi = {
     if (params?.limit) q.set("limit", String(params.limit));
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<BroadcastDeliveriesResponse>(`/api/v1/broadcasts/${campaignId}/deliveries${suffix}`);
+  },
+  audit: (campaignId: string, params?: { action?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.action) q.set("action", params.action);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<BroadcastAuditResponse>(`/api/v1/broadcasts/${campaignId}/audit${suffix}`);
   },
 
 };

@@ -271,3 +271,23 @@ class BroadcastDelivery(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     campaign = relationship("BroadcastCampaign")
+
+class BroadcastAuditEvent(Base):
+    __tablename__ = "broadcast_audit_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("broadcast_campaigns.id"), nullable=False, index=True)
+    delivery_id = Column(UUID(as_uuid=True), ForeignKey("broadcast_deliveries.id"), nullable=True, index=True)
+    action = Column(String(50), nullable=False, index=True)
+    actor_type = Column(String(50), nullable=True)
+    actor_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    before = Column(JSONB, nullable=True)
+    after = Column(JSONB, nullable=True)
+    reason = Column(Text, nullable=True)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    campaign = relationship("BroadcastCampaign")
+    delivery = relationship("BroadcastDelivery")
+

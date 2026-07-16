@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { broadcastsApi, type BroadcastAudiencePreviewResponse, type BroadcastCampaignDto, type BroadcastCampaignListResponse, type BroadcastDeliveriesResponse } from "@/lib/api";
+import { broadcastsApi, type BroadcastAuditResponse, type BroadcastAudiencePreviewResponse, type BroadcastCampaignDto, type BroadcastCampaignListResponse, type BroadcastDeliveriesResponse } from "@/lib/api";
 
 const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"];
 const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
@@ -33,6 +33,8 @@ export default function BroadcastsPage() {
   const [deliveries, setDeliveries] = useState<BroadcastDeliveriesResponse | null>(null);
   const [deliveryStatus, setDeliveryStatus] = useState("");
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  const [audit, setAudit] = useState<BroadcastAuditResponse | null>(null);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +51,7 @@ export default function BroadcastsPage() {
       setSelected(null);
       setAudiencePreview(null);
       setDeliveries(null);
+      setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load broadcasts");
     } finally {
@@ -95,6 +98,7 @@ export default function BroadcastsPage() {
       setSelected(created);
       setAudiencePreview(null);
       setDeliveries(null);
+      setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create draft broadcast");
     } finally {
@@ -112,6 +116,7 @@ export default function BroadcastsPage() {
       setSelected(published);
       setAudiencePreview(null);
       setDeliveries(null);
+      setAudit(null);
       setPublishReason("");
       await load();
     } catch (e) {
@@ -129,6 +134,7 @@ export default function BroadcastsPage() {
       setSelected(updated);
       setAudiencePreview(null);
       setDeliveries(null);
+      setAudit(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate deliveries");
@@ -161,12 +167,25 @@ export default function BroadcastsPage() {
     }
   }
 
+  async function loadAudit(campaignId: string) {
+    setLoadingAudit(true);
+    setError(null);
+    try {
+      setAudit(await broadcastsApi.audit(campaignId, { limit: 100 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load broadcast audit history");
+    } finally {
+      setLoadingAudit(false);
+    }
+  }
+
   async function openDetail(campaignId: string) {
     setError(null);
     try {
       setSelected(await broadcastsApi.detail(campaignId));
       setAudiencePreview(null);
       setDeliveries(null);
+      setAudit(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load broadcast detail");
     }
@@ -235,7 +254,7 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} audit={audit} loadingAudit={loadingAudit} onLoadAudit={loadAudit} />
     </div> : null}
   </div>;
 }
@@ -256,6 +275,9 @@ function BroadcastDetail({
   setDeliveryStatus,
   loadingDeliveries,
   onLoadDeliveries,
+  audit,
+  loadingAudit,
+  onLoadAudit,
 }: {
   campaign: BroadcastCampaignDto | null;
   publishReason: string;
@@ -272,6 +294,9 @@ function BroadcastDetail({
   setDeliveryStatus: (value: string) => void;
   loadingDeliveries: boolean;
   onLoadDeliveries: (campaignId: string, status?: string) => Promise<void>;
+  audit: BroadcastAuditResponse | null;
+  loadingAudit: boolean;
+  onLoadAudit: (campaignId: string) => Promise<void>;
 }) {
   if (!campaign) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a campaign to inspect content, audience rules, delivery summary, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
@@ -380,6 +405,28 @@ function BroadcastDetail({
       </div> : <p className="text-xs text-gray-400">Load deliveries to inspect recipient-level status.</p>}
     </Section>
 
+
+    <Section title="Audit history">
+      <button type="button" onClick={() => void onLoadAudit(campaign.id)} disabled={loadingAudit} className="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{loadingAudit ? "Loading..." : "Load audit"}</button>
+      {audit ? <div className="rounded border">
+        <div className="border-b bg-gray-50 p-2 text-xs text-gray-500">{audit.count} audit event(s) returned.</div>
+        <div className="max-h-72 overflow-auto divide-y">
+          {audit.events.map((event) => <div key={event.id} className="p-3 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-gray-900">{event.action}</span>
+              <span className="text-gray-400">{event.created_at || "-"}</span>
+            </div>
+            <div className="mt-1 text-gray-500">{event.actor_type || "-"} / {event.actor_id || "-"}</div>
+            {event.reason ? <div className="mt-1 text-amber-700">Reason: {event.reason}</div> : null}
+            <details className="mt-2">
+              <summary className="cursor-pointer text-gray-500">Payload</summary>
+              <pre className="mt-1 max-h-36 overflow-auto rounded bg-gray-950 p-2 text-[10px] text-gray-100">{JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}</pre>
+            </details>
+          </div>)}
+          {audit.events.length === 0 ? <div className="p-4 text-center text-xs text-gray-400">No audit events.</div> : null}
+        </div>
+      </div> : <p className="text-xs text-gray-400">Load audit to inspect create/publish/delivery/read/ack history.</p>}
+    </Section>
     <details className="mt-4 text-xs">
       <summary className="cursor-pointer text-gray-500">Metadata JSON</summary>
       <pre className="mt-2 max-h-72 overflow-auto rounded bg-gray-950 p-3 text-[11px] text-gray-100">{JSON.stringify(campaign.metadata || {}, null, 2)}</pre>

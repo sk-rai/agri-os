@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer
 from app.modules.media.api import _iso
-from app.modules.media.models import BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
+from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
 
 router = APIRouter(prefix="/api/v1/broadcasts", tags=["broadcasts"])
 
@@ -170,6 +170,55 @@ def _delivery_summary(rows: list[BroadcastDelivery]) -> dict:
     }
 
 
+def _audit_payload(row: BroadcastAuditEvent) -> dict:
+    return {
+        "id": str(row.id),
+        "tenant_id": row.tenant_id,
+        "campaign_id": str(row.campaign_id),
+        "delivery_id": str(row.delivery_id) if row.delivery_id else None,
+        "action": row.action,
+        "actor_type": row.actor_type,
+        "actor_id": str(row.actor_id) if row.actor_id else None,
+        "before": row.before or {},
+        "after": row.after or {},
+        "reason": row.reason,
+        "metadata": row.metadata_ or {},
+        "created_at": _iso(row.created_at),
+    }
+
+
+def _record_broadcast_audit(
+    db: Session,
+    *,
+    tenant_id: str,
+    campaign_id: uuid.UUID,
+    action: str,
+    delivery_id: uuid.UUID | None = None,
+    actor_type: str | None = None,
+    actor_id: uuid.UUID | None = None,
+    before: dict | None = None,
+    after: dict | None = None,
+    reason: str | None = None,
+    metadata: dict | None = None,
+):
+    from datetime import datetime, timezone
+
+    db.add(BroadcastAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        campaign_id=campaign_id,
+        delivery_id=delivery_id,
+        action=action,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        before=before or {},
+        after=after or {},
+        reason=reason,
+        metadata_=metadata or {},
+        created_at=datetime.now(timezone.utc),
+    ))
+
+
 def _campaign_payload(row: BroadcastCampaign, *, content_count: int = 0, rule_count: int = 0, delivery_count: int = 0) -> dict:
     return {
         "id": str(row.id),
@@ -247,6 +296,7 @@ def create_broadcast_campaign(
             created_at=now_ts,
         ))
 
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="CREATE_CAMPAIGN", actor_type="ADMIN_WEB", actor_id=body.created_by, after={"status": campaign.status, "title": campaign.title, "category": campaign.category, "priority": campaign.priority}, metadata={"content_count": len(body.contents), "audience_rule_count": len(body.audience_rules)})
     db.commit()
     db.refresh(campaign)
     payload = _campaign_payload(campaign, content_count=len(body.contents), rule_count=len(body.audience_rules), delivery_count=0)
@@ -422,6 +472,7 @@ def publish_broadcast_campaign(
     metadata["delivery_generation"] = "NOT_STARTED"
     campaign.metadata_ = metadata
     campaign.updated_at = now_ts
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="PUBLISH_CAMPAIGN", actor_type="ADMIN_WEB", actor_id=campaign.approved_by, before={"status": "DRAFT"}, after={"status": campaign.status, "starts_at": _iso(campaign.starts_at)}, reason=body.reason if body else None, metadata={"content_count": content_count})
     db.commit()
     db.refresh(campaign)
 
@@ -486,6 +537,7 @@ def generate_broadcast_deliveries(
     metadata["last_delivery_generation_at"] = now_ts.isoformat()
     campaign.metadata_ = metadata
     campaign.updated_at = now_ts
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="GENERATE_DELIVERIES", actor_type="ADMIN_WEB", after={"created": created, "total_targeted": len(farmer_ids)}, metadata={"unsupported_rule_count": resolved.get("unsupported_rule_count", 0)})
     db.commit()
     db.refresh(campaign)
     return _broadcast_detail_payload(db, campaign, x_tenant_id)
@@ -564,6 +616,32 @@ def preview_broadcast_audience(
     }
 
 
+@router.get("/{campaign_id}/audit")
+def list_broadcast_audit_events(
+    campaign_id: uuid.UUID,
+    action: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+
+    query = db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == x_tenant_id, BroadcastAuditEvent.campaign_id == campaign.id)
+    if action:
+        query = query.filter(BroadcastAuditEvent.action == action.upper())
+    rows = query.order_by(BroadcastAuditEvent.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "broadcast_audit_events.v1",
+        "tenant_id": x_tenant_id,
+        "campaign_id": str(campaign.id),
+        "filters": {"action": action.upper() if action else None, "limit": limit},
+        "count": len(rows),
+        "events": [_audit_payload(row) for row in rows],
+    }
+
+
 @router.get("/{campaign_id}")
 def get_broadcast_campaign(
     campaign_id: uuid.UUID,
@@ -614,6 +692,7 @@ def mark_broadcast_delivery_read(
     if delivery.delivery_status == "PENDING":
         delivery.delivery_status = "DELIVERED"
     delivery.updated_at = now_ts
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=delivery.campaign_id, delivery_id=delivery.id, action="MARK_DELIVERY_READ", actor_type="FARMER", actor_id=delivery.farmer_id, before={"delivery_status": "PENDING"}, after={"delivery_status": delivery.delivery_status})
     db.commit()
     db.refresh(delivery)
     return _delivery_payload(delivery)
@@ -640,6 +719,7 @@ def acknowledge_broadcast_delivery(
         delivery.acknowledged_at = now_ts
     delivery.delivery_status = "ACKNOWLEDGED"
     delivery.updated_at = now_ts
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=delivery.campaign_id, delivery_id=delivery.id, action="ACKNOWLEDGE_DELIVERY", actor_type="FARMER", actor_id=delivery.farmer_id, before={"delivery_status": "DELIVERED"}, after={"delivery_status": delivery.delivery_status})
     db.commit()
     db.refresh(delivery)
     return _delivery_payload(delivery)

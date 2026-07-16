@@ -9,10 +9,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
 
-from app.core.database import SessionLocal
+from app.core.database import engine, SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Project, Tenant
-from app.modules.media.models import BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
+from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
 
 
 def now():
@@ -43,6 +43,8 @@ def main():
     crop_farmer_id = uuid.uuid4()
     crop_parcel_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id}
+
+    BroadcastAuditEvent.__table__.create(bind=engine, checkfirst=True)
 
     db = SessionLocal()
     try:
@@ -375,6 +377,21 @@ def main():
     check(ack_body["acknowledged_at"] is not None, "Acknowledge endpoint sets acknowledged_at")
     check(ack_body["delivery_status"] == "ACKNOWLEDGED", "Acknowledge endpoint marks delivery acknowledged")
 
+    print("\n[1f] Broadcast audit history")
+    audit = client.get(f"/api/v1/broadcasts/{created_id}/audit", headers=headers)
+    check(audit.status_code == 200, "Broadcast audit returns 200", audit.text)
+    audit_body = audit.json()
+    check(audit_body["schema_version"] == "broadcast_audit_events.v1", "Broadcast audit schema stable")
+    actions = {row["action"] for row in audit_body["events"]}
+    check("CREATE_CAMPAIGN" in actions, "Broadcast audit includes create")
+    check("PUBLISH_CAMPAIGN" in actions, "Broadcast audit includes publish")
+    check("GENERATE_DELIVERIES" in actions, "Broadcast audit includes delivery generation")
+    check("MARK_DELIVERY_READ" in actions, "Broadcast audit includes read")
+    check("ACKNOWLEDGE_DELIVERY" in actions, "Broadcast audit includes acknowledgement")
+    filtered_audit = client.get(f"/api/v1/broadcasts/{created_id}/audit?action=PUBLISH_CAMPAIGN", headers=headers)
+    check(filtered_audit.status_code == 200, "Broadcast audit action filter returns 200", filtered_audit.text)
+    check(filtered_audit.json()["count"] == 1, "Broadcast audit action filter narrows results")
+
     isolated_ack = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge", headers={"X-Tenant-ID": "default"})
     check(isolated_ack.status_code == 404, "Delivery acknowledgement is tenant isolated", isolated_ack.text)
     republish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={})
@@ -404,6 +421,7 @@ def main():
 
     db = SessionLocal()
     try:
+        db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
