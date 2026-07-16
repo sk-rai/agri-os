@@ -198,3 +198,76 @@ class QueryThreadAudit(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     thread = relationship("QueryThread")
+
+
+class BroadcastCampaign(Base):
+    __tablename__ = "broadcast_campaigns"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    title = Column(String(200), nullable=False)
+    category = Column(String(50), nullable=False, default="GENERAL")
+    priority = Column(String(30), nullable=False, default="NORMAL")
+    status = Column(String(30), nullable=False, default="DRAFT")
+    starts_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), nullable=True, index=True)
+    approved_by = Column(UUID(as_uuid=True), nullable=True, index=True)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class BroadcastContent(Base):
+    __tablename__ = "broadcast_contents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("broadcast_campaigns.id"), nullable=False, index=True)
+    language_code = Column(String(20), nullable=False, default="en")
+    title = Column(String(200), nullable=False)
+    body_text = Column(Text, nullable=True)
+    cta_label = Column(String(100), nullable=True)
+    deeplink_url = Column(String(500), nullable=True)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    campaign = relationship("BroadcastCampaign")
+
+
+class BroadcastAudienceRule(Base):
+    __tablename__ = "broadcast_audience_rules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("broadcast_campaigns.id"), nullable=False, index=True)
+    rule_type = Column(String(50), nullable=False)
+    operator = Column(String(30), nullable=False, default="IN")
+    values = Column(JSONB, default=list)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    campaign = relationship("BroadcastCampaign")
+
+
+class BroadcastDelivery(Base):
+    __tablename__ = "broadcast_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("broadcast_campaigns.id"), nullable=False, index=True)
+    farmer_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    delivery_status = Column(String(30), nullable=False, default="PENDING")
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    failure_reason = Column(Text, nullable=True)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    campaign = relationship("BroadcastCampaign")
