@@ -25,6 +25,8 @@ export default function BroadcastsPage() {
   const [ruleType, setRuleType] = useState("ALL");
   const [ruleValues, setRuleValues] = useState("");
   const [creating, setCreating] = useState(false);
+  const [publishReason, setPublishReason] = useState("");
+  const [publishing, setPublishing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,6 +89,23 @@ export default function BroadcastsPage() {
       setError(e instanceof Error ? e.message : "Failed to create draft broadcast");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function publishSelected(campaignId: string) {
+    setPublishing(true);
+    setError(null);
+    try {
+      const published = await broadcastsApi.publish(campaignId, {
+        reason: publishReason.trim() || undefined,
+      });
+      setSelected(published);
+      setPublishReason("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to publish broadcast");
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -162,12 +181,24 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} />
     </div> : null}
   </div>;
 }
 
-function BroadcastDetail({ campaign }: { campaign: BroadcastCampaignDto | null }) {
+function BroadcastDetail({
+  campaign,
+  publishReason,
+  setPublishReason,
+  publishing,
+  onPublish,
+}: {
+  campaign: BroadcastCampaignDto | null;
+  publishReason: string;
+  setPublishReason: (value: string) => void;
+  publishing: boolean;
+  onPublish: (campaignId: string) => Promise<void>;
+}) {
   if (!campaign) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a campaign to inspect content, audience rules, delivery summary, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
     <h2 className="text-lg font-bold text-gray-900">Broadcast detail</h2>
@@ -179,6 +210,13 @@ function BroadcastDetail({ campaign }: { campaign: BroadcastCampaignDto | null }
       <Mini label="Project" value={campaign.project_id || "-"} />
       <Mini label="Active window" value={`${campaign.starts_at || "-"} to ${campaign.expires_at || "-"}`} />
     </div>
+
+    {campaign.status === "DRAFT" ? <div className="mt-5 rounded border bg-amber-50 p-3">
+      <h3 className="text-sm font-semibold text-amber-900">Publish broadcast</h3>
+      <p className="mt-1 text-xs text-amber-800">Publishing changes status to PUBLISHED and sets starts_at. Delivery generation is still a separate future step.</p>
+      <Input label="Publish reason" value={publishReason} onChange={setPublishReason} />
+      <button type="button" onClick={() => void onPublish(campaign.id)} disabled={publishing} className="mt-3 rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{publishing ? "Publishing..." : "Publish"}</button>
+    </div> : null}
 
     <Section title="Content">
       {(campaign.contents || []).map((content) => <div key={content.id} className="rounded border p-3 text-sm">
