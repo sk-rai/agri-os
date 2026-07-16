@@ -536,25 +536,214 @@ Future backend concepts:
 
 This should be designed as a configurable targeting engine, not a hardcoded notification feature.
 
-## Current broadcast targeting implementation status
+## Current broadcast/advisory implementation status
 
-Current delivery generation supports:
+Broadcasts are now a backend-driven advisory/in-app communication foundation. Android should treat the backend as the source of truth for campaigns, localized content, delivery status, read state, and acknowledgements.
 
-- ALL targeting
-- FARMER targeting
-- PROJECT targeting
-- basic idempotent delivery generation
-- duplicate-safe delivery rows
+Implemented backend entities:
 
-Planned targeting expansion:
+- `broadcast_campaigns`
+- `broadcast_contents`
+- `broadcast_audience_rules`
+- `broadcast_deliveries`
+- `broadcast_audit_events`
 
-- CROP
-- STAGE
-- LOCATION
-- ROLE
-- LANGUAGE
-- WEATHER
-- FIELD_EVENT
-- INPUT
-- PRODUCT
+Implemented admin/backend flow:
+
+1. Admin creates a DRAFT broadcast campaign.
+2. Admin adds localized content rows and audience rules.
+3. Admin can preview estimated audience before sending.
+4. Admin publishes the campaign.
+5. Admin generates delivery rows.
+6. Android fetches farmer-specific broadcast feed.
+7. Android marks a delivery read when the farmer opens it.
+8. Android can acknowledge a delivery when explicit acknowledgement is required.
+9. Admin can inspect delivery rows and audit history.
+
+Implemented targeting rules for delivery expansion:
+
+- `ALL`: all active farmers in the tenant.
+- `FARMER`: explicit farmer IDs.
+- `PROJECT`: active farmers in selected project IDs.
+- `CROP`: farmers with ACTIVE crop cycles for selected crop codes.
+
+Accepted but not yet expanded into delivery recipients:
+
+- `LOCATION`
+- `STAGE`
+- `ROLE`
+- `LANGUAGE`
+- `WEATHER`
+- `FIELD_EVENT`
+- `INPUT`
+- `PRODUCT`
+
+Backend preview reports unsupported rules through `unsupported_rule_count` and per-rule `supported=false` so admin can see what will and will not be delivered before generation.
+
+### Admin broadcast APIs
+
+Admin-side APIs currently available:
+
+```http
+POST /api/v1/broadcasts
+POST /api/v1/broadcasts/{campaign_id}/publish
+GET  /api/v1/broadcasts/{campaign_id}/audience-preview
+POST /api/v1/broadcasts/{campaign_id}/generate-deliveries
+GET  /api/v1/broadcasts/{campaign_id}/deliveries?status=PENDING
+GET  /api/v1/broadcasts/{campaign_id}/audit
+```
+
+Android should not use the admin creation/publish/generate endpoints.
+
+### Android farmer broadcast feed
+
+Android should fetch farmer-visible broadcasts after profile hydration/login and periodically during sync:
+
+```http
+GET /api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi&include_read=true&limit=100
+```
+
+Response shape:
+
+```json
+{
+  "schema_version": "farmer_broadcasts.v1",
+  "tenant_id": "default",
+  "farmer_id": "...",
+  "filters": {
+    "language_code": "hi",
+    "include_read": true,
+    "limit": 100
+  },
+  "count": 1,
+  "broadcasts": [
+    {
+      "campaign": {
+        "id": "...",
+        "title": "Weather alert draft",
+        "category": "WEATHER",
+        "priority": "URGENT",
+        "status": "PUBLISHED",
+        "starts_at": "2026-07-16T22:21:56+05:30",
+        "expires_at": null,
+        "metadata": {
+          "targeting_mode": "RULE_BASED"
+        }
+      },
+      "content": {
+        "id": "...",
+        "language_code": "hi",
+        "title": "Weather alert Hindi",
+        "body_text": "Heavy rainfall expected.",
+        "cta_label": null,
+        "deeplink_url": null,
+        "metadata": {}
+      },
+      "delivery": {
+        "id": "...",
+        "farmer_id": "...",
+        "delivery_status": "PENDING",
+        "delivered_at": null,
+        "read_at": null,
+        "acknowledged_at": null,
+        "metadata": {
+          "generation_rule": "BASIC_AUDIENCE_RULES"
+        }
+      }
+    }
+  ]
+}
+```
+
+Android rendering guidance:
+
+- Show unread/PENDING broadcasts in a notification/inbox/advisory area.
+- Use `content.language_code` selected by backend fallback: requested language first, then English, then first available content.
+- Use `campaign.priority` for visual severity:
+  - `URGENT`: prominent alert.
+  - `HIGH`: highlighted advisory.
+  - `NORMAL`/`LOW`: standard inbox item.
+- Use `campaign.category` for grouping: WEATHER, ADVISORY, MARKET, INPUT, EMERGENCY, GENERAL.
+- Use `content.deeplink_url` when present to navigate to a crop cycle, recommendation, query, field event, or external detail screen.
+- Persist `delivery.id` locally so read/ack sync is idempotent.
+
+### Android read and acknowledge endpoints
+
+When a farmer opens a broadcast detail, Android should call:
+
+```http
+POST /api/v1/broadcasts/deliveries/{delivery_id}/read
+```
+
+This sets:
+
+- `delivered_at` if missing
+- `read_at` if missing
+- `delivery_status=DELIVERED` if previously PENDING
+
+If the broadcast requires explicit acknowledgement, Android should show an acknowledgement button and call:
+
+```http
+POST /api/v1/broadcasts/deliveries/{delivery_id}/acknowledge
+```
+
+This sets:
+
+- `delivered_at` if missing
+- `read_at` if missing
+- `acknowledged_at` if missing
+- `delivery_status=ACKNOWLEDGED`
+
+For MVP, acknowledgement requirement can be inferred from campaign/content metadata if present, for example:
+
+```json
+{
+  "requires_acknowledgement": true
+}
+```
+
+If metadata is absent, Android should treat acknowledgement as optional/not required.
+
+### Offline sync guidance for broadcasts
+
+Initial MVP can call read/ack endpoints directly when online. For offline support, Android should queue local read/ack events and replay them when online.
+
+Recommended local event types:
+
+- `BROADCAST_DELIVERY_READ`
+- `BROADCAST_DELIVERY_ACKNOWLEDGED`
+
+Minimum payload:
+
+```json
+{
+  "delivery_id": "...",
+  "campaign_id": "...",
+  "farmer_id": "...",
+  "read_at": "2026-07-16T16:51:56Z",
+  "acknowledged_at": "2026-07-16T16:52:10Z"
+}
+```
+
+A sync materializer for these event types is not yet implemented; Android can keep this as a future-compatible local queue while using direct endpoints when online.
+
+### Broadcast audit/admin visibility
+
+Admin can inspect:
+
+- audience preview;
+- generated delivery rows;
+- delivery status by farmer;
+- read/ack state;
+- audit history.
+
+Audit currently records:
+
+- `CREATE_CAMPAIGN`
+- `PUBLISH_CAMPAIGN`
+- `GENERATE_DELIVERIES`
+- `MARK_DELIVERY_READ`
+- `ACKNOWLEDGE_DELIVERY`
+
+This is important for client/company deployments because advisory delivery must be explainable: who sent what, when, to whom, and whether the farmer saw or acknowledged it.
 
