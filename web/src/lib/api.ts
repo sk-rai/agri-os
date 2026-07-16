@@ -2789,6 +2789,38 @@ export interface BroadcastAudiencePreviewResponse {
   existing_delivery_count: number;
 }
 
+export interface BroadcastDeliveryDto {
+  id: string;
+  tenant_id: string;
+  campaign_id: string;
+  farmer_id?: string | null;
+  user_id?: string | null;
+  delivery_status: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  acknowledged_at?: string | null;
+  failure_reason?: string | null;
+  metadata?: Record<string, unknown>;
+  farmer?: {
+    id: string;
+    display_name?: string | null;
+    mobile_number?: string | null;
+    village_name_manual?: string | null;
+    status?: string | null;
+  } | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BroadcastDeliveriesResponse {
+  schema_version: string;
+  tenant_id: string;
+  campaign_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  deliveries: BroadcastDeliveryDto[];
+}
+
 export const broadcastsApi = {
   list: (params?: { projectId?: string; status?: string; category?: string; priority?: string; limit?: number }) => {
     const q = new URLSearchParams();
@@ -2815,5 +2847,12 @@ export const broadcastsApi = {
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/generate-deliveries`, { method: "POST" }),
   previewAudience: (campaignId: string) =>
     api<BroadcastAudiencePreviewResponse>(`/api/v1/broadcasts/${campaignId}/audience-preview`),
+  deliveries: (campaignId: string, params?: { status?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<BroadcastDeliveriesResponse>(`/api/v1/broadcasts/${campaignId}/deliveries${suffix}`);
+  },
 
 };

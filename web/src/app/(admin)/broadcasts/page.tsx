@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { broadcastsApi, type BroadcastAudiencePreviewResponse, type BroadcastCampaignDto, type BroadcastCampaignListResponse } from "@/lib/api";
+import { broadcastsApi, type BroadcastAudiencePreviewResponse, type BroadcastCampaignDto, type BroadcastCampaignListResponse, type BroadcastDeliveriesResponse } from "@/lib/api";
 
 const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"];
 const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
@@ -30,6 +30,9 @@ export default function BroadcastsPage() {
   const [generatingDeliveries, setGeneratingDeliveries] = useState(false);
   const [audiencePreview, setAudiencePreview] = useState<BroadcastAudiencePreviewResponse | null>(null);
   const [previewingAudience, setPreviewingAudience] = useState(false);
+  const [deliveries, setDeliveries] = useState<BroadcastDeliveriesResponse | null>(null);
+  const [deliveryStatus, setDeliveryStatus] = useState("");
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,6 +48,7 @@ export default function BroadcastsPage() {
       setPayload(next);
       setSelected(null);
       setAudiencePreview(null);
+      setDeliveries(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load broadcasts");
     } finally {
@@ -90,6 +94,7 @@ export default function BroadcastsPage() {
       await load();
       setSelected(created);
       setAudiencePreview(null);
+      setDeliveries(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create draft broadcast");
     } finally {
@@ -106,6 +111,7 @@ export default function BroadcastsPage() {
       });
       setSelected(published);
       setAudiencePreview(null);
+      setDeliveries(null);
       setPublishReason("");
       await load();
     } catch (e) {
@@ -122,6 +128,7 @@ export default function BroadcastsPage() {
       const updated = await broadcastsApi.generateDeliveries(campaignId);
       setSelected(updated);
       setAudiencePreview(null);
+      setDeliveries(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate deliveries");
@@ -142,11 +149,24 @@ export default function BroadcastsPage() {
     }
   }
 
+  async function loadDeliveries(campaignId: string, nextStatus = deliveryStatus) {
+    setLoadingDeliveries(true);
+    setError(null);
+    try {
+      setDeliveries(await broadcastsApi.deliveries(campaignId, { status: nextStatus || undefined, limit: 100 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load broadcast deliveries");
+    } finally {
+      setLoadingDeliveries(false);
+    }
+  }
+
   async function openDetail(campaignId: string) {
     setError(null);
     try {
       setSelected(await broadcastsApi.detail(campaignId));
       setAudiencePreview(null);
+      setDeliveries(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load broadcast detail");
     }
@@ -215,7 +235,7 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} />
     </div> : null}
   </div>;
 }
@@ -231,6 +251,11 @@ function BroadcastDetail({
   audiencePreview,
   previewingAudience,
   onPreviewAudience,
+  deliveries,
+  deliveryStatus,
+  setDeliveryStatus,
+  loadingDeliveries,
+  onLoadDeliveries,
 }: {
   campaign: BroadcastCampaignDto | null;
   publishReason: string;
@@ -242,6 +267,11 @@ function BroadcastDetail({
   audiencePreview: BroadcastAudiencePreviewResponse | null;
   previewingAudience: boolean;
   onPreviewAudience: (campaignId: string) => Promise<void>;
+  deliveries: BroadcastDeliveriesResponse | null;
+  deliveryStatus: string;
+  setDeliveryStatus: (value: string) => void;
+  loadingDeliveries: boolean;
+  onLoadDeliveries: (campaignId: string, status?: string) => Promise<void>;
 }) {
   if (!campaign) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a campaign to inspect content, audience rules, delivery summary, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
@@ -322,6 +352,32 @@ function BroadcastDetail({
         <Mini label="Last generated at" value={String(campaign.metadata?.last_delivery_generation_at || "-")} />
         <Mini label="Last generated rows" value={String(campaign.metadata?.last_delivery_generation_created ?? "-")} />
       </div>
+    </Section>
+
+    <Section title="Delivery drilldown">
+      <div className="flex items-end gap-2">
+        <Select label="Status" value={deliveryStatus} onChange={setDeliveryStatus} options={["", "PENDING", "DELIVERED", "ACKNOWLEDGED", "FAILED"]} />
+        <button type="button" onClick={() => void onLoadDeliveries(campaign.id, deliveryStatus)} disabled={loadingDeliveries} className="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{loadingDeliveries ? "Loading..." : "Load deliveries"}</button>
+      </div>
+      {deliveries ? <div className="rounded border">
+        <div className="border-b bg-gray-50 p-2 text-xs text-gray-500">{deliveries.count} delivery row(s) returned.</div>
+        <div className="max-h-72 overflow-auto divide-y">
+          {deliveries.deliveries.map((row) => <div key={row.id} className="p-3 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-gray-900">{row.farmer?.display_name || row.farmer_id || "Unknown recipient"}</span>
+              <span className="rounded bg-gray-100 px-2 py-1 text-[10px] text-gray-700">{row.delivery_status}</span>
+            </div>
+            <div className="mt-1 text-gray-500">{row.farmer?.mobile_number || "-"} / {row.farmer?.village_name_manual || "-"}</div>
+            <div className="mt-1 break-all font-mono text-[10px] text-gray-400">{row.id}</div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-gray-500">
+              <Mini label="Delivered" value={row.delivered_at || "-"} />
+              <Mini label="Read" value={row.read_at || "-"} />
+              <Mini label="Ack" value={row.acknowledged_at || "-"} />
+            </div>
+          </div>)}
+          {deliveries.deliveries.length === 0 ? <div className="p-4 text-center text-xs text-gray-400">No delivery rows match this filter.</div> : null}
+        </div>
+      </div> : <p className="text-xs text-gray-400">Load deliveries to inspect recipient-level status.</p>}
     </Section>
 
     <details className="mt-4 text-xs">

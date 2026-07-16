@@ -491,6 +491,54 @@ def generate_broadcast_deliveries(
     return _broadcast_detail_payload(db, campaign, x_tenant_id)
 
 
+@router.get("/{campaign_id}/deliveries")
+def list_broadcast_deliveries(
+    campaign_id: uuid.UUID,
+    status: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+
+    query = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id)
+    if status:
+        query = query.filter(BroadcastDelivery.delivery_status == status.upper())
+
+    rows = query.order_by(BroadcastDelivery.created_at.desc()).limit(limit).all()
+    farmer_ids = [row.farmer_id for row in rows if row.farmer_id]
+    farmers = {}
+    if farmer_ids:
+        farmers = {
+            row.id: row
+            for row in db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.id.in_(farmer_ids)).all()
+        }
+
+    deliveries = []
+    for row in rows:
+        payload = _delivery_payload(row)
+        farmer = farmers.get(row.farmer_id) if row.farmer_id else None
+        payload["farmer"] = {
+            "id": str(farmer.id),
+            "display_name": farmer.display_name,
+            "mobile_number": farmer.mobile_number,
+            "village_name_manual": farmer.village_name_manual,
+            "status": farmer.status,
+        } if farmer else None
+        deliveries.append(payload)
+
+    return {
+        "schema_version": "broadcast_deliveries.v1",
+        "tenant_id": x_tenant_id,
+        "campaign_id": str(campaign.id),
+        "filters": {"status": status.upper() if status else None, "limit": limit},
+        "count": len(deliveries),
+        "deliveries": deliveries,
+    }
+
+
 @router.get("/{campaign_id}/audience-preview")
 def preview_broadcast_audience(
     campaign_id: uuid.UUID,
