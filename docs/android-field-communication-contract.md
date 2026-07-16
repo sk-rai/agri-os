@@ -536,3 +536,25 @@ Future backend concepts:
 
 This should be designed as a configurable targeting engine, not a hardcoded notification feature.
 
+## Current broadcast targeting implementation status
+
+Current delivery generation supports:
+
+- ALL targeting
+- FARMER targeting
+- PROJECT targeting
+- basic idempotent delivery generation
+- duplicate-safe delivery rows
+
+Planned targeting expansion:
+
+- CROP
+- STAGE
+- LOCATION
+- ROLE
+- LANGUAGE
+- WEATHER
+- FIELD_EVENT
+- INPUT
+- PRODUCT
+
