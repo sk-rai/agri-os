@@ -2788,5 +2788,7 @@ export const broadcastsApi = {
   }) => api<BroadcastCampaignDto>("/api/v1/broadcasts", { method: "POST", body: JSON.stringify(body) }),
   publish: (campaignId: string, body?: { approved_by?: string; reason?: string }) =>
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/publish`, { method: "POST", body: JSON.stringify(body || {}) }),
+  generateDeliveries: (campaignId: string) =>
+    api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/generate-deliveries`, { method: "POST" }),
 
 };

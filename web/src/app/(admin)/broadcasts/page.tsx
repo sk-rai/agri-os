@@ -27,6 +27,7 @@ export default function BroadcastsPage() {
   const [creating, setCreating] = useState(false);
   const [publishReason, setPublishReason] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [generatingDeliveries, setGeneratingDeliveries] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,6 +110,20 @@ export default function BroadcastsPage() {
     }
   }
 
+  async function generateDeliveries(campaignId: string) {
+    setGeneratingDeliveries(true);
+    setError(null);
+    try {
+      const updated = await broadcastsApi.generateDeliveries(campaignId);
+      setSelected(updated);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to generate deliveries");
+    } finally {
+      setGeneratingDeliveries(false);
+    }
+  }
+
   async function openDetail(campaignId: string) {
     setError(null);
     try {
@@ -181,7 +196,7 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} />
     </div> : null}
   </div>;
 }
@@ -192,12 +207,16 @@ function BroadcastDetail({
   setPublishReason,
   publishing,
   onPublish,
+  generatingDeliveries,
+  onGenerateDeliveries,
 }: {
   campaign: BroadcastCampaignDto | null;
   publishReason: string;
   setPublishReason: (value: string) => void;
   publishing: boolean;
   onPublish: (campaignId: string) => Promise<void>;
+  generatingDeliveries: boolean;
+  onGenerateDeliveries: (campaignId: string) => Promise<void>;
 }) {
   if (!campaign) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a campaign to inspect content, audience rules, delivery summary, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
@@ -216,6 +235,12 @@ function BroadcastDetail({
       <p className="mt-1 text-xs text-amber-800">Publishing changes status to PUBLISHED and sets starts_at. Delivery generation is still a separate future step.</p>
       <Input label="Publish reason" value={publishReason} onChange={setPublishReason} />
       <button type="button" onClick={() => void onPublish(campaign.id)} disabled={publishing} className="mt-3 rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{publishing ? "Publishing..." : "Publish"}</button>
+    </div> : null}
+
+    {campaign.status === "PUBLISHED" ? <div className="mt-5 rounded border bg-blue-50 p-3">
+      <h3 className="text-sm font-semibold text-blue-900">Generate deliveries</h3>
+      <p className="mt-1 text-xs text-blue-800">Creates pending delivery rows for currently supported audience rules. This is idempotent.</p>
+      <button type="button" onClick={() => void onGenerateDeliveries(campaign.id)} disabled={generatingDeliveries} className="mt-3 rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{generatingDeliveries ? "Generating..." : "Generate deliveries"}</button>
     </div> : null}
 
     <Section title="Content">
