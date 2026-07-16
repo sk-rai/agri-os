@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Tenant
+from app.modules.farmer.models import Farmer, Tenant
 from app.modules.media.models import BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
 
 
@@ -40,6 +40,17 @@ def main():
     db = SessionLocal()
     try:
         db.add(Tenant(id=tenant_id, name="Broadcast API Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
+        db.flush()
+        db.add(Farmer(
+            id=farmer_id,
+            tenant_id=tenant_id,
+            mobile_number=f"+9193{uuid.uuid4().int % 100000000:08d}",
+            display_name="Broadcast API Farmer",
+            village_name_manual="Broadcast Village",
+            status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        ))
         db.flush()
 
         db.add(BroadcastCampaign(
@@ -118,7 +129,7 @@ def main():
                 "body_text": "Heavy rainfall expected."
             }
         ],
-        "audience_rules": [
+                "audience_rules": [
             {
                 "rule_type": "LOCATION",
                 "operator": "IN",
@@ -128,6 +139,11 @@ def main():
                 "rule_type": "CROP",
                 "operator": "IN",
                 "values": ["RICE"]
+            },
+            {
+                "rule_type": "FARMER",
+                "operator": "IN",
+                "values": [str(farmer_id)]
             }
         ]
     })
@@ -138,7 +154,7 @@ def main():
     check(created["category"] == "WEATHER", "Create normalizes category")
     check(created["priority"] == "URGENT", "Create normalizes priority")
     check(len(created["contents"]) == 2, "Create returns content rows")
-    check(len(created["audience_rules"]) == 2, "Create returns audience rules")
+    check(len(created["audience_rules"]) == 3, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
     print("\n[1b] Publish draft campaign")
     publish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={
@@ -150,6 +166,16 @@ def main():
     check(published["status"] == "PUBLISHED", "Publish changes status")
     check(published["starts_at"] is not None, "Publish sets starts_at")
     check(published["metadata"]["delivery_generation"] == "NOT_STARTED", "Publish does not generate deliveries yet")
+    print("\n[1c] Generate deliveries")
+    generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
+    check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)
+    generated = generate.json()
+    check(generated["delivery_summary"]["total"] == 1, "Generate creates one farmer delivery")
+    check(generated["delivery_summary"]["pending"] == 1, "Generated delivery starts pending")
+    check(generated["metadata"]["delivery_generation"] == "GENERATED", "Generation metadata updated")
+    generate_again = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
+    check(generate_again.status_code == 200, "Generate deliveries is idempotent", generate_again.text)
+    check(generate_again.json()["delivery_summary"]["total"] == 1, "Generate does not duplicate deliveries")
     republish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={})
     check(republish.status_code == 409, "Published broadcast cannot be republished", republish.text)
 
@@ -181,6 +207,7 @@ def main():
         db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

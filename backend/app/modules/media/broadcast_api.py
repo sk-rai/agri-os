@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.modules.farmer.models import Farmer
 from app.modules.media.api import _iso
 from app.modules.media.models import BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
 
@@ -127,6 +128,17 @@ def _rule_payload(row: BroadcastAudienceRule) -> dict:
     }
 
 
+def _delivery_summary(rows: list[BroadcastDelivery]) -> dict:
+    return {
+        "total": len(rows),
+        "pending": sum(1 for row in rows if row.delivery_status == "PENDING"),
+        "delivered": sum(1 for row in rows if row.delivery_status == "DELIVERED"),
+        "read": sum(1 for row in rows if row.read_at is not None),
+        "acknowledged": sum(1 for row in rows if row.acknowledged_at is not None),
+        "failed": sum(1 for row in rows if row.delivery_status == "FAILED"),
+    }
+
+
 def _campaign_payload(row: BroadcastCampaign, *, content_count: int = 0, rule_count: int = 0, delivery_count: int = 0) -> dict:
     return {
         "id": str(row.id),
@@ -210,6 +222,18 @@ def create_broadcast_campaign(
     payload["contents"] = [_content_payload(row) for row in db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()]
     payload["audience_rules"] = [_rule_payload(row) for row in db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()]
     payload["delivery_summary"] = {"total": 0, "pending": 0, "delivered": 0, "read": 0, "acknowledged": 0, "failed": 0}
+    return payload
+
+
+def _broadcast_detail_payload(db: Session, campaign: BroadcastCampaign, tenant_id: str) -> dict:
+    contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
+    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
+    deliveries = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == campaign.id).all()
+
+    payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=len(deliveries))
+    payload["contents"] = [_content_payload(row) for row in contents]
+    payload["audience_rules"] = [_rule_payload(row) for row in rules]
+    payload["delivery_summary"] = _delivery_summary(deliveries)
     return payload
 
 
@@ -297,6 +321,73 @@ def publish_broadcast_campaign(
     payload["audience_rules"] = [_rule_payload(row) for row in rules]
     payload["delivery_summary"] = {"total": 0, "pending": 0, "delivered": 0, "read": 0, "acknowledged": 0, "failed": 0}
     return payload
+
+
+@router.post("/{campaign_id}/generate-deliveries")
+def generate_broadcast_deliveries(
+    campaign_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+    if campaign.status != "PUBLISHED":
+        raise HTTPException(409, "Only PUBLISHED broadcasts can generate deliveries")
+
+    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).all()
+    farmer_ids = set()
+
+    if not rules:
+        return _broadcast_detail_payload(db, campaign, x_tenant_id)
+
+    for rule in rules:
+        values = rule.values or []
+        if rule.rule_type == "ALL":
+            farmer_ids.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == x_tenant_id, Farmer.status == "ACTIVE").all())
+        elif rule.rule_type == "FARMER":
+            farmer_ids.update(str(value) for value in values if value)
+        else:
+            # Other rule types are intentionally not expanded yet.
+            continue
+
+    now_ts = datetime.now(timezone.utc)
+    existing = {
+        str(row.farmer_id)
+        for row in db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id, BroadcastDelivery.farmer_id.isnot(None)).all()
+    }
+
+    created = 0
+    for farmer_id_text in sorted(farmer_ids):
+        farmer_id = uuid.UUID(str(farmer_id_text))
+        if str(farmer_id) in existing:
+            continue
+        farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+        if not farmer:
+            continue
+        db.add(BroadcastDelivery(
+            id=uuid.uuid4(),
+            tenant_id=x_tenant_id,
+            campaign_id=campaign.id,
+            farmer_id=farmer.id,
+            delivery_status="PENDING",
+            metadata_={"generation_rule": "BASIC_ALL_OR_FARMER"},
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        created += 1
+
+    metadata = dict(campaign.metadata_ or {})
+    metadata["delivery_generation"] = "GENERATED"
+    metadata["last_delivery_generation_created"] = created
+    metadata["last_delivery_generation_at"] = now_ts.isoformat()
+    campaign.metadata_ = metadata
+    campaign.updated_at = now_ts
+    db.commit()
+    db.refresh(campaign)
+    return _broadcast_detail_payload(db, campaign, x_tenant_id)
 
 
 @router.get("/{campaign_id}")
