@@ -2766,6 +2766,29 @@ export interface BroadcastCampaignListResponse {
   campaigns: BroadcastCampaignDto[];
 }
 
+export interface BroadcastAudienceRulePreviewDto {
+  rule_id: string;
+  rule_type: string;
+  operator: string;
+  values?: unknown[];
+  supported: boolean;
+  matched_farmer_count: number;
+  sample_farmer_ids: string[];
+  note?: string | null;
+}
+
+export interface BroadcastAudiencePreviewResponse {
+  schema_version: string;
+  tenant_id: string;
+  campaign_id: string;
+  campaign_status: string;
+  estimated_farmer_count: number;
+  sample_farmer_ids: string[];
+  rule_summaries: BroadcastAudienceRulePreviewDto[];
+  unsupported_rule_count: number;
+  existing_delivery_count: number;
+}
+
 export const broadcastsApi = {
   list: (params?: { projectId?: string; status?: string; category?: string; priority?: string; limit?: number }) => {
     const q = new URLSearchParams();
@@ -2790,5 +2813,7 @@ export const broadcastsApi = {
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/publish`, { method: "POST", body: JSON.stringify(body || {}) }),
   generateDeliveries: (campaignId: string) =>
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/generate-deliveries`, { method: "POST" }),
+  previewAudience: (campaignId: string) =>
+    api<BroadcastAudiencePreviewResponse>(`/api/v1/broadcasts/${campaignId}/audience-preview`),
 
 };

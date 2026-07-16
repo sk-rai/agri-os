@@ -268,6 +268,86 @@ def _broadcast_detail_payload(db: Session, campaign: BroadcastCampaign, tenant_i
     return payload
 
 
+def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uuid.UUID) -> dict:
+    rules = db.query(BroadcastAudienceRule).filter(
+        BroadcastAudienceRule.tenant_id == tenant_id,
+        BroadcastAudienceRule.campaign_id == campaign_id,
+    ).order_by(BroadcastAudienceRule.rule_type.asc()).all()
+
+    farmer_ids: set[str] = set()
+    rule_summaries = []
+    unsupported_rule_count = 0
+
+    for rule in rules:
+        values = rule.values or []
+        matched: set[str] = set()
+        supported = True
+        note = None
+
+        if rule.rule_type == "ALL":
+            matched.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == tenant_id, Farmer.status == "ACTIVE").all())
+        elif rule.rule_type == "PROJECT":
+            project_ids = []
+            for value in values:
+                try:
+                    project_ids.append(uuid.UUID(str(value)))
+                except ValueError:
+                    continue
+            if project_ids:
+                matched.update(
+                    str(row.id)
+                    for row in db.query(Farmer.id).filter(
+                        Farmer.tenant_id == tenant_id,
+                        Farmer.status == "ACTIVE",
+                        Farmer.project_id.in_(project_ids),
+                    ).all()
+                )
+        elif rule.rule_type == "CROP":
+            from app.modules.workflow.models import CropCycle
+
+            crop_codes = [str(value).upper() for value in values if value]
+            if crop_codes:
+                matched.update(
+                    str(row[0])
+                    for row in db.query(CropCycle.farmer_id).filter(
+                        CropCycle.tenant_id == tenant_id,
+                        CropCycle.crop_code.in_(crop_codes),
+                        CropCycle.status == "ACTIVE",
+                    ).distinct().all()
+                    if row[0]
+                )
+        elif rule.rule_type == "FARMER":
+            for value in values:
+                try:
+                    matched.add(str(uuid.UUID(str(value))))
+                except ValueError:
+                    continue
+        else:
+            supported = False
+            note = "Rule accepted for campaign configuration but not yet expanded into delivery recipients."
+            unsupported_rule_count += 1
+
+        if supported:
+            farmer_ids.update(matched)
+
+        rule_summaries.append({
+            "rule_id": str(rule.id),
+            "rule_type": rule.rule_type,
+            "operator": rule.operator,
+            "values": values,
+            "supported": supported,
+            "matched_farmer_count": len(matched),
+            "sample_farmer_ids": sorted(matched)[:10],
+            "note": note,
+        })
+
+    return {
+        "farmer_ids": sorted(farmer_ids),
+        "rule_summaries": rule_summaries,
+        "unsupported_rule_count": unsupported_rule_count,
+    }
+
+
 @router.get("")
 def list_broadcast_campaigns(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -368,43 +448,11 @@ def generate_broadcast_deliveries(
     if campaign.status != "PUBLISHED":
         raise HTTPException(409, "Only PUBLISHED broadcasts can generate deliveries")
 
-    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).all()
-    farmer_ids = set()
+    resolved = _resolve_broadcast_audience(db, tenant_id=x_tenant_id, campaign_id=campaign.id)
+    farmer_ids = set(resolved["farmer_ids"])
 
-    if not rules:
+    if not resolved["rule_summaries"]:
         return _broadcast_detail_payload(db, campaign, x_tenant_id)
-
-    for rule in rules:
-        values = rule.values or []
-        if rule.rule_type == "ALL":
-            farmer_ids.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == x_tenant_id, Farmer.status == "ACTIVE").all())
-        elif rule.rule_type == "PROJECT":
-            farmer_ids.update(
-                str(row.id)
-                for row in db.query(Farmer.id).filter(
-                    Farmer.tenant_id == x_tenant_id,
-                    Farmer.status == "ACTIVE",
-                    Farmer.project_id.in_([uuid.UUID(str(value)) for value in values if value]),
-                ).all()
-            )
-        elif rule.rule_type == "CROP":
-            from app.modules.workflow.models import CropCycle
-
-            crop_codes = [str(value).upper() for value in values if value]
-            farmer_ids.update(
-                str(row[0])
-                for row in db.query(CropCycle.farmer_id).filter(
-                    CropCycle.tenant_id == x_tenant_id,
-                    CropCycle.crop_code.in_(crop_codes),
-                    CropCycle.status == "ACTIVE",
-                ).distinct().all()
-                if row[0]
-            )
-        elif rule.rule_type == "FARMER":
-            farmer_ids.update(str(value) for value in values if value)
-        else:
-            # Other rule types are intentionally not expanded yet.
-            continue
 
     now_ts = datetime.now(timezone.utc)
     existing = {
@@ -426,7 +474,7 @@ def generate_broadcast_deliveries(
             campaign_id=campaign.id,
             farmer_id=farmer.id,
             delivery_status="PENDING",
-            metadata_={"generation_rule": "BASIC_ALL_OR_FARMER"},
+            metadata_={"generation_rule": "BASIC_AUDIENCE_RULES"},
             created_at=now_ts,
             updated_at=now_ts,
         ))
@@ -441,6 +489,31 @@ def generate_broadcast_deliveries(
     db.commit()
     db.refresh(campaign)
     return _broadcast_detail_payload(db, campaign, x_tenant_id)
+
+
+@router.get("/{campaign_id}/audience-preview")
+def preview_broadcast_audience(
+    campaign_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+
+    resolved = _resolve_broadcast_audience(db, tenant_id=x_tenant_id, campaign_id=campaign.id)
+    existing_delivery_count = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id).count()
+    return {
+        "schema_version": "broadcast_audience_preview.v1",
+        "tenant_id": x_tenant_id,
+        "campaign_id": str(campaign.id),
+        "campaign_status": campaign.status,
+        "estimated_farmer_count": len(resolved["farmer_ids"]),
+        "sample_farmer_ids": resolved["farmer_ids"][:20],
+        "rule_summaries": resolved["rule_summaries"],
+        "unsupported_rule_count": resolved["unsupported_rule_count"],
+        "existing_delivery_count": existing_delivery_count,
+    }
 
 
 @router.get("/{campaign_id}")

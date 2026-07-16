@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { broadcastsApi, type BroadcastCampaignDto, type BroadcastCampaignListResponse } from "@/lib/api";
+import { broadcastsApi, type BroadcastAudiencePreviewResponse, type BroadcastCampaignDto, type BroadcastCampaignListResponse } from "@/lib/api";
 
 const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"];
 const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
@@ -28,6 +28,8 @@ export default function BroadcastsPage() {
   const [publishReason, setPublishReason] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [generatingDeliveries, setGeneratingDeliveries] = useState(false);
+  const [audiencePreview, setAudiencePreview] = useState<BroadcastAudiencePreviewResponse | null>(null);
+  const [previewingAudience, setPreviewingAudience] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +44,7 @@ export default function BroadcastsPage() {
       });
       setPayload(next);
       setSelected(null);
+      setAudiencePreview(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load broadcasts");
     } finally {
@@ -86,6 +89,7 @@ export default function BroadcastsPage() {
       setRuleValues("");
       await load();
       setSelected(created);
+      setAudiencePreview(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create draft broadcast");
     } finally {
@@ -101,6 +105,7 @@ export default function BroadcastsPage() {
         reason: publishReason.trim() || undefined,
       });
       setSelected(published);
+      setAudiencePreview(null);
       setPublishReason("");
       await load();
     } catch (e) {
@@ -116,6 +121,7 @@ export default function BroadcastsPage() {
     try {
       const updated = await broadcastsApi.generateDeliveries(campaignId);
       setSelected(updated);
+      setAudiencePreview(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate deliveries");
@@ -124,10 +130,23 @@ export default function BroadcastsPage() {
     }
   }
 
+  async function previewAudience(campaignId: string) {
+    setPreviewingAudience(true);
+    setError(null);
+    try {
+      setAudiencePreview(await broadcastsApi.previewAudience(campaignId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to preview broadcast audience");
+    } finally {
+      setPreviewingAudience(false);
+    }
+  }
+
   async function openDetail(campaignId: string) {
     setError(null);
     try {
       setSelected(await broadcastsApi.detail(campaignId));
+      setAudiencePreview(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load broadcast detail");
     }
@@ -196,7 +215,7 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} />
     </div> : null}
   </div>;
 }
@@ -209,6 +228,9 @@ function BroadcastDetail({
   onPublish,
   generatingDeliveries,
   onGenerateDeliveries,
+  audiencePreview,
+  previewingAudience,
+  onPreviewAudience,
 }: {
   campaign: BroadcastCampaignDto | null;
   publishReason: string;
@@ -217,6 +239,9 @@ function BroadcastDetail({
   onPublish: (campaignId: string) => Promise<void>;
   generatingDeliveries: boolean;
   onGenerateDeliveries: (campaignId: string) => Promise<void>;
+  audiencePreview: BroadcastAudiencePreviewResponse | null;
+  previewingAudience: boolean;
+  onPreviewAudience: (campaignId: string) => Promise<void>;
 }) {
   if (!campaign) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a campaign to inspect content, audience rules, delivery summary, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
@@ -242,6 +267,29 @@ function BroadcastDetail({
       <p className="mt-1 text-xs text-blue-800">Creates pending delivery rows for currently supported audience rules. This is idempotent.</p>
       <button type="button" onClick={() => void onGenerateDeliveries(campaign.id)} disabled={generatingDeliveries} className="mt-3 rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{generatingDeliveries ? "Generating..." : "Generate deliveries"}</button>
     </div> : null}
+
+    <div className="mt-5 rounded border bg-emerald-50 p-3">
+      <h3 className="text-sm font-semibold text-emerald-900">Audience preview</h3>
+      <p className="mt-1 text-xs text-emerald-800">Estimate unique farmer recipients before publishing or generating delivery rows. Unsupported rules are shown separately.</p>
+      <button type="button" onClick={() => void onPreviewAudience(campaign.id)} disabled={previewingAudience} className="mt-3 rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{previewingAudience ? "Previewing..." : "Preview audience"}</button>
+      {audiencePreview ? <div className="mt-3 space-y-3 text-xs">
+        <div className="grid grid-cols-3 gap-2">
+          <DeliveryMini label="Estimated" value={audiencePreview.estimated_farmer_count} tone="green" />
+          <DeliveryMini label="Existing" value={audiencePreview.existing_delivery_count} tone="blue" />
+          <DeliveryMini label="Unsupported" value={audiencePreview.unsupported_rule_count} tone={audiencePreview.unsupported_rule_count ? "amber" : "slate"} />
+        </div>
+        <div className="space-y-2">
+          {audiencePreview.rule_summaries.map((rule) => <div key={rule.rule_id} className="rounded border bg-white p-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold">{rule.rule_type} {rule.operator}</span>
+              <span className={rule.supported ? "text-green-700" : "text-amber-700"}>{rule.supported ? `${rule.matched_farmer_count} match(es)` : "Not expanded"}</span>
+            </div>
+            {rule.note ? <p className="mt-1 text-amber-700">{rule.note}</p> : null}
+            {rule.sample_farmer_ids.length ? <p className="mt-1 break-all font-mono text-[10px] text-gray-500">Sample: {rule.sample_farmer_ids.join(", ")}</p> : null}
+          </div>)}
+        </div>
+      </div> : null}
+    </div>
 
     <Section title="Content">
       {(campaign.contents || []).map((content) => <div key={content.id} className="rounded border p-3 text-sm">
