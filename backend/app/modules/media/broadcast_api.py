@@ -128,6 +128,37 @@ def _rule_payload(row: BroadcastAudienceRule) -> dict:
     }
 
 
+def _select_content_for_language(contents: list[BroadcastContent], language_code: str | None) -> BroadcastContent | None:
+    if not contents:
+        return None
+    preferred = (language_code or "en").lower()
+    for row in contents:
+        if row.language_code.lower() == preferred:
+            return row
+    for row in contents:
+        if row.language_code.lower() == "en":
+            return row
+    return contents[0]
+
+
+def _delivery_payload(row: BroadcastDelivery) -> dict:
+    return {
+        "id": str(row.id),
+        "tenant_id": row.tenant_id,
+        "campaign_id": str(row.campaign_id),
+        "farmer_id": str(row.farmer_id) if row.farmer_id else None,
+        "user_id": str(row.user_id) if row.user_id else None,
+        "delivery_status": row.delivery_status,
+        "delivered_at": _iso(row.delivered_at),
+        "read_at": _iso(row.read_at),
+        "acknowledged_at": _iso(row.acknowledged_at),
+        "failure_reason": row.failure_reason,
+        "metadata": row.metadata_ or {},
+        "created_at": _iso(row.created_at),
+        "updated_at": _iso(row.updated_at),
+    }
+
+
 def _delivery_summary(rows: list[BroadcastDelivery]) -> dict:
     return {
         "total": len(rows),
@@ -416,3 +447,59 @@ def get_broadcast_campaign(
         "failed": sum(1 for row in deliveries if row.delivery_status == "FAILED"),
     }
     return payload
+
+
+
+@router.get("/farmers/{farmer_id}/broadcasts")
+def list_farmer_broadcasts(
+    farmer_id: uuid.UUID,
+    language_code: str | None = Query(None),
+    include_read: bool = Query(True),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    query = (
+        db.query(BroadcastDelivery, BroadcastCampaign)
+        .join(BroadcastCampaign, BroadcastCampaign.id == BroadcastDelivery.campaign_id)
+        .filter(
+            BroadcastDelivery.tenant_id == x_tenant_id,
+            BroadcastDelivery.farmer_id == farmer_id,
+            BroadcastCampaign.tenant_id == x_tenant_id,
+            BroadcastCampaign.status == "PUBLISHED",
+            BroadcastCampaign.is_active == True,
+        )
+    )
+    if not include_read:
+        query = query.filter(BroadcastDelivery.read_at.is_(None))
+
+    rows = query.order_by(BroadcastCampaign.starts_at.desc().nullslast(), BroadcastCampaign.created_at.desc()).limit(limit).all()
+    items = []
+    for delivery, campaign in rows:
+        contents = db.query(BroadcastContent).filter(
+            BroadcastContent.tenant_id == x_tenant_id,
+            BroadcastContent.campaign_id == campaign.id,
+        ).order_by(BroadcastContent.language_code.asc()).all()
+        selected_content = _select_content_for_language(contents, language_code)
+        items.append({
+            "campaign": _campaign_payload(campaign, content_count=len(contents), rule_count=db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).count(), delivery_count=1),
+            "content": _content_payload(selected_content) if selected_content else None,
+            "delivery": _delivery_payload(delivery),
+        })
+
+    return {
+        "schema_version": "farmer_broadcasts.v1",
+        "tenant_id": x_tenant_id,
+        "farmer_id": str(farmer_id),
+        "filters": {
+            "language_code": language_code,
+            "include_read": include_read,
+            "limit": limit,
+        },
+        "count": len(items),
+        "broadcasts": items,
+    }
