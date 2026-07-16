@@ -235,6 +235,28 @@ function QueryDetail({
         {(!thread.messages || thread.messages.length === 0) ? <p className="text-sm text-gray-400">No messages.</p> : null}
       </div>
     </div>
+    <div className="mt-5">
+      <h3 className="text-sm font-semibold text-gray-900">Audit history</h3>
+      <div className="mt-3 space-y-3">
+        {(thread.audit_events || []).map((event) => <div key={event.id} className="rounded border bg-white p-3 text-xs">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="font-semibold text-gray-900">{event.action}</span>
+              <span className="ml-2 text-gray-500">{event.actor_type || "SYSTEM"}</span>
+            </div>
+            <span className="text-gray-400">{event.created_at || "-"}</span>
+          </div>
+          <div className="mt-1 font-mono text-gray-500">{event.actor_id || "No actor id"}</div>
+          {event.reason ? <div className="mt-2 rounded bg-amber-50 p-2 text-amber-800">Reason: {event.reason}</div> : null}
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            <JsonMini label="Before" value={event.before || {}} />
+            <JsonMini label="After" value={event.after || {}} />
+          </div>
+        </div>)}
+        {(!thread.audit_events || thread.audit_events.length === 0) ? <p className="text-sm text-gray-400">No audit events recorded.</p> : null}
+      </div>
+    </div>
+
     <details className="mt-4 text-xs">
       <summary className="cursor-pointer text-gray-500">Metadata JSON</summary>
       <pre className="mt-2 max-h-72 overflow-auto rounded bg-gray-950 p-3 text-[11px] text-gray-100">{JSON.stringify(thread.metadata || {}, null, 2)}</pre>
@@ -248,6 +270,10 @@ function Input({ label, value, onChange }: { label: string; value: string; onCha
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return <label className="text-xs text-gray-500">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">{options.map((option) => <option key={option || "ALL"} value={option}>{option || "All"}</option>)}</select></label>;
+}
+
+function JsonMini({ label, value }: { label: string; value: Record<string, unknown> }) {
+  return <div><div className="text-[10px] uppercase text-gray-400">{label}</div><pre className="mt-1 max-h-36 overflow-auto rounded bg-gray-950 p-2 text-[10px] text-gray-100">{JSON.stringify(value, null, 2)}</pre></div>;
 }
 
 function Mini({ label, value }: { label: string; value?: string | number | null }) {

@@ -2622,6 +2622,20 @@ export const fieldEventsApi = {
 
 
 // Farmer query threads
+export interface QueryAuditEventDto {
+  id: string;
+  tenant_id: string;
+  thread_id: string;
+  action: string;
+  actor_type?: string | null;
+  actor_id?: string | null;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  reason?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+}
+
 export interface QueryMessageDto {
   id: string;
   tenant_id: string;
@@ -2654,6 +2668,7 @@ export interface QueryThreadDto {
   message_count: number;
   media_attachment_count: number;
   messages?: QueryMessageDto[];
+  audit_events?: QueryAuditEventDto[];
   created_at?: string | null;
   updated_at?: string | null;
 }
