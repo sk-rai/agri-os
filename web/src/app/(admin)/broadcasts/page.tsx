@@ -260,9 +260,19 @@ function BroadcastDetail({
       {(!campaign.audience_rules || campaign.audience_rules.length === 0) ? <p className="text-sm text-gray-400">No audience rules.</p> : null}
     </Section>
 
-    <Section title="Delivery summary">
+    <Section title="Delivery lifecycle">
       <div className="grid grid-cols-2 gap-2 text-xs">
-        {Object.entries(campaign.delivery_summary || {}).map(([key, value]) => <Mini key={key} label={key} value={value as number} />)}
+        <DeliveryMini label="Total" value={campaign.delivery_summary?.total || 0} tone="slate" />
+        <DeliveryMini label="Pending" value={campaign.delivery_summary?.pending || 0} tone="amber" />
+        <DeliveryMini label="Delivered" value={campaign.delivery_summary?.delivered || 0} tone="blue" />
+        <DeliveryMini label="Read" value={campaign.delivery_summary?.read || 0} tone="purple" />
+        <DeliveryMini label="Acknowledged" value={campaign.delivery_summary?.acknowledged || 0} tone="green" />
+        <DeliveryMini label="Failed" value={campaign.delivery_summary?.failed || 0} tone="red" />
+      </div>
+      <div className="mt-3 rounded bg-gray-50 p-3 text-xs">
+        <Mini label="Generation status" value={String(campaign.metadata?.delivery_generation || "NOT_STARTED")} />
+        <Mini label="Last generated at" value={String(campaign.metadata?.last_delivery_generation_at || "-")} />
+        <Mini label="Last generated rows" value={String(campaign.metadata?.last_delivery_generation_created ?? "-")} />
       </div>
     </Section>
 
@@ -283,6 +293,18 @@ function Input({ label, value, onChange }: { label: string; value: string; onCha
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return <label className="text-xs text-gray-500">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">{options.map((option) => <option key={option || "ALL"} value={option}>{option || "All"}</option>)}</select></label>;
+}
+
+function DeliveryMini({ label, value, tone }: { label: string; value: number; tone: "slate" | "amber" | "blue" | "purple" | "green" | "red" }) {
+  const tones = {
+    slate: "bg-slate-50 text-slate-700",
+    amber: "bg-amber-50 text-amber-800",
+    blue: "bg-blue-50 text-blue-800",
+    purple: "bg-purple-50 text-purple-800",
+    green: "bg-green-50 text-green-800",
+    red: "bg-red-50 text-red-800",
+  };
+  return <div className={`rounded p-3 ${tones[tone]}`}><div className="text-[10px] uppercase opacity-70">{label}</div><div className="text-lg font-bold">{value}</div></div>;
 }
 
 function Mini({ label, value }: { label: string; value?: string | number | null }) {
