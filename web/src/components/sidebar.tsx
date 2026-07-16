@@ -41,6 +41,7 @@ const navSections: NavSection[] = [
       { href: "/project-enrollments", label: "Project Enrollments", icon: "Enroll" },
       { href: "/field-events", label: "Field Events", icon: "Event" },
       { href: "/query-threads", label: "Query Inbox", icon: "Chat" },
+      { href: "/broadcasts", label: "Broadcasts", icon: "Signal" },
       { href: "/lookup", label: "Lookup", icon: "Search" },
     ],
   },

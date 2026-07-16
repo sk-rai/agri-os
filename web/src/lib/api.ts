@@ -2698,3 +2698,84 @@ export const queryThreadsApi = {
   updateStatus: (threadId: string, body: { status: string; assigned_to?: string | null; reason?: string }) =>
     api<QueryThreadDto>(`/api/v1/query-threads/${threadId}/status`, { method: "PATCH", body: JSON.stringify(body) }),
 };
+
+
+export interface BroadcastContentDto {
+  id: string;
+  tenant_id: string;
+  campaign_id: string;
+  language_code: string;
+  title: string;
+  body_text?: string | null;
+  cta_label?: string | null;
+  deeplink_url?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BroadcastAudienceRuleDto {
+  id: string;
+  tenant_id: string;
+  campaign_id: string;
+  rule_type: string;
+  operator: string;
+  values?: unknown[];
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export interface BroadcastDeliverySummaryDto {
+  total: number;
+  pending: number;
+  delivered: number;
+  read: number;
+  acknowledged: number;
+  failed: number;
+}
+
+export interface BroadcastCampaignDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  title: string;
+  category: string;
+  priority: string;
+  status: string;
+  starts_at?: string | null;
+  expires_at?: string | null;
+  created_by?: string | null;
+  approved_by?: string | null;
+  metadata?: Record<string, unknown>;
+  is_active: boolean;
+  content_count: number;
+  audience_rule_count: number;
+  delivery_count: number;
+  contents?: BroadcastContentDto[];
+  audience_rules?: BroadcastAudienceRuleDto[];
+  delivery_summary?: BroadcastDeliverySummaryDto;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BroadcastCampaignListResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  campaigns: BroadcastCampaignDto[];
+}
+
+export const broadcastsApi = {
+  list: (params?: { projectId?: string; status?: string; category?: string; priority?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.status) q.set("status", params.status);
+    if (params?.category) q.set("category", params.category);
+    if (params?.priority) q.set("priority", params.priority);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<BroadcastCampaignListResponse>(`/api/v1/broadcasts${suffix}`);
+  },
+  detail: (campaignId: string) => api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}`),
+};
