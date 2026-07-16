@@ -186,6 +186,24 @@ def main():
     check(feed["broadcasts"][0]["campaign"]["id"] == str(created_id), "Farmer feed returns published campaign")
     check(feed["broadcasts"][0]["content"]["language_code"] == "hi", "Farmer feed selects requested language")
     check(feed["broadcasts"][0]["delivery"]["delivery_status"] == "PENDING", "Farmer feed includes delivery state")
+    delivery_id = feed["broadcasts"][0]["delivery"]["id"]
+
+    print("\n[1e] Read and acknowledge delivery")
+    read = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/read", headers=headers)
+    check(read.status_code == 200, "Mark delivery read returns 200", read.text)
+    read_body = read.json()
+    check(read_body["read_at"] is not None, "Read endpoint sets read_at")
+    check(read_body["delivered_at"] is not None, "Read endpoint sets delivered_at")
+    check(read_body["delivery_status"] == "DELIVERED", "Read endpoint marks delivery delivered")
+
+    ack = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge", headers=headers)
+    check(ack.status_code == 200, "Acknowledge delivery returns 200", ack.text)
+    ack_body = ack.json()
+    check(ack_body["acknowledged_at"] is not None, "Acknowledge endpoint sets acknowledged_at")
+    check(ack_body["delivery_status"] == "ACKNOWLEDGED", "Acknowledge endpoint marks delivery acknowledged")
+
+    isolated_ack = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge", headers={"X-Tenant-ID": "default"})
+    check(isolated_ack.status_code == 404, "Delivery acknowledgement is tenant isolated", isolated_ack.text)
     republish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={})
     check(republish.status_code == 409, "Published broadcast cannot be republished", republish.text)
 

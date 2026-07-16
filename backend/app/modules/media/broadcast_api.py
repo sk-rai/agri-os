@@ -450,6 +450,58 @@ def get_broadcast_campaign(
 
 
 
+
+@router.post("/deliveries/{delivery_id}/read")
+def mark_broadcast_delivery_read(
+    delivery_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    delivery = db.query(BroadcastDelivery).filter(BroadcastDelivery.id == delivery_id, BroadcastDelivery.tenant_id == x_tenant_id).first()
+    if not delivery:
+        raise HTTPException(404, "Broadcast delivery not found")
+
+    now_ts = datetime.now(timezone.utc)
+    if delivery.delivered_at is None:
+        delivery.delivered_at = now_ts
+    if delivery.read_at is None:
+        delivery.read_at = now_ts
+    if delivery.delivery_status == "PENDING":
+        delivery.delivery_status = "DELIVERED"
+    delivery.updated_at = now_ts
+    db.commit()
+    db.refresh(delivery)
+    return _delivery_payload(delivery)
+
+
+@router.post("/deliveries/{delivery_id}/acknowledge")
+def acknowledge_broadcast_delivery(
+    delivery_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    delivery = db.query(BroadcastDelivery).filter(BroadcastDelivery.id == delivery_id, BroadcastDelivery.tenant_id == x_tenant_id).first()
+    if not delivery:
+        raise HTTPException(404, "Broadcast delivery not found")
+
+    now_ts = datetime.now(timezone.utc)
+    if delivery.delivered_at is None:
+        delivery.delivered_at = now_ts
+    if delivery.read_at is None:
+        delivery.read_at = now_ts
+    if delivery.acknowledged_at is None:
+        delivery.acknowledged_at = now_ts
+    delivery.delivery_status = "ACKNOWLEDGED"
+    delivery.updated_at = now_ts
+    db.commit()
+    db.refresh(delivery)
+    return _delivery_payload(delivery)
+
+
 @router.get("/farmers/{farmer_id}/broadcasts")
 def list_farmer_broadcasts(
     farmer_id: uuid.UUID,
