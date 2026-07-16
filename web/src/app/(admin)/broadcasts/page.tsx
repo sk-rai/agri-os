@@ -6,6 +6,7 @@ import { broadcastsApi, type BroadcastCampaignDto, type BroadcastCampaignListRes
 const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"];
 const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
 const CATEGORIES = ["", "GENERAL", "ADVISORY", "WEATHER", "MARKET", "INPUT", "EMERGENCY"];
+const RULE_TYPES = ["ALL", "PROJECT", "FARMER", "CROP", "STAGE", "LOCATION", "WEATHER", "FIELD_EVENT", "INPUT", "PRODUCT", "ROLE", "LANGUAGE"];
 
 export default function BroadcastsPage() {
   const [projectId, setProjectId] = useState("");
@@ -16,6 +17,14 @@ export default function BroadcastsPage() {
   const [selected, setSelected] = useState<BroadcastCampaignDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftCategory, setDraftCategory] = useState("ADVISORY");
+  const [draftPriority, setDraftPriority] = useState("NORMAL");
+  const [contentTitle, setContentTitle] = useState("");
+  const [contentBody, setContentBody] = useState("");
+  const [ruleType, setRuleType] = useState("ALL");
+  const [ruleValues, setRuleValues] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +53,43 @@ export default function BroadcastsPage() {
     void load();
   }
 
+  async function createDraft(event: FormEvent) {
+    event.preventDefault();
+    if (!draftTitle.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const values = ruleValues.split(",").map((item) => item.trim()).filter(Boolean);
+      const created = await broadcastsApi.create({
+        title: draftTitle.trim(),
+        category: draftCategory,
+        priority: draftPriority,
+        metadata: { source: "admin_broadcasts_page" },
+        contents: [{
+          language_code: "en",
+          title: (contentTitle.trim() || draftTitle.trim()),
+          body_text: contentBody.trim() || undefined,
+        }],
+        audience_rules: [{
+          rule_type: ruleType,
+          operator: ruleType === "ALL" ? "ANY" : "IN",
+          values,
+        }],
+      });
+      setDraftTitle("");
+      setContentTitle("");
+      setContentBody("");
+      setRuleType("ALL");
+      setRuleValues("");
+      await load();
+      setSelected(created);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create draft broadcast");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function openDetail(campaignId: string) {
     setError(null);
     try {
@@ -59,8 +105,26 @@ export default function BroadcastsPage() {
       <p className="mt-1 text-sm text-gray-500">Read-only advisory and broadcast campaign visibility for generic and targeted multimedia communication.</p>
     </div>
 
+    <form onSubmit={createDraft} className="mb-6 rounded bg-white p-5 shadow">
+      <h2 className="text-lg font-bold text-gray-900">Create draft broadcast</h2>
+      <p className="mt-1 text-sm text-gray-500">Creates a DRAFT campaign only. Publishing and delivery generation will be added separately.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <Input label="Campaign title" value={draftTitle} onChange={setDraftTitle} />
+        <Select label="Category" value={draftCategory} onChange={setDraftCategory} options={CATEGORIES.filter(Boolean)} />
+        <Select label="Priority" value={draftPriority} onChange={setDraftPriority} options={PRIORITIES.filter(Boolean)} />
+        <Input label="Content title" value={contentTitle} onChange={setContentTitle} />
+        <Input label="Content body" value={contentBody} onChange={setContentBody} />
+        <Select label="Audience rule" value={ruleType} onChange={setRuleType} options={RULE_TYPES} />
+        <Input label="Rule values comma-separated" value={ruleValues} onChange={setRuleValues} />
+      </div>
+      <div className="mt-4">
+        <button type="submit" disabled={creating || !draftTitle.trim()} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{creating ? "Creating..." : "Create draft"}</button>
+      </div>
+    </form>
+
     <form onSubmit={submit} className="mb-6 rounded bg-white p-5 shadow">
-      <div className="grid gap-3 md:grid-cols-4">
+      <h2 className="text-lg font-bold text-gray-900">Filter broadcasts</h2>
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
         <Input label="Project ID" value={projectId} onChange={setProjectId} />
         <Select label="Status" value={status} onChange={setStatus} options={STATUSES} />
         <Select label="Category" value={category} onChange={setCategory} options={CATEGORIES} />

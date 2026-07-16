@@ -2778,4 +2778,13 @@ export const broadcastsApi = {
     return api<BroadcastCampaignListResponse>(`/api/v1/broadcasts${suffix}`);
   },
   detail: (campaignId: string) => api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}`),
+  create: (body: {
+    title: string;
+    category?: string;
+    priority?: string;
+    metadata?: Record<string, unknown>;
+    contents?: Array<{ language_code?: string; title: string; body_text?: string; cta_label?: string; deeplink_url?: string; metadata?: Record<string, unknown> }>;
+    audience_rules?: Array<{ rule_type: string; operator?: string; values?: string[]; metadata?: Record<string, unknown> }>;
+  }) => api<BroadcastCampaignDto>("/api/v1/broadcasts", { method: "POST", body: JSON.stringify(body) }),
+
 };
