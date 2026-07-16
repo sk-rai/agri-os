@@ -36,6 +36,7 @@ def main():
     campaign_id = uuid.uuid4()
     project_id = uuid.uuid4()
     farmer_id = uuid.uuid4()
+    all_farmer_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id}
 
     db = SessionLocal()
@@ -61,6 +62,19 @@ def main():
             project_id=project_id,
             mobile_number=f"+9193{uuid.uuid4().int % 100000000:08d}",
             display_name="Broadcast API Farmer",
+            village_name_manual="Broadcast Village",
+            status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
+
+        db.add(Farmer(
+            id=all_farmer_id,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            mobile_number=f"+9192{uuid.uuid4().int % 100000000:08d}",
+            display_name="Broadcast API All Farmer",
             village_name_manual="Broadcast Village",
             status="ACTIVE",
             created_at=now(),
@@ -165,6 +179,11 @@ def main():
                 "operator": "IN",
                 "values": [str(project_id)]
             },
+            {
+                "rule_type": "ALL",
+                "operator": "ANY",
+                "values": []
+            },
         ]
     })
     check(create.status_code == 201, "Create broadcast draft returns 201", create.text)
@@ -174,7 +193,7 @@ def main():
     check(created["category"] == "WEATHER", "Create normalizes category")
     check(created["priority"] == "URGENT", "Create normalizes priority")
     check(len(created["contents"]) == 2, "Create returns content rows")
-    check(len(created["audience_rules"]) == 4, "Create returns audience rules")
+    check(len(created["audience_rules"]) == 5, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
     print("\n[1b] Publish draft campaign")
     publish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={
@@ -190,12 +209,12 @@ def main():
     generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)
     generated = generate.json()
-    check(generated["delivery_summary"]["total"] == 1, "Generate creates one farmer delivery")
-    check(generated["delivery_summary"]["pending"] == 1, "Generated delivery starts pending")
+    check(generated["delivery_summary"]["total"] == 2, "Generate creates deliveries for unique targeted farmers")
+    check(generated["delivery_summary"]["pending"] == 2, "Generated deliveries start pending")
     check(generated["metadata"]["delivery_generation"] == "GENERATED", "Generation metadata updated")
     generate_again = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate_again.status_code == 200, "Generate deliveries is idempotent", generate_again.text)
-    check(generate_again.json()["delivery_summary"]["total"] == 1, "Generate does not duplicate deliveries")
+    check(generate_again.json()["delivery_summary"]["total"] == 2, "Generate does not duplicate deliveries")
     print("\n[1d] Farmer broadcast consumption")
     farmer_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi", headers=headers)
     check(farmer_feed.status_code == 200, "Farmer broadcast feed returns 200", farmer_feed.text)
