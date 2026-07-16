@@ -26,8 +26,7 @@ from app.modules.sync.models import (
     AuditChainEntry,
 )
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
-from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
-
+from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
 
 def _uuid_or_none(value) -> Optional[uuid.UUID]:
     if not value:
@@ -488,7 +487,11 @@ FIELD_EVENT_TYPES = {"RAIN", "PEST", "DISEASE", "HAILSTORM", "LOCUST", "FLOOD", 
 FIELD_EVENT_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
 FIELD_EVENT_SOURCES = {"FARMER_ANDROID", "FIELD_AGENT_ANDROID", "ADMIN_WEB", "EXTERNAL_API", "IOT_DEVICE"}
 FIELD_EVENT_STATUSES = {"REPORTED", "UNDER_REVIEW", "ADVISORY_SENT", "RESOLVED", "DISMISSED"}
-
+QUERY_CATEGORIES = {"CROP_HEALTH", "INPUT_USAGE", "IRRIGATION", "MARKET", "INSURANCE", "TECH_SUPPORT", "OTHER"}
+QUERY_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "URGENT"}
+QUERY_STATUSES = {"OPEN", "ASSIGNED", "ANSWERED", "CLOSED"}
+QUERY_SENDER_TYPES = {"FARMER", "FIELD_AGENT", "AGRONOMIST", "ADMIN", "SYSTEM"}
+QUERY_MESSAGE_TYPES = {"TEXT", "AUDIO", "PHOTO", "DOCUMENT", "SYSTEM"}
 
 def _normalized_choice(value, allowed: set[str], default: str, label: str) -> str:
     normalized = str(value or default).upper()
@@ -519,7 +522,70 @@ def _validate_tenant_reference(db: Session, tenant_id: str, model, value, label:
     if value and not db.query(model).filter(model.id == value, model.tenant_id == tenant_id).first():
         raise ValueError(f"field event sync references unknown {label}")
 
+def _record_query_sync_audit(db: Session, *, tenant_id: str, thread_id: uuid.UUID, action: str, actor_type=None, actor_id=None, before=None, after=None, reason=None, metadata=None, timestamp=None) -> None:
+    db.add(QueryThreadAudit(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        thread_id=thread_id,
+        action=action,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        before=before or {},
+        after=after or {},
+        reason=reason,
+        metadata_=metadata or {},
+        created_at=timestamp or datetime.now(timezone.utc),
+    ))
 
+
+def _query_message_attachment_payloads(payload: dict) -> list[dict]:
+    attachments = _first_payload_value(payload, "media_attachments", "mediaAttachments", "attachments")
+    if attachments is None:
+        return []
+    if not isinstance(attachments, list):
+        raise ValueError("query message media_attachments must be a list")
+    return attachments
+
+
+def _materialize_query_message_attachments(db: Session, tenant_id: str, message_id: uuid.UUID, payload: dict, timestamp: datetime) -> int:
+    count = 0
+    for index, item in enumerate(_query_message_attachment_payloads(payload)):
+        if not isinstance(item, dict):
+            raise ValueError("query message media attachment must be an object")
+        asset_id = _uuid_or_none(_first_payload_value(item, "media_asset_id", "mediaAssetId", "asset_id", "assetId"))
+        if not asset_id:
+            raise ValueError("query message media attachment requires media_asset_id")
+        asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id, MediaAsset.tenant_id == tenant_id).first()
+        if not asset:
+            raise ValueError(f"query message sync references unknown media asset {asset_id}")
+
+        attachment = db.query(MediaAttachment).filter(
+            MediaAttachment.tenant_id == tenant_id,
+            MediaAttachment.media_asset_id == asset_id,
+            MediaAttachment.entity_type == "QUERY_MESSAGE",
+            MediaAttachment.entity_id == message_id,
+        ).first()
+
+        if not attachment:
+            attachment = MediaAttachment(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                media_asset_id=asset_id,
+                entity_type="QUERY_MESSAGE",
+                entity_id=message_id,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+            db.add(attachment)
+
+        attachment.purpose = str(_first_payload_value(item, "purpose") or attachment.purpose or "QUERY_ATTACHMENT").upper()
+        attachment.caption = _string_or_none(_first_payload_value(item, "caption"))
+        attachment.display_order = int(_first_payload_value(item, "display_order", "displayOrder") or index)
+        attachment.is_primary = bool(_first_payload_value(item, "is_primary", "isPrimary") or False)
+        attachment.metadata_ = _first_payload_value(item, "metadata", "metadata_") or attachment.metadata_ or {}
+        attachment.updated_at = timestamp
+        count += 1
+    return count
 
 def _field_event_attachment_payloads(payload: dict) -> list[dict]:
     attachments = _first_payload_value(payload, "media_attachments", "mediaAttachments", "attachments")
@@ -577,7 +643,136 @@ def _materialize_field_event_media_attachments(db: Session, tenant_id: str, repo
         attachment.metadata_ = metadata or attachment.metadata_ or {}
         attachment.updated_at = timestamp
 
+def _materialize_query_thread_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    payload = event.payload or {}
+    thread_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "id", "thread_id", "threadId"))
+    if not thread_id:
+        raise ValueError("QUERY_THREAD requires entity_id or payload.id")
 
+    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == tenant_id).first()
+
+    if event.operation == "DELETE":
+        if thread:
+            thread.is_active = False
+            thread.status = "CLOSED"
+            thread.updated_at = datetime.now(timezone.utc)
+            _record_query_sync_audit(db, tenant_id=tenant_id, thread_id=thread.id, action="SYNC_DELETE_THREAD", actor_type="SYSTEM", actor_id=_uuid_or_none(actor_id), timestamp=thread.updated_at)
+        return
+
+    farmer_id = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+    if not farmer_id:
+        raise ValueError("QUERY_THREAD requires farmer_id")
+
+    project_id = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+    parcel_id = _uuid_or_none(_first_payload_value(payload, "parcel_id", "parcelId"))
+
+    _validate_tenant_reference(db, tenant_id, Farmer, farmer_id, "farmer")
+    _validate_tenant_reference(db, tenant_id, Project, project_id, "project")
+    _validate_tenant_reference(db, tenant_id, Parcel, parcel_id, "parcel")
+
+    now_ts = datetime.now(timezone.utc)
+    created = thread is None
+    before = None if created else {"status": thread.status, "assigned_to": str(thread.assigned_to) if thread.assigned_to else None}
+
+    if not thread:
+        thread = QueryThread(id=thread_id, tenant_id=tenant_id, created_at=now_ts, updated_at=now_ts)
+        db.add(thread)
+
+    thread.project_id = project_id
+    thread.farmer_id = farmer_id
+    thread.parcel_id = parcel_id
+    thread.crop_cycle_id = _uuid_or_none(_first_payload_value(payload, "crop_cycle_id", "cropCycleId"))
+    thread.stage_code = _string_or_none(_first_payload_value(payload, "stage_code", "stageCode"))
+    thread.subject = _string_or_none(_first_payload_value(payload, "subject")) or thread.subject or "Farmer query"
+    thread.category = _normalized_choice(_first_payload_value(payload, "category"), QUERY_CATEGORIES, "OTHER", "query category")
+    thread.priority = _normalized_choice(_first_payload_value(payload, "priority"), QUERY_PRIORITIES, "MEDIUM", "query priority")
+    thread.status = _normalized_choice(_first_payload_value(payload, "status"), QUERY_STATUSES, "OPEN", "query status")
+    thread.assigned_to = _uuid_or_none(_first_payload_value(payload, "assigned_to", "assignedTo"))
+    last_message_at = _first_payload_value(payload, "last_message_at", "lastMessageAt")
+    if last_message_at:
+        thread.last_message_at = _datetime_or_now(last_message_at)
+
+    metadata = _first_payload_value(payload, "metadata", "metadata_")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("query thread metadata must be an object")
+    thread.metadata_ = metadata or thread.metadata_ or {}
+    thread.is_active = True
+    thread.updated_at = now_ts
+
+    _record_query_sync_audit(
+        db,
+        tenant_id=tenant_id,
+        thread_id=thread.id,
+        action="SYNC_CREATE_THREAD" if created else "SYNC_UPDATE_THREAD",
+        actor_type="SYSTEM",
+        actor_id=_uuid_or_none(actor_id),
+        before=before,
+        after={"status": thread.status, "subject": thread.subject, "category": thread.category, "priority": thread.priority},
+        metadata={"sync_event_id": str(event.event_id)},
+        timestamp=now_ts,
+    )
+
+
+def _materialize_query_message_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    payload = event.payload or {}
+    message_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "id", "message_id", "messageId"))
+    if not message_id:
+        raise ValueError("QUERY_MESSAGE requires entity_id or payload.id")
+
+    thread_id = _uuid_or_none(_first_payload_value(payload, "thread_id", "threadId"))
+    if not thread_id:
+        raise ValueError("QUERY_MESSAGE requires thread_id")
+
+    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == tenant_id, QueryThread.is_active == True).first()
+    if not thread:
+        raise ValueError(f"QUERY_MESSAGE references missing thread {thread_id}")
+
+    now_ts = datetime.now(timezone.utc)
+    message = db.query(QueryMessage).filter(QueryMessage.id == message_id, QueryMessage.tenant_id == tenant_id).first()
+    created = message is None
+
+    if event.operation == "DELETE":
+        if message:
+            message.is_active = False
+            message.updated_at = now_ts
+            _record_query_sync_audit(db, tenant_id=tenant_id, thread_id=thread.id, action="SYNC_DELETE_MESSAGE", actor_type="SYSTEM", actor_id=_uuid_or_none(actor_id), after={"message_id": str(message.id)}, timestamp=now_ts)
+        return
+
+    if not message:
+        message = QueryMessage(id=message_id, tenant_id=tenant_id, thread_id=thread_id, created_at=now_ts, updated_at=now_ts)
+        db.add(message)
+
+    message.thread_id = thread_id
+    message.sender_type = _normalized_choice(_first_payload_value(payload, "sender_type", "senderType"), QUERY_SENDER_TYPES, "FARMER", "query sender type")
+    message.sender_id = _uuid_or_none(_first_payload_value(payload, "sender_id", "senderId"))
+    message.message_type = _normalized_choice(_first_payload_value(payload, "message_type", "messageType"), QUERY_MESSAGE_TYPES, "TEXT", "query message type")
+    message.body_text = _string_or_none(_first_payload_value(payload, "body_text", "bodyText", "text", "message"))
+
+    metadata = _first_payload_value(payload, "metadata", "metadata_")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("query message metadata must be an object")
+    message.metadata_ = metadata or message.metadata_ or {}
+    message.is_active = True
+    message.updated_at = now_ts
+
+    thread.last_message_at = now_ts
+    thread.updated_at = now_ts
+    if message.sender_type in {"AGRONOMIST", "ADMIN", "FIELD_AGENT", "SYSTEM"} and thread.status == "OPEN":
+        thread.status = "ANSWERED"
+
+    attachment_count = _materialize_query_message_attachments(db, tenant_id, message.id, payload, now_ts)
+
+    _record_query_sync_audit(
+        db,
+        tenant_id=tenant_id,
+        thread_id=thread.id,
+        action="SYNC_ADD_MESSAGE" if created else "SYNC_UPDATE_MESSAGE",
+        actor_type=message.sender_type,
+        actor_id=message.sender_id,
+        after={"message_id": str(message.id), "message_type": message.message_type, "status": thread.status},
+        metadata={"sync_event_id": str(event.event_id), "media_attachment_count": attachment_count},
+        timestamp=now_ts,
+    )
 def _materialize_field_event_report_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
     """Upsert accepted offline field event reports into operational table."""
     payload = event.payload or {}
@@ -658,6 +853,10 @@ def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, ev
         _materialize_parcel_geometry_event(db, tenant_id, actor_id, event)
     elif entity_type in ("farmer_project_enrollment", "farmerprojectenrollment", "project_enrollment", "projectenrollment"):
         _materialize_farmer_project_enrollment_event(db, tenant_id, actor_id, event)
+    elif entity_type in ("query_thread", "querythread", "farmer_query_thread", "farmerquerythread"):
+        _materialize_query_thread_event(db, tenant_id, actor_id, event)
+    elif entity_type in ("query_message", "querymessage", "farmer_query_message", "farmerquerymessage"):
+        _materialize_query_message_event(db, tenant_id, actor_id, event)
     elif entity_type in ("field_event_report", "fieldeventreport", "field_event", "fieldevent"):
         _materialize_field_event_report_event(db, tenant_id, event)
 
