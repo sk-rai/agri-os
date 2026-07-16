@@ -52,6 +52,11 @@ class BroadcastAudienceRuleCreate(BaseModel):
         return normalized
 
 
+class BroadcastPublishRequest(BaseModel):
+    approved_by: uuid.UUID | None = None
+    reason: str | None = None
+
+
 class BroadcastCampaignCreate(BaseModel):
     id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
@@ -250,6 +255,48 @@ def list_broadcast_campaigns(
             for row in rows
         ],
     }
+
+
+@router.post("/{campaign_id}/publish")
+def publish_broadcast_campaign(
+    campaign_id: uuid.UUID,
+    body: BroadcastPublishRequest | None = None,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+    if campaign.status != "DRAFT":
+        raise HTTPException(409, "Only DRAFT broadcasts can be published")
+
+    content_count = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).count()
+    if content_count == 0:
+        raise HTTPException(400, "Broadcast requires at least one content row before publishing")
+
+    now_ts = datetime.now(timezone.utc)
+    campaign.status = "PUBLISHED"
+    campaign.approved_by = body.approved_by if body else None
+    if campaign.starts_at is None:
+        campaign.starts_at = now_ts
+    metadata = dict(campaign.metadata_ or {})
+    metadata["publish_reason"] = body.reason if body else None
+    metadata["published_at"] = now_ts.isoformat()
+    metadata["delivery_generation"] = "NOT_STARTED"
+    campaign.metadata_ = metadata
+    campaign.updated_at = now_ts
+    db.commit()
+    db.refresh(campaign)
+
+    contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
+    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
+    payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=0)
+    payload["contents"] = [_content_payload(row) for row in contents]
+    payload["audience_rules"] = [_rule_payload(row) for row in rules]
+    payload["delivery_summary"] = {"total": 0, "pending": 0, "delivered": 0, "read": 0, "acknowledged": 0, "failed": 0}
+    return payload
 
 
 @router.get("/{campaign_id}")

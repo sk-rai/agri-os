@@ -140,12 +140,24 @@ def main():
     check(len(created["contents"]) == 2, "Create returns content rows")
     check(len(created["audience_rules"]) == 2, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
+    print("\n[1b] Publish draft campaign")
+    publish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={
+        "approved_by": str(uuid.uuid4()),
+        "reason": "Regression publish test"
+    })
+    check(publish.status_code == 200, "Publish broadcast draft returns 200", publish.text)
+    published = publish.json()
+    check(published["status"] == "PUBLISHED", "Publish changes status")
+    check(published["starts_at"] is not None, "Publish sets starts_at")
+    check(published["metadata"]["delivery_generation"] == "NOT_STARTED", "Publish does not generate deliveries yet")
+    republish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={})
+    check(republish.status_code == 409, "Published broadcast cannot be republished", republish.text)
 
     listing = client.get("/api/v1/broadcasts?status=DRAFT", headers=headers)
     check(listing.status_code == 200, "Broadcast list returns 200", listing.text)
     body = listing.json()
     check(body["schema_version"] == "broadcast_campaigns.v1", "Schema version stable")
-    check(body["count"] >= 2, "List returns seeded and created campaigns")
+    check(body["count"] == 1, "List returns seeded draft campaign")
     row = next(item for item in body["campaigns"] if item["id"] == str(campaign_id))
     check(row["id"] == str(campaign_id), "List preserves seeded campaign id")
     check(row["content_count"] == 2, "List includes content count")
