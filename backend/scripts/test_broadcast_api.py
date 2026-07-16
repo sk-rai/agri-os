@@ -96,14 +96,58 @@ def main():
         db.close()
 
     client = TestClient(app)
+    print("\n[1] Create draft campaign via API")
+    created_id = uuid.uuid4()
+    create = client.post("/api/v1/broadcasts", headers=headers, json={
+        "id": str(created_id),
+        "title": "Weather alert draft",
+        "category": "WEATHER",
+        "priority": "URGENT",
+        "metadata": {"targeting_mode": "RULE_BASED"},
+        "contents": [
+            {
+                "language_code": "en",
+                "title": "Weather alert",
+                "body_text": "Heavy rainfall expected.",
+                "cta_label": "View details",
+                "deeplink_url": "agrios://broadcast/weather-alert"
+            },
+            {
+                "language_code": "hi",
+                "title": "Weather alert Hindi",
+                "body_text": "Heavy rainfall expected."
+            }
+        ],
+        "audience_rules": [
+            {
+                "rule_type": "LOCATION",
+                "operator": "IN",
+                "values": ["KARNATAKA"]
+            },
+            {
+                "rule_type": "CROP",
+                "operator": "IN",
+                "values": ["RICE"]
+            }
+        ]
+    })
+    check(create.status_code == 201, "Create broadcast draft returns 201", create.text)
+    created = create.json()
+    check(created["id"] == str(created_id), "Create preserves requested campaign id")
+    check(created["status"] == "DRAFT", "Created campaign starts as draft")
+    check(created["category"] == "WEATHER", "Create normalizes category")
+    check(created["priority"] == "URGENT", "Create normalizes priority")
+    check(len(created["contents"]) == 2, "Create returns content rows")
+    check(len(created["audience_rules"]) == 2, "Create returns audience rules")
+    check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
 
     listing = client.get("/api/v1/broadcasts?status=DRAFT", headers=headers)
     check(listing.status_code == 200, "Broadcast list returns 200", listing.text)
     body = listing.json()
     check(body["schema_version"] == "broadcast_campaigns.v1", "Schema version stable")
-    check(body["count"] == 1, "List returns seeded campaign")
-    row = body["campaigns"][0]
-    check(row["id"] == str(campaign_id), "List preserves campaign id")
+    check(body["count"] >= 2, "List returns seeded and created campaigns")
+    row = next(item for item in body["campaigns"] if item["id"] == str(campaign_id))
+    check(row["id"] == str(campaign_id), "List preserves seeded campaign id")
     check(row["content_count"] == 2, "List includes content count")
     check(row["audience_rule_count"] == 1, "List includes rule count")
     check(row["delivery_count"] == 1, "List includes delivery count")
