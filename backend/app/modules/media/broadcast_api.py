@@ -378,6 +378,15 @@ def generate_broadcast_deliveries(
         values = rule.values or []
         if rule.rule_type == "ALL":
             farmer_ids.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == x_tenant_id, Farmer.status == "ACTIVE").all())
+        elif rule.rule_type == "PROJECT":
+            farmer_ids.update(
+                str(row.id)
+                for row in db.query(Farmer.id).filter(
+                    Farmer.tenant_id == x_tenant_id,
+                    Farmer.status == "ACTIVE",
+                    Farmer.project_id.in_([uuid.UUID(str(value)) for value in values if value]),
+                ).all()
+            )
         elif rule.rule_type == "FARMER":
             farmer_ids.update(str(value) for value in values if value)
         else:

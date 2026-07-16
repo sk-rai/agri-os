@@ -1,6 +1,6 @@
 """Regression for read-only broadcast campaign API."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
 import uuid
@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Farmer, Tenant
+from app.modules.farmer.models import Farmer, Project, Tenant
 from app.modules.media.models import BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
 
 
@@ -34,6 +34,7 @@ def main():
 
     tenant_id = f"broadcast-api-{uuid.uuid4().hex[:8]}"
     campaign_id = uuid.uuid4()
+    project_id = uuid.uuid4()
     farmer_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id}
 
@@ -41,9 +42,23 @@ def main():
     try:
         db.add(Tenant(id=tenant_id, name="Broadcast API Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
         db.flush()
+        db.add(Project(
+            id=project_id,
+            tenant_id=tenant_id,
+            name="Broadcast API Project",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 12, 31),
+            status="PLANNED",
+            crop_scope=["RICE"],
+            geography_scope={},
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
         db.add(Farmer(
             id=farmer_id,
             tenant_id=tenant_id,
+            project_id=project_id,
             mobile_number=f"+9193{uuid.uuid4().int % 100000000:08d}",
             display_name="Broadcast API Farmer",
             village_name_manual="Broadcast Village",
@@ -144,7 +159,12 @@ def main():
                 "rule_type": "FARMER",
                 "operator": "IN",
                 "values": [str(farmer_id)]
-            }
+            },
+            {
+                "rule_type": "PROJECT",
+                "operator": "IN",
+                "values": [str(project_id)]
+            },
         ]
     })
     check(create.status_code == 201, "Create broadcast draft returns 201", create.text)
@@ -154,7 +174,7 @@ def main():
     check(created["category"] == "WEATHER", "Create normalizes category")
     check(created["priority"] == "URGENT", "Create normalizes priority")
     check(len(created["contents"]) == 2, "Create returns content rows")
-    check(len(created["audience_rules"]) == 3, "Create returns audience rules")
+    check(len(created["audience_rules"]) == 4, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
     print("\n[1b] Publish draft campaign")
     publish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={
@@ -236,6 +256,7 @@ def main():
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")
