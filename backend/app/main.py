@@ -27,7 +27,7 @@ from app.modules.master_data.api.input_catalog import router as input_catalog_ro
 from app.modules.master_data.api.input_catalog_csv import router as input_catalog_csv_router
 from app.modules.master_data.api.product_catalog import router as product_catalog_router
 from app.modules.app_config import router as app_config_router
-from app.modules.media import field_events_router, query_threads_router, router as media_router
+from app.modules.media import broadcasts_router, field_events_router, query_threads_router, router as media_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -75,6 +75,7 @@ app.include_router(product_catalog_router)
 app.include_router(app_config_router)
 app.include_router(media_router)
 app.include_router(field_events_router)
+app.include_router(broadcasts_router)
 app.include_router(query_threads_router)
 
 
