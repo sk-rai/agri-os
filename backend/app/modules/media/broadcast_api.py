@@ -387,6 +387,19 @@ def generate_broadcast_deliveries(
                     Farmer.project_id.in_([uuid.UUID(str(value)) for value in values if value]),
                 ).all()
             )
+        elif rule.rule_type == "CROP":
+            from app.modules.workflow.models import CropCycle
+
+            crop_codes = [str(value).upper() for value in values if value]
+            farmer_ids.update(
+                str(row[0])
+                for row in db.query(CropCycle.farmer_id).filter(
+                    CropCycle.tenant_id == x_tenant_id,
+                    CropCycle.crop_code.in_(crop_codes),
+                    CropCycle.status == "ACTIVE",
+                ).distinct().all()
+                if row[0]
+            )
         elif rule.rule_type == "FARMER":
             farmer_ids.update(str(value) for value in values if value)
         else:

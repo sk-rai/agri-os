@@ -28,6 +28,9 @@ def check(condition, label, detail=None):
 
 
 def main():
+    from app.modules.workflow.models import CropCycle
+    from app.modules.master_data.models.crop import CropCategory, Crop, CropLifecycleTemplate
+    from app.modules.farmer.models import Parcel
     print("=" * 72)
     print("BROADCAST API REGRESSION")
     print("=" * 72)
@@ -37,6 +40,8 @@ def main():
     project_id = uuid.uuid4()
     farmer_id = uuid.uuid4()
     all_farmer_id = uuid.uuid4()
+    crop_farmer_id = uuid.uuid4()
+    crop_parcel_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id}
 
     db = SessionLocal()
@@ -77,6 +82,108 @@ def main():
             display_name="Broadcast API All Farmer",
             village_name_manual="Broadcast Village",
             status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
+
+        db.add(Farmer(
+            id=crop_farmer_id,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            mobile_number=f"+9191{uuid.uuid4().int % 100000000:08d}",
+            display_name="Broadcast API Crop Farmer",
+            village_name_manual="Broadcast Village",
+            status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
+
+        crop_category = db.query(CropCategory).filter(CropCategory.code == "CEREAL").first()
+        if crop_category is None:
+            crop_category = CropCategory(
+                id=uuid.uuid4(),
+                code="CEREAL",
+                canonical_name="Cereals",
+                description="Broadcast targeting regression crop category",
+                aliases=[],
+                is_active=True,
+                created_at=now(),
+                updated_at=now(),
+            )
+            db.add(crop_category)
+            db.flush()
+
+        crop = db.query(Crop).filter(Crop.code == "RICE").first()
+        if crop is None:
+            crop = Crop(
+                id=uuid.uuid4(),
+                code="RICE",
+                category_id=crop_category.id,
+                canonical_name="Rice",
+                scientific_name="Oryza sativa",
+                description="Broadcast targeting regression crop",
+                typical_duration_days=120,
+                suitable_seasons=["KHARIF"],
+                suitable_soil_types=[],
+                aliases=[],
+                is_active=True,
+                created_at=now(),
+                updated_at=now(),
+            )
+            db.add(crop)
+            db.flush()
+
+        lifecycle_template = db.query(CropLifecycleTemplate).filter(
+            CropLifecycleTemplate.crop_id == crop.id,
+            CropLifecycleTemplate.season_code == "KHARIF",
+        ).first()
+        if lifecycle_template is None:
+            lifecycle_template = CropLifecycleTemplate(
+                id=uuid.uuid4(),
+                code=f"BROADCAST_RICE_KHARIF_{uuid.uuid4().hex[:8]}",
+                crop_id=crop.id,
+                season_code="KHARIF",
+                canonical_name="Broadcast Rice Template",
+                description="Broadcast targeting regression template",
+                total_duration_days=120,
+                stages=[],
+                is_default=False,
+                aliases=[],
+                is_active=True,
+                created_at=now(),
+                updated_at=now(),
+            )
+            db.add(lifecycle_template)
+            db.flush()
+
+        db.add(Parcel(
+            id=crop_parcel_id,
+            tenant_id=tenant_id,
+            farmer_id=crop_farmer_id,
+            survey_number="BROADCAST-CROP-PARCEL",
+            reported_area=1,
+            reported_area_unit="ACRE",
+            ownership_type="OWNED",
+            village_name_manual="Broadcast Village",
+            created_at=now(),
+            updated_at=now(),
+        ))
+
+        db.add(CropCycle(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            farmer_id=crop_farmer_id,
+            parcel_id=crop_parcel_id,
+            project_id=project_id,
+            crop_code="RICE",
+            season_code="KHARIF",
+            lifecycle_template_id=lifecycle_template.id,
+            workflow_template_version_id=None,
+            status="ACTIVE",
+            planned_sowing_date=now().date(),
+            expected_harvest_date=now().date(),
             created_at=now(),
             updated_at=now(),
         ))
@@ -209,12 +316,12 @@ def main():
     generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)
     generated = generate.json()
-    check(generated["delivery_summary"]["total"] == 2, "Generate creates deliveries for unique targeted farmers")
-    check(generated["delivery_summary"]["pending"] == 2, "Generated deliveries start pending")
+    check(generated["delivery_summary"]["total"] == 3, "Generate creates deliveries for unique targeted farmers")
+    check(generated["delivery_summary"]["pending"] == 3, "Generated deliveries start pending")
     check(generated["metadata"]["delivery_generation"] == "GENERATED", "Generation metadata updated")
     generate_again = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate_again.status_code == 200, "Generate deliveries is idempotent", generate_again.text)
-    check(generate_again.json()["delivery_summary"]["total"] == 2, "Generate does not duplicate deliveries")
+    check(generate_again.json()["delivery_summary"]["total"] == 3, "Generate does not duplicate deliveries")
     print("\n[1d] Farmer broadcast consumption")
     farmer_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi", headers=headers)
     check(farmer_feed.status_code == 200, "Farmer broadcast feed returns 200", farmer_feed.text)
@@ -274,6 +381,8 @@ def main():
         db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
