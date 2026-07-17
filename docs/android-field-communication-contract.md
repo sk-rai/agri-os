@@ -570,13 +570,13 @@ Implemented targeting rules for delivery expansion:
 - `STAGE`: farmers with ACTIVE crop cycles that have ACTIVE stage instances for selected stage codes.
 - `LOCATION`: farmers/parcels whose manual village name or village UUID matches the configured values. District/state/climatic-zone expansion is still future work.
 - `LANGUAGE`: active farmers whose `language_preference` matches selected language codes.
+- `WEATHER`: farmers matched through latest non-expired backend weather snapshots whose `condition_code` or `risk_flags` match the configured values. Initial expansion supports tenant/project/farmer/parcel/village-scoped snapshots.
 
 Current rule-combination behavior is controlled by campaign metadata `audience_match_mode`: `ANY` is the default inclusive/union mode where a farmer matching any supported rule can receive a generated delivery; `ALL` is intersection mode where the farmer must match every supported rule. Android only consumes generated delivery rows and does not need to re-evaluate targeting rules locally.
 
 Accepted but not yet expanded into delivery recipients:
 
 - `ROLE`
-- `WEATHER`
 - `FIELD_EVENT`
 - `INPUT`
 - `PRODUCT`

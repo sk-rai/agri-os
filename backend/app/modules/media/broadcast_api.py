@@ -5,12 +5,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel
 from app.modules.media.api import _iso
-from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment
+from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment, WeatherSnapshot
 
 router = APIRouter(prefix="/api/v1/broadcasts", tags=["broadcasts"])
 
@@ -547,6 +548,68 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
                     ).distinct().all()
                     if row[0]
                 )
+        elif rule.rule_type == "WEATHER":
+            from datetime import datetime, timezone
+
+            weather_terms = {str(value).strip().upper() for value in values if str(value).strip()}
+            if weather_terms:
+                now_ts = datetime.now(timezone.utc)
+                snapshots = db.query(WeatherSnapshot).filter(
+                    WeatherSnapshot.tenant_id == tenant_id,
+                    or_(WeatherSnapshot.expires_at.is_(None), WeatherSnapshot.expires_at > now_ts),
+                ).order_by(WeatherSnapshot.fetched_at.desc(), WeatherSnapshot.created_at.desc()).all()
+                matched_location_names = set()
+                matched_project_ids = set()
+                matched_farmer_ids = set()
+                matched_parcel_ids = set()
+                tenant_wide_match = False
+                for snapshot in snapshots:
+                    snapshot_terms = {str(snapshot.condition_code or "").strip().upper()}
+                    snapshot_terms.update(str(flag).strip().upper() for flag in (snapshot.risk_flags or []) if str(flag).strip())
+                    if not weather_terms.intersection(snapshot_terms):
+                        continue
+                    scope = str(snapshot.location_scope or "").upper()
+                    if scope == "TENANT":
+                        tenant_wide_match = True
+                    elif scope == "PROJECT" and snapshot.project_id:
+                        matched_project_ids.add(snapshot.project_id)
+                    elif scope == "FARMER" and snapshot.farmer_id:
+                        matched_farmer_ids.add(snapshot.farmer_id)
+                    elif scope == "PARCEL" and snapshot.parcel_id:
+                        matched_parcel_ids.add(snapshot.parcel_id)
+                    elif scope == "VILLAGE" and snapshot.location_key:
+                        matched_location_names.add(str(snapshot.location_key).strip().upper())
+                if tenant_wide_match:
+                    matched.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == tenant_id, Farmer.status == "ACTIVE").all())
+                if matched_project_ids:
+                    matched.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == tenant_id, Farmer.status == "ACTIVE", Farmer.project_id.in_(matched_project_ids)).all())
+                if matched_farmer_ids:
+                    matched.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == tenant_id, Farmer.status == "ACTIVE", Farmer.id.in_(matched_farmer_ids)).all())
+                if matched_parcel_ids:
+                    matched.update(
+                        str(row[0])
+                        for row in db.query(Parcel.farmer_id).filter(Parcel.tenant_id == tenant_id, Parcel.status == "ACTIVE", Parcel.id.in_(matched_parcel_ids)).distinct().all()
+                        if row[0]
+                    )
+                if matched_location_names:
+                    matched.update(
+                        str(farmer_id)
+                        for farmer_id, village_name in db.query(Farmer.id, Farmer.village_name_manual).filter(
+                            Farmer.tenant_id == tenant_id,
+                            Farmer.status == "ACTIVE",
+                            Farmer.village_name_manual.isnot(None),
+                        ).all()
+                        if str(village_name or "").strip().upper() in matched_location_names
+                    )
+                    matched.update(
+                        str(farmer_id)
+                        for farmer_id, village_name in db.query(Parcel.farmer_id, Parcel.village_name_manual).filter(
+                            Parcel.tenant_id == tenant_id,
+                            Parcel.status == "ACTIVE",
+                            Parcel.village_name_manual.isnot(None),
+                        ).distinct().all()
+                        if farmer_id and str(village_name or "").strip().upper() in matched_location_names
+                    )
         elif rule.rule_type == "LOCATION":
             location_names = {str(value).strip().upper() for value in values if str(value).strip()}
             location_ids = []

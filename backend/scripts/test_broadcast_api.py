@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import engine, SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Project, Tenant
-from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment
+from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment, WeatherSnapshot
 
 
 def now():
@@ -207,6 +207,27 @@ def main():
         ))
         db.flush()
 
+        db.add(WeatherSnapshot(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            location_scope="VILLAGE",
+            location_key="Broadcast Village",
+            fetched_at=now(),
+            forecast_valid_from=now(),
+            forecast_valid_to=now(),
+            expires_at=datetime(2026, 12, 31, tzinfo=timezone.utc),
+            summary="Heavy rain regression snapshot",
+            condition_code="HEAVY_RAIN",
+            rainfall_probability_percent=82,
+            rainfall_mm="34.5",
+            risk_flags=["HEAVY_RAIN_NEXT_24H"],
+            source_payload={"provider": "regression"},
+            metadata_={"source": "broadcast_regression"},
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
+
         db.add(BroadcastCampaign(
             id=campaign_id,
             tenant_id=tenant_id,
@@ -340,6 +361,11 @@ def main():
                 "values": ["FLOWERING"]
             },
             {
+                "rule_type": "WEATHER",
+                "operator": "IN",
+                "values": ["HEAVY_RAIN_NEXT_24H"]
+            },
+            {
                 "rule_type": "ALL",
                 "operator": "ANY",
                 "values": []
@@ -353,7 +379,7 @@ def main():
     check(created["category"] == "WEATHER", "Create normalizes category")
     check(created["priority"] == "URGENT", "Create normalizes priority")
     check(len(created["contents"]) == 2, "Create returns content rows")
-    check(len(created["audience_rules"]) == 6, "Create returns audience rules")
+    check(len(created["audience_rules"]) == 7, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
 
     print("\n[1a] Edit draft content and audience rules")
@@ -411,6 +437,7 @@ def main():
     check(rule_counts.get("LOCATION") == 3, "Audience preview expands LOCATION rule")
     check(rule_counts.get("LANGUAGE") == 1, "Audience preview expands LANGUAGE rule")
     check(rule_counts.get("STAGE") == 1, "Audience preview expands STAGE rule")
+    check(rule_counts.get("WEATHER") == 3, "Audience preview expands WEATHER rule from stored snapshot")
 
     print("\n[1c-all] Preview ALL/intersection audience mode")
     all_mode_id = uuid.uuid4()
@@ -425,6 +452,7 @@ def main():
             {"rule_type": "PROJECT", "operator": "IN", "values": [str(project_id)]},
             {"rule_type": "CROP", "operator": "IN", "values": ["RICE"]},
             {"rule_type": "STAGE", "operator": "IN", "values": ["FLOWERING"]},
+            {"rule_type": "WEATHER", "operator": "IN", "values": ["HEAVY_RAIN_NEXT_24H"]},
             {"rule_type": "LOCATION", "operator": "IN", "values": ["Broadcast Village"]},
         ],
     })
@@ -435,7 +463,7 @@ def main():
     check(all_mode_body["audience_match_mode"] == "ALL", "Audience preview preserves ALL match mode")
     check(all_mode_body["estimated_farmer_count"] == 1, "ALL match mode intersects supported rules")
     check(all_mode_body["sample_farmer_ids"] == [str(crop_farmer_id)], "ALL match mode returns only farmer matching every rule")
-    check(set(all_mode_body["sample_matches"][0]["matched_by"]) == {"CROP", "LOCATION", "PROJECT", "STAGE"}, "ALL match mode explains intersected rules")
+    check(set(all_mode_body["sample_matches"][0]["matched_by"]) == {"CROP", "LOCATION", "PROJECT", "STAGE", "WEATHER"}, "ALL match mode explains intersected rules")
     print("\n[1c] Generate deliveries")
     generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)
@@ -645,6 +673,7 @@ def main():
         db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(MediaAsset).filter(MediaAsset.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(CropStageInstance).filter(CropStageInstance.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
