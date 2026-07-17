@@ -587,6 +587,8 @@ Admin-side APIs currently available:
 
 ```http
 POST /api/v1/broadcasts
+POST /api/v1/broadcasts/{campaign_id}/contents
+POST /api/v1/broadcasts/{campaign_id}/audience-rules
 POST /api/v1/broadcasts/{campaign_id}/publish
 POST /api/v1/broadcasts/{campaign_id}/expire
 POST /api/v1/broadcasts/{campaign_id}/cancel
@@ -596,7 +598,7 @@ GET  /api/v1/broadcasts/{campaign_id}/deliveries?status=PENDING
 GET  /api/v1/broadcasts/{campaign_id}/audit
 ```
 
-Android should not use the admin creation/publish/generate endpoints.
+Android should not use the admin creation/edit/publish/generate endpoints. Draft editing endpoints are admin-only and currently allow adding localized content rows and audience rules while the campaign is still DRAFT. Published/expired/cancelled campaigns reject draft edits.
 
 ### Android farmer broadcast feed
 
