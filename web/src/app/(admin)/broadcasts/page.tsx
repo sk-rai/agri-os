@@ -438,7 +438,10 @@ function BroadcastDetail({
       <div className="mt-3 rounded bg-gray-50 p-3 text-xs">
         <Mini label="Generation status" value={String(campaign.metadata?.delivery_generation || "NOT_STARTED")} />
         <Mini label="Last generated at" value={String(campaign.metadata?.last_delivery_generation_at || "-")} />
-        <Mini label="Last generated rows" value={String(campaign.metadata?.last_delivery_generation_created ?? "-")} />
+        <Mini label="Targeted farmers" value={String(campaign.metadata?.last_delivery_generation_targeted ?? "-")} />
+        <Mini label="Existing deliveries" value={String(campaign.metadata?.last_delivery_generation_existing ?? "-")} />
+        <Mini label="Created rows" value={String(campaign.metadata?.last_delivery_generation_created ?? "-")} />
+        <Mini label="Skipped existing" value={String(campaign.metadata?.last_delivery_generation_skipped_existing ?? "-")} />
       </div>
     </Section>
 

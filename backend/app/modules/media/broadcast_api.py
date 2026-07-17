@@ -671,6 +671,7 @@ def generate_broadcast_deliveries(
         str(row.farmer_id)
         for row in db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id, BroadcastDelivery.farmer_id.isnot(None)).all()
     }
+    skipped_existing = len(farmer_ids.intersection(existing))
 
     created = 0
     for farmer_id_text in sorted(farmer_ids):
@@ -694,11 +695,14 @@ def generate_broadcast_deliveries(
 
     metadata = dict(campaign.metadata_ or {})
     metadata["delivery_generation"] = "GENERATED"
+    metadata["last_delivery_generation_targeted"] = len(farmer_ids)
+    metadata["last_delivery_generation_existing"] = len(existing)
     metadata["last_delivery_generation_created"] = created
+    metadata["last_delivery_generation_skipped_existing"] = skipped_existing
     metadata["last_delivery_generation_at"] = now_ts.isoformat()
     campaign.metadata_ = metadata
     campaign.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="GENERATE_DELIVERIES", actor_type="ADMIN_WEB", after={"created": created, "total_targeted": len(farmer_ids)}, metadata={"unsupported_rule_count": resolved.get("unsupported_rule_count", 0)})
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="GENERATE_DELIVERIES", actor_type="ADMIN_WEB", after={"created": created, "total_targeted": len(farmer_ids), "skipped_existing": skipped_existing}, metadata={"unsupported_rule_count": resolved.get("unsupported_rule_count", 0), "existing_delivery_count": len(existing)})
     db.commit()
     db.refresh(campaign)
     return _broadcast_detail_payload(db, campaign, x_tenant_id)
