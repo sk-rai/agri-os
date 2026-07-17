@@ -32,6 +32,7 @@ export default function BroadcastsPage() {
   const [lifecycleReason, setLifecycleReason] = useState("Lifecycle update");
   const [transitioningLifecycle, setTransitioningLifecycle] = useState(false);
   const [generatingDeliveries, setGeneratingDeliveries] = useState(false);
+  const [retryingDeliveries, setRetryingDeliveries] = useState(false);
   const [audiencePreview, setAudiencePreview] = useState<BroadcastAudiencePreviewResponse | null>(null);
   const [previewingAudience, setPreviewingAudience] = useState(false);
   const [deliveries, setDeliveries] = useState<BroadcastDeliveriesResponse | null>(null);
@@ -170,6 +171,22 @@ export default function BroadcastsPage() {
     }
   }
 
+  async function retryUndelivered(campaignId: string) {
+    setRetryingDeliveries(true);
+    setError(null);
+    try {
+      const updated = await broadcastsApi.retryUndelivered(campaignId);
+      setSelected(updated);
+      setDeliveries(null);
+      setAudit(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to retry undelivered broadcasts");
+    } finally {
+      setRetryingDeliveries(false);
+    }
+  }
+
   async function previewAudience(campaignId: string) {
     setPreviewingAudience(true);
     setError(null);
@@ -283,7 +300,7 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} lifecycleReason={lifecycleReason} setLifecycleReason={setLifecycleReason} transitioningLifecycle={transitioningLifecycle} onTransitionLifecycle={transitionBroadcast} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} audit={audit} loadingAudit={loadingAudit} onLoadAudit={loadAudit} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} lifecycleReason={lifecycleReason} setLifecycleReason={setLifecycleReason} transitioningLifecycle={transitioningLifecycle} onTransitionLifecycle={transitionBroadcast} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} retryingDeliveries={retryingDeliveries} onRetryUndelivered={retryUndelivered} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} audit={audit} loadingAudit={loadingAudit} onLoadAudit={loadAudit} />
     </div> : null}
   </div>;
 }
@@ -300,6 +317,8 @@ function BroadcastDetail({
   onTransitionLifecycle,
   generatingDeliveries,
   onGenerateDeliveries,
+  retryingDeliveries,
+  onRetryUndelivered,
   audiencePreview,
   previewingAudience,
   onPreviewAudience,
@@ -323,6 +342,8 @@ function BroadcastDetail({
   onTransitionLifecycle: (campaignId: string, action: "expire" | "cancel") => Promise<void>;
   generatingDeliveries: boolean;
   onGenerateDeliveries: (campaignId: string) => Promise<void>;
+  retryingDeliveries: boolean;
+  onRetryUndelivered: (campaignId: string) => Promise<void>;
   audiencePreview: BroadcastAudiencePreviewResponse | null;
   previewingAudience: boolean;
   onPreviewAudience: (campaignId: string) => Promise<void>;
@@ -367,7 +388,10 @@ function BroadcastDetail({
     {campaign.status === "PUBLISHED" ? <div className="mt-5 rounded border bg-blue-50 p-3">
       <h3 className="text-sm font-semibold text-blue-900">Generate deliveries</h3>
       <p className="mt-1 text-xs text-blue-800">Creates pending delivery rows for currently supported audience rules. This is idempotent.</p>
-      <button type="button" onClick={() => void onGenerateDeliveries(campaign.id)} disabled={generatingDeliveries} className="mt-3 rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{generatingDeliveries ? "Generating..." : "Generate deliveries"}</button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => void onGenerateDeliveries(campaign.id)} disabled={generatingDeliveries} className="rounded bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{generatingDeliveries ? "Generating..." : "Generate deliveries"}</button>
+        <button type="button" onClick={() => void onRetryUndelivered(campaign.id)} disabled={retryingDeliveries} className="rounded bg-indigo-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{retryingDeliveries ? "Retrying..." : "Retry undelivered"}</button>
+      </div>
     </div> : null}
 
     <div className="mt-5 rounded border bg-emerald-50 p-3">
@@ -450,6 +474,10 @@ function BroadcastDetail({
         <Mini label="Existing deliveries" value={String(campaign.metadata?.last_delivery_generation_existing ?? "-")} />
         <Mini label="Created rows" value={String(campaign.metadata?.last_delivery_generation_created ?? "-")} />
         <Mini label="Skipped existing" value={String(campaign.metadata?.last_delivery_generation_skipped_existing ?? "-")} />
+        <Mini label="Last retry at" value={String(campaign.metadata?.last_delivery_retry_at || "-")} />
+        <Mini label="Retried rows" value={String(campaign.metadata?.last_delivery_retry_retried ?? "-")} />
+        <Mini label="Marked failed" value={String(campaign.metadata?.last_delivery_retry_marked_failed ?? "-")} />
+        <Mini label="Skipped ack/read" value={String(campaign.metadata?.last_delivery_retry_skipped_acknowledged ?? "-")} />
       </div>
     </Section>
 

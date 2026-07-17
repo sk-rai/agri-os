@@ -2911,6 +2911,8 @@ export const broadcastsApi = {
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/publish`, { method: "POST", body: JSON.stringify(body || {}) }),
   generateDeliveries: (campaignId: string) =>
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/generate-deliveries`, { method: "POST" }),
+  retryUndelivered: (campaignId: string) =>
+    api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/retry-undelivered`, { method: "POST" }),
   expire: (campaignId: string, body?: { actor_id?: string; reason?: string }) =>
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/expire`, { method: "POST", body: JSON.stringify(body || {}) }),
   cancel: (campaignId: string, body?: { actor_id?: string; reason?: string }) =>

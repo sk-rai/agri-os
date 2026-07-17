@@ -709,6 +709,83 @@ def generate_broadcast_deliveries(
 
 
 
+
+@router.post("/{campaign_id}/retry-undelivered")
+def retry_undelivered_broadcast_deliveries(
+    campaign_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+    if campaign.status != "PUBLISHED":
+        raise HTTPException(409, "Only PUBLISHED broadcasts can retry deliveries")
+
+    now_ts = datetime.now(timezone.utc)
+    max_retries = 3
+    rows = db.query(BroadcastDelivery).filter(
+        BroadcastDelivery.tenant_id == x_tenant_id,
+        BroadcastDelivery.campaign_id == campaign.id,
+        BroadcastDelivery.delivery_status.in_(["PENDING", "FAILED"]),
+    ).all()
+
+    retried = 0
+    marked_failed = 0
+    skipped_acknowledged = db.query(BroadcastDelivery).filter(
+        BroadcastDelivery.tenant_id == x_tenant_id,
+        BroadcastDelivery.campaign_id == campaign.id,
+        BroadcastDelivery.delivery_status.in_(["DELIVERED", "ACKNOWLEDGED"]),
+    ).count()
+
+    for row in rows:
+        metadata = dict(row.metadata_ or {})
+        retry_count = int(metadata.get("retry_count") or 0)
+        if retry_count >= max_retries:
+            if row.delivery_status != "FAILED":
+                row.delivery_status = "FAILED"
+                row.failure_reason = "MAX_RETRIES_EXCEEDED"
+                row.updated_at = now_ts
+                marked_failed += 1
+            continue
+        retry_count += 1
+        metadata["retry_count"] = retry_count
+        metadata["max_retries"] = max_retries
+        metadata["last_retry_at"] = now_ts.isoformat()
+        row.metadata_ = metadata
+        row.updated_at = now_ts
+        retried += 1
+        if retry_count >= max_retries:
+            row.delivery_status = "FAILED"
+            row.failure_reason = "MAX_RETRIES_EXCEEDED"
+            marked_failed += 1
+
+    metadata = dict(campaign.metadata_ or {})
+    metadata["last_delivery_retry_at"] = now_ts.isoformat()
+    metadata["last_delivery_retry_retried"] = retried
+    metadata["last_delivery_retry_marked_failed"] = marked_failed
+    metadata["last_delivery_retry_skipped_acknowledged"] = skipped_acknowledged
+    campaign.metadata_ = metadata
+    campaign.updated_at = now_ts
+
+    _record_broadcast_audit(
+        db,
+        tenant_id=x_tenant_id,
+        campaign_id=campaign.id,
+        action="RETRY_DELIVERIES",
+        actor_type="ADMIN_WEB",
+        after={"retried": retried, "marked_failed": marked_failed, "skipped_acknowledged": skipped_acknowledged},
+        metadata={"max_retries": max_retries},
+    )
+    db.commit()
+    db.refresh(campaign)
+    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+
+
+
+
 @router.post("/{campaign_id}/expire")
 def expire_broadcast_campaign(
     campaign_id: uuid.UUID,

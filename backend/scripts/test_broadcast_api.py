@@ -519,6 +519,24 @@ def main():
     check(len(detail_body["audience_rules"]) == 1, "Detail includes audience rules")
     check(detail_body["delivery_summary"]["total"] == 1, "Detail includes delivery summary")
 
+    print("\n[1c-retry] Retry undelivered delivery rows")
+    retry1 = client.post(f"/api/v1/broadcasts/{created_id}/retry-undelivered", headers=headers)
+    check(retry1.status_code == 200, "Retry undelivered deliveries returns 200", retry1.text)
+    retry1_body = retry1.json()
+    check(retry1_body["metadata"]["last_delivery_retry_retried"] == 2, "First retry records pending rows only")
+    check(retry1_body["metadata"]["last_delivery_retry_marked_failed"] == 0, "First retry does not mark failed")
+    retry2 = client.post(f"/api/v1/broadcasts/{created_id}/retry-undelivered", headers=headers)
+    check(retry2.status_code == 200, "Second retry returns 200", retry2.text)
+    retry3 = client.post(f"/api/v1/broadcasts/{created_id}/retry-undelivered", headers=headers)
+    check(retry3.status_code == 200, "Third retry returns 200", retry3.text)
+    retry3_body = retry3.json()
+    check(retry3_body["metadata"]["last_delivery_retry_marked_failed"] == 2, "Third retry marks remaining pending rows failed")
+    failed_after_retry = client.get(f"/api/v1/broadcasts/{created_id}/deliveries?status=FAILED", headers=headers)
+    check(failed_after_retry.status_code == 200, "Failed delivery filter returns 200 after retries", failed_after_retry.text)
+    check(failed_after_retry.json()["count"] == 2, "Failed delivery filter shows max-retry rows")
+
+
+
     print("\n[1c-life] Broadcast lifecycle transitions")
     expire = client.post(f"/api/v1/broadcasts/{created_id}/expire", headers=headers, json={"reason": "Regression expiry"})
     check(expire.status_code == 200, "Expire published broadcast returns 200", expire.text)
