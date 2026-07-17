@@ -119,6 +119,14 @@ Minimal provider config for admin testing:
 ```json
 {
   "adapter": "open_meteo",
+  "risk_thresholds": {
+    "heavy_rain_mm": 20,
+    "heavy_rain_probability_percent": 80,
+    "fungal_humidity_percent": 80,
+    "fungal_rain_probability_percent": 60,
+    "heat_stress_temperature_max_c": 38,
+    "high_wind_kmph": 40
+  },
   "locations": [
     {
       "location_scope": "VILLAGE",
@@ -145,6 +153,17 @@ Minimal provider config for admin testing:
 }
 ```
 
+`risk_thresholds` is optional. If omitted, the adapter uses backend defaults. Clients can tune these thresholds per provider/project/crop deployment by storing overrides in provider `config.risk_thresholds` or `config.thresholds`.
+
+Current Open-Meteo threshold keys:
+
+- `heavy_rain_mm`: rainfall amount that upgrades `RAIN` to `HEAVY_RAIN`.
+- `heavy_rain_probability_percent`: rainfall probability that can trigger `HEAVY_RAIN_NEXT_24H`.
+- `fungal_humidity_percent`: humidity threshold for fungal-risk detection.
+- `fungal_rain_probability_percent`: rainfall probability threshold for fungal-risk detection.
+- `heat_stress_temperature_max_c`: maximum temperature threshold for heat-stress detection.
+- `high_wind_kmph`: wind speed threshold for high-wind alerts.
+
 When `Run adapter` is clicked from `/weather`, this config produces a normalized snapshot similar to:
 
 ```json
@@ -155,7 +174,18 @@ When `Run adapter` is clicked from `/weather`, this config produces a normalized
   "rainfall_probability_percent": 86,
   "rainfall_mm": "22.5",
   "humidity_percent": 88,
-  "risk_flags": ["HEAVY_RAIN_NEXT_24H", "FUNGAL_RISK"]
+  "risk_flags": ["HEAVY_RAIN_NEXT_24H", "FUNGAL_RISK"],
+  "metadata": {
+    "adapter": "open_meteo",
+    "risk_thresholds": {
+      "heavy_rain_mm": 20,
+      "heavy_rain_probability_percent": 80,
+      "fungal_humidity_percent": 80,
+      "fungal_rain_probability_percent": 60,
+      "heat_stress_temperature_max_c": 38,
+      "high_wind_kmph": 40
+    }
+  }
 }
 ```
 
