@@ -503,6 +503,17 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
                     matched.add(str(uuid.UUID(str(value))))
                 except ValueError:
                     continue
+        elif rule.rule_type == "LANGUAGE":
+            language_codes = {str(value).strip().lower() for value in values if str(value).strip()}
+            if language_codes:
+                matched.update(
+                    str(row.id)
+                    for row in db.query(Farmer.id).filter(
+                        Farmer.tenant_id == tenant_id,
+                        Farmer.status == "ACTIVE",
+                        Farmer.language_preference.in_(language_codes),
+                    ).all()
+                )
         elif rule.rule_type == "LOCATION":
             location_names = {str(value).strip().upper() for value in values if str(value).strip()}
             location_ids = []
