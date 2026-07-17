@@ -5,6 +5,37 @@ import { weatherApi, type WeatherProviderDto, type WeatherProvidersResponse, typ
 
 const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
 const LOCATION_SCOPES = ["TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"];
+const DEFAULT_RISK_THRESHOLDS = {
+  heavy_rain_mm: 20,
+  heavy_rain_probability_percent: 80,
+  fungal_humidity_percent: 80,
+  fungal_rain_probability_percent: 60,
+  heat_stress_temperature_max_c: 38,
+  high_wind_kmph: 40,
+};
+const OPEN_METEO_SAMPLE_CONFIG = {
+  adapter: "open_meteo",
+  refresh_strategy: "SNAPSHOT_6H",
+  risk_thresholds: DEFAULT_RISK_THRESHOLDS,
+  locations: [
+    { location_scope: "VILLAGE", location_key: "Broadcast Village", lat: "12.9716", lng: "77.5946" },
+  ],
+  sample_payload: {
+    fetched_at: "2026-07-17T12:00:00+00:00",
+    current: {
+      time: "2026-07-17T12:00:00+00:00",
+      temperature_2m: 29.4,
+      relative_humidity_2m: 88,
+      rain: 22.5,
+      weather_code: 63,
+      wind_speed_10m: 18,
+    },
+    hourly: {
+      precipitation_probability: [86],
+      rain: [22.5],
+    },
+  },
+};
 
 export default function WeatherPage() {
   const [providers, setProviders] = useState<WeatherProvidersResponse | null>(null);
@@ -65,20 +96,47 @@ export default function WeatherPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  function parseProviderConfigForEditor(): Record<string, unknown> {
+    if (!providerConfig.trim()) return {};
+    const parsed = JSON.parse(providerConfig);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error("Provider config must be a JSON object");
+    }
+    return parsed as Record<string, unknown>;
+  }
+
+  function useOpenMeteoTemplate() {
+    setProviderType("EXTERNAL_API");
+    setRefreshInterval("6");
+    setProviderEnabled(true);
+    if (!providerCode.trim()) setProviderCode("open_meteo_sample");
+    if (!providerName.trim()) setProviderName("Open-Meteo Sample");
+    setProviderConfig(JSON.stringify(OPEN_METEO_SAMPLE_CONFIG, null, 2));
+  }
+
+  function mergeDefaultRiskThresholds() {
+    try {
+      const parsedConfig = parseProviderConfigForEditor();
+      const existingThresholds = (parsedConfig.risk_thresholds && typeof parsedConfig.risk_thresholds === "object" && !Array.isArray(parsedConfig.risk_thresholds))
+        ? parsedConfig.risk_thresholds as Record<string, unknown>
+        : {};
+      setProviderConfig(JSON.stringify({
+        ...parsedConfig,
+        risk_thresholds: { ...DEFAULT_RISK_THRESHOLDS, ...existingThresholds },
+      }, null, 2));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Provider config must be valid JSON before thresholds can be merged");
+    }
+  }
+
   async function saveProvider(event: FormEvent) {
     event.preventDefault();
     if (!providerCode.trim() || !providerName.trim()) return;
     setSavingProvider(true);
     setError(null);
     try {
-      let parsedConfig: Record<string, unknown> = {};
-      if (providerConfig.trim()) {
-        const parsed = JSON.parse(providerConfig);
-        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-          throw new Error("Provider config must be a JSON object");
-        }
-        parsedConfig = parsed as Record<string, unknown>;
-      }
+      const parsedConfig = parseProviderConfigForEditor();
       await weatherApi.createProvider({
         provider_code: providerCode.trim(),
         display_name: providerName.trim(),
@@ -208,7 +266,20 @@ export default function WeatherPage() {
         <label className="text-xs text-gray-500">Type<select value={providerType} onChange={(event) => setProviderType(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">{PROVIDER_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
         <label className="text-xs text-gray-500">Interval hours<input type="number" min={1} max={168} value={refreshInterval} onChange={(event) => setRefreshInterval(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
         <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2"><input type="checkbox" checked={providerEnabled} onChange={(event) => setProviderEnabled(event.target.checked)} /> Enabled</label>
-        <label className="text-xs text-gray-500 md:col-span-4">Config JSON<textarea value={providerConfig} onChange={(event) => setProviderConfig(event.target.value)} rows={3} className="mt-1 w-full rounded border p-2 font-mono text-xs text-gray-900" /></label>
+        <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900 md:col-span-6">
+          <div className="font-semibold">Config helpers</div>
+          <p className="mt-1">Use these to avoid hand-writing weather adapter JSON. Thresholds stay editable after insertion.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={useOpenMeteoTemplate} className="rounded bg-blue-700 px-3 py-1.5 font-medium text-white">Use Open-Meteo sample config</button>
+            <button type="button" onClick={mergeDefaultRiskThresholds} className="rounded border border-blue-200 bg-white px-3 py-1.5 font-medium text-blue-800">Merge default risk thresholds</button>
+          </div>
+        </div>
+        <label className="text-xs text-gray-500 md:col-span-6">Config JSON<textarea value={providerConfig} onChange={(event) => setProviderConfig(event.target.value)} rows={10} className="mt-1 w-full rounded border p-2 font-mono text-xs text-gray-900" /></label>
+        <div className="grid gap-2 text-xs text-gray-500 md:col-span-6 lg:grid-cols-3">
+          <div className="rounded bg-gray-50 p-2">Heavy rain: {DEFAULT_RISK_THRESHOLDS.heavy_rain_mm}mm or {DEFAULT_RISK_THRESHOLDS.heavy_rain_probability_percent}% probability</div>
+          <div className="rounded bg-gray-50 p-2">Fungal risk: {DEFAULT_RISK_THRESHOLDS.fungal_humidity_percent}% humidity + {DEFAULT_RISK_THRESHOLDS.fungal_rain_probability_percent}% rain probability</div>
+          <div className="rounded bg-gray-50 p-2">Heat/wind: {DEFAULT_RISK_THRESHOLDS.heat_stress_temperature_max_c} C / {DEFAULT_RISK_THRESHOLDS.high_wind_kmph} kmph</div>
+        </div>
         <div className="flex items-end gap-2 md:col-span-6">
           <button type="submit" disabled={savingProvider || !providerCode.trim() || !providerName.trim()} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingProvider ? "Saving..." : "Save provider"}</button>
           <button type="button" onClick={() => { setProviderCode(""); setProviderName(""); setProviderType("EXTERNAL_API"); setRefreshInterval("6"); setProviderEnabled(true); setProviderConfig("{}"); }} className="rounded border px-4 py-2 text-sm text-gray-700">Clear</button>
