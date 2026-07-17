@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import csv
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import io
 from typing import Optional
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
-from app.modules.media.models import BroadcastAuditEvent, BroadcastCampaign, BroadcastDelivery, FieldEventReport, QueryThread, MediaAsset, MediaAttachment
+from app.modules.media.models import BroadcastAuditEvent, BroadcastCampaign, BroadcastDelivery, FieldEventReport, QueryThread, MediaAsset, MediaAttachment, WeatherProviderConfig, WeatherSnapshot
 from app.modules.master_data.models import (
     AgriculturalInput,
     AgriculturalProduct,
@@ -1288,6 +1288,24 @@ def system_readiness_report(
     broadcast_delivery_count = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id).count()
     broadcast_audit_count = db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == x_tenant_id).count()
 
+    weather_provider_count = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.tenant_id == x_tenant_id,
+        WeatherProviderConfig.is_enabled == True,
+    ).count()
+    weather_snapshot_query = db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == x_tenant_id)
+    if project_id:
+        weather_snapshot_query = weather_snapshot_query.filter(
+            or_(
+                WeatherSnapshot.project_id == project_id,
+                WeatherSnapshot.location_scope == "TENANT",
+            )
+        )
+    weather_snapshot_count = weather_snapshot_query.count()
+    now_ts = datetime.now(timezone.utc)
+    weather_fresh_snapshot_count = weather_snapshot_query.filter(
+        or_(WeatherSnapshot.expires_at.is_(None), WeatherSnapshot.expires_at > now_ts)
+    ).count()
+
     backlog = _admin_backlog_counts(db, tenant_id=x_tenant_id, project_id=project_id)
     sync_payload = sync_materialization_health_report(
         project_id=project_id,
@@ -1314,6 +1332,7 @@ def system_readiness_report(
         _readiness_item("INPUT_CATALOG", "Input catalog", published_input_count > 0, f"{published_input_count} published inputs, {active_input_count} active inputs", "/inputs"),
         _readiness_item("PRODUCT_CATALOG", "Product catalog", active_product_count > 0 and active_package_count > 0 and product_import_invalid_count == 0, f"{manufacturer_count} manufacturers, {active_product_count} active products/brands, {active_package_count} active packages, {product_import_invalid_count} invalid import batches, {product_import_pending_count} pending apply", "/products", "WARN" if product_import_invalid_count else "INFO"),
         _readiness_item("BROADCASTS", "Broadcasts", broadcast_campaign_count > 0 and (broadcast_published_count > 0 or not project_id), f"{broadcast_campaign_count} campaigns, {broadcast_published_count} published, {broadcast_delivery_count} deliveries, {broadcast_audit_count} audit events", "/broadcasts", "INFO"),
+        _readiness_item("WEATHER_SNAPSHOTS", "Weather snapshots", weather_provider_count > 0 and weather_fresh_snapshot_count > 0, f"{weather_provider_count} enabled providers, {weather_snapshot_count} snapshots, {weather_fresh_snapshot_count} fresh/non-expired", "/broadcasts", "INFO"),
         _readiness_item("PROJECT_ENROLLMENT_IMPORTS", "Project enrollment imports", enrollment_import_invalid_count == 0, f"{enrollment_import_invalid_count} invalid import batches, {enrollment_import_pending_count} pending apply", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if enrollment_import_invalid_count else "INFO"),
         _readiness_item("PROJECT_ENROLLMENT_LIFECYCLE", "Project enrollment lifecycle", (not project_id) or enrollment_open_count == 0, f"{enrollment_open_count} active/pending enrollment rows, {enrollment_total_count} total", f"/project-enrollments{'?projectId=' + str(project_id) if project_id else ''}", "WARN" if project_id else "INFO"),
         _readiness_item("FARMER_SYNC", "Farmer sync", farmer_count > 0, f"{farmer_count} farmers materialized", lookup_href),

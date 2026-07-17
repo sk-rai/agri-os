@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Project, Tenant
+from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -24,6 +25,7 @@ REQUIRED_CHECKS = {
     "INPUT_CATALOG",
     "PRODUCT_CATALOG",
     "BROADCASTS",
+    "WEATHER_SNAPSHOTS",
     "PROJECT_ENROLLMENT_IMPORTS",
     "PROJECT_ENROLLMENT_LIFECYCLE",
     "FARMER_SYNC",
@@ -127,6 +129,42 @@ def main():
         check("broadcast_draft_count" in backlog, "dashboard backlog reports draft broadcasts")
         check("broadcast_published_count" in backlog, "dashboard backlog reports published broadcasts")
         check("broadcast_pending_delivery_count" in backlog, "dashboard backlog reports pending broadcast deliveries")
+        check(by_code["WEATHER_SNAPSHOTS"]["href"] == "/broadcasts", "weather snapshot readiness links to broadcast admin")
+        check("enabled providers" in by_code["WEATHER_SNAPSHOTS"]["detail"], "weather snapshot readiness reports provider detail")
+        check("fresh/non-expired" in by_code["WEATHER_SNAPSHOTS"]["detail"], "weather snapshot readiness reports freshness detail")
+
+        provider_id = uuid.uuid4()
+        db.add(WeatherProviderConfig(
+            id=provider_id,
+            tenant_id="default",
+            provider_code=f"readiness-weather-{uuid.uuid4().hex[:6]}",
+            display_name="Readiness Weather Provider",
+            provider_type="MANUAL",
+            refresh_interval_hours=6,
+            is_enabled=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.add(WeatherSnapshot(
+            id=uuid.uuid4(),
+            tenant_id="default",
+            provider_id=provider_id,
+            location_scope="TENANT",
+            location_key="default",
+            fetched_at=datetime.now(timezone.utc),
+            forecast_valid_from=datetime.now(timezone.utc),
+            expires_at=datetime(2027, 1, 1, tzinfo=timezone.utc),
+            summary="Readiness weather snapshot",
+            condition_code="CLEAR",
+            risk_flags=[],
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+        weather_ready_response = client.get("/api/v1/reports/system-readiness", headers=headers)
+        check(weather_ready_response.status_code == 200, "system readiness returns after weather seed", weather_ready_response.text[:500])
+        weather_ready_by_code = {item["code"]: item for item in weather_ready_response.json()["checks"]}
+        check(weather_ready_by_code["WEATHER_SNAPSHOTS"]["ready"] is True, "weather snapshot readiness becomes ready with fresh snapshot")
 
         project = create_project(db)
         readiness_farmer = Farmer(
@@ -176,6 +214,9 @@ def main():
         check(missing_response.status_code == 404, "missing project readiness returns 404", missing_response.text)
     finally:
         db.rollback()
+        db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == "default", WeatherSnapshot.summary == "Readiness weather snapshot").delete(synchronize_session=False)
+        db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == "default", WeatherProviderConfig.display_name == "Readiness Weather Provider").delete(synchronize_session=False)
+        db.commit()
         if project:
             db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.project_id == project.id).delete(synchronize_session=False)
             db.query(Farmer).filter(Farmer.project_id == project.id).delete(synchronize_session=False)
