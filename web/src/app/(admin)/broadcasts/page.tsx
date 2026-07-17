@@ -20,6 +20,8 @@ export default function BroadcastsPage() {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftCategory, setDraftCategory] = useState("ADVISORY");
   const [draftPriority, setDraftPriority] = useState("NORMAL");
+  const [draftStartsAt, setDraftStartsAt] = useState("");
+  const [draftExpiresAt, setDraftExpiresAt] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [contentBody, setContentBody] = useState("");
   const [ruleType, setRuleType] = useState("ALL");
@@ -79,6 +81,8 @@ export default function BroadcastsPage() {
         title: draftTitle.trim(),
         category: draftCategory,
         priority: draftPriority,
+        starts_at: draftStartsAt ? new Date(draftStartsAt).toISOString() : undefined,
+        expires_at: draftExpiresAt ? new Date(draftExpiresAt).toISOString() : undefined,
         metadata: { source: "admin_broadcasts_page" },
         contents: [{
           language_code: "en",
@@ -92,6 +96,8 @@ export default function BroadcastsPage() {
         }],
       });
       setDraftTitle("");
+      setDraftStartsAt("");
+      setDraftExpiresAt("");
       setContentTitle("");
       setContentBody("");
       setRuleType("ALL");
@@ -225,6 +231,8 @@ export default function BroadcastsPage() {
         <Input label="Campaign title" value={draftTitle} onChange={setDraftTitle} />
         <Select label="Category" value={draftCategory} onChange={setDraftCategory} options={CATEGORIES.filter(Boolean)} />
         <Select label="Priority" value={draftPriority} onChange={setDraftPriority} options={PRIORITIES.filter(Boolean)} />
+        <Input label="Starts at (optional)" value={draftStartsAt} onChange={setDraftStartsAt} type="datetime-local" />
+        <Input label="Expires at (optional)" value={draftExpiresAt} onChange={setDraftExpiresAt} type="datetime-local" />
         <Input label="Content title" value={contentTitle} onChange={setContentTitle} />
         <Input label="Content body" value={contentBody} onChange={setContentBody} />
         <Select label="Audience rule" value={ruleType} onChange={setRuleType} options={RULE_TYPES} />
@@ -517,8 +525,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return <div className="mt-5"><h3 className="text-sm font-semibold text-gray-900">{title}</h3><div className="mt-3 space-y-3">{children}</div></div>;
 }
 
-function Input({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="text-xs text-gray-500">{label}<input value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>;
+function Input({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+  return <label className="block text-sm"><span className="text-gray-600">{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label>;
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {

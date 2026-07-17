@@ -2901,6 +2901,8 @@ export const broadcastsApi = {
     title: string;
     category?: string;
     priority?: string;
+    starts_at?: string;
+    expires_at?: string;
     metadata?: Record<string, unknown>;
     contents?: Array<{ language_code?: string; title: string; body_text?: string; cta_label?: string; deeplink_url?: string; metadata?: Record<string, unknown> }>;
     audience_rules?: Array<{ rule_type: string; operator?: string; values?: string[]; metadata?: Record<string, unknown> }>;
