@@ -514,6 +514,25 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
                         Farmer.language_preference.in_(language_codes),
                     ).all()
                 )
+        elif rule.rule_type == "STAGE":
+            from app.modules.workflow.models import CropCycle, CropStageInstance
+
+            stage_codes = {str(value).strip().upper() for value in values if str(value).strip()}
+            if stage_codes:
+                matched.update(
+                    str(row[0])
+                    for row in db.query(CropCycle.farmer_id).join(
+                        CropStageInstance,
+                        CropStageInstance.crop_cycle_id == CropCycle.id,
+                    ).filter(
+                        CropCycle.tenant_id == tenant_id,
+                        CropCycle.status == "ACTIVE",
+                        CropStageInstance.tenant_id == tenant_id,
+                        CropStageInstance.status == "ACTIVE",
+                        CropStageInstance.stage_code.in_(stage_codes),
+                    ).distinct().all()
+                    if row[0]
+                )
         elif rule.rule_type == "LOCATION":
             location_names = {str(value).strip().upper() for value in values if str(value).strip()}
             location_ids = []

@@ -28,7 +28,7 @@ def check(condition, label, detail=None):
 
 
 def main():
-    from app.modules.workflow.models import CropCycle
+    from app.modules.workflow.models import CropCycle, CropStageInstance
     from app.modules.master_data.models.crop import CropCategory, Crop, CropLifecycleTemplate
     from app.modules.farmer.models import Parcel
     print("=" * 72)
@@ -174,8 +174,9 @@ def main():
             updated_at=now(),
         ))
 
+        crop_cycle_id = uuid.uuid4()
         db.add(CropCycle(
-            id=uuid.uuid4(),
+            id=crop_cycle_id,
             tenant_id=tenant_id,
             farmer_id=crop_farmer_id,
             parcel_id=crop_parcel_id,
@@ -187,6 +188,20 @@ def main():
             status="ACTIVE",
             planned_sowing_date=now().date(),
             expected_harvest_date=now().date(),
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
+        db.add(CropStageInstance(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            crop_cycle_id=crop_cycle_id,
+            stage_code="FLOWERING",
+            stage_name="Flowering",
+            stage_order=4,
+            expected_duration_days=15,
+            status="ACTIVE",
+            actual_start_date=now().date(),
             created_at=now(),
             updated_at=now(),
         ))
@@ -320,6 +335,11 @@ def main():
                 "values": [str(project_id)]
             },
             {
+                "rule_type": "STAGE",
+                "operator": "IN",
+                "values": ["FLOWERING"]
+            },
+            {
                 "rule_type": "ALL",
                 "operator": "ANY",
                 "values": []
@@ -333,7 +353,7 @@ def main():
     check(created["category"] == "WEATHER", "Create normalizes category")
     check(created["priority"] == "URGENT", "Create normalizes priority")
     check(len(created["contents"]) == 2, "Create returns content rows")
-    check(len(created["audience_rules"]) == 5, "Create returns audience rules")
+    check(len(created["audience_rules"]) == 6, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
 
     print("\n[1a] Edit draft content and audience rules")
@@ -389,6 +409,7 @@ def main():
     check(rule_counts.get("CROP") == 1, "Audience preview expands CROP rule")
     check(rule_counts.get("LOCATION") == 3, "Audience preview expands LOCATION rule")
     check(rule_counts.get("LANGUAGE") == 1, "Audience preview expands LANGUAGE rule")
+    check(rule_counts.get("STAGE") == 1, "Audience preview expands STAGE rule")
     print("\n[1c] Generate deliveries")
     generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)
@@ -599,6 +620,7 @@ def main():
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(MediaAsset).filter(MediaAsset.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropStageInstance).filter(CropStageInstance.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
