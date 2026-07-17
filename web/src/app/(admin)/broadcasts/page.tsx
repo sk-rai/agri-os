@@ -343,6 +343,17 @@ function BroadcastDetail({
             {rule.sample_farmer_ids.length ? <p className="mt-1 break-all font-mono text-[10px] text-gray-500">Sample: {rule.sample_farmer_ids.join(", ")}</p> : null}
           </div>)}
         </div>
+        {audiencePreview.match_reason_counts && Object.keys(audiencePreview.match_reason_counts).length ? <div className="rounded border bg-white p-2">
+          <div className="font-semibold text-gray-700">Why farmers matched</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {Object.entries(audiencePreview.match_reason_counts).map(([ruleType, count]) => <span key={ruleType} className="rounded-full bg-blue-50 px-2 py-1 text-blue-800">{ruleType}: {count}</span>)}
+          </div>
+          {audiencePreview.sample_matches?.length ? <div className="mt-2 space-y-1 text-[10px] text-gray-500">
+            {audiencePreview.sample_matches.slice(0, 5).map((match) => <div key={match.farmer_id} className="break-all">
+              <span className="font-mono">{match.farmer_id}</span> matched by {match.matched_by.join(", ")}
+            </div>)}
+          </div> : null}
+        </div> : null}
       </div> : null}
     </div>
 

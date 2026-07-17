@@ -325,6 +325,7 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
     ).order_by(BroadcastAudienceRule.rule_type.asc()).all()
 
     farmer_ids: set[str] = set()
+    farmer_match_reasons: dict[str, set[str]] = {}
     rule_summaries = []
     unsupported_rule_count = 0
 
@@ -424,6 +425,8 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
 
         if supported:
             farmer_ids.update(matched)
+            for farmer_id in matched:
+                farmer_match_reasons.setdefault(farmer_id, set()).add(rule.rule_type)
 
         rule_summaries.append({
             "rule_id": str(rule.id),
@@ -438,6 +441,14 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
 
     return {
         "farmer_ids": sorted(farmer_ids),
+        "sample_matches": [
+            {"farmer_id": farmer_id, "matched_by": sorted(farmer_match_reasons.get(farmer_id, set()))}
+            for farmer_id in sorted(farmer_ids)[:25]
+        ],
+        "match_reason_counts": {
+            rule_type: sum(1 for reasons in farmer_match_reasons.values() if rule_type in reasons)
+            for rule_type in sorted({rule for reasons in farmer_match_reasons.values() for rule in reasons})
+        },
         "rule_summaries": rule_summaries,
         "unsupported_rule_count": unsupported_rule_count,
     }
@@ -655,6 +666,8 @@ def preview_broadcast_audience(
         "campaign_status": campaign.status,
         "estimated_farmer_count": len(resolved["farmer_ids"]),
         "sample_farmer_ids": resolved["farmer_ids"][:20],
+        "sample_matches": resolved["sample_matches"],
+        "match_reason_counts": resolved["match_reason_counts"],
         "rule_summaries": resolved["rule_summaries"],
         "unsupported_rule_count": resolved["unsupported_rule_count"],
         "existing_delivery_count": existing_delivery_count,

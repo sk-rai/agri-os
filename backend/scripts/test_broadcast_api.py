@@ -324,6 +324,8 @@ def main():
     check(preview_body["estimated_farmer_count"] == 3, "Audience preview estimates unique farmers")
     check(preview_body["existing_delivery_count"] == 0, "Audience preview does not create deliveries")
     check(preview_body["unsupported_rule_count"] == 0, "Audience preview expands all configured rules")
+    check(preview_body["match_reason_counts"]["LOCATION"] == 3, "Audience preview exposes LOCATION match reason count")
+    check(any("LOCATION" in row["matched_by"] for row in preview_body["sample_matches"]), "Audience preview explains sample match reasons")
     rule_counts = {row["rule_type"]: row["matched_farmer_count"] for row in preview_body["rule_summaries"]}
     check(rule_counts.get("ALL") == 3, "Audience preview expands ALL rule")
     check(rule_counts.get("FARMER") == 1, "Audience preview expands FARMER rule")

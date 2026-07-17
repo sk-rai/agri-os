@@ -2777,6 +2777,8 @@ export interface BroadcastAudienceRulePreviewDto {
   supported: boolean;
   matched_farmer_count: number;
   sample_farmer_ids: string[];
+  sample_matches?: Array<{ farmer_id: string; matched_by: string[] }>;
+  match_reason_counts?: Record<string, number>;
   note?: string | null;
 }
 
@@ -2787,6 +2789,8 @@ export interface BroadcastAudiencePreviewResponse {
   campaign_status: string;
   estimated_farmer_count: number;
   sample_farmer_ids: string[];
+  sample_matches?: Array<{ farmer_id: string; matched_by: string[] }>;
+  match_reason_counts?: Record<string, number>;
   rule_summaries: BroadcastAudienceRulePreviewDto[];
   unsupported_rule_count: number;
   existing_delivery_count: number;
