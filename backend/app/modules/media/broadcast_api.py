@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer
+from app.modules.farmer.models import Farmer, Parcel
 from app.modules.media.api import _iso
 from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
 
@@ -372,6 +372,51 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
                     matched.add(str(uuid.UUID(str(value))))
                 except ValueError:
                     continue
+        elif rule.rule_type == "LOCATION":
+            location_names = {str(value).strip().upper() for value in values if str(value).strip()}
+            location_ids = []
+            for value in values:
+                try:
+                    location_ids.append(uuid.UUID(str(value)))
+                except ValueError:
+                    continue
+            if location_names:
+                matched.update(
+                    str(farmer_id)
+                    for farmer_id, village_name in db.query(Farmer.id, Farmer.village_name_manual).filter(
+                        Farmer.tenant_id == tenant_id,
+                        Farmer.status == "ACTIVE",
+                        Farmer.village_name_manual.isnot(None),
+                    ).all()
+                    if str(village_name or "").strip().upper() in location_names
+                )
+                matched.update(
+                    str(farmer_id)
+                    for farmer_id, village_name in db.query(Parcel.farmer_id, Parcel.village_name_manual).filter(
+                        Parcel.tenant_id == tenant_id,
+                        Parcel.status == "ACTIVE",
+                        Parcel.village_name_manual.isnot(None),
+                    ).distinct().all()
+                    if farmer_id and str(village_name or "").strip().upper() in location_names
+                )
+            if location_ids:
+                matched.update(
+                    str(row.id)
+                    for row in db.query(Farmer.id).filter(
+                        Farmer.tenant_id == tenant_id,
+                        Farmer.status == "ACTIVE",
+                        Farmer.village_id.in_(location_ids),
+                    ).all()
+                )
+                matched.update(
+                    str(row[0])
+                    for row in db.query(Parcel.farmer_id).filter(
+                        Parcel.tenant_id == tenant_id,
+                        Parcel.status == "ACTIVE",
+                        Parcel.village_id.in_(location_ids),
+                    ).distinct().all()
+                    if row[0]
+                )
         else:
             supported = False
             note = "Rule accepted for campaign configuration but not yet expanded into delivery recipients."

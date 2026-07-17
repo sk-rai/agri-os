@@ -271,7 +271,7 @@ def main():
             {
                 "rule_type": "LOCATION",
                 "operator": "IN",
-                "values": ["KARNATAKA"]
+                "values": ["Broadcast Village"]
             },
             {
                 "rule_type": "CROP",
@@ -323,12 +323,13 @@ def main():
     check(preview_body["campaign_id"] == str(created_id), "Audience preview references campaign")
     check(preview_body["estimated_farmer_count"] == 3, "Audience preview estimates unique farmers")
     check(preview_body["existing_delivery_count"] == 0, "Audience preview does not create deliveries")
-    check(preview_body["unsupported_rule_count"] == 1, "Audience preview reports unsupported location rule")
+    check(preview_body["unsupported_rule_count"] == 0, "Audience preview expands all configured rules")
     rule_counts = {row["rule_type"]: row["matched_farmer_count"] for row in preview_body["rule_summaries"]}
     check(rule_counts.get("ALL") == 3, "Audience preview expands ALL rule")
     check(rule_counts.get("FARMER") == 1, "Audience preview expands FARMER rule")
     check(rule_counts.get("PROJECT") == 3, "Audience preview expands PROJECT rule")
     check(rule_counts.get("CROP") == 1, "Audience preview expands CROP rule")
+    check(rule_counts.get("LOCATION") == 3, "Audience preview expands LOCATION rule")
     print("\n[1c] Generate deliveries")
     generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)

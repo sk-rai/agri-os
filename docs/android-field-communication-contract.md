@@ -566,10 +566,10 @@ Implemented targeting rules for delivery expansion:
 - `FARMER`: explicit farmer IDs.
 - `PROJECT`: active farmers in selected project IDs.
 - `CROP`: farmers with ACTIVE crop cycles for selected crop codes.
+- `LOCATION`: farmers/parcels whose manual village name or village UUID matches the configured values. District/state/climatic-zone expansion is still future work.
 
 Accepted but not yet expanded into delivery recipients:
 
-- `LOCATION`
 - `STAGE`
 - `ROLE`
 - `LANGUAGE`
