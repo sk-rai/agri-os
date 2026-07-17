@@ -567,13 +567,15 @@ Implemented targeting rules for delivery expansion:
 - `FARMER`: explicit farmer IDs.
 - `PROJECT`: active farmers in selected project IDs.
 - `CROP`: farmers with ACTIVE crop cycles for selected crop codes.
+- `STAGE`: farmers with ACTIVE crop cycles that have ACTIVE stage instances for selected stage codes.
 - `LOCATION`: farmers/parcels whose manual village name or village UUID matches the configured values. District/state/climatic-zone expansion is still future work.
+- `LANGUAGE`: active farmers whose `language_preference` matches selected language codes.
+
+Current rule-combination behavior is inclusive/union targeting: if a farmer matches any supported audience rule, that farmer can receive a generated delivery. A stricter future mode should support intersection targeting, for example farmers who match project + crop + stage + location + weather together.
 
 Accepted but not yet expanded into delivery recipients:
 
-- `STAGE`
 - `ROLE`
-- `LANGUAGE`
 - `WEATHER`
 - `FIELD_EVENT`
 - `INPUT`
