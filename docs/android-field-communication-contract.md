@@ -583,6 +583,24 @@ Accepted but not yet expanded into delivery recipients:
 
 Backend preview reports unsupported rules through `unsupported_rule_count` and per-rule `supported=false` so admin can see what will and will not be delivered before generation.
 
+### Backend weather snapshot foundation
+
+Weather is backend-owned and snapshot-based. Android should not call weather providers directly and should not decide broadcast targeting from local phone sensors. The backend stores provider configuration and normalized weather snapshots, then broadcast targeting can consume those stored snapshots.
+
+Current backend foundation:
+
+- `weather_provider_configs`: tenant/provider configuration, including `refresh_interval_hours` defaulting to 6 hours and customizable per provider.
+- `weather_snapshots`: normalized observations/forecasts for a location scope such as `VILLAGE`, `PINCODE`, `PARCEL`, `PROJECT`, `GEOPOINT`, or future weather grid.
+- Snapshot freshness is represented by `fetched_at`, `forecast_valid_from`, `forecast_valid_to`, and `expires_at`.
+- Risk flags such as `HEAVY_RAIN_NEXT_24H` and normalized fields like rainfall probability, rainfall mm, temperature, humidity, and wind are stored with the raw provider payload for auditability.
+
+Android role:
+
+- provide/confirm farmer, parcel, and optional GPS context when permitted;
+- display weather-triggered broadcasts delivered by backend;
+- allow farmer/agent field evidence reports when actual conditions differ;
+- do not re-fetch weather APIs or locally re-evaluate weather broadcast rules.
+
 ### Admin broadcast APIs
 
 Admin-side APIs currently available:

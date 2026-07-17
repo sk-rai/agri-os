@@ -5,6 +5,7 @@ Binary upload/storage can be added behind these stable records without changing
 Android entity linkage semantics.
 """
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -198,6 +199,76 @@ class QueryThreadAudit(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     thread = relationship("QueryThread")
+
+
+class WeatherProviderConfig(Base):
+    __tablename__ = "weather_provider_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    provider_code = Column(String(80), nullable=False)
+    display_name = Column(String(160), nullable=False)
+    provider_type = Column(String(40), nullable=False, default="EXTERNAL_API")
+    refresh_interval_hours = Column(Integer, nullable=False, default=6)
+    is_enabled = Column(Boolean, default=True, nullable=False)
+    last_refresh_at = Column(DateTime(timezone=True), nullable=True)
+    next_refresh_at = Column(DateTime(timezone=True), nullable=True)
+    config = Column(JSONB, default=dict)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("idx_weather_provider_tenant_code", "tenant_id", "provider_code", unique=True),
+        Index("idx_weather_provider_enabled", "tenant_id", "is_enabled"),
+        CheckConstraint("provider_type IN ('EXTERNAL_API', 'MANUAL', 'INTERNAL_MODEL', 'SATELLITE', 'IOT_STATION')", name="ck_weather_provider_type"),
+        CheckConstraint("refresh_interval_hours >= 1 AND refresh_interval_hours <= 168", name="ck_weather_provider_refresh_interval"),
+    )
+
+
+class WeatherSnapshot(Base):
+    __tablename__ = "weather_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(50), nullable=False, index=True)
+    provider_id = Column(UUID(as_uuid=True), ForeignKey("weather_provider_configs.id"), nullable=True, index=True)
+    project_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    farmer_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    parcel_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+
+    location_scope = Column(String(40), nullable=False, default="GEOPOINT")
+    location_key = Column(String(160), nullable=True, index=True)
+    lat = Column(String(40), nullable=True)
+    lng = Column(String(40), nullable=True)
+
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    observed_at = Column(DateTime(timezone=True), nullable=True)
+    forecast_valid_from = Column(DateTime(timezone=True), nullable=True)
+    forecast_valid_to = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    summary = Column(String(200), nullable=True)
+    condition_code = Column(String(80), nullable=True, index=True)
+    rainfall_probability_percent = Column(Integer, nullable=True)
+    rainfall_mm = Column(String(40), nullable=True)
+    temperature_min_c = Column(String(40), nullable=True)
+    temperature_max_c = Column(String(40), nullable=True)
+    humidity_percent = Column(Integer, nullable=True)
+    wind_speed_kmph = Column(String(40), nullable=True)
+    risk_flags = Column(JSONB, default=list)
+    source_payload = Column(JSONB, default=dict)
+    metadata_ = Column("metadata", JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    provider = relationship("WeatherProviderConfig")
+
+    __table_args__ = (
+        Index("idx_weather_snapshot_tenant_scope", "tenant_id", "location_scope", "location_key"),
+        Index("idx_weather_snapshot_validity", "tenant_id", "forecast_valid_from", "forecast_valid_to"),
+        Index("idx_weather_snapshot_fetched", "tenant_id", "fetched_at"),
+        CheckConstraint("location_scope IN ('TENANT', 'PROJECT', 'FARMER', 'PARCEL', 'GEOPOINT', 'PINCODE', 'VILLAGE', 'DISTRICT', 'STATE', 'WEATHER_GRID')", name="ck_weather_snapshot_location_scope"),
+    )
 
 
 class BroadcastCampaign(Base):
