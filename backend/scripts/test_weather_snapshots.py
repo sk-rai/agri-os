@@ -167,10 +167,36 @@ def main():
     check(open_meteo_body["created_snapshot_count"] == 1, "Open-Meteo sample adapter creates snapshot")
     check(open_meteo_body["snapshots"][0]["condition_code"] == "HEAVY_RAIN", "Open-Meteo sample adapter normalizes condition")
     check("HEAVY_RAIN_NEXT_24H" in open_meteo_body["snapshots"][0]["risk_flags"], "Open-Meteo sample adapter derives heavy rain risk")
+    check(open_meteo_body["provider"]["metadata"]["risk_thresholds"]["heavy_rain_mm"] == 20, "Open-Meteo adapter records default thresholds")
+
+    strict_provider_id = uuid.uuid4()
+    strict_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+        "id": str(strict_provider_id),
+        "provider_code": "open_meteo_strict",
+        "display_name": "Open-Meteo Strict",
+        "provider_type": "EXTERNAL_API",
+        "refresh_interval_hours": 6,
+        "config": {
+            "adapter": "open_meteo",
+            "risk_thresholds": {"heavy_rain_mm": 50, "heavy_rain_probability_percent": 95, "fungal_humidity_percent": 95},
+            "locations": [{"location_scope": "VILLAGE", "location_key": "Broadcast Village", "lat": "12.9716", "lng": "77.5946"}],
+            "sample_payload": {
+                "fetched_at": fetched_at.isoformat(),
+                "current": {"time": fetched_at.isoformat(), "temperature_2m": 29.4, "relative_humidity_2m": 88, "rain": 22.5, "weather_code": 63, "wind_speed_10m": 18},
+                "hourly": {"precipitation_probability": [86], "rain": [22.5]},
+            },
+        },
+    })
+    check(strict_provider.status_code == 201, "Create Open-Meteo strict-threshold provider returns 201", strict_provider.text)
+    strict_run = client.post(f"/api/v1/weather/providers/{strict_provider_id}/run-adapter", headers=headers)
+    check(strict_run.status_code == 200, "Run Open-Meteo strict-threshold adapter returns 200", strict_run.text)
+    strict_body = strict_run.json()
+    check(strict_body["snapshots"][0]["condition_code"] == "RAIN", "Custom heavy-rain thresholds can downgrade condition")
+    check("HEAVY_RAIN_NEXT_24H" not in strict_body["snapshots"][0]["risk_flags"], "Custom thresholds can suppress heavy-rain risk")
 
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
-    check(listed.json()["count"] == 3, "List returns active snapshots")
+    check(listed.json()["count"] == 4, "List returns active snapshots")
 
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)

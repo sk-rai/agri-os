@@ -182,11 +182,31 @@ def _first_number(*values: Any) -> float | None:
     return None
 
 
-def _open_meteo_condition(*, rainfall_mm: float | None, rainfall_probability: float | None, weather_code: Any) -> str:
+DEFAULT_OPEN_METEO_RISK_THRESHOLDS = {
+    "heavy_rain_mm": 20,
+    "heavy_rain_probability_percent": 80,
+    "fungal_humidity_percent": 80,
+    "fungal_rain_probability_percent": 60,
+    "heat_stress_temperature_max_c": 38,
+    "high_wind_kmph": 40,
+}
+
+
+def _open_meteo_thresholds(config: dict) -> dict:
+    thresholds = dict(DEFAULT_OPEN_METEO_RISK_THRESHOLDS)
+    configured = config.get("risk_thresholds") or config.get("thresholds") or {}
+    for key, value in configured.items():
+        parsed = _num(value)
+        if parsed is not None:
+            thresholds[key] = parsed
+    return thresholds
+
+
+def _open_meteo_condition(*, rainfall_mm: float | None, rainfall_probability: float | None, weather_code: Any, thresholds: dict) -> str:
     code = int(_num(weather_code) or 0)
-    if rainfall_mm is not None and rainfall_mm >= 20:
+    if rainfall_mm is not None and rainfall_mm >= thresholds["heavy_rain_mm"]:
         return "HEAVY_RAIN"
-    if rainfall_probability is not None and rainfall_probability >= 80:
+    if rainfall_probability is not None and rainfall_probability >= thresholds["heavy_rain_probability_percent"]:
         return "HEAVY_RAIN"
     if rainfall_mm is not None and rainfall_mm > 0:
         return "RAIN"
@@ -197,15 +217,15 @@ def _open_meteo_condition(*, rainfall_mm: float | None, rainfall_probability: fl
     return "CLEAR"
 
 
-def _open_meteo_risk_flags(*, condition_code: str, rainfall_mm: float | None, rainfall_probability: float | None, humidity_percent: float | None, temperature_max_c: float | None, wind_speed_kmph: float | None) -> list[str]:
+def _open_meteo_risk_flags(*, condition_code: str, rainfall_mm: float | None, rainfall_probability: float | None, humidity_percent: float | None, temperature_max_c: float | None, wind_speed_kmph: float | None, thresholds: dict) -> list[str]:
     flags: list[str] = []
-    if condition_code == "HEAVY_RAIN" or (rainfall_mm is not None and rainfall_mm >= 20) or (rainfall_probability is not None and rainfall_probability >= 80):
+    if condition_code == "HEAVY_RAIN" or (rainfall_mm is not None and rainfall_mm >= thresholds["heavy_rain_mm"]) or (rainfall_probability is not None and rainfall_probability >= thresholds["heavy_rain_probability_percent"]):
         flags.append("HEAVY_RAIN_NEXT_24H")
-    if (humidity_percent is not None and humidity_percent >= 80) and ((rainfall_probability or 0) >= 60 or (rainfall_mm or 0) > 0):
+    if (humidity_percent is not None and humidity_percent >= thresholds["fungal_humidity_percent"]) and ((rainfall_probability or 0) >= thresholds["fungal_rain_probability_percent"] or (rainfall_mm or 0) > 0):
         flags.append("FUNGAL_RISK")
-    if temperature_max_c is not None and temperature_max_c >= 38:
+    if temperature_max_c is not None and temperature_max_c >= thresholds["heat_stress_temperature_max_c"]:
         flags.append("HEAT_STRESS_NEXT_48H")
-    if wind_speed_kmph is not None and wind_speed_kmph >= 40:
+    if wind_speed_kmph is not None and wind_speed_kmph >= thresholds["high_wind_kmph"]:
         flags.append("HIGH_WIND_ALERT")
     return flags
 
@@ -245,7 +265,8 @@ def run_open_meteo_adapter(provider: WeatherProviderConfig) -> WeatherAdapterRes
     temp_min = _first_number(daily.get("temperature_2m_min"), current.get("temperature_2m"))
     temp_max = _first_number(daily.get("temperature_2m_max"), current.get("temperature_2m"))
     wind_speed = _first_number(current.get("wind_speed_10m"), current.get("windspeed"), daily.get("wind_speed_10m_max"))
-    condition_code = _open_meteo_condition(rainfall_mm=rainfall_mm, rainfall_probability=rainfall_probability, weather_code=current.get("weather_code") or current.get("weathercode"))
+    thresholds = _open_meteo_thresholds(config)
+    condition_code = _open_meteo_condition(rainfall_mm=rainfall_mm, rainfall_probability=rainfall_probability, weather_code=current.get("weather_code") or current.get("weathercode"), thresholds=thresholds)
     risk_flags = _open_meteo_risk_flags(
         condition_code=condition_code,
         rainfall_mm=rainfall_mm,
@@ -253,6 +274,7 @@ def run_open_meteo_adapter(provider: WeatherProviderConfig) -> WeatherAdapterRes
         humidity_percent=humidity,
         temperature_max_c=temp_max,
         wind_speed_kmph=wind_speed,
+        thresholds=thresholds,
     )
     expires_at = (now_utc() + timedelta(hours=provider.refresh_interval_hours)).isoformat()
 
@@ -277,14 +299,14 @@ def run_open_meteo_adapter(provider: WeatherProviderConfig) -> WeatherAdapterRes
             wind_speed_kmph=str(wind_speed) if wind_speed is not None else None,
             risk_flags=risk_flags,
             source_payload=sample_payload,
-            metadata={"adapter": "open_meteo", "source": "sample_payload"},
+            metadata={"adapter": "open_meteo", "source": "sample_payload", "risk_thresholds": thresholds},
         ))
 
     return WeatherAdapterResult(
         status="SUCCESS",
         message=f"Open-Meteo sample payload normalized into {len(snapshots)} snapshot(s)",
         snapshots=snapshots,
-        metadata={"adapter": "open_meteo", "mode": "sample_payload"},
+        metadata={"adapter": "open_meteo", "mode": "sample_payload", "risk_thresholds": thresholds},
     )
 
 
