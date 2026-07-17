@@ -42,6 +42,7 @@ const navSections: NavSection[] = [
       { href: "/field-events", label: "Field Events", icon: "Event" },
       { href: "/query-threads", label: "Query Inbox", icon: "Chat" },
       { href: "/broadcasts", label: "Broadcasts", icon: "Signal" },
+      { href: "/weather", label: "Weather", icon: "Cloud" },
       { href: "/lookup", label: "Lookup", icon: "Search" },
     ],
   },

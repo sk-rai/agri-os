@@ -2950,3 +2950,117 @@ export const broadcastsApi = {
   },
 
 };
+
+export interface WeatherProviderDto {
+  id: string;
+  tenant_id: string;
+  provider_code: string;
+  display_name: string;
+  provider_type: string;
+  refresh_interval_hours: number;
+  is_enabled: boolean;
+  last_refresh_at?: string | null;
+  next_refresh_at?: string | null;
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  is_due?: boolean;
+  hours_until_due?: number | null;
+  refresh_status?: string | null;
+  refresh_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface WeatherSnapshotDto {
+  id: string;
+  tenant_id: string;
+  provider_id?: string | null;
+  project_id?: string | null;
+  farmer_id?: string | null;
+  parcel_id?: string | null;
+  location_scope: string;
+  location_key?: string | null;
+  lat?: string | null;
+  lng?: string | null;
+  fetched_at: string;
+  observed_at?: string | null;
+  forecast_valid_from?: string | null;
+  forecast_valid_to?: string | null;
+  expires_at?: string | null;
+  summary?: string | null;
+  condition_code?: string | null;
+  rainfall_probability_percent?: number | null;
+  rainfall_mm?: string | null;
+  temperature_min_c?: string | null;
+  temperature_max_c?: string | null;
+  humidity_percent?: number | null;
+  wind_speed_kmph?: string | null;
+  risk_flags?: string[];
+  source_payload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface WeatherProvidersResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  providers: WeatherProviderDto[];
+}
+
+export interface WeatherRefreshPlanResponse {
+  schema_version: string;
+  tenant_id: string;
+  generated_at: string;
+  filters: Record<string, unknown>;
+  count: number;
+  due_count: number;
+  providers: WeatherProviderDto[];
+}
+
+export interface WeatherSnapshotsResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  snapshots: WeatherSnapshotDto[];
+}
+
+export interface WeatherProviderRefreshResponse {
+  schema_version: string;
+  tenant_id: string;
+  provider: WeatherProviderDto;
+  status: string;
+  message?: string | null;
+  created_snapshot_count: number;
+  snapshots: WeatherSnapshotDto[];
+}
+
+export const weatherApi = {
+  providers: (params?: { enabled?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.enabled !== undefined) q.set("enabled", String(params.enabled));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<WeatherProvidersResponse>(`/api/v1/weather/providers${suffix}`);
+  },
+  refreshPlan: (params?: { enabled?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.enabled !== undefined) q.set("enabled", String(params.enabled));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<WeatherRefreshPlanResponse>(`/api/v1/weather/providers/refresh-plan${suffix}`);
+  },
+  snapshots: (params?: { providerId?: string; locationScope?: string; locationKey?: string; includeExpired?: boolean; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.providerId) q.set("provider_id", params.providerId);
+    if (params?.locationScope) q.set("location_scope", params.locationScope);
+    if (params?.locationKey) q.set("location_key", params.locationKey);
+    if (params?.includeExpired !== undefined) q.set("include_expired", String(params.includeExpired));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<WeatherSnapshotsResponse>(`/api/v1/weather/snapshots${suffix}`);
+  },
+  refreshProvider: (providerId: string, body?: { status?: string; message?: string; metadata?: Record<string, unknown>; snapshots?: unknown[] }) =>
+    api<WeatherProviderRefreshResponse>(`/api/v1/weather/providers/${providerId}/refresh`, { method: "POST", body: JSON.stringify(body || { status: "SUCCESS", message: "Admin manual refresh marker" }) }),
+};
+
