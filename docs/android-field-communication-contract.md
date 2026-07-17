@@ -640,7 +640,24 @@ Response shape:
         "body_text": "Heavy rainfall expected.",
         "cta_label": null,
         "deeplink_url": null,
-        "metadata": {}
+        "metadata": {},
+        "media_attachments": [
+          {
+            "id": "...",
+            "media_type": "PHOTO",
+            "mime_type": "image/jpeg",
+            "storage_url": "https://...",
+            "thumbnail_url": "https://...",
+            "duration_seconds": null,
+            "upload_status": "UPLOADED",
+            "attachment": {
+              "purpose": "ADVISORY_ATTACHMENT",
+              "caption": "Rice pest reference image",
+              "display_order": 1,
+              "is_primary": true
+            }
+          }
+        ]
       },
       "delivery": {
         "id": "...",
@@ -669,6 +686,13 @@ Android rendering guidance:
   - `NORMAL`/`LOW`: standard inbox item.
 - Use `campaign.category` for grouping: WEATHER, ADVISORY, MARKET, INPUT, EMERGENCY, GENERAL.
 - Use `content.deeplink_url` when present to navigate to a crop cycle, recommendation, query, field event, or external detail screen.
+- Render `content.media_attachments[]` when present:
+  - `PHOTO`: inline image/card using `thumbnail_url` first, then `storage_url`.
+  - `AUDIO`: voice-note/audio player using `storage_url`; show `duration_seconds` if present.
+  - `DOCUMENT`: open/download action using `storage_url` or future signed URL support.
+  - `VIDEO`: future-compatible; show as playable media only when Android supports it.
+- Use `attachment.caption`, `display_order`, and `is_primary` for ordering and display emphasis.
+- Cache media metadata with the broadcast delivery; binary/offline media caching can be added later behind the same fields.
 - Persist `delivery.id` locally so read/ack sync is idempotent.
 
 ### Android read and acknowledge endpoints
