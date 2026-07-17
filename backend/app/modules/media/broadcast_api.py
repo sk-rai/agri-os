@@ -940,6 +940,10 @@ def list_farmer_broadcasts(
     if not farmer:
         raise HTTPException(404, "Farmer not found")
 
+    from datetime import datetime, timezone
+    from sqlalchemy import or_
+
+    now_ts = datetime.now(timezone.utc)
     query = (
         db.query(BroadcastDelivery, BroadcastCampaign)
         .join(BroadcastCampaign, BroadcastCampaign.id == BroadcastDelivery.campaign_id)
@@ -949,6 +953,8 @@ def list_farmer_broadcasts(
             BroadcastCampaign.tenant_id == x_tenant_id,
             BroadcastCampaign.status == "PUBLISHED",
             BroadcastCampaign.is_active == True,
+            or_(BroadcastCampaign.starts_at.is_(None), BroadcastCampaign.starts_at <= now_ts),
+            or_(BroadcastCampaign.expires_at.is_(None), BroadcastCampaign.expires_at > now_ts),
         )
     )
     if not include_read:
@@ -964,7 +970,7 @@ def list_farmer_broadcasts(
         selected_content = _select_content_for_language(contents, language_code)
         items.append({
             "campaign": _campaign_payload(campaign, content_count=len(contents), rule_count=db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).count(), delivery_count=1),
-            "content": _content_payload(selected_content) if selected_content else None,
+            "content": _content_payload(selected_content, db) if selected_content else None,
             "delivery": _delivery_payload(delivery),
         })
 

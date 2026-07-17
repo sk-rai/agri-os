@@ -397,6 +397,67 @@ def main():
     check(feed["broadcasts"][0]["delivery"]["delivery_status"] == "PENDING", "Farmer feed includes delivery state")
     delivery_id = feed["broadcasts"][0]["delivery"]["id"]
 
+    from datetime import timedelta
+    db = SessionLocal()
+    try:
+        future_id = uuid.uuid4()
+        expired_id = uuid.uuid4()
+        future_campaign = BroadcastCampaign(
+            id=future_id,
+            tenant_id=tenant_id,
+            title="Future scheduled advisory",
+            category="GENERAL",
+            priority="NORMAL",
+            status="PUBLISHED",
+            starts_at=now() + timedelta(days=2),
+            metadata_={},
+            created_at=now(),
+            updated_at=now(),
+        )
+        expired_campaign = BroadcastCampaign(
+            id=expired_id,
+            tenant_id=tenant_id,
+            title="Expired advisory",
+            category="GENERAL",
+            priority="NORMAL",
+            status="PUBLISHED",
+            starts_at=now() - timedelta(days=3),
+            expires_at=now() - timedelta(days=1),
+            metadata_={},
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add(future_campaign)
+        db.add(expired_campaign)
+        db.flush()
+        for campaign_row in [future_campaign, expired_campaign]:
+            db.add(BroadcastContent(
+                tenant_id=tenant_id,
+                campaign_id=campaign_row.id,
+                language_code="en",
+                title=campaign_row.title,
+                body_text="Visibility regression",
+                created_at=now(),
+                updated_at=now(),
+            ))
+            db.add(BroadcastDelivery(
+                tenant_id=tenant_id,
+                campaign_id=campaign_row.id,
+                farmer_id=farmer_id,
+                delivery_status="PENDING",
+                created_at=now(),
+                updated_at=now(),
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    visibility_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=en", headers=headers)
+    check(visibility_feed.status_code == 200, "Farmer feed visibility filter returns 200", visibility_feed.text)
+    visibility_ids = {row["campaign"]["id"] for row in visibility_feed.json()["broadcasts"]}
+    check(str(future_id) not in visibility_ids, "Future scheduled broadcast is hidden from farmer feed")
+    check(str(expired_id) not in visibility_ids, "Expired broadcast is hidden from farmer feed")
+
     print("\n[1e] Read and acknowledge delivery")
     read = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/read", headers=headers)
     check(read.status_code == 200, "Mark delivery read returns 200", read.text)
