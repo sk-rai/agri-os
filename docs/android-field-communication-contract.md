@@ -606,6 +606,13 @@ Android should fetch farmer-visible broadcasts after profile hydration/login and
 GET /api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi&include_read=true&limit=100
 ```
 
+The backend farmer feed only returns campaigns that are currently visible to the farmer:
+
+- campaign status must be `PUBLISHED`;
+- `starts_at` must be null or in the past;
+- `expires_at` must be null or in the future;
+- `DRAFT`, `EXPIRED`, `CANCELLED`, future-scheduled, and inactive campaigns are excluded from the normal farmer inbox.
+
 Response shape:
 
 ```json
