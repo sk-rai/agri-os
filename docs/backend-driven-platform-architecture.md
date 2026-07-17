@@ -613,3 +613,19 @@ The platform should move toward a backend-configured operating system for agricu
 5. communication/event/economics modules
 
 This keeps the tested crop-cycle MVP safe while opening the path for multi-tenant, white-labelled, international, analytics-ready Agri-OS deployments.
+
+## Future scope: trusted-corpus advisory generation
+
+The broadcast/advisory system should remain compatible with a future offline or low-cost LLM advisory generator for independently enrolled farmers who are not receiving company/FPO/agronomist advisories. This is future scope only and does not change current runtime behavior.
+
+Design intent:
+
+- Treat the model as an advisory author/source, not as an unbounded chatbot.
+- Restrict generation to a trusted, curated agronomy corpus plus structured platform context such as crop, stage, parcel, soil, weather, field events, geography, and input history.
+- Prefer offline/on-premise or cheap-to-run models where the client explicitly agrees to invest in fine-tuning, GPU/CPU hosting, monitoring, and content governance.
+- Store generated advisories as draft or reviewable broadcast/advisory campaigns before farmer delivery, unless a future tenant explicitly enables automatic publishing.
+- Preserve auditability: model version, corpus version, prompt/template version, source facts, confidence/risk flags, and human approval status should be recorded.
+- Keep it tenant/project configurable: enterprise clients may disable it, require human approval, or limit it to direct/self-service farmers.
+- Make safety explicit: never silently replace regulated agronomist advice, pesticide dosage rules, insurance decisions, or emergency alerts without a configured approval policy.
+
+This future capability should plug into the existing broadcast primitives: campaign, localized content, media attachments, audience rules, delivery rows, read/ack state, and audit history.
