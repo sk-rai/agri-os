@@ -69,6 +69,13 @@ def main():
     check(providers.status_code == 200, "List weather providers returns 200", providers.text)
     check(providers.json()["count"] == 1, "Enabled provider list returns seeded provider")
 
+    refresh_plan = client.get("/api/v1/weather/providers/refresh-plan", headers=headers)
+    check(refresh_plan.status_code == 200, "Weather refresh plan returns 200", refresh_plan.text)
+    refresh_plan_body = refresh_plan.json()
+    check(refresh_plan_body["schema_version"] == "weather_refresh_plan.v1", "Refresh plan schema stable")
+    check(refresh_plan_body["count"] == 1, "Refresh plan returns seeded provider")
+    check("is_due" in refresh_plan_body["providers"][0], "Refresh plan reports due state")
+
     fetched_at = now()
     snapshot = client.post("/api/v1/weather/snapshots", headers=headers, json={
         "provider_id": str(provider_id),
@@ -97,13 +104,36 @@ def main():
     check(snapshot_body["condition_code"] == "HEAVY_RAIN", "Snapshot normalizes condition code")
     check("HEAVY_RAIN_NEXT_24H" in snapshot_body["risk_flags"], "Snapshot normalizes risk flags")
 
+    manual_refresh = client.post(f"/api/v1/weather/providers/{provider_id}/refresh", headers=headers, json={
+        "status": "SUCCESS",
+        "message": "manual regression refresh",
+        "metadata": {"trigger": "regression"},
+        "snapshots": [{
+            "location_scope": "VILLAGE",
+            "location_key": "Broadcast Village",
+            "fetched_at": (fetched_at + timedelta(minutes=5)).isoformat(),
+            "forecast_valid_from": fetched_at.isoformat(),
+            "forecast_valid_to": (fetched_at + timedelta(hours=24)).isoformat(),
+            "expires_at": (fetched_at + timedelta(hours=6)).isoformat(),
+            "summary": "Manual refresh weather snapshot",
+            "condition_code": "RAIN",
+            "risk_flags": ["fungal_risk"],
+        }],
+    })
+    check(manual_refresh.status_code == 200, "Record weather provider refresh returns 200", manual_refresh.text)
+    refresh_body = manual_refresh.json()
+    check(refresh_body["schema_version"] == "weather_provider_refresh.v1", "Refresh response schema stable")
+    check(refresh_body["created_snapshot_count"] == 1, "Refresh can create normalized snapshots")
+    check(refresh_body["provider"]["refresh_status"] == "SUCCESS", "Refresh records provider status")
+    check(refresh_body["provider"]["next_refresh_at"] is not None, "Refresh computes next provider due timestamp")
+
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
-    check(listed.json()["count"] == 1, "List returns active snapshot")
+    check(listed.json()["count"] == 2, "List returns active snapshots")
 
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)
-    check(latest.json()["id"] == snapshot_body["id"], "Latest returns newest non-expired snapshot")
+    check(latest.json()["summary"] == "Manual refresh weather snapshot", "Latest returns newest non-expired snapshot")
 
     isolated = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers={"X-Tenant-ID": "default"})
     check(isolated.status_code == 404, "Latest weather snapshot is tenant isolated", isolated.text)

@@ -87,6 +87,72 @@ class WeatherSnapshotCreate(BaseModel):
         return normalized
 
 
+def _provider_due_payload(row: WeatherProviderConfig, now_ts: datetime) -> dict:
+    next_refresh_at = row.next_refresh_at
+    if next_refresh_at is None and row.last_refresh_at is not None:
+        next_refresh_at = row.last_refresh_at + timedelta(hours=row.refresh_interval_hours)
+    is_due = bool(row.is_enabled and (next_refresh_at is None or next_refresh_at <= now_ts))
+    hours_until_due = None
+    if next_refresh_at is not None:
+        hours_until_due = round((next_refresh_at - now_ts).total_seconds() / 3600, 2)
+    return {
+        **_provider_payload(row),
+        "is_due": is_due,
+        "hours_until_due": hours_until_due,
+        "refresh_status": (row.metadata_ or {}).get("last_refresh_status"),
+        "refresh_message": (row.metadata_ or {}).get("last_refresh_message"),
+    }
+
+
+def _create_snapshot_row(body: WeatherSnapshotCreate, *, tenant_id: str, provider_id: uuid.UUID | None, now_ts: datetime) -> WeatherSnapshot:
+    fetched_at = _parse_dt(body.fetched_at) or now_ts
+    return WeatherSnapshot(
+        id=body.id or uuid.uuid4(),
+        tenant_id=tenant_id,
+        provider_id=body.provider_id or provider_id,
+        project_id=body.project_id,
+        farmer_id=body.farmer_id,
+        parcel_id=body.parcel_id,
+        location_scope=body.location_scope,
+        location_key=body.location_key,
+        lat=body.lat,
+        lng=body.lng,
+        fetched_at=fetched_at,
+        observed_at=_parse_dt(body.observed_at),
+        forecast_valid_from=_parse_dt(body.forecast_valid_from),
+        forecast_valid_to=_parse_dt(body.forecast_valid_to),
+        expires_at=_parse_dt(body.expires_at),
+        summary=body.summary,
+        condition_code=body.condition_code.upper() if body.condition_code else None,
+        rainfall_probability_percent=body.rainfall_probability_percent,
+        rainfall_mm=body.rainfall_mm,
+        temperature_min_c=body.temperature_min_c,
+        temperature_max_c=body.temperature_max_c,
+        humidity_percent=body.humidity_percent,
+        wind_speed_kmph=body.wind_speed_kmph,
+        risk_flags=[str(flag).upper() for flag in (body.risk_flags or [])],
+        source_payload=body.source_payload or {},
+        metadata_=body.metadata or {},
+        created_at=now_ts,
+        updated_at=now_ts,
+    )
+
+
+class WeatherProviderRefreshRequest(BaseModel):
+    status: str = "SUCCESS"
+    message: str | None = None
+    snapshots: list[WeatherSnapshotCreate] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        normalized = value.upper()
+        if normalized not in {"SUCCESS", "FAILED", "SKIPPED"}:
+            raise ValueError("status must be one of SUCCESS, FAILED, SKIPPED")
+        return normalized
+
+
 def _provider_payload(row: WeatherProviderConfig) -> dict:
     return {
         "id": str(row.id),
@@ -166,6 +232,65 @@ def list_weather_providers(enabled: Optional[bool] = Query(None), db: Session = 
     return {"schema_version": "weather_providers.v1", "tenant_id": x_tenant_id, "count": len(rows), "providers": [_provider_payload(row) for row in rows]}
 
 
+@router.get("/providers/refresh-plan")
+def weather_provider_refresh_plan(enabled: Optional[bool] = Query(True), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+    now_ts = _now()
+    query = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == x_tenant_id)
+    if enabled is not None:
+        query = query.filter(WeatherProviderConfig.is_enabled == enabled)
+    rows = query.order_by(WeatherProviderConfig.next_refresh_at.asc().nullsfirst(), WeatherProviderConfig.provider_code.asc()).all()
+    providers = [_provider_due_payload(row, now_ts) for row in rows]
+    return {
+        "schema_version": "weather_refresh_plan.v1",
+        "tenant_id": x_tenant_id,
+        "generated_at": _iso(now_ts),
+        "filters": {"enabled": enabled},
+        "count": len(providers),
+        "due_count": sum(1 for row in providers if row["is_due"]),
+        "providers": providers,
+    }
+
+
+@router.post("/providers/{provider_id}/refresh")
+def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProviderRefreshRequest, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+    now_ts = _now()
+    provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
+    if not provider:
+        raise HTTPException(404, "Weather provider not found")
+    metadata = dict(provider.metadata_ or {})
+    metadata.update(body.metadata or {})
+    metadata["last_refresh_status"] = body.status
+    metadata["last_refresh_message"] = body.message
+    metadata["last_refresh_snapshot_count"] = len(body.snapshots or [])
+    metadata["last_refresh_recorded_at"] = _iso(now_ts)
+    provider.metadata_ = metadata
+    provider.last_refresh_at = now_ts
+    provider.next_refresh_at = now_ts + timedelta(hours=provider.refresh_interval_hours)
+    provider.updated_at = now_ts
+
+    created_snapshots = []
+    if body.status == "SUCCESS":
+        for snapshot_body in body.snapshots or []:
+            row = _create_snapshot_row(snapshot_body, tenant_id=x_tenant_id, provider_id=provider.id, now_ts=now_ts)
+            db.add(row)
+            created_snapshots.append(row)
+
+    db.add(provider)
+    db.commit()
+    db.refresh(provider)
+    for row in created_snapshots:
+        db.refresh(row)
+    return {
+        "schema_version": "weather_provider_refresh.v1",
+        "tenant_id": x_tenant_id,
+        "provider": _provider_due_payload(provider, _now()),
+        "status": body.status,
+        "message": body.message,
+        "created_snapshot_count": len(created_snapshots),
+        "snapshots": [_snapshot_payload(row) for row in created_snapshots],
+    }
+
+
 @router.post("/snapshots", status_code=201)
 def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
     now_ts = _now()
@@ -176,37 +301,7 @@ def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(g
         provider.last_refresh_at = now_ts
         provider.next_refresh_at = now_ts + timedelta(hours=provider.refresh_interval_hours)
         provider.updated_at = now_ts
-    fetched_at = _parse_dt(body.fetched_at) or now_ts
-    row = WeatherSnapshot(
-        id=body.id or uuid.uuid4(),
-        tenant_id=x_tenant_id,
-        provider_id=body.provider_id,
-        project_id=body.project_id,
-        farmer_id=body.farmer_id,
-        parcel_id=body.parcel_id,
-        location_scope=body.location_scope,
-        location_key=body.location_key,
-        lat=body.lat,
-        lng=body.lng,
-        fetched_at=fetched_at,
-        observed_at=_parse_dt(body.observed_at),
-        forecast_valid_from=_parse_dt(body.forecast_valid_from),
-        forecast_valid_to=_parse_dt(body.forecast_valid_to),
-        expires_at=_parse_dt(body.expires_at),
-        summary=body.summary,
-        condition_code=body.condition_code.upper() if body.condition_code else None,
-        rainfall_probability_percent=body.rainfall_probability_percent,
-        rainfall_mm=body.rainfall_mm,
-        temperature_min_c=body.temperature_min_c,
-        temperature_max_c=body.temperature_max_c,
-        humidity_percent=body.humidity_percent,
-        wind_speed_kmph=body.wind_speed_kmph,
-        risk_flags=[str(flag).upper() for flag in (body.risk_flags or [])],
-        source_payload=body.source_payload or {},
-        metadata_=body.metadata or {},
-        created_at=now_ts,
-        updated_at=now_ts,
-    )
+    row = _create_snapshot_row(body, tenant_id=x_tenant_id, provider_id=body.provider_id, now_ts=now_ts)
     db.add(row)
     db.commit()
     db.refresh(row)
