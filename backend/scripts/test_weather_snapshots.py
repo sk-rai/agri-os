@@ -13,6 +13,7 @@ from app.core.database import SessionLocal, engine
 from app.main import app
 from app.modules.farmer.models import Tenant
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
+from app.modules.media import weather_service
 from app.modules.media.weather_service import run_weather_provider_adapter
 
 
@@ -193,6 +194,43 @@ def main():
     strict_body = strict_run.json()
     check(strict_body["snapshots"][0]["condition_code"] == "RAIN", "Custom heavy-rain thresholds can downgrade condition")
     check("HEAVY_RAIN_NEXT_24H" not in strict_body["snapshots"][0]["risk_flags"], "Custom thresholds can suppress heavy-rain risk")
+
+    live_provider_id = uuid.uuid4()
+    live_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+        "id": str(live_provider_id),
+        "provider_code": "open_meteo_live",
+        "display_name": "Open-Meteo Live",
+        "provider_type": "EXTERNAL_API",
+        "refresh_interval_hours": 6,
+        "config": {
+            "adapter": "open_meteo",
+            "live_fetch_enabled": True,
+            "base_url": "https://api.open-meteo.example/v1/forecast",
+            "locations": [{"location_scope": "VILLAGE", "location_key": "Live Weather Village", "lat": "13.0", "lng": "77.0"}],
+        },
+    })
+    check(live_provider.status_code == 201, "Create Open-Meteo live provider returns 201", live_provider.text)
+
+    original_fetch = weather_service._fetch_open_meteo_payload
+    try:
+        def fake_fetch(config, location):
+            check(config["base_url"] == "https://api.open-meteo.example/v1/forecast", "Live fetch receives configured base URL")
+            check(location["location_key"] == "Live Weather Village", "Live fetch receives configured location")
+            return {
+                "fetched_at": fetched_at.isoformat(),
+                "current": {"time": fetched_at.isoformat(), "temperature_2m": 41.2, "relative_humidity_2m": 55, "rain": 0, "weather_code": 0, "wind_speed_10m": 18},
+                "daily": {"temperature_2m_max": [41.2], "temperature_2m_min": [27.0], "time": [fetched_at.date().isoformat()]},
+            }
+        weather_service._fetch_open_meteo_payload = fake_fetch
+        live_run = client.post(f"/api/v1/weather/providers/{live_provider_id}/run-adapter", headers=headers)
+    finally:
+        weather_service._fetch_open_meteo_payload = original_fetch
+    check(live_run.status_code == 200, "Run Open-Meteo live adapter returns 200", live_run.text)
+    live_body = live_run.json()
+    check(live_body["status"] == "SUCCESS", "Open-Meteo live adapter succeeds with mocked fetch")
+    check(live_body["provider"]["metadata"]["mode"] == "live_fetch", "Open-Meteo live adapter records live mode")
+    check(live_body["snapshots"][0]["location_key"] == "Live Weather Village", "Open-Meteo live adapter preserves location")
+    check("HEAT_STRESS_NEXT_48H" in live_body["snapshots"][0]["risk_flags"], "Open-Meteo live adapter derives heat risk")
 
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)

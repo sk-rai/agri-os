@@ -189,19 +189,37 @@ When `Run adapter` is clicked from `/weather`, this config produces a normalized
 }
 ```
 
-Future live-fetch config can add:
+Live-fetch config can add:
 
 ```json
 {
   "adapter": "open_meteo",
+  "live_fetch_enabled": true,
   "base_url": "https://api.open-meteo.com/v1/forecast",
   "timezone": "Asia/Kolkata",
-  "forecast_hours": 24,
-  "locations": []
+  "forecast_days": 2,
+  "timeout_seconds": 10,
+  "locations": [
+    {
+      "location_scope": "VILLAGE",
+      "location_key": "Broadcast Village",
+      "lat": "12.9716",
+      "lng": "77.5946"
+    }
+  ]
 }
 ```
 
-Live-fetch mode must still normalize into the same snapshot fields and store the raw provider response in `source_payload`.
+Live-fetch mode is explicit: the adapter only calls Open-Meteo when `live_fetch_enabled=true` or `mode=live`. If a provider has neither `sample_payload` nor live mode enabled, refresh is safely marked `SKIPPED`. Live mode still normalizes into the same snapshot fields and stores the raw provider response in `source_payload`.
+
+Supported live-fetch config fields:
+
+- `base_url`: defaults to `https://api.open-meteo.com/v1/forecast`.
+- `timezone`: defaults to `auto`; use `Asia/Kolkata` for India-focused runs.
+- `forecast_days`: defaults to `2`.
+- `timeout_seconds`: defaults to `10`.
+- `current_fields`, `hourly_fields`, `daily_fields`: optional Open-Meteo field lists.
+- `locations[]`: each location needs `lat`/`lng`; `location_scope` and `location_key` control how broadcasts later target farmers.
 
 ### IMD/government feed adapter
 
