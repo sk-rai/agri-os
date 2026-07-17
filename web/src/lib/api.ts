@@ -3069,5 +3069,7 @@ export const weatherApi = {
   },
   refreshProvider: (providerId: string, body?: { status?: string; message?: string; metadata?: Record<string, unknown>; snapshots?: unknown[] }) =>
     api<WeatherProviderRefreshResponse>(`/api/v1/weather/providers/${providerId}/refresh`, { method: "POST", body: JSON.stringify(body || { status: "SUCCESS", message: "Admin manual refresh marker" }) }),
+  runAdapter: (providerId: string) =>
+    api<WeatherProviderRefreshResponse>(`/api/v1/weather/providers/${providerId}/run-adapter`, { method: "POST" }),
 };
 

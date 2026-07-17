@@ -12,6 +12,7 @@ export default function WeatherPage() {
   const [snapshots, setSnapshots] = useState<WeatherSnapshotsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshingProviderId, setRefreshingProviderId] = useState<string | null>(null);
+  const [runningAdapterProviderId, setRunningAdapterProviderId] = useState<string | null>(null);
   const [savingProvider, setSavingProvider] = useState(false);
   const [providerCode, setProviderCode] = useState("");
   const [providerName, setProviderName] = useState("");
@@ -164,6 +165,19 @@ export default function WeatherPage() {
     }
   }
 
+  async function runAdapter(provider: WeatherProviderDto) {
+    setRunningAdapterProviderId(provider.id);
+    setError(null);
+    try {
+      await weatherApi.runAdapter(provider.id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run weather adapter");
+    } finally {
+      setRunningAdapterProviderId(null);
+    }
+  }
+
   const planProviders = refreshPlan?.providers || [];
   const freshCount = snapshots?.count || 0;
 
@@ -239,7 +253,7 @@ export default function WeatherPage() {
               <td className="p-3 text-gray-700">{provider.last_refresh_at || "Never"}</td>
               <td className="p-3 text-gray-700">{provider.next_refresh_at || "Due now"}</td>
               <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${provider.is_due ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}>{provider.is_due ? "Due" : "Scheduled"}</span>{provider.refresh_status ? <div className="mt-1 text-xs text-gray-500">{provider.refresh_status}: {provider.refresh_message || "-"}</div> : null}</td>
-              <td className="p-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => editProvider(provider)} className="rounded border px-3 py-1.5 text-xs font-medium text-gray-700">Edit</button><button type="button" onClick={() => void recordRefresh(provider)} disabled={refreshingProviderId === provider.id} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{refreshingProviderId === provider.id ? "Recording..." : "Record refresh"}</button></div></td>
+              <td className="p-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => editProvider(provider)} className="rounded border px-3 py-1.5 text-xs font-medium text-gray-700">Edit</button><button type="button" onClick={() => void runAdapter(provider)} disabled={runningAdapterProviderId === provider.id} className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{runningAdapterProviderId === provider.id ? "Running..." : "Run adapter"}</button><button type="button" onClick={() => void recordRefresh(provider)} disabled={refreshingProviderId === provider.id} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{refreshingProviderId === provider.id ? "Recording..." : "Record refresh"}</button></div></td>
             </tr>)}
             {(!loading && planProviders.length === 0) ? <tr><td colSpan={7} className="p-6 text-center text-gray-400">No enabled weather providers configured.</td></tr> : null}
           </tbody>
