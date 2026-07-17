@@ -448,7 +448,20 @@ def _broadcast_detail_payload(db: Session, campaign: BroadcastCampaign, tenant_i
     return payload
 
 
+def _broadcast_audience_match_mode(campaign: BroadcastCampaign | None) -> str:
+    metadata = dict(campaign.metadata_ or {}) if campaign else {}
+    mode = str(metadata.get("audience_match_mode") or metadata.get("targeting_match_mode") or "ANY").upper()
+    return mode if mode in {"ANY", "ALL"} else "ANY"
+
+
 def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uuid.UUID) -> dict:
+    campaign = db.query(BroadcastCampaign).filter(
+        BroadcastCampaign.id == campaign_id,
+        BroadcastCampaign.tenant_id == tenant_id,
+        BroadcastCampaign.is_active == True,
+    ).first()
+    audience_match_mode = _broadcast_audience_match_mode(campaign)
+
     rules = db.query(BroadcastAudienceRule).filter(
         BroadcastAudienceRule.tenant_id == tenant_id,
         BroadcastAudienceRule.campaign_id == campaign_id,
@@ -456,6 +469,7 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
 
     farmer_ids: set[str] = set()
     farmer_match_reasons: dict[str, set[str]] = {}
+    supported_rule_matches: list[tuple[str, set[str]]] = []
     rule_summaries = []
     unsupported_rule_count = 0
 
@@ -584,9 +598,7 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
             unsupported_rule_count += 1
 
         if supported:
-            farmer_ids.update(matched)
-            for farmer_id in matched:
-                farmer_match_reasons.setdefault(farmer_id, set()).add(rule.rule_type)
+            supported_rule_matches.append((rule.rule_type, set(matched)))
 
         rule_summaries.append({
             "rule_id": str(rule.id),
@@ -599,7 +611,20 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
             "note": note,
         })
 
+    if audience_match_mode == "ALL" and supported_rule_matches:
+        farmer_ids = set(supported_rule_matches[0][1])
+        for _, matched in supported_rule_matches[1:]:
+            farmer_ids.intersection_update(matched)
+    else:
+        for _, matched in supported_rule_matches:
+            farmer_ids.update(matched)
+
+    for rule_type, matched in supported_rule_matches:
+        for farmer_id in farmer_ids.intersection(matched):
+            farmer_match_reasons.setdefault(farmer_id, set()).add(rule_type)
+
     return {
+        "audience_match_mode": audience_match_mode,
         "farmer_ids": sorted(farmer_ids),
         "sample_matches": [
             {"farmer_id": farmer_id, "matched_by": sorted(farmer_match_reasons.get(farmer_id, set()))}
@@ -993,6 +1018,7 @@ def preview_broadcast_audience(
         "tenant_id": x_tenant_id,
         "campaign_id": str(campaign.id),
         "campaign_status": campaign.status,
+        "audience_match_mode": resolved["audience_match_mode"],
         "estimated_farmer_count": len(resolved["farmer_ids"]),
         "sample_farmer_ids": resolved["farmer_ids"][:20],
         "sample_matches": resolved["sample_matches"],

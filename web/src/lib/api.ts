@@ -2820,6 +2820,7 @@ export interface BroadcastAudiencePreviewResponse {
   tenant_id: string;
   campaign_id: string;
   campaign_status: string;
+  audience_match_mode?: string;
   estimated_farmer_count: number;
   sample_farmer_ids: string[];
   sample_matches?: Array<{ farmer_id: string; matched_by: string[] }>;
@@ -2904,9 +2905,19 @@ export const broadcastsApi = {
     starts_at?: string;
     expires_at?: string;
     metadata?: Record<string, unknown>;
+    audience_match_mode?: "ANY" | "ALL";
     contents?: Array<{ language_code?: string; title: string; body_text?: string; cta_label?: string; deeplink_url?: string; metadata?: Record<string, unknown> }>;
     audience_rules?: Array<{ rule_type: string; operator?: string; values?: string[]; metadata?: Record<string, unknown> }>;
-  }) => api<BroadcastCampaignDto>("/api/v1/broadcasts", { method: "POST", body: JSON.stringify(body) }),
+  }) => {
+    const { audience_match_mode, metadata, ...rest } = body;
+    return api<BroadcastCampaignDto>("/api/v1/broadcasts", {
+      method: "POST",
+      body: JSON.stringify({
+        ...rest,
+        metadata: { ...(metadata || {}), ...(audience_match_mode ? { audience_match_mode } : {}) },
+      }),
+    });
+  },
   addContent: (campaignId: string, body: { language_code?: string; title: string; body_text?: string; cta_label?: string; deeplink_url?: string; metadata?: Record<string, unknown> }) =>
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/contents`, { method: "POST", body: JSON.stringify(body) }),
   addAudienceRule: (campaignId: string, body: { rule_type: string; operator?: string; values?: string[]; metadata?: Record<string, unknown> }) =>

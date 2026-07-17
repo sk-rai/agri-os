@@ -7,6 +7,7 @@ const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"];
 const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
 const CATEGORIES = ["", "GENERAL", "ADVISORY", "WEATHER", "MARKET", "INPUT", "EMERGENCY"];
 const RULE_TYPES = ["ALL", "PROJECT", "FARMER", "CROP", "STAGE", "LOCATION", "WEATHER", "FIELD_EVENT", "INPUT", "PRODUCT", "ROLE", "LANGUAGE"];
+const MATCH_MODES = ["ANY", "ALL"];
 
 export default function BroadcastsPage() {
   const [projectId, setProjectId] = useState("");
@@ -26,6 +27,7 @@ export default function BroadcastsPage() {
   const [contentBody, setContentBody] = useState("");
   const [ruleType, setRuleType] = useState("ALL");
   const [ruleValues, setRuleValues] = useState("");
+  const [audienceMatchMode, setAudienceMatchMode] = useState("ANY");
   const [creating, setCreating] = useState(false);
   const [publishReason, setPublishReason] = useState("");
   const [publishing, setPublishing] = useState(false);
@@ -85,6 +87,7 @@ export default function BroadcastsPage() {
         starts_at: draftStartsAt ? new Date(draftStartsAt).toISOString() : undefined,
         expires_at: draftExpiresAt ? new Date(draftExpiresAt).toISOString() : undefined,
         metadata: { source: "admin_broadcasts_page" },
+        audience_match_mode: audienceMatchMode as "ANY" | "ALL",
         contents: [{
           language_code: "en",
           title: (contentTitle.trim() || draftTitle.trim()),
@@ -99,6 +102,7 @@ export default function BroadcastsPage() {
       setDraftTitle("");
       setDraftStartsAt("");
       setDraftExpiresAt("");
+      setAudienceMatchMode("ANY");
       setContentTitle("");
       setContentBody("");
       setRuleType("ALL");
@@ -252,6 +256,7 @@ export default function BroadcastsPage() {
         <Input label="Expires at (optional)" value={draftExpiresAt} onChange={setDraftExpiresAt} type="datetime-local" />
         <Input label="Content title" value={contentTitle} onChange={setContentTitle} />
         <Input label="Content body" value={contentBody} onChange={setContentBody} />
+        <Select label="Match mode" value={audienceMatchMode} onChange={setAudienceMatchMode} options={MATCH_MODES} />
         <Select label="Audience rule" value={ruleType} onChange={setRuleType} options={RULE_TYPES} />
         <Input label="Rule values comma-separated" value={ruleValues} onChange={setRuleValues} />
       </div>
@@ -460,6 +465,7 @@ function BroadcastDetail({
       {audiencePreview ? <div className="mt-3 space-y-3 text-xs">
         <div className="grid grid-cols-3 gap-2">
           <DeliveryMini label="Estimated" value={audiencePreview.estimated_farmer_count} tone="green" />
+          <DeliveryMini label="Match mode" value={audiencePreview.audience_match_mode || "ANY"} tone="purple" />
           <DeliveryMini label="Existing" value={audiencePreview.existing_delivery_count} tone="blue" />
           <DeliveryMini label="Unsupported" value={audiencePreview.unsupported_rule_count} tone={audiencePreview.unsupported_rule_count ? "amber" : "slate"} />
         </div>
@@ -620,7 +626,7 @@ function Select({ label, value, onChange, options }: { label: string; value: str
   return <label className="text-xs text-gray-500">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">{options.map((option) => <option key={option || "ALL"} value={option}>{option || "All"}</option>)}</select></label>;
 }
 
-function DeliveryMini({ label, value, tone }: { label: string; value: number; tone: "slate" | "amber" | "blue" | "purple" | "green" | "red" }) {
+function DeliveryMini({ label, value, tone }: { label: string; value: number | string | string; tone: "slate" | "amber" | "blue" | "purple" | "green" | "red" }) {
   const tones = {
     slate: "bg-slate-50 text-slate-700",
     amber: "bg-amber-50 text-amber-800",

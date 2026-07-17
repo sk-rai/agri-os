@@ -397,6 +397,7 @@ def main():
     preview_body = preview.json()
     check(preview_body["schema_version"] == "broadcast_audience_preview.v1", "Audience preview schema stable")
     check(preview_body["campaign_id"] == str(created_id), "Audience preview references campaign")
+    check(preview_body["audience_match_mode"] == "ANY", "Audience preview defaults to ANY match mode")
     check(preview_body["estimated_farmer_count"] == 3, "Audience preview estimates unique farmers")
     check(preview_body["existing_delivery_count"] == 0, "Audience preview does not create deliveries")
     check(preview_body["unsupported_rule_count"] == 0, "Audience preview expands all configured rules")
@@ -410,6 +411,31 @@ def main():
     check(rule_counts.get("LOCATION") == 3, "Audience preview expands LOCATION rule")
     check(rule_counts.get("LANGUAGE") == 1, "Audience preview expands LANGUAGE rule")
     check(rule_counts.get("STAGE") == 1, "Audience preview expands STAGE rule")
+
+    print("\n[1c-all] Preview ALL/intersection audience mode")
+    all_mode_id = uuid.uuid4()
+    all_mode_create = client.post("/api/v1/broadcasts", headers=headers, json={
+        "id": str(all_mode_id),
+        "title": "Intersection targeting draft",
+        "category": "ADVISORY",
+        "priority": "NORMAL",
+        "metadata": {"audience_match_mode": "ALL"},
+        "contents": [{"language_code": "en", "title": "Intersection targeting", "body_text": "Only matching crop farmers."}],
+        "audience_rules": [
+            {"rule_type": "PROJECT", "operator": "IN", "values": [str(project_id)]},
+            {"rule_type": "CROP", "operator": "IN", "values": ["RICE"]},
+            {"rule_type": "STAGE", "operator": "IN", "values": ["FLOWERING"]},
+            {"rule_type": "LOCATION", "operator": "IN", "values": ["Broadcast Village"]},
+        ],
+    })
+    check(all_mode_create.status_code == 201, "Create ALL match-mode draft returns 201", all_mode_create.text)
+    all_mode_preview = client.get(f"/api/v1/broadcasts/{all_mode_id}/audience-preview", headers=headers)
+    check(all_mode_preview.status_code == 200, "ALL match-mode preview returns 200", all_mode_preview.text)
+    all_mode_body = all_mode_preview.json()
+    check(all_mode_body["audience_match_mode"] == "ALL", "Audience preview preserves ALL match mode")
+    check(all_mode_body["estimated_farmer_count"] == 1, "ALL match mode intersects supported rules")
+    check(all_mode_body["sample_farmer_ids"] == [str(crop_farmer_id)], "ALL match mode returns only farmer matching every rule")
+    check(set(all_mode_body["sample_matches"][0]["matched_by"]) == {"CROP", "LOCATION", "PROJECT", "STAGE"}, "ALL match mode explains intersected rules")
     print("\n[1c] Generate deliveries")
     generate = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate.status_code == 200, "Generate broadcast deliveries returns 200", generate.text)
@@ -551,7 +577,7 @@ def main():
     check(listing.status_code == 200, "Broadcast list returns 200", listing.text)
     body = listing.json()
     check(body["schema_version"] == "broadcast_campaigns.v1", "Schema version stable")
-    check(body["count"] == 1, "List returns seeded draft campaign")
+    check(body["count"] >= 1, "List returns seeded draft campaign")
     row = next(item for item in body["campaigns"] if item["id"] == str(campaign_id))
     check(row["id"] == str(campaign_id), "List preserves seeded campaign id")
     check(row["content_count"] == 2, "List includes content count")
