@@ -30,6 +30,11 @@ export default function WeatherPage() {
   const [snapshotRainfallMm, setSnapshotRainfallMm] = useState("");
   const [snapshotHumidity, setSnapshotHumidity] = useState("");
   const [snapshotExpiresAt, setSnapshotExpiresAt] = useState("");
+  const [filterProviderId, setFilterProviderId] = useState("");
+  const [filterScope, setFilterScope] = useState("");
+  const [filterLocationKey, setFilterLocationKey] = useState("");
+  const [includeExpired, setIncludeExpired] = useState(false);
+  const [snapshotLimit, setSnapshotLimit] = useState("100");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -39,7 +44,13 @@ export default function WeatherPage() {
       const [nextProviders, nextPlan, nextSnapshots] = await Promise.all([
         weatherApi.providers({ enabled: true }),
         weatherApi.refreshPlan({ enabled: true }),
-        weatherApi.snapshots({ includeExpired: false, limit: 100 }),
+        weatherApi.snapshots({
+          providerId: filterProviderId || undefined,
+          locationScope: filterScope || undefined,
+          locationKey: filterLocationKey.trim() || undefined,
+          includeExpired,
+          limit: Number(snapshotLimit) || 100,
+        }),
       ]);
       setProviders(nextProviders);
       setRefreshPlan(nextPlan);
@@ -49,7 +60,7 @@ export default function WeatherPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterLocationKey, filterProviderId, filterScope, includeExpired, snapshotLimit]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -237,8 +248,20 @@ export default function WeatherPage() {
     </section>
 
     <section className="rounded bg-white p-5 shadow">
-      <h2 className="text-lg font-semibold text-gray-900">Latest non-expired snapshots</h2>
-      <p className="mb-4 mt-1 text-xs text-gray-500">These are the normalized records used by WEATHER broadcast targeting. External API payloads remain server-side metadata for audit/debug.</p>
+      <h2 className="text-lg font-semibold text-gray-900">Weather snapshots</h2>
+      <p className="mt-1 text-xs text-gray-500">These are the normalized records used by WEATHER broadcast targeting. External API payloads remain server-side metadata for audit/debug.</p>
+      <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="my-4 grid gap-3 md:grid-cols-6">
+        <label className="text-xs text-gray-500 md:col-span-2">Provider<select value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All providers</option>{(providers?.providers || []).map((provider) => <option key={provider.id} value={provider.id}>{provider.display_name}</option>)}</select></label>
+        <label className="text-xs text-gray-500">Scope<select value={filterScope} onChange={(event) => setFilterScope(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">All scopes</option>{LOCATION_SCOPES.map((scope) => <option key={scope} value={scope}>{scope}</option>)}</select></label>
+        <label className="text-xs text-gray-500 md:col-span-2">Location key<input value={filterLocationKey} onChange={(event) => setFilterLocationKey(event.target.value)} placeholder="Exact location key" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Limit<input type="number" min={1} max={500} value={snapshotLimit} onChange={(event) => setSnapshotLimit(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2"><input type="checkbox" checked={includeExpired} onChange={(event) => setIncludeExpired(event.target.checked)} /> Include expired snapshots</label>
+        <div className="flex items-end gap-2 md:col-span-4">
+          <button type="submit" disabled={loading} className="rounded bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Apply filters</button>
+          <button type="button" onClick={() => { setFilterProviderId(""); setFilterScope(""); setFilterLocationKey(""); setIncludeExpired(false); setSnapshotLimit("100"); }} className="rounded border px-4 py-2 text-sm text-gray-700">Clear filters</button>
+        </div>
+      </form>
+      <div className="mb-4 rounded bg-gray-50 p-2 text-xs text-gray-500">Showing {snapshots?.count ?? 0} snapshot(s). Filters: provider {filterProviderId || "all"}, scope {filterScope || "all"}, location {filterLocationKey || "all"}, expired {includeExpired ? "included" : "excluded"}.</div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {(snapshots?.snapshots || []).map((snapshot) => <article key={snapshot.id} className="rounded border p-3 text-sm">
           <div className="flex items-center justify-between gap-2">
