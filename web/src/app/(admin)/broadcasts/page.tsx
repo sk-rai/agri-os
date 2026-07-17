@@ -461,18 +461,31 @@ function BroadcastDetail({
       {audit ? <div className="rounded border">
         <div className="border-b bg-gray-50 p-2 text-xs text-gray-500">{audit.count} audit event(s) returned.</div>
         <div className="max-h-72 overflow-auto divide-y">
-          {audit.events.map((event) => <div key={event.id} className="p-3 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-gray-900">{event.action}</span>
-              <span className="text-gray-400">{event.created_at || "-"}</span>
-            </div>
-            <div className="mt-1 text-gray-500">{event.actor_type || "-"} / {event.actor_id || "-"}</div>
-            {event.reason ? <div className="mt-1 text-amber-700">Reason: {event.reason}</div> : null}
-            <details className="mt-2">
-              <summary className="cursor-pointer text-gray-500">Payload</summary>
-              <pre className="mt-1 max-h-36 overflow-auto rounded bg-gray-950 p-2 text-[10px] text-gray-100">{JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}</pre>
-            </details>
-          </div>)}
+          {audit.events.map((event) => {
+            const beforeStatus = typeof event.before?.status === "string" ? event.before.status : null;
+            const afterStatus = typeof event.after?.status === "string" ? event.after.status : null;
+            const isLifecycle = ["PUBLISH_CAMPAIGN", "GENERATE_DELIVERIES", "EXPIRE_CAMPAIGN", "CANCEL_CAMPAIGN"].includes(event.action);
+            return <div key={event.id} className={`p-3 text-xs ${isLifecycle ? "bg-blue-50/40" : ""}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-gray-900">{event.action}</span>
+                <span className="text-gray-400">{event.created_at || "-"}</span>
+              </div>
+              <div className="mt-1 text-gray-500">{event.actor_type || "-"} / {event.actor_id || "-"}</div>
+              {beforeStatus || afterStatus ? <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="rounded bg-gray-100 px-2 py-1 text-gray-700">Before: {beforeStatus || "-"}</span>
+                <span className="text-gray-400">→</span>
+                <span className="rounded bg-green-100 px-2 py-1 text-green-800">After: {afterStatus || "-"}</span>
+              </div> : null}
+              {event.reason ? <div className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-800">Reason: {event.reason}</div> : null}
+              {event.metadata && Object.keys(event.metadata).length ? <div className="mt-2 flex flex-wrap gap-2">
+                {Object.entries(event.metadata).slice(0, 4).map(([key, value]) => <span key={key} className="rounded bg-slate-100 px-2 py-1 text-slate-700">{key}: {String(value)}</span>)}
+              </div> : null}
+              <details className="mt-2">
+                <summary className="cursor-pointer text-blue-600">Raw payload</summary>
+                <pre className="mt-1 max-h-36 overflow-auto rounded bg-gray-950 p-2 text-[10px] text-gray-100">{JSON.stringify({ before: event.before, after: event.after, metadata: event.metadata }, null, 2)}</pre>
+              </details>
+            </div>;
+          })}
           {audit.events.length === 0 ? <div className="p-4 text-center text-xs text-gray-400">No audit events.</div> : null}
         </div>
       </div> : <p className="text-xs text-gray-400">Load audit to inspect create/publish/delivery/read/ack history.</p>}
