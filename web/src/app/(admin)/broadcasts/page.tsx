@@ -27,6 +27,8 @@ export default function BroadcastsPage() {
   const [creating, setCreating] = useState(false);
   const [publishReason, setPublishReason] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [lifecycleReason, setLifecycleReason] = useState("Lifecycle update");
+  const [transitioningLifecycle, setTransitioningLifecycle] = useState(false);
   const [generatingDeliveries, setGeneratingDeliveries] = useState(false);
   const [audiencePreview, setAudiencePreview] = useState<BroadcastAudiencePreviewResponse | null>(null);
   const [previewingAudience, setPreviewingAudience] = useState(false);
@@ -123,6 +125,25 @@ export default function BroadcastsPage() {
       setError(e instanceof Error ? e.message : "Failed to publish broadcast");
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function transitionBroadcast(campaignId: string, action: "expire" | "cancel") {
+    setTransitioningLifecycle(true);
+    setError(null);
+    try {
+      const updated = action === "expire"
+        ? await broadcastsApi.expire(campaignId, { reason: lifecycleReason.trim() || undefined })
+        : await broadcastsApi.cancel(campaignId, { reason: lifecycleReason.trim() || undefined });
+      setSelected(updated);
+      setAudiencePreview(null);
+      setDeliveries(null);
+      setAudit(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Failed to ${action} broadcast`);
+    } finally {
+      setTransitioningLifecycle(false);
     }
   }
 
@@ -254,7 +275,7 @@ export default function BroadcastsPage() {
         </table>
       </section>
 
-      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} audit={audit} loadingAudit={loadingAudit} onLoadAudit={loadAudit} />
+      <BroadcastDetail campaign={selected} publishReason={publishReason} setPublishReason={setPublishReason} publishing={publishing} onPublish={publishSelected} lifecycleReason={lifecycleReason} setLifecycleReason={setLifecycleReason} transitioningLifecycle={transitioningLifecycle} onTransitionLifecycle={transitionBroadcast} generatingDeliveries={generatingDeliveries} onGenerateDeliveries={generateDeliveries} audiencePreview={audiencePreview} previewingAudience={previewingAudience} onPreviewAudience={previewAudience} deliveries={deliveries} deliveryStatus={deliveryStatus} setDeliveryStatus={setDeliveryStatus} loadingDeliveries={loadingDeliveries} onLoadDeliveries={loadDeliveries} audit={audit} loadingAudit={loadingAudit} onLoadAudit={loadAudit} />
     </div> : null}
   </div>;
 }
@@ -265,6 +286,10 @@ function BroadcastDetail({
   setPublishReason,
   publishing,
   onPublish,
+  lifecycleReason,
+  setLifecycleReason,
+  transitioningLifecycle,
+  onTransitionLifecycle,
   generatingDeliveries,
   onGenerateDeliveries,
   audiencePreview,
@@ -284,6 +309,10 @@ function BroadcastDetail({
   setPublishReason: (value: string) => void;
   publishing: boolean;
   onPublish: (campaignId: string) => Promise<void>;
+  lifecycleReason: string;
+  setLifecycleReason: (value: string) => void;
+  transitioningLifecycle: boolean;
+  onTransitionLifecycle: (campaignId: string, action: "expire" | "cancel") => Promise<void>;
   generatingDeliveries: boolean;
   onGenerateDeliveries: (campaignId: string) => Promise<void>;
   audiencePreview: BroadcastAudiencePreviewResponse | null;
@@ -315,6 +344,16 @@ function BroadcastDetail({
       <p className="mt-1 text-xs text-amber-800">Publishing changes status to PUBLISHED and sets starts_at. Delivery generation is still a separate future step.</p>
       <Input label="Publish reason" value={publishReason} onChange={setPublishReason} />
       <button type="button" onClick={() => void onPublish(campaign.id)} disabled={publishing} className="mt-3 rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{publishing ? "Publishing..." : "Publish"}</button>
+    </div> : null}
+
+    {(campaign.status === "DRAFT" || campaign.status === "PUBLISHED") ? <div className="mt-5 rounded border bg-red-50 p-3">
+      <h3 className="text-sm font-semibold text-red-900">Lifecycle controls</h3>
+      <p className="mt-1 text-xs text-red-800">Cancel draft/published broadcasts or expire published broadcasts. Delivery history and audit trail are preserved.</p>
+      <Input label="Lifecycle reason" value={lifecycleReason} onChange={setLifecycleReason} />
+      <div className="mt-3 flex flex-wrap gap-2">
+        {campaign.status === "PUBLISHED" ? <button type="button" onClick={() => void onTransitionLifecycle(campaign.id, "expire")} disabled={transitioningLifecycle} className="rounded bg-orange-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Expire</button> : null}
+        <button type="button" onClick={() => void onTransitionLifecycle(campaign.id, "cancel")} disabled={transitioningLifecycle} className="rounded bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Cancel</button>
+      </div>
     </div> : null}
 
     {campaign.status === "PUBLISHED" ? <div className="mt-5 rounded border bg-blue-50 p-3">

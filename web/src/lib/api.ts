@@ -2876,6 +2876,10 @@ export const broadcastsApi = {
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/publish`, { method: "POST", body: JSON.stringify(body || {}) }),
   generateDeliveries: (campaignId: string) =>
     api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/generate-deliveries`, { method: "POST" }),
+  expire: (campaignId: string, body?: { actor_id?: string; reason?: string }) =>
+    api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/expire`, { method: "POST", body: JSON.stringify(body || {}) }),
+  cancel: (campaignId: string, body?: { actor_id?: string; reason?: string }) =>
+    api<BroadcastCampaignDto>(`/api/v1/broadcasts/${campaignId}/cancel`, { method: "POST", body: JSON.stringify(body || {}) }),
   previewAudience: (campaignId: string) =>
     api<BroadcastAudiencePreviewResponse>(`/api/v1/broadcasts/${campaignId}/audience-preview`),
   deliveries: (campaignId: string, params?: { status?: string; limit?: number }) => {
