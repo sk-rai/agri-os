@@ -162,6 +162,132 @@ def persist_weather_provider_refresh(db: Session, *, provider: WeatherProviderCo
     return created
 
 
+def _num(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_number(*values: Any) -> float | None:
+    for value in values:
+        if isinstance(value, list) and value:
+            parsed = _num(value[0])
+        else:
+            parsed = _num(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _open_meteo_condition(*, rainfall_mm: float | None, rainfall_probability: float | None, weather_code: Any) -> str:
+    code = int(_num(weather_code) or 0)
+    if rainfall_mm is not None and rainfall_mm >= 20:
+        return "HEAVY_RAIN"
+    if rainfall_probability is not None and rainfall_probability >= 80:
+        return "HEAVY_RAIN"
+    if rainfall_mm is not None and rainfall_mm > 0:
+        return "RAIN"
+    if code in {95, 96, 99}:
+        return "THUNDERSTORM_WIND"
+    if code in {61, 63, 65, 80, 81, 82}:
+        return "RAIN"
+    return "CLEAR"
+
+
+def _open_meteo_risk_flags(*, condition_code: str, rainfall_mm: float | None, rainfall_probability: float | None, humidity_percent: float | None, temperature_max_c: float | None, wind_speed_kmph: float | None) -> list[str]:
+    flags: list[str] = []
+    if condition_code == "HEAVY_RAIN" or (rainfall_mm is not None and rainfall_mm >= 20) or (rainfall_probability is not None and rainfall_probability >= 80):
+        flags.append("HEAVY_RAIN_NEXT_24H")
+    if (humidity_percent is not None and humidity_percent >= 80) and ((rainfall_probability or 0) >= 60 or (rainfall_mm or 0) > 0):
+        flags.append("FUNGAL_RISK")
+    if temperature_max_c is not None and temperature_max_c >= 38:
+        flags.append("HEAT_STRESS_NEXT_48H")
+    if wind_speed_kmph is not None and wind_speed_kmph >= 40:
+        flags.append("HIGH_WIND_ALERT")
+    return flags
+
+
+def run_open_meteo_adapter(provider: WeatherProviderConfig) -> WeatherAdapterResult:
+    config = provider.config or {}
+    adapter = str(config.get("adapter") or config.get("provider") or provider.provider_code or "").lower()
+    if "open_meteo" not in adapter and "open-meteo" not in adapter:
+        return WeatherAdapterResult(status="SKIPPED", message="Provider is not configured for Open-Meteo adapter", metadata={"adapter": "open_meteo", "reason": "adapter_not_selected"})
+
+    sample_payload = config.get("sample_payload") or config.get("mock_payload")
+    locations = config.get("locations") or []
+    if not sample_payload:
+        return WeatherAdapterResult(status="SKIPPED", message="Open-Meteo adapter requires sample_payload until live fetch is enabled", metadata={"adapter": "open_meteo", "reason": "missing_sample_payload"})
+    if not locations:
+        locations = [{
+            "location_scope": config.get("location_scope") or "GEOPOINT",
+            "location_key": config.get("location_key"),
+            "lat": config.get("lat") or config.get("latitude"),
+            "lng": config.get("lng") or config.get("longitude"),
+        }]
+
+    current = sample_payload.get("current") or sample_payload.get("current_weather") or {}
+    hourly = sample_payload.get("hourly") or {}
+    daily = sample_payload.get("daily") or {}
+    fetched_at = sample_payload.get("fetched_at") or current.get("time") or now_utc().isoformat()
+    daily_times = daily.get("time") if isinstance(daily.get("time"), list) else []
+    valid_to = sample_payload.get("forecast_valid_to") or (daily_times[-1] if daily_times else None)
+
+    rainfall_probability = _first_number(
+        current.get("precipitation_probability"),
+        hourly.get("precipitation_probability"),
+        daily.get("precipitation_probability_max"),
+    )
+    rainfall_mm = _first_number(current.get("rain"), current.get("precipitation"), hourly.get("rain"), daily.get("rain_sum"), daily.get("precipitation_sum"))
+    humidity = _first_number(current.get("relative_humidity_2m"), hourly.get("relative_humidity_2m"))
+    temp_min = _first_number(daily.get("temperature_2m_min"), current.get("temperature_2m"))
+    temp_max = _first_number(daily.get("temperature_2m_max"), current.get("temperature_2m"))
+    wind_speed = _first_number(current.get("wind_speed_10m"), current.get("windspeed"), daily.get("wind_speed_10m_max"))
+    condition_code = _open_meteo_condition(rainfall_mm=rainfall_mm, rainfall_probability=rainfall_probability, weather_code=current.get("weather_code") or current.get("weathercode"))
+    risk_flags = _open_meteo_risk_flags(
+        condition_code=condition_code,
+        rainfall_mm=rainfall_mm,
+        rainfall_probability=rainfall_probability,
+        humidity_percent=humidity,
+        temperature_max_c=temp_max,
+        wind_speed_kmph=wind_speed,
+    )
+    expires_at = (now_utc() + timedelta(hours=provider.refresh_interval_hours)).isoformat()
+
+    snapshots = []
+    for location in locations:
+        snapshots.append(WeatherSnapshotInput(
+            location_scope=str(location.get("location_scope") or "GEOPOINT"),
+            location_key=location.get("location_key"),
+            lat=str(location.get("lat")) if location.get("lat") is not None else None,
+            lng=str(location.get("lng")) if location.get("lng") is not None else None,
+            fetched_at=fetched_at,
+            forecast_valid_from=sample_payload.get("forecast_valid_from") or fetched_at,
+            forecast_valid_to=valid_to,
+            expires_at=expires_at,
+            summary=sample_payload.get("summary") or f"Open-Meteo normalized condition: {condition_code}",
+            condition_code=condition_code,
+            rainfall_probability_percent=int(rainfall_probability) if rainfall_probability is not None else None,
+            rainfall_mm=str(rainfall_mm) if rainfall_mm is not None else None,
+            temperature_min_c=str(temp_min) if temp_min is not None else None,
+            temperature_max_c=str(temp_max) if temp_max is not None else None,
+            humidity_percent=int(humidity) if humidity is not None else None,
+            wind_speed_kmph=str(wind_speed) if wind_speed is not None else None,
+            risk_flags=risk_flags,
+            source_payload=sample_payload,
+            metadata={"adapter": "open_meteo", "source": "sample_payload"},
+        ))
+
+    return WeatherAdapterResult(
+        status="SUCCESS",
+        message=f"Open-Meteo sample payload normalized into {len(snapshots)} snapshot(s)",
+        snapshots=snapshots,
+        metadata={"adapter": "open_meteo", "mode": "sample_payload"},
+    )
+
+
 def run_weather_provider_adapter(provider: WeatherProviderConfig) -> WeatherAdapterResult:
     """Run a provider adapter without making external calls yet.
 
@@ -170,6 +296,10 @@ def run_weather_provider_adapter(provider: WeatherProviderConfig) -> WeatherAdap
     scheduler wiring can be validated without network dependencies.
     """
     provider_type = (provider.provider_type or "MANUAL").upper()
+    config = provider.config or {}
+    adapter = str(config.get("adapter") or config.get("provider") or provider.provider_code or "").lower()
+    if "open_meteo" in adapter or "open-meteo" in adapter:
+        return run_open_meteo_adapter(provider)
     if provider_type == "MANUAL":
         return WeatherAdapterResult(status="SKIPPED", message="Manual weather provider has no automatic adapter", metadata={"adapter": "manual_noop"})
     return WeatherAdapterResult(status="SKIPPED", message=f"No adapter registered for provider_type={provider_type}", metadata={"adapter": "unimplemented"})

@@ -142,9 +142,35 @@ def main():
     finally:
         db_adapter.close()
 
+    open_meteo_provider_id = uuid.uuid4()
+    open_meteo_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+        "id": str(open_meteo_provider_id),
+        "provider_code": "open_meteo_sample",
+        "display_name": "Open-Meteo Sample",
+        "provider_type": "EXTERNAL_API",
+        "refresh_interval_hours": 6,
+        "config": {
+            "adapter": "open_meteo",
+            "locations": [{"location_scope": "VILLAGE", "location_key": "Broadcast Village", "lat": "12.9716", "lng": "77.5946"}],
+            "sample_payload": {
+                "fetched_at": fetched_at.isoformat(),
+                "current": {"time": fetched_at.isoformat(), "temperature_2m": 29.4, "relative_humidity_2m": 88, "rain": 22.5, "weather_code": 63, "wind_speed_10m": 18},
+                "hourly": {"precipitation_probability": [86], "rain": [22.5]},
+            },
+        },
+    })
+    check(open_meteo_provider.status_code == 201, "Create Open-Meteo sample provider returns 201", open_meteo_provider.text)
+    open_meteo_run = client.post(f"/api/v1/weather/providers/{open_meteo_provider_id}/run-adapter", headers=headers)
+    check(open_meteo_run.status_code == 200, "Run Open-Meteo sample adapter returns 200", open_meteo_run.text)
+    open_meteo_body = open_meteo_run.json()
+    check(open_meteo_body["status"] == "SUCCESS", "Open-Meteo sample adapter succeeds offline")
+    check(open_meteo_body["created_snapshot_count"] == 1, "Open-Meteo sample adapter creates snapshot")
+    check(open_meteo_body["snapshots"][0]["condition_code"] == "HEAVY_RAIN", "Open-Meteo sample adapter normalizes condition")
+    check("HEAVY_RAIN_NEXT_24H" in open_meteo_body["snapshots"][0]["risk_flags"], "Open-Meteo sample adapter derives heavy rain risk")
+
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
-    check(listed.json()["count"] == 2, "List returns active snapshots")
+    check(listed.json()["count"] == 3, "List returns active snapshots")
 
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)
