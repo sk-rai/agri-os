@@ -555,10 +555,11 @@ Implemented admin/backend flow:
 3. Admin can preview estimated audience before sending.
 4. Admin publishes the campaign.
 5. Admin generates delivery rows.
-6. Android fetches farmer-specific broadcast feed.
-7. Android marks a delivery read when the farmer opens it.
-8. Android can acknowledge a delivery when explicit acknowledgement is required.
-9. Admin can inspect delivery rows and audit history.
+6. Admin can expire or cancel a campaign while preserving delivery/audit history.
+7. Android fetches farmer-specific broadcast feed.
+8. Android marks a delivery read when the farmer opens it.
+9. Android can acknowledge a delivery when explicit acknowledgement is required.
+10. Admin can inspect delivery rows and audit history.
 
 Implemented targeting rules for delivery expansion:
 
@@ -587,6 +588,8 @@ Admin-side APIs currently available:
 ```http
 POST /api/v1/broadcasts
 POST /api/v1/broadcasts/{campaign_id}/publish
+POST /api/v1/broadcasts/{campaign_id}/expire
+POST /api/v1/broadcasts/{campaign_id}/cancel
 GET  /api/v1/broadcasts/{campaign_id}/audience-preview
 POST /api/v1/broadcasts/{campaign_id}/generate-deliveries
 GET  /api/v1/broadcasts/{campaign_id}/deliveries?status=PENDING
@@ -658,6 +661,7 @@ Response shape:
 Android rendering guidance:
 
 - Show unread/PENDING broadcasts in a notification/inbox/advisory area.
+- Do not show EXPIRED or CANCELLED campaigns in the normal farmer inbox unless a future archival/history view is explicitly added.
 - Use `content.language_code` selected by backend fallback: requested language first, then English, then first available content.
 - Use `campaign.priority` for visual severity:
   - `URGENT`: prominent alert.
