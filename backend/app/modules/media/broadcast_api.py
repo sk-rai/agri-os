@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel
 from app.modules.media.api import _iso
-from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
+from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment
 
 router = APIRouter(prefix="/api/v1/broadcasts", tags=["broadcasts"])
 
@@ -104,8 +104,56 @@ def _parse_optional_datetime(value):
     return parsed
 
 
-def _content_payload(row: BroadcastContent) -> dict:
-    return {
+def _media_asset_payload(row: MediaAsset, attachment: MediaAttachment | None = None) -> dict:
+    payload = {
+        "id": str(row.id),
+        "tenant_id": row.tenant_id,
+        "project_id": str(row.project_id) if row.project_id else None,
+        "farmer_id": str(row.farmer_id) if row.farmer_id else None,
+        "media_type": row.media_type,
+        "mime_type": row.mime_type,
+        "storage_url": row.storage_url,
+        "storage_key": row.storage_key,
+        "thumbnail_url": row.thumbnail_url,
+        "sha256_hash": row.sha256_hash,
+        "size_bytes": row.size_bytes,
+        "duration_seconds": row.duration_seconds,
+        "width": row.width,
+        "height": row.height,
+        "upload_status": row.upload_status,
+        "metadata": row.metadata_ or {},
+        "created_at": _iso(row.created_at),
+        "updated_at": _iso(row.updated_at),
+    }
+    if attachment:
+        payload["attachment"] = {
+            "id": str(attachment.id),
+            "entity_type": attachment.entity_type,
+            "entity_id": str(attachment.entity_id),
+            "purpose": attachment.purpose,
+            "caption": attachment.caption,
+            "display_order": attachment.display_order,
+            "is_primary": attachment.is_primary,
+            "metadata": attachment.metadata_ or {},
+        }
+    return payload
+
+
+def _content_media_payloads(db: Session, *, tenant_id: str, content_id: uuid.UUID) -> list[dict]:
+    rows = db.query(MediaAttachment, MediaAsset).join(
+        MediaAsset,
+        MediaAsset.id == MediaAttachment.media_asset_id,
+    ).filter(
+        MediaAttachment.tenant_id == tenant_id,
+        MediaAttachment.entity_type == "ADVISORY",
+        MediaAttachment.entity_id == content_id,
+        MediaAsset.tenant_id == tenant_id,
+    ).order_by(MediaAttachment.display_order.asc(), MediaAttachment.created_at.asc()).all()
+    return [_media_asset_payload(asset, attachment) for attachment, asset in rows]
+
+
+def _content_payload(row: BroadcastContent, db: Session | None = None) -> dict:
+    payload = {
         "id": str(row.id),
         "tenant_id": row.tenant_id,
         "campaign_id": str(row.campaign_id),
@@ -118,6 +166,9 @@ def _content_payload(row: BroadcastContent) -> dict:
         "created_at": _iso(row.created_at),
         "updated_at": _iso(row.updated_at),
     }
+    if db is not None:
+        payload["media_attachments"] = _content_media_payloads(db, tenant_id=row.tenant_id, content_id=row.id)
+    return payload
 
 
 def _rule_payload(row: BroadcastAudienceRule) -> dict:
@@ -305,7 +356,7 @@ def create_broadcast_campaign(
     db.commit()
     db.refresh(campaign)
     payload = _campaign_payload(campaign, content_count=len(body.contents), rule_count=len(body.audience_rules), delivery_count=0)
-    payload["contents"] = [_content_payload(row) for row in db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()]
+    payload["contents"] = [_content_payload(row, db) for row in db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()]
     payload["audience_rules"] = [_rule_payload(row) for row in db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()]
     payload["delivery_summary"] = {"total": 0, "pending": 0, "delivered": 0, "read": 0, "acknowledged": 0, "failed": 0}
     return payload
@@ -317,7 +368,7 @@ def _broadcast_detail_payload(db: Session, campaign: BroadcastCampaign, tenant_i
     deliveries = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == campaign.id).all()
 
     payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=len(deliveries))
-    payload["contents"] = [_content_payload(row) for row in contents]
+    payload["contents"] = [_content_payload(row, db) for row in contents]
     payload["audience_rules"] = [_rule_payload(row) for row in rules]
     payload["delivery_summary"] = _delivery_summary(deliveries)
     return payload
@@ -540,7 +591,7 @@ def publish_broadcast_campaign(
     contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
     rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
     payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=0)
-    payload["contents"] = [_content_payload(row) for row in contents]
+    payload["contents"] = [_content_payload(row, db) for row in contents]
     payload["audience_rules"] = [_rule_payload(row) for row in rules]
     payload["delivery_summary"] = {"total": 0, "pending": 0, "delivered": 0, "read": 0, "acknowledged": 0, "failed": 0}
     return payload
@@ -808,7 +859,7 @@ def get_broadcast_campaign(
     deliveries = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id).all()
 
     payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=len(deliveries))
-    payload["contents"] = [_content_payload(row) for row in contents]
+    payload["contents"] = [_content_payload(row, db) for row in contents]
     payload["audience_rules"] = [_rule_payload(row) for row in rules]
     payload["delivery_summary"] = {
         "total": len(deliveries),

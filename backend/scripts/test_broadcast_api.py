@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import engine, SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Project, Tenant
-from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery
+from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment
 
 
 def now():
@@ -204,7 +204,7 @@ def main():
         ))
         db.flush()
 
-        db.add(BroadcastContent(
+        seeded_content = BroadcastContent(
             tenant_id=tenant_id,
             campaign_id=campaign_id,
             language_code="en",
@@ -212,6 +212,36 @@ def main():
             body_text="Inspect crop for pests.",
             cta_label="View",
             deeplink_url="agrios://broadcast/rice-pest",
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add(seeded_content)
+        db.flush()
+        seeded_asset = MediaAsset(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            media_type="PHOTO",
+            mime_type="image/jpeg",
+            storage_url="https://example.test/rice-pest.jpg",
+            thumbnail_url="https://example.test/rice-pest-thumb.jpg",
+            upload_status="UPLOADED",
+            metadata_={"source": "broadcast_regression"},
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add(seeded_asset)
+        db.flush()
+        db.add(MediaAttachment(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            media_asset_id=seeded_asset.id,
+            entity_type="ADVISORY",
+            entity_id=seeded_content.id,
+            purpose="ADVISORY_ATTACHMENT",
+            caption="Rice pest reference image",
+            display_order=1,
+            is_primary=True,
+            metadata_={"placement": "hero"},
             created_at=now(),
             updated_at=now(),
         ))
@@ -416,6 +446,7 @@ def main():
     check(detail.status_code == 200, "Broadcast detail returns 200", detail.text)
     detail_body = detail.json()
     check(len(detail_body["contents"]) == 2, "Detail includes localized content")
+    check(any(content.get("media_attachments") for content in detail_body["contents"]), "Detail includes broadcast media attachment")
     check({item["language_code"] for item in detail_body["contents"]} == {"en", "hi"}, "Detail preserves languages")
     check(len(detail_body["audience_rules"]) == 1, "Detail includes audience rules")
     check(detail_body["delivery_summary"]["total"] == 1, "Detail includes delivery summary")
@@ -449,10 +480,12 @@ def main():
     db = SessionLocal()
     try:
         db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(MediaAsset).filter(MediaAsset.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)

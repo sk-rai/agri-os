@@ -1575,6 +1575,7 @@ export interface WorkflowTemplateVersionHistoryItem {
   is_read_only_for_existing_cycles?: boolean;
   schema_version: string;
   metadata?: Record<string, unknown>;
+  media_attachments?: BroadcastMediaAttachmentDto[];
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -2713,6 +2714,7 @@ export interface BroadcastContentDto {
   cta_label?: string | null;
   deeplink_url?: string | null;
   metadata?: Record<string, unknown>;
+  media_attachments?: BroadcastMediaAttachmentDto[];
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -2757,6 +2759,37 @@ export interface BroadcastCampaignDto {
   contents?: BroadcastContentDto[];
   audience_rules?: BroadcastAudienceRuleDto[];
   delivery_summary?: BroadcastDeliverySummaryDto;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BroadcastMediaAttachmentDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  farmer_id?: string | null;
+  media_type: string;
+  mime_type: string;
+  storage_url?: string | null;
+  storage_key?: string | null;
+  thumbnail_url?: string | null;
+  sha256_hash?: string | null;
+  size_bytes?: number | null;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  upload_status: string;
+  metadata?: Record<string, unknown>;
+  attachment?: {
+    id: string;
+    entity_type: string;
+    entity_id: string;
+    purpose: string;
+    caption?: string | null;
+    display_order: number;
+    is_primary: boolean;
+    metadata?: Record<string, unknown>;
+  };
   created_at?: string | null;
   updated_at?: string | null;
 }

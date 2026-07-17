@@ -401,6 +401,19 @@ function BroadcastDetail({
         <div className="font-semibold">{content.language_code}: {content.title}</div>
         <p className="mt-1 text-gray-600">{content.body_text || "-"}</p>
         {content.cta_label || content.deeplink_url ? <div className="mt-2 text-xs text-blue-700">{content.cta_label || "CTA"} - {content.deeplink_url || "-"}</div> : null}
+        {content.media_attachments?.length ? <div className="mt-3 rounded bg-gray-50 p-2 text-xs">
+          <div className="font-semibold text-gray-700">Media attachments</div>
+          <div className="mt-2 space-y-2">
+            {content.media_attachments.map((media) => <div key={media.id} className="rounded border bg-white p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{media.media_type} / {media.mime_type}</span>
+                <span className="text-gray-500">{media.upload_status}</span>
+              </div>
+              {media.attachment?.caption ? <div className="mt-1 text-gray-600">{media.attachment.caption}</div> : null}
+              <div className="mt-1 break-all font-mono text-[10px] text-gray-400">{media.storage_url || media.storage_key || media.id}</div>
+            </div>)}
+          </div>
+        </div> : null}
       </div>)}
       {(!campaign.contents || campaign.contents.length === 0) ? <p className="text-sm text-gray-400">No content rows.</p> : null}
     </Section>
