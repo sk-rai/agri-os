@@ -362,6 +362,80 @@ def create_broadcast_campaign(
     return payload
 
 
+
+@router.post("/{campaign_id}/contents", status_code=201)
+def add_broadcast_content(
+    campaign_id: uuid.UUID,
+    body: BroadcastContentCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+    if campaign.status != "DRAFT":
+        raise HTTPException(409, "Only DRAFT broadcasts can be edited")
+
+    now_ts = datetime.now(timezone.utc)
+    row = BroadcastContent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        campaign_id=campaign.id,
+        language_code=body.language_code,
+        title=body.title,
+        body_text=body.body_text,
+        cta_label=body.cta_label,
+        deeplink_url=body.deeplink_url,
+        metadata_=body.metadata or {},
+        created_at=now_ts,
+        updated_at=now_ts,
+    )
+    db.add(row)
+    campaign.updated_at = now_ts
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="ADD_CONTENT", actor_type="ADMIN_WEB", after={"content_id": str(row.id), "language_code": row.language_code, "title": row.title})
+    db.commit()
+    db.refresh(campaign)
+    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+
+
+@router.post("/{campaign_id}/audience-rules", status_code=201)
+def add_broadcast_audience_rule(
+    campaign_id: uuid.UUID,
+    body: BroadcastAudienceRuleCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    from datetime import datetime, timezone
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+    if campaign.status != "DRAFT":
+        raise HTTPException(409, "Only DRAFT broadcasts can be edited")
+
+    now_ts = datetime.now(timezone.utc)
+    row = BroadcastAudienceRule(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        campaign_id=campaign.id,
+        rule_type=body.rule_type,
+        operator=body.operator,
+        values=body.values or [],
+        metadata_=body.metadata or {},
+        created_at=now_ts,
+    )
+    db.add(row)
+    campaign.updated_at = now_ts
+    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="ADD_AUDIENCE_RULE", actor_type="ADMIN_WEB", after={"rule_id": str(row.id), "rule_type": row.rule_type, "operator": row.operator, "values": row.values or []})
+    db.commit()
+    db.refresh(campaign)
+    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+
+
+
+
 def _broadcast_detail_payload(db: Session, campaign: BroadcastCampaign, tenant_id: str) -> dict:
     contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
     rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()

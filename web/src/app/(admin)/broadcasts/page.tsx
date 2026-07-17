@@ -356,6 +356,48 @@ function BroadcastDetail({
   loadingAudit: boolean;
   onLoadAudit: (campaignId: string) => Promise<void>;
 }) {
+  const [newContentLanguage, setNewContentLanguage] = useState("en");
+  const [newContentTitle, setNewContentTitle] = useState("");
+  const [newContentBody, setNewContentBody] = useState("");
+  const [newRuleType, setNewRuleType] = useState("FARMER");
+  const [newRuleValues, setNewRuleValues] = useState("");
+  const [draftEditorBusy, setDraftEditorBusy] = useState(false);
+
+  async function addDraftContent() {
+    if (!campaign || !newContentTitle.trim()) return;
+    setDraftEditorBusy(true);
+    try {
+      const updated = await broadcastsApi.addContent(campaign.id, {
+        language_code: newContentLanguage.trim() || "en",
+        title: newContentTitle.trim(),
+        body_text: newContentBody.trim() || undefined,
+      });
+      setNewContentTitle("");
+      setNewContentBody("");
+      // Local refresh: parent receives updated campaign through selected state replacement pattern.
+      Object.assign(campaign, updated);
+    } finally {
+      setDraftEditorBusy(false);
+    }
+  }
+
+  async function addDraftRule() {
+    if (!campaign) return;
+    setDraftEditorBusy(true);
+    try {
+      const values = newRuleValues.split(",").map((item) => item.trim()).filter(Boolean);
+      const updated = await broadcastsApi.addAudienceRule(campaign.id, {
+        rule_type: newRuleType,
+        operator: newRuleType === "ALL" ? "ANY" : "IN",
+        values,
+      });
+      setNewRuleValues("");
+      Object.assign(campaign, updated);
+    } finally {
+      setDraftEditorBusy(false);
+    }
+  }
+
   if (!campaign) return <aside className="rounded bg-white p-5 text-sm text-gray-500 shadow">Select a campaign to inspect content, audience rules, delivery summary, and metadata.</aside>;
   return <aside className="rounded bg-white p-5 shadow">
     <h2 className="text-lg font-bold text-gray-900">Broadcast detail</h2>
@@ -367,6 +409,23 @@ function BroadcastDetail({
       <Mini label="Project" value={campaign.project_id || "-"} />
       <Mini label="Active window" value={`${campaign.starts_at || "-"} to ${campaign.expires_at || "-"}`} />
     </div>
+
+    {campaign.status === "DRAFT" ? <div className="mt-5 rounded border bg-green-50 p-3">
+      <h3 className="text-sm font-semibold text-green-900">Draft editor</h3>
+      <p className="mt-1 text-xs text-green-800">Add localized content rows and audience rules before publishing.</p>
+      <div className="mt-3 grid gap-2">
+        <Input label="Content language" value={newContentLanguage} onChange={setNewContentLanguage} />
+        <Input label="Content title" value={newContentTitle} onChange={setNewContentTitle} />
+        <Input label="Content body" value={newContentBody} onChange={setNewContentBody} />
+        <button type="button" onClick={() => void addDraftContent()} disabled={draftEditorBusy || !newContentTitle.trim()} className="rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Add content</button>
+      </div>
+      <div className="mt-4 grid gap-2">
+        <Select label="Rule type" value={newRuleType} onChange={setNewRuleType} options={RULE_TYPES} />
+        <Input label="Rule values comma-separated" value={newRuleValues} onChange={setNewRuleValues} />
+        <button type="button" onClick={() => void addDraftRule()} disabled={draftEditorBusy} className="rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Add audience rule</button>
+      </div>
+    </div> : null}
+
 
     {campaign.status === "DRAFT" ? <div className="mt-5 rounded border bg-amber-50 p-3">
       <h3 className="text-sm font-semibold text-amber-900">Publish broadcast</h3>

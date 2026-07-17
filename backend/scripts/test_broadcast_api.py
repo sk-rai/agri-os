@@ -334,6 +334,24 @@ def main():
     check(len(created["contents"]) == 2, "Create returns content rows")
     check(len(created["audience_rules"]) == 5, "Create returns audience rules")
     check(created["delivery_summary"]["total"] == 0, "Create does not generate deliveries yet")
+
+    print("\n[1a] Edit draft content and audience rules")
+    add_content = client.post(f"/api/v1/broadcasts/{created_id}/contents", headers=headers, json={
+        "language_code": "kn",
+        "title": "Weather alert Kannada",
+        "body_text": "Heavy rainfall expected.",
+        "metadata": {"source": "regression"}
+    })
+    check(add_content.status_code == 201, "Add draft content returns 201", add_content.text)
+    check(any(item["language_code"] == "kn" for item in add_content.json()["contents"]), "Added draft content is returned")
+    add_rule = client.post(f"/api/v1/broadcasts/{created_id}/audience-rules", headers=headers, json={
+        "rule_type": "LANGUAGE",
+        "operator": "IN",
+        "values": ["kn"],
+        "metadata": {"source": "regression"}
+    })
+    check(add_rule.status_code == 201, "Add draft audience rule returns 201", add_rule.text)
+    check(any(item["rule_type"] == "LANGUAGE" for item in add_rule.json()["audience_rules"]), "Added draft audience rule is returned")
     print("\n[1b] Publish draft campaign")
     publish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={
         "approved_by": str(uuid.uuid4()),
@@ -345,6 +363,13 @@ def main():
     check(published["starts_at"] is not None, "Publish sets starts_at")
     check(published["metadata"]["delivery_generation"] == "NOT_STARTED", "Publish does not generate deliveries yet")
 
+    published_edit = client.post(f"/api/v1/broadcasts/{created_id}/contents", headers=headers, json={
+        "language_code": "ta",
+        "title": "Should fail",
+        "body_text": "Published campaigns cannot be edited."
+    })
+    check(published_edit.status_code == 409, "Published broadcast rejects draft content edits", published_edit.text)
+
     print("\n[1c-pre] Preview audience")
     preview = client.get(f"/api/v1/broadcasts/{created_id}/audience-preview", headers=headers)
     check(preview.status_code == 200, "Audience preview returns 200", preview.text)
@@ -353,7 +378,7 @@ def main():
     check(preview_body["campaign_id"] == str(created_id), "Audience preview references campaign")
     check(preview_body["estimated_farmer_count"] == 3, "Audience preview estimates unique farmers")
     check(preview_body["existing_delivery_count"] == 0, "Audience preview does not create deliveries")
-    check(preview_body["unsupported_rule_count"] == 0, "Audience preview expands all configured rules")
+    check(preview_body["unsupported_rule_count"] == 1, "Audience preview reports unsupported LANGUAGE rule")
     check(preview_body["match_reason_counts"]["LOCATION"] == 3, "Audience preview exposes LOCATION match reason count")
     check(any("LOCATION" in row["matched_by"] for row in preview_body["sample_matches"]), "Audience preview explains sample match reasons")
     rule_counts = {row["rule_type"]: row["matched_farmer_count"] for row in preview_body["rule_summaries"]}
