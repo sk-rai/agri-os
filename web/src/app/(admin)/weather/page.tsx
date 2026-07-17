@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { weatherApi, type WeatherProviderDto, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotsResponse } from "@/lib/api";
+
+const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
 
 export default function WeatherPage() {
   const [providers, setProviders] = useState<WeatherProvidersResponse | null>(null);
@@ -9,6 +11,13 @@ export default function WeatherPage() {
   const [snapshots, setSnapshots] = useState<WeatherSnapshotsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshingProviderId, setRefreshingProviderId] = useState<string | null>(null);
+  const [savingProvider, setSavingProvider] = useState(false);
+  const [providerCode, setProviderCode] = useState("");
+  const [providerName, setProviderName] = useState("");
+  const [providerType, setProviderType] = useState("EXTERNAL_API");
+  const [refreshInterval, setRefreshInterval] = useState("6");
+  const [providerEnabled, setProviderEnabled] = useState(true);
+  const [providerConfig, setProviderConfig] = useState("{}");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -31,6 +40,52 @@ export default function WeatherPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function saveProvider(event: FormEvent) {
+    event.preventDefault();
+    if (!providerCode.trim() || !providerName.trim()) return;
+    setSavingProvider(true);
+    setError(null);
+    try {
+      let parsedConfig: Record<string, unknown> = {};
+      if (providerConfig.trim()) {
+        const parsed = JSON.parse(providerConfig);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+          throw new Error("Provider config must be a JSON object");
+        }
+        parsedConfig = parsed as Record<string, unknown>;
+      }
+      await weatherApi.createProvider({
+        provider_code: providerCode.trim(),
+        display_name: providerName.trim(),
+        provider_type: providerType,
+        refresh_interval_hours: Number(refreshInterval) || 6,
+        is_enabled: providerEnabled,
+        config: parsedConfig,
+        metadata: { source: "admin_weather_page" },
+      });
+      setProviderCode("");
+      setProviderName("");
+      setProviderType("EXTERNAL_API");
+      setRefreshInterval("6");
+      setProviderEnabled(true);
+      setProviderConfig("{}");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save provider");
+    } finally {
+      setSavingProvider(false);
+    }
+  }
+
+  function editProvider(provider: WeatherProviderDto) {
+    setProviderCode(provider.provider_code);
+    setProviderName(provider.display_name);
+    setProviderType(provider.provider_type);
+    setRefreshInterval(String(provider.refresh_interval_hours || 6));
+    setProviderEnabled(provider.is_enabled);
+    setProviderConfig(JSON.stringify(provider.config || {}, null, 2));
+  }
 
   async function recordRefresh(provider: WeatherProviderDto) {
     setRefreshingProviderId(provider.id);
@@ -72,6 +127,23 @@ export default function WeatherPage() {
     </section>
 
     <section className="rounded bg-white p-5 shadow">
+      <h2 className="text-lg font-semibold text-gray-900">Provider configuration</h2>
+      <p className="mt-1 text-xs text-gray-500">Create or update backend weather providers. Provider code is the stable key; submitting the same code updates that provider.</p>
+      <form onSubmit={saveProvider} className="mt-4 grid gap-3 md:grid-cols-6">
+        <label className="text-xs text-gray-500 md:col-span-2">Provider code<input value={providerCode} onChange={(event) => setProviderCode(event.target.value)} placeholder="open-meteo" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500 md:col-span-2">Display name<input value={providerName} onChange={(event) => setProviderName(event.target.value)} placeholder="Open-Meteo" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Type<select value={providerType} onChange={(event) => setProviderType(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">{PROVIDER_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+        <label className="text-xs text-gray-500">Interval hours<input type="number" min={1} max={168} value={refreshInterval} onChange={(event) => setRefreshInterval(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2"><input type="checkbox" checked={providerEnabled} onChange={(event) => setProviderEnabled(event.target.checked)} /> Enabled</label>
+        <label className="text-xs text-gray-500 md:col-span-4">Config JSON<textarea value={providerConfig} onChange={(event) => setProviderConfig(event.target.value)} rows={3} className="mt-1 w-full rounded border p-2 font-mono text-xs text-gray-900" /></label>
+        <div className="flex items-end gap-2 md:col-span-6">
+          <button type="submit" disabled={savingProvider || !providerCode.trim() || !providerName.trim()} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingProvider ? "Saving..." : "Save provider"}</button>
+          <button type="button" onClick={() => { setProviderCode(""); setProviderName(""); setProviderType("EXTERNAL_API"); setRefreshInterval("6"); setProviderEnabled(true); setProviderConfig("{}"); }} className="rounded border px-4 py-2 text-sm text-gray-700">Clear</button>
+        </div>
+      </form>
+    </section>
+
+    <section className="rounded bg-white p-5 shadow">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Refresh plan</h2>
@@ -90,7 +162,7 @@ export default function WeatherPage() {
               <td className="p-3 text-gray-700">{provider.last_refresh_at || "Never"}</td>
               <td className="p-3 text-gray-700">{provider.next_refresh_at || "Due now"}</td>
               <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${provider.is_due ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}>{provider.is_due ? "Due" : "Scheduled"}</span>{provider.refresh_status ? <div className="mt-1 text-xs text-gray-500">{provider.refresh_status}: {provider.refresh_message || "-"}</div> : null}</td>
-              <td className="p-3"><button type="button" onClick={() => void recordRefresh(provider)} disabled={refreshingProviderId === provider.id} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{refreshingProviderId === provider.id ? "Recording..." : "Record refresh"}</button></td>
+              <td className="p-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => editProvider(provider)} className="rounded border px-3 py-1.5 text-xs font-medium text-gray-700">Edit</button><button type="button" onClick={() => void recordRefresh(provider)} disabled={refreshingProviderId === provider.id} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{refreshingProviderId === provider.id ? "Recording..." : "Record refresh"}</button></div></td>
             </tr>)}
             {(!loading && planProviders.length === 0) ? <tr><td colSpan={7} className="p-6 text-center text-gray-400">No enabled weather providers configured.</td></tr> : null}
           </tbody>

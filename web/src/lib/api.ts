@@ -3038,6 +3038,8 @@ export interface WeatherProviderRefreshResponse {
 }
 
 export const weatherApi = {
+  createProvider: (body: { provider_code: string; display_name: string; provider_type?: string; refresh_interval_hours?: number; is_enabled?: boolean; config?: Record<string, unknown>; metadata?: Record<string, unknown> }) =>
+    api<WeatherProviderDto>("/api/v1/weather/providers", { method: "POST", body: JSON.stringify(body) }),
   providers: (params?: { enabled?: boolean }) => {
     const q = new URLSearchParams();
     if (params?.enabled !== undefined) q.set("enabled", String(params.enabled));
