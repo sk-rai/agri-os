@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/broadcasts", tags=["broadcasts"])
 
 BROADCAST_CATEGORIES = {"GENERAL", "ADVISORY", "WEATHER", "MARKET", "INPUT", "EMERGENCY"}
 BROADCAST_PRIORITIES = {"LOW", "NORMAL", "HIGH", "URGENT"}
-BROADCAST_STATUSES = {"DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"}
+BROADCAST_STATUSES = {"DRAFT", "PUBLISHED", "EXPIRED", "CANCELLED", "ARCHIVED"}
 AUDIENCE_RULE_TYPES = {"ALL", "PROJECT", "FARMER", "CROP", "STAGE", "LOCATION", "WEATHER", "FIELD_EVENT", "INPUT", "PRODUCT", "ROLE", "LANGUAGE"}
 AUDIENCE_OPERATORS = {"IN", "NOT_IN", "EQUALS", "RADIUS", "ANY"}
 
@@ -55,6 +55,11 @@ class BroadcastAudienceRuleCreate(BaseModel):
 
 class BroadcastPublishRequest(BaseModel):
     approved_by: uuid.UUID | None = None
+    reason: str | None = None
+
+
+class BroadcastLifecycleRequest(BaseModel):
+    actor_id: uuid.UUID | None = None
     reason: str | None = None
 
 
@@ -541,6 +546,55 @@ def publish_broadcast_campaign(
     return payload
 
 
+
+def _transition_broadcast_status(
+    db: Session,
+    *,
+    campaign_id: uuid.UUID,
+    tenant_id: str,
+    target_status: str,
+    allowed_from: set[str],
+    action: str,
+    body: BroadcastLifecycleRequest | None = None,
+):
+    from datetime import datetime, timezone
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
+    if not campaign:
+        raise HTTPException(404, "Broadcast campaign not found")
+    if campaign.status not in allowed_from:
+        allowed = ", ".join(sorted(allowed_from))
+        raise HTTPException(409, f"Only {allowed} broadcasts can transition to {target_status}")
+
+    now_ts = datetime.now(timezone.utc)
+    before_status = campaign.status
+    metadata = dict(campaign.metadata_ or {})
+    metadata[f"{target_status.lower()}_reason"] = body.reason if body else None
+    metadata[f"{target_status.lower()}_at"] = now_ts.isoformat()
+    campaign.status = target_status
+    if target_status == "EXPIRED" and campaign.expires_at is None:
+        campaign.expires_at = now_ts
+    campaign.metadata_ = metadata
+    campaign.updated_at = now_ts
+
+    _record_broadcast_audit(
+        db,
+        tenant_id=tenant_id,
+        campaign_id=campaign.id,
+        action=action,
+        actor_type="ADMIN_WEB",
+        actor_id=body.actor_id if body else None,
+        before={"status": before_status},
+        after={"status": campaign.status, "expires_at": _iso(campaign.expires_at)},
+        reason=body.reason if body else None,
+    )
+    db.commit()
+    db.refresh(campaign)
+    return _broadcast_detail_payload(db, campaign, tenant_id)
+
+
+
+
 @router.post("/{campaign_id}/generate-deliveries")
 def generate_broadcast_deliveries(
     campaign_id: uuid.UUID,
@@ -597,6 +651,45 @@ def generate_broadcast_deliveries(
     db.commit()
     db.refresh(campaign)
     return _broadcast_detail_payload(db, campaign, x_tenant_id)
+
+
+
+@router.post("/{campaign_id}/expire")
+def expire_broadcast_campaign(
+    campaign_id: uuid.UUID,
+    body: BroadcastLifecycleRequest | None = None,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    return _transition_broadcast_status(
+        db,
+        campaign_id=campaign_id,
+        tenant_id=x_tenant_id,
+        target_status="EXPIRED",
+        allowed_from={"PUBLISHED"},
+        action="EXPIRE_CAMPAIGN",
+        body=body,
+    )
+
+
+@router.post("/{campaign_id}/cancel")
+def cancel_broadcast_campaign(
+    campaign_id: uuid.UUID,
+    body: BroadcastLifecycleRequest | None = None,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    return _transition_broadcast_status(
+        db,
+        campaign_id=campaign_id,
+        tenant_id=x_tenant_id,
+        target_status="CANCELLED",
+        allowed_from={"DRAFT", "PUBLISHED"},
+        action="CANCEL_CAMPAIGN",
+        body=body,
+    )
+
+
 
 
 @router.get("/{campaign_id}/deliveries")

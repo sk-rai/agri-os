@@ -342,6 +342,7 @@ def main():
     generate_again = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
     check(generate_again.status_code == 200, "Generate deliveries is idempotent", generate_again.text)
     check(generate_again.json()["delivery_summary"]["total"] == 3, "Generate does not duplicate deliveries")
+
     print("\n[1c-detail] Delivery drilldown")
     deliveries = client.get(f"/api/v1/broadcasts/{created_id}/deliveries", headers=headers)
     check(deliveries.status_code == 200, "Broadcast deliveries list returns 200", deliveries.text)
@@ -418,6 +419,29 @@ def main():
     check({item["language_code"] for item in detail_body["contents"]} == {"en", "hi"}, "Detail preserves languages")
     check(len(detail_body["audience_rules"]) == 1, "Detail includes audience rules")
     check(detail_body["delivery_summary"]["total"] == 1, "Detail includes delivery summary")
+
+    print("\n[1c-life] Broadcast lifecycle transitions")
+    expire = client.post(f"/api/v1/broadcasts/{created_id}/expire", headers=headers, json={"reason": "Regression expiry"})
+    check(expire.status_code == 200, "Expire published broadcast returns 200", expire.text)
+    expired = expire.json()
+    check(expired["status"] == "EXPIRED", "Expire changes broadcast status")
+    check(expired["delivery_summary"]["total"] == 3, "Expire preserves delivery history")
+    generate_after_expire = client.post(f"/api/v1/broadcasts/{created_id}/generate-deliveries", headers=headers)
+    check(generate_after_expire.status_code == 409, "Expired broadcast cannot regenerate deliveries", generate_after_expire.text)
+
+    cancel_id = uuid.uuid4()
+    cancel_create = client.post("/api/v1/broadcasts", headers=headers, json={
+        "id": str(cancel_id),
+        "title": "Cancelled draft",
+        "category": "GENERAL",
+        "priority": "NORMAL",
+        "contents": [{"language_code": "en", "title": "Cancelled draft", "body_text": "Not sent."}],
+        "audience_rules": [{"rule_type": "FARMER", "operator": "IN", "values": [str(farmer_id)]}],
+    })
+    check(cancel_create.status_code == 201, "Create cancel regression draft returns 201", cancel_create.text)
+    cancel = client.post(f"/api/v1/broadcasts/{cancel_id}/cancel", headers=headers, json={"reason": "Regression cancellation"})
+    check(cancel.status_code == 200, "Cancel draft broadcast returns 200", cancel.text)
+    check(cancel.json()["status"] == "CANCELLED", "Cancel changes draft broadcast status")
 
     isolated = client.get(f"/api/v1/broadcasts/{campaign_id}", headers={"X-Tenant-ID": "default"})
     check(isolated.status_code == 404, "Broadcast detail tenant isolated", isolated.text)
