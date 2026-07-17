@@ -3052,6 +3052,8 @@ export const weatherApi = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<WeatherRefreshPlanResponse>(`/api/v1/weather/providers/refresh-plan${suffix}`);
   },
+  createSnapshot: (body: { provider_id?: string; project_id?: string; farmer_id?: string; parcel_id?: string; location_scope?: string; location_key?: string; lat?: string; lng?: string; fetched_at?: string; forecast_valid_from?: string; forecast_valid_to?: string; expires_at?: string; summary?: string; condition_code?: string; rainfall_probability_percent?: number; rainfall_mm?: string; temperature_min_c?: string; temperature_max_c?: string; humidity_percent?: number; wind_speed_kmph?: string; risk_flags?: string[]; source_payload?: Record<string, unknown>; metadata?: Record<string, unknown> }) =>
+    api<WeatherSnapshotDto>("/api/v1/weather/snapshots", { method: "POST", body: JSON.stringify(body) }),
   snapshots: (params?: { providerId?: string; locationScope?: string; locationKey?: string; includeExpired?: boolean; limit?: number }) => {
     const q = new URLSearchParams();
     if (params?.providerId) q.set("provider_id", params.providerId);

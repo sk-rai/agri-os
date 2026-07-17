@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { weatherApi, type WeatherProviderDto, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotsResponse } from "@/lib/api";
 
 const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
+const LOCATION_SCOPES = ["TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"];
 
 export default function WeatherPage() {
   const [providers, setProviders] = useState<WeatherProvidersResponse | null>(null);
@@ -18,6 +19,17 @@ export default function WeatherPage() {
   const [refreshInterval, setRefreshInterval] = useState("6");
   const [providerEnabled, setProviderEnabled] = useState(true);
   const [providerConfig, setProviderConfig] = useState("{}");
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [snapshotProviderId, setSnapshotProviderId] = useState("");
+  const [snapshotScope, setSnapshotScope] = useState("VILLAGE");
+  const [snapshotLocationKey, setSnapshotLocationKey] = useState("");
+  const [snapshotSummary, setSnapshotSummary] = useState("");
+  const [snapshotCondition, setSnapshotCondition] = useState("HEAVY_RAIN");
+  const [snapshotRiskFlags, setSnapshotRiskFlags] = useState("HEAVY_RAIN_NEXT_24H");
+  const [snapshotRainProbability, setSnapshotRainProbability] = useState("");
+  const [snapshotRainfallMm, setSnapshotRainfallMm] = useState("");
+  const [snapshotHumidity, setSnapshotHumidity] = useState("");
+  const [snapshotExpiresAt, setSnapshotExpiresAt] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -87,6 +99,42 @@ export default function WeatherPage() {
     setProviderConfig(JSON.stringify(provider.config || {}, null, 2));
   }
 
+  async function saveSnapshot(event: FormEvent) {
+    event.preventDefault();
+    setSavingSnapshot(true);
+    setError(null);
+    try {
+      const now = new Date();
+      const expiresAt = snapshotExpiresAt ? new Date(snapshotExpiresAt) : new Date(now.getTime() + 6 * 60 * 60 * 1000);
+      await weatherApi.createSnapshot({
+        provider_id: snapshotProviderId || undefined,
+        location_scope: snapshotScope,
+        location_key: snapshotLocationKey.trim() || undefined,
+        fetched_at: now.toISOString(),
+        forecast_valid_from: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        summary: snapshotSummary.trim() || undefined,
+        condition_code: snapshotCondition.trim() || undefined,
+        rainfall_probability_percent: snapshotRainProbability ? Number(snapshotRainProbability) : undefined,
+        rainfall_mm: snapshotRainfallMm.trim() || undefined,
+        humidity_percent: snapshotHumidity ? Number(snapshotHumidity) : undefined,
+        risk_flags: snapshotRiskFlags.split(",").map((flag) => flag.trim()).filter(Boolean),
+        metadata: { source: "admin_weather_page", manual_entry: true },
+      });
+      setSnapshotSummary("");
+      setSnapshotLocationKey("");
+      setSnapshotRainProbability("");
+      setSnapshotRainfallMm("");
+      setSnapshotHumidity("");
+      setSnapshotExpiresAt("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save weather snapshot");
+    } finally {
+      setSavingSnapshot(false);
+    }
+  }
+
   async function recordRefresh(provider: WeatherProviderDto) {
     setRefreshingProviderId(provider.id);
     setError(null);
@@ -140,6 +188,24 @@ export default function WeatherPage() {
           <button type="submit" disabled={savingProvider || !providerCode.trim() || !providerName.trim()} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingProvider ? "Saving..." : "Save provider"}</button>
           <button type="button" onClick={() => { setProviderCode(""); setProviderName(""); setProviderType("EXTERNAL_API"); setRefreshInterval("6"); setProviderEnabled(true); setProviderConfig("{}"); }} className="rounded border px-4 py-2 text-sm text-gray-700">Clear</button>
         </div>
+      </form>
+    </section>
+
+    <section className="rounded bg-white p-5 shadow">
+      <h2 className="text-lg font-semibold text-gray-900">Manual weather snapshot</h2>
+      <p className="mt-1 text-xs text-gray-500">Seed a normalized weather snapshot for testing or manual operations. WEATHER broadcasts consume these saved snapshots.</p>
+      <form onSubmit={saveSnapshot} className="mt-4 grid gap-3 md:grid-cols-6">
+        <label className="text-xs text-gray-500 md:col-span-2">Provider<select value={snapshotProviderId} onChange={(event) => setSnapshotProviderId(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900"><option value="">No provider/manual</option>{(providers?.providers || []).map((provider) => <option key={provider.id} value={provider.id}>{provider.display_name}</option>)}</select></label>
+        <label className="text-xs text-gray-500">Scope<select value={snapshotScope} onChange={(event) => setSnapshotScope(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">{LOCATION_SCOPES.map((scope) => <option key={scope} value={scope}>{scope}</option>)}</select></label>
+        <label className="text-xs text-gray-500 md:col-span-2">Location key<input value={snapshotLocationKey} onChange={(event) => setSnapshotLocationKey(event.target.value)} placeholder="Village / pincode / grid key" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Expires at<input type="datetime-local" value={snapshotExpiresAt} onChange={(event) => setSnapshotExpiresAt(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500 md:col-span-2">Condition code<input value={snapshotCondition} onChange={(event) => setSnapshotCondition(event.target.value)} placeholder="HEAVY_RAIN" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500 md:col-span-2">Risk flags<input value={snapshotRiskFlags} onChange={(event) => setSnapshotRiskFlags(event.target.value)} placeholder="HEAVY_RAIN_NEXT_24H,FUNGAL_RISK" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Rain %<input type="number" min={0} max={100} value={snapshotRainProbability} onChange={(event) => setSnapshotRainProbability(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Rain mm<input value={snapshotRainfallMm} onChange={(event) => setSnapshotRainfallMm(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500">Humidity %<input type="number" min={0} max={100} value={snapshotHumidity} onChange={(event) => setSnapshotHumidity(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <label className="text-xs text-gray-500 md:col-span-4">Summary<input value={snapshotSummary} onChange={(event) => setSnapshotSummary(event.target.value)} placeholder="Heavy rainfall likely in next 24 hours" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
+        <div className="flex items-end md:col-span-2"><button type="submit" disabled={savingSnapshot} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingSnapshot ? "Saving..." : "Save snapshot"}</button></div>
       </form>
     </section>
 
