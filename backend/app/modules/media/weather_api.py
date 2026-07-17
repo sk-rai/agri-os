@@ -12,20 +12,20 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.media.api import _iso
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
+from app.modules.media.weather_service import (
+    WeatherAdapterResult,
+    WeatherSnapshotInput,
+    create_weather_snapshot_row,
+    parse_datetime,
+    persist_weather_provider_refresh,
+    run_weather_provider_adapter,
+    snapshot_input_from_mapping,
+)
 
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 
 PROVIDER_TYPES = {"EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"}
 LOCATION_SCOPES = {"TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"}
-
-
-def _parse_dt(value):
-    if not value:
-        return None
-    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def _now():
@@ -102,40 +102,6 @@ def _provider_due_payload(row: WeatherProviderConfig, now_ts: datetime) -> dict:
         "refresh_status": (row.metadata_ or {}).get("last_refresh_status"),
         "refresh_message": (row.metadata_ or {}).get("last_refresh_message"),
     }
-
-
-def _create_snapshot_row(body: WeatherSnapshotCreate, *, tenant_id: str, provider_id: uuid.UUID | None, now_ts: datetime) -> WeatherSnapshot:
-    fetched_at = _parse_dt(body.fetched_at) or now_ts
-    return WeatherSnapshot(
-        id=body.id or uuid.uuid4(),
-        tenant_id=tenant_id,
-        provider_id=body.provider_id or provider_id,
-        project_id=body.project_id,
-        farmer_id=body.farmer_id,
-        parcel_id=body.parcel_id,
-        location_scope=body.location_scope,
-        location_key=body.location_key,
-        lat=body.lat,
-        lng=body.lng,
-        fetched_at=fetched_at,
-        observed_at=_parse_dt(body.observed_at),
-        forecast_valid_from=_parse_dt(body.forecast_valid_from),
-        forecast_valid_to=_parse_dt(body.forecast_valid_to),
-        expires_at=_parse_dt(body.expires_at),
-        summary=body.summary,
-        condition_code=body.condition_code.upper() if body.condition_code else None,
-        rainfall_probability_percent=body.rainfall_probability_percent,
-        rainfall_mm=body.rainfall_mm,
-        temperature_min_c=body.temperature_min_c,
-        temperature_max_c=body.temperature_max_c,
-        humidity_percent=body.humidity_percent,
-        wind_speed_kmph=body.wind_speed_kmph,
-        risk_flags=[str(flag).upper() for flag in (body.risk_flags or [])],
-        source_payload=body.source_payload or {},
-        metadata_=body.metadata or {},
-        created_at=now_ts,
-        updated_at=now_ts,
-    )
 
 
 class WeatherProviderRefreshRequest(BaseModel):
@@ -257,25 +223,13 @@ def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProvide
     provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
     if not provider:
         raise HTTPException(404, "Weather provider not found")
-    metadata = dict(provider.metadata_ or {})
-    metadata.update(body.metadata or {})
-    metadata["last_refresh_status"] = body.status
-    metadata["last_refresh_message"] = body.message
-    metadata["last_refresh_snapshot_count"] = len(body.snapshots or [])
-    metadata["last_refresh_recorded_at"] = _iso(now_ts)
-    provider.metadata_ = metadata
-    provider.last_refresh_at = now_ts
-    provider.next_refresh_at = now_ts + timedelta(hours=provider.refresh_interval_hours)
-    provider.updated_at = now_ts
-
-    created_snapshots = []
-    if body.status == "SUCCESS":
-        for snapshot_body in body.snapshots or []:
-            row = _create_snapshot_row(snapshot_body, tenant_id=x_tenant_id, provider_id=provider.id, now_ts=now_ts)
-            db.add(row)
-            created_snapshots.append(row)
-
-    db.add(provider)
+    result = WeatherAdapterResult(
+        status=body.status,
+        message=body.message,
+        snapshots=[snapshot_input_from_mapping(snapshot.model_dump()) for snapshot in (body.snapshots or [])],
+        metadata=body.metadata or {},
+    )
+    created_snapshots = persist_weather_provider_refresh(db, provider=provider, result=result, timestamp=now_ts)
     db.commit()
     db.refresh(provider)
     for row in created_snapshots:
@@ -291,6 +245,29 @@ def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProvide
     }
 
 
+@router.post("/providers/{provider_id}/run-adapter")
+def run_weather_provider_adapter_endpoint(provider_id: uuid.UUID, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+    now_ts = _now()
+    provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
+    if not provider:
+        raise HTTPException(404, "Weather provider not found")
+    result = run_weather_provider_adapter(provider)
+    created_snapshots = persist_weather_provider_refresh(db, provider=provider, result=result, timestamp=now_ts)
+    db.commit()
+    db.refresh(provider)
+    for row in created_snapshots:
+        db.refresh(row)
+    return {
+        "schema_version": "weather_provider_adapter_run.v1",
+        "tenant_id": x_tenant_id,
+        "provider": _provider_due_payload(provider, _now()),
+        "status": result.status,
+        "message": result.message,
+        "created_snapshot_count": len(created_snapshots),
+        "snapshots": [_snapshot_payload(row) for row in created_snapshots],
+    }
+
+
 @router.post("/snapshots", status_code=201)
 def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
     now_ts = _now()
@@ -301,7 +278,7 @@ def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(g
         provider.last_refresh_at = now_ts
         provider.next_refresh_at = now_ts + timedelta(hours=provider.refresh_interval_hours)
         provider.updated_at = now_ts
-    row = _create_snapshot_row(body, tenant_id=x_tenant_id, provider_id=body.provider_id, now_ts=now_ts)
+    row = create_weather_snapshot_row(snapshot_input_from_mapping(body.model_dump()), tenant_id=x_tenant_id, provider_id=body.provider_id, timestamp=now_ts)
     db.add(row)
     db.commit()
     db.refresh(row)

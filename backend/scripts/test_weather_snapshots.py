@@ -13,6 +13,7 @@ from app.core.database import SessionLocal, engine
 from app.main import app
 from app.modules.farmer.models import Tenant
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
+from app.modules.media.weather_service import run_weather_provider_adapter
 
 
 def check(condition, label, detail=None):
@@ -126,6 +127,20 @@ def main():
     check(refresh_body["created_snapshot_count"] == 1, "Refresh can create normalized snapshots")
     check(refresh_body["provider"]["refresh_status"] == "SUCCESS", "Refresh records provider status")
     check(refresh_body["provider"]["next_refresh_at"] is not None, "Refresh computes next provider due timestamp")
+
+    adapter_run = client.post(f"/api/v1/weather/providers/{provider_id}/run-adapter", headers=headers)
+    check(adapter_run.status_code == 200, "Run weather provider adapter stub returns 200", adapter_run.text)
+    adapter_body = adapter_run.json()
+    check(adapter_body["schema_version"] == "weather_provider_adapter_run.v1", "Adapter run schema stable")
+    check(adapter_body["status"] == "SKIPPED", "Unimplemented external adapter is safely skipped")
+
+    db_adapter = SessionLocal()
+    try:
+        provider_row = db_adapter.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id).first()
+        direct_result = run_weather_provider_adapter(provider_row)
+        check(direct_result.status == "SKIPPED", "Weather adapter service exposes stable skipped result")
+    finally:
+        db_adapter.close()
 
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
