@@ -739,6 +739,29 @@ For MVP, acknowledgement requirement can be inferred from campaign/content metad
 
 If metadata is absent, Android should treat acknowledgement as optional/not required.
 
+### Broadcast retry semantics
+
+Admin can retry undelivered broadcast rows through:
+
+POST /api/v1/broadcasts/{campaign_id}/retry-undelivered
+
+Current retry policy:
+
+- Retry applies to PENDING and FAILED delivery rows.
+- DELIVERED and ACKNOWLEDGED rows are skipped.
+- Retry state is stored in delivery metadata:
+  - retry_count
+  - max_retries
+  - last_retry_at
+- After 3 retry attempts, the row is marked FAILED with failure_reason=MAX_RETRIES_EXCEEDED.
+- Campaign metadata stores the last retry summary:
+  - last_delivery_retry_at
+  - last_delivery_retry_retried
+  - last_delivery_retry_marked_failed
+  - last_delivery_retry_skipped_acknowledged
+
+For Android MVP, this is mainly an admin/backend delivery-attempt state. Android should render delivery_status=FAILED as not actionable unless a future UI explicitly allows farmer-side retry or support escalation.
+
 ### Offline sync guidance for broadcasts
 
 Initial MVP can call read/ack endpoints directly when online. For offline support, Android should queue local read/ack events and replay them when online.
