@@ -593,7 +593,7 @@ Current backend foundation:
 - `weather_snapshots`: normalized observations/forecasts for a location scope such as `VILLAGE`, `PINCODE`, `PARCEL`, `PROJECT`, `GEOPOINT`, or future weather grid.
 - Snapshot freshness is represented by `fetched_at`, `forecast_valid_from`, `forecast_valid_to`, and `expires_at`.
 - Risk flags such as `HEAVY_RAIN_NEXT_24H` and normalized fields like rainfall probability, rainfall mm, temperature, humidity, and wind are stored with the raw provider payload for auditability.
-- Backend refresh orchestration is provider-driven and cadence-based; see `docs/weather-provider-adapter-contract.md` for provider adapter rules:
+- Backend refresh orchestration is provider-driven and cadence-based; see `docs/weather-provider-adapter-contract.md` for provider adapter rules and Open-Meteo sample config:
   - `GET /api/v1/weather/providers/refresh-plan` returns enabled providers, due state, hours until due, and last refresh status/message.
   - `POST /api/v1/weather/providers/{provider_id}/refresh` records a refresh attempt and can persist normalized snapshots supplied by a scheduler/provider adapter.
   - Real provider integrations can run every `refresh_interval_hours` (default 6) and write snapshots through the same contract.

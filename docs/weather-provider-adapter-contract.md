@@ -111,8 +111,67 @@ Future expansion should add pincode, district/state, climatic zones, weather gri
 ### Open-Meteo style adapter
 
 - Provider type: `EXTERNAL_API`
-- Config may contain base URL, model choice, timezone, and location batch policy.
+- Current backend status: offline-safe adapter skeleton exists. It normalizes `config.sample_payload` / `config.mock_payload`; it does not perform live network calls yet.
 - Best initial use: rainfall probability, rainfall mm, temperature, humidity, wind, weather code.
+
+Minimal provider config for admin testing:
+
+```json
+{
+  "adapter": "open_meteo",
+  "locations": [
+    {
+      "location_scope": "VILLAGE",
+      "location_key": "Broadcast Village",
+      "lat": "12.9716",
+      "lng": "77.5946"
+    }
+  ],
+  "sample_payload": {
+    "fetched_at": "2026-07-17T12:00:00+00:00",
+    "current": {
+      "time": "2026-07-17T12:00:00+00:00",
+      "temperature_2m": 29.4,
+      "relative_humidity_2m": 88,
+      "rain": 22.5,
+      "weather_code": 63,
+      "wind_speed_10m": 18
+    },
+    "hourly": {
+      "precipitation_probability": [86],
+      "rain": [22.5]
+    }
+  }
+}
+```
+
+When `Run adapter` is clicked from `/weather`, this config produces a normalized snapshot similar to:
+
+```json
+{
+  "location_scope": "VILLAGE",
+  "location_key": "Broadcast Village",
+  "condition_code": "HEAVY_RAIN",
+  "rainfall_probability_percent": 86,
+  "rainfall_mm": "22.5",
+  "humidity_percent": 88,
+  "risk_flags": ["HEAVY_RAIN_NEXT_24H", "FUNGAL_RISK"]
+}
+```
+
+Future live-fetch config can add:
+
+```json
+{
+  "adapter": "open_meteo",
+  "base_url": "https://api.open-meteo.com/v1/forecast",
+  "timezone": "Asia/Kolkata",
+  "forecast_hours": 24,
+  "locations": []
+}
+```
+
+Live-fetch mode must still normalize into the same snapshot fields and store the raw provider response in `source_payload`.
 
 ### IMD/government feed adapter
 
@@ -142,8 +201,8 @@ Future expansion should add pincode, district/state, climatic zones, weather gri
 
 ## Next implementation steps
 
-1. Add adapter module/service interface in backend code.
-2. Add a first provider implementation, likely Open-Meteo/free API for development.
-3. Add scheduler/worker invocation that uses refresh-plan due providers.
-4. Add location expansion strategy for pincode/district/weather-grid.
-5. Add configurable risk-flag thresholds per tenant/project/crop.
+1. Add live Open-Meteo fetch mode behind the existing adapter skeleton.
+2. Add scheduler/worker invocation that uses refresh-plan due providers.
+3. Add location expansion strategy for pincode/district/weather-grid.
+4. Add configurable risk-flag thresholds per tenant/project/crop.
+5. Add IMD/government advisory adapter once source format and licensing are confirmed.
