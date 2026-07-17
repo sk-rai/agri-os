@@ -129,6 +129,8 @@ def main():
         check("broadcast_draft_count" in backlog, "dashboard backlog reports draft broadcasts")
         check("broadcast_published_count" in backlog, "dashboard backlog reports published broadcasts")
         check("broadcast_pending_delivery_count" in backlog, "dashboard backlog reports pending broadcast deliveries")
+        check("weather_provider_due_count" in backlog, "dashboard backlog reports due weather providers")
+        check("weather_fresh_snapshot_count" in backlog, "dashboard backlog reports fresh weather snapshots")
         check(by_code["WEATHER_SNAPSHOTS"]["href"] == "/broadcasts", "weather snapshot readiness links to broadcast admin")
         check("enabled providers" in by_code["WEATHER_SNAPSHOTS"]["detail"], "weather snapshot readiness reports provider detail")
         check("fresh/non-expired" in by_code["WEATHER_SNAPSHOTS"]["detail"], "weather snapshot readiness reports freshness detail")

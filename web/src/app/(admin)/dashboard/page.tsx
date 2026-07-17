@@ -379,6 +379,20 @@ function AttentionQueuePanel({ data, syncHealth }: { data: AdminDashboardRespons
       help: "Validated or invalid farmer/project enrollment CSV batches that need review/apply.",
     },
     {
+      label: "Weather refresh due",
+      count: backlog?.weather_provider_due_count || 0,
+      href: "/weather",
+      tone: "amber",
+      help: "Enabled weather providers whose next refresh is due or missing, affecting weather-triggered broadcasts.",
+    },
+    {
+      label: "Fresh weather snapshots",
+      count: backlog?.weather_provider_enabled_count && !(backlog?.weather_fresh_snapshot_count || 0) ? 1 : 0,
+      href: "/weather",
+      tone: "amber",
+      help: "No fresh/non-expired weather snapshots are available even though weather providers are configured.",
+    },
+    {
       label: "High priority field events",
       count: summary?.high_priority_field_event_count || 0,
       href: dashboardFieldEventsHref(data),

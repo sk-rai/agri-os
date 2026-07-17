@@ -849,6 +849,9 @@ export interface AdminDashboardResponse {
       broadcast_draft_count?: number;
       broadcast_published_count?: number;
       broadcast_pending_delivery_count?: number;
+      weather_provider_enabled_count?: number;
+      weather_provider_due_count?: number;
+      weather_fresh_snapshot_count?: number;
     };
   };
   crop_distribution: Array<{ crop_code: string; crop_cycle_count: number }>;

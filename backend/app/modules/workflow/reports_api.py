@@ -1044,6 +1044,24 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
         broadcast_delivery_query = broadcast_delivery_query.filter(BroadcastDelivery.campaign_id.in_(campaign_ids or [uuid.uuid4()]))
     broadcast_pending_delivery_count = broadcast_delivery_query.filter(BroadcastDelivery.delivery_status == "PENDING").count()
 
+    now_ts = datetime.now(timezone.utc)
+    weather_provider_query = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.tenant_id == tenant_id,
+        WeatherProviderConfig.is_enabled == True,
+    )
+    weather_provider_enabled_count = weather_provider_query.count()
+    weather_provider_due_count = weather_provider_query.filter(
+        or_(WeatherProviderConfig.next_refresh_at.is_(None), WeatherProviderConfig.next_refresh_at <= now_ts)
+    ).count()
+    weather_snapshot_query = db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == tenant_id)
+    if project_id:
+        weather_snapshot_query = weather_snapshot_query.filter(
+            or_(WeatherSnapshot.project_id == project_id, WeatherSnapshot.location_scope == "TENANT")
+        )
+    weather_fresh_snapshot_count = weather_snapshot_query.filter(
+        or_(WeatherSnapshot.expires_at.is_(None), WeatherSnapshot.expires_at > now_ts)
+    ).count()
+
     return {
         "draft_workflow_count": len(draft_rows),
         "workflow_validation_blocker_count": validation_blocker_count,
@@ -1061,6 +1079,9 @@ def _admin_backlog_counts(db: Session, *, tenant_id: str, project_id: Optional[u
         "broadcast_draft_count": broadcast_draft_count,
         "broadcast_published_count": broadcast_published_count,
         "broadcast_pending_delivery_count": broadcast_pending_delivery_count,
+        "weather_provider_enabled_count": weather_provider_enabled_count,
+        "weather_provider_due_count": weather_provider_due_count,
+        "weather_fresh_snapshot_count": weather_fresh_snapshot_count,
     }
 
 def _admin_dashboard_payload(*, tenant_id, project_id, date_from, date_to, limit, projects, farmers, parcels, cycles, activities, field_events, admin_backlog):
