@@ -1989,6 +1989,8 @@ def get_field_agent_worklist(
         rows.append({
             "farmer": _farmer_payload(farmer),
             "project_enrollments": [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in farmer_enrollments],
+            "parcels": [_parcel_payload(db, parcel) for parcel in parcels[:5]],
+            "soil_profiles": [_soil_profile_payload(profile) for profile in soil_profiles[:5]],
             "parcel_count": len(parcels),
             "soil_profile_count": len(soil_profiles),
             "active_crop_cycle_count": active_cycle_count,

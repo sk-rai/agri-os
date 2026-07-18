@@ -657,9 +657,31 @@ export interface FieldAgentCaptureActionDto {
   priority: string;
 }
 
+
+export interface FieldAgentWorklistParcelDto {
+  id: string;
+  farmer_id: string;
+  tenant_id?: string;
+  project_id?: string | null;
+  village_id?: string | null;
+  village_name_manual?: string | null;
+  reported_area?: number | string | null;
+  reported_area_unit?: string | null;
+  current_crop_code?: string | null;
+  soil_type_code?: string | null;
+  local_name?: string | null;
+  survey_number?: string | null;
+  ownership_type?: string | null;
+  geometry_source?: string | null;
+  status?: string | null;
+  [key: string]: unknown;
+}
+
 export interface FieldAgentWorklistRowDto {
   farmer: FarmerProfileReadinessRowDto["farmer"];
   project_enrollments: FieldAgentWorklistEnrollmentDto[];
+  parcels: FieldAgentWorklistParcelDto[];
+  soil_profiles: Array<{ id: string; parcel_id: string; farmer_id: string; soil_type_code?: string | null; soil_texture?: string | null; soil_color?: string | null; data_source?: string | null; ph?: number | string | null; [key: string]: unknown }>;
   parcel_count: number;
   soil_profile_count: number;
   active_crop_cycle_count: number;
@@ -1173,6 +1195,12 @@ export const farmersApi = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<FieldAgentWorklistResponse>(`/api/v1/field-agent/worklist${suffix}`);
   },
+  updateFarmer: (farmerId: string, body: Record<string, unknown>) =>
+    api(`/api/v1/farmers/${farmerId}`, { method: "PATCH", body }),
+  updateParcel: (parcelId: string, body: Record<string, unknown>) =>
+    api(`/api/v1/parcels/${parcelId}`, { method: "PATCH", body }),
+  updateSoilProfile: (profileId: string, body: Record<string, unknown>) =>
+    api(`/api/v1/soil-profiles/${profileId}`, { method: "PATCH", body }),
 };
 
 export const reportsApi = {

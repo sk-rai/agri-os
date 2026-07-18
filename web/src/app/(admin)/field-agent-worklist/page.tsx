@@ -15,6 +15,18 @@ export default function FieldAgentWorklistPage() {
   const [selected, setSelected] = useState<FieldAgentWorklistRowDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editMessage, setEditMessage] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [farmerName, setFarmerName] = useState("");
+  const [farmerVillage, setFarmerVillage] = useState("");
+  const [farmerLanguage, setFarmerLanguage] = useState("");
+  const [farmerLandUnit, setFarmerLandUnit] = useState("");
+  const [parcelLocalName, setParcelLocalName] = useState("");
+  const [parcelArea, setParcelArea] = useState("");
+  const [parcelUnit, setParcelUnit] = useState("");
+  const [parcelSoilType, setParcelSoilType] = useState("");
+  const [soilTexture, setSoilTexture] = useState("");
+  const [soilColor, setSoilColor] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,9 +50,62 @@ export default function FieldAgentWorklistPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    setEditMessage(null);
+    setFarmerName(String(selected?.farmer.display_name || ""));
+    setFarmerVillage(String(selected?.farmer.village_name_manual || ""));
+    setFarmerLanguage(String(selected?.farmer.language_preference || ""));
+    setFarmerLandUnit(String(selected?.farmer.total_land_unit || ""));
+    const parcel = selected?.parcels?.[0];
+    setParcelLocalName(String(parcel?.local_name || ""));
+    setParcelArea(parcel?.reported_area !== undefined && parcel?.reported_area !== null ? String(parcel.reported_area) : "");
+    setParcelUnit(String(parcel?.reported_area_unit || ""));
+    setParcelSoilType(String(parcel?.soil_type_code || ""));
+    const soil = selected?.soil_profiles?.[0];
+    setSoilTexture(String(soil?.soil_texture || ""));
+    setSoilColor(String(soil?.soil_color || ""));
+  }, [selected]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
     void load();
+  }
+
+  async function saveSelectedProfileEdits() {
+    if (!selected) return;
+    setEditBusy(true);
+    setError(null);
+    setEditMessage(null);
+    try {
+      await farmersApi.updateFarmer(selected.farmer.id, {
+        display_name: farmerName || null,
+        village_name_manual: farmerVillage || null,
+        language_preference: farmerLanguage || null,
+        total_land_unit: farmerLandUnit || null,
+      });
+      const parcel = selected.parcels?.[0];
+      if (parcel) {
+        await farmersApi.updateParcel(parcel.id, {
+          local_name: parcelLocalName || null,
+          reported_area: parcelArea ? Number(parcelArea) : undefined,
+          reported_area_unit: parcelUnit || undefined,
+          soil_type_code: parcelSoilType || null,
+        });
+      }
+      const soil = selected.soil_profiles?.[0];
+      if (soil) {
+        await farmersApi.updateSoilProfile(soil.id, {
+          soil_texture: soilTexture || null,
+          soil_color: soilColor || null,
+        });
+      }
+      setEditMessage("Profile updates saved. Refreshing worklist...");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save profile edits");
+    } finally {
+      setEditBusy(false);
+    }
   }
 
   return <div>
@@ -115,6 +180,29 @@ export default function FieldAgentWorklistPage() {
               <Mini label="Crop cycles" value={selected.active_crop_cycle_count} />
               <Mini label="Active stages" value={selected.active_stage_count} />
             </div>
+
+            <Section title="Quick profile edit">
+              <div className="space-y-3 rounded border bg-gray-50 p-3 text-xs">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Input label="Farmer name" value={farmerName} onChange={setFarmerName} />
+                  <Input label="Village" value={farmerVillage} onChange={setFarmerVillage} />
+                  <Input label="Language" value={farmerLanguage} onChange={setFarmerLanguage} />
+                  <Input label="Land unit" value={farmerLandUnit} onChange={setFarmerLandUnit} />
+                </div>
+                {selected.parcels?.[0] ? <div className="grid gap-2 md:grid-cols-2">
+                  <Input label="Parcel local name" value={parcelLocalName} onChange={setParcelLocalName} />
+                  <Input label="Parcel area" value={parcelArea} onChange={setParcelArea} />
+                  <Input label="Parcel unit" value={parcelUnit} onChange={setParcelUnit} />
+                  <Input label="Parcel soil type" value={parcelSoilType} onChange={setParcelSoilType} />
+                </div> : <p className="text-gray-500">Add parcel action must be completed before parcel metadata can be edited here.</p>}
+                {selected.soil_profiles?.[0] ? <div className="grid gap-2 md:grid-cols-2">
+                  <Input label="Soil texture" value={soilTexture} onChange={setSoilTexture} />
+                  <Input label="Soil color" value={soilColor} onChange={setSoilColor} />
+                </div> : <p className="text-gray-500">Add soil profile action must be completed before soil observations can be edited here.</p>}
+                <button type="button" onClick={() => void saveSelectedProfileEdits()} disabled={editBusy} className="rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{editBusy ? "Saving..." : "Save profile edits"}</button>
+                {editMessage ? <p className="text-green-700">{editMessage}</p> : null}
+              </div>
+            </Section>
 
             <Section title="Capture actions">
               {selected.capture_actions.map((action) => <ActionRow key={action.code} action={action} />)}

@@ -150,7 +150,10 @@ def main():
     row = body["farmers"][0]
     check(row["farmer"]["id"] == str(assigned_farmer_id), "Assigned worklist preserves farmer id")
     check(row["parcel_count"] == 1, "Assigned worklist includes parcel count")
+    check(len(row["parcels"]) == 1, "Assigned worklist includes editable parcel reference")
+    check(row["parcels"][0]["id"] == str(parcel_id), "Editable parcel reference preserves id")
     check(row["soil_profile_count"] == 0, "Assigned worklist includes soil profile count")
+    check(row["soil_profiles"] == [], "Assigned worklist includes editable soil profile references")
     action_codes = {action["code"] for action in row["capture_actions"]}
     check("ADD_SOIL_PROFILE" in action_codes, "Assigned worklist recommends soil capture")
     check("REPORT_FIELD_EVENT" in action_codes, "Assigned worklist includes field-event capture option")
