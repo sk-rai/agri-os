@@ -248,6 +248,24 @@ After mobile login, Android should hydrate the farmer profile before deciding wh
 
 These responses include `project_enrollments`, `farmer_context`, and `enrollment_lifecycle`.
 
+Android can request the backend-owned farmer/parcel/soil editing contract in the same hydration call:
+
+```http
+GET /api/v1/farmers/by-mobile/{mobile}?include_form_contract=true
+GET /api/v1/farmers/me/profile?include_form_contract=true
+GET /api/v1/farmers/me/profile?include_form_contract=true&project_id={project_id}
+```
+
+When requested, the response includes `form_contract`:
+
+- `schema_version = profile_form_contract_bundle.v1`
+- `forms.farmer_registration`
+- `forms.parcel_registration`
+- `forms.soil_profile`
+- `option_sets` with effective backend-owned options such as seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, and assistance modes
+
+Default hydration omits this heavier bundle so older Android clients keep the same payload shape. New Android clients should use `include_form_contract=true` during login/profile hydration when they need to render or cache backend-driven profile screens. If `project_id` is supplied, tenant/project option overrides are applied; otherwise the backend uses the single active project context when unambiguous.
+
 `farmer_context` is the high-level launch decision helper:
 
 | Field | Meaning |

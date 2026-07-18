@@ -617,6 +617,33 @@ def _farmer_context_payload(
     }
 
 
+def _profile_form_contract_payload(db: Session, tenant_id: str, project_id: Optional[uuid.UUID] = None) -> dict:
+    """Return the backend-owned form/options bundle Android can cache for profile editing."""
+    from app.modules.workflow.forms import FORM_REGISTRY, _effective_profile_option_registry
+
+    profile_form_ids = ["farmer_registration", "parcel_registration", "soil_profile"]
+    option_registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
+    return {
+        "schema_version": "profile_form_contract_bundle.v1",
+        "tenant_id": tenant_id,
+        "project_id": str(project_id) if project_id else None,
+        "forms": {
+            form_id: FORM_REGISTRY[form_id].model_dump()
+            for form_id in profile_form_ids
+            if form_id in FORM_REGISTRY
+        },
+        "option_sets": {
+            option_set: option.model_dump()
+            for option_set, option in sorted(option_registry.items())
+        },
+        "notes": [
+            "Android should render farmer, parcel, and soil profile capture from these backend-owned schemas where possible.",
+            "Fields keep canonical_field and source hints so Android can map local drafts back to backend payloads.",
+            "Project-specific profile option overrides are applied when project_id is provided or inferred from active farmer context.",
+        ],
+    }
+
+
 def _enrollment_lifecycle_payload(enrollments: list[FarmerProjectEnrollment]) -> dict:
     status_counts: dict[str, int] = {}
     lifecycle_events = []
@@ -652,7 +679,7 @@ def _enrollment_lifecycle_payload(enrollments: list[FarmerProjectEnrollment]) ->
     }
 
 
-def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer]) -> dict:
+def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farmer, duplicate_farmers: list[Farmer], *, include_form_contract: bool = False, form_project_id: Optional[uuid.UUID] = None) -> dict:
     from app.modules.farmer.soil_profile import SoilProfile
     from app.modules.master_data.models import Crop
     from app.modules.workflow.api import build_crop_cycle_response
@@ -691,6 +718,14 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         project.id: project
         for project in db.query(Project).filter(Project.id.in_(enrollment_project_ids)).all()
     } if enrollment_project_ids else {}
+
+    active_enrollments = [enrollment for enrollment in project_enrollments if enrollment.status == "ACTIVE"]
+    inferred_form_project_id = form_project_id
+    if inferred_form_project_id is None and len(active_enrollments) == 1:
+        inferred_form_project_id = active_enrollments[0].project_id
+    if inferred_form_project_id is None and farmer.project_id:
+        inferred_form_project_id = farmer.project_id
+
 
     crop_codes = sorted({cycle.crop_code for cycle in cycles if cycle.crop_code})
     crop_names = {
@@ -758,6 +793,7 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
             "pin_drop": "PIN_DROP returns geometry_source plus centroid_lat/centroid_lng. geojson is null for MVP because backend does not store Point geometry in PostGIS.",
             "gps_walk": "GPS_WALK returns geometry_source, centroid_lat/centroid_lng, computed_area_hectares, and Polygon GeoJSON when captured.",
         },
+        "form_contract": _profile_form_contract_payload(db, tenant_id, inferred_form_project_id) if include_form_contract else None,
     }
 
 
@@ -2281,6 +2317,8 @@ def archive_duplicate_farmers(
 @router.get("/farmers/by-mobile/{mobile_number:path}")
 def get_farmer_profile_by_mobile(
     mobile_number: str,
+    include_form_contract: bool = Query(False),
+    project_id: Optional[uuid.UUID] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
@@ -2294,11 +2332,13 @@ def get_farmer_profile_by_mobile(
     farmer, duplicates = _select_hydration_farmer(db, x_tenant_id, normalized_mobile)
     if not farmer:
         raise HTTPException(404, "No farmer profile found for this mobile number")
-    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates)
+    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates, include_form_contract=include_form_contract, form_project_id=project_id)
 
 
 @router.get("/farmers/me/profile")
 def get_my_profile_hydration(
+    include_form_contract: bool = Query(False),
+    project_id: Optional[uuid.UUID] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     x_actor_id: str = Header(..., alias="X-Actor-ID"),
@@ -2313,7 +2353,7 @@ def get_my_profile_hydration(
     farmer, duplicates = _select_hydration_farmer(db, x_tenant_id, user.mobile_number)
     if not farmer:
         raise HTTPException(404, "No farmer profile found for this user")
-    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates)
+    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates, include_form_contract=include_form_contract, form_project_id=project_id)
 
 
 @router.get("/farmers/me")
