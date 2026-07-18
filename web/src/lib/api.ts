@@ -420,7 +420,14 @@ export interface FarmerTraceParcel {
   reported_area?: string | null;
   reported_area_unit?: string | null;
   ownership_type?: string | null;
+  annual_rent?: string | null;
+  annual_rent_currency?: string | null;
+  share_percentage?: number | null;
+  sharecrop_percentage?: number | null;
   village_name?: string | null;
+  pin_code?: string | null;
+  location_scope?: Record<string, unknown>;
+  irrigation_source?: string | null;
   current_crop_code?: string | null;
   geometry_source?: string | null;
   centroid_lat?: string | null;
@@ -505,6 +512,13 @@ export interface ParcelTraceResponse {
   parcel: FarmerTraceParcel & {
     farmer_id: string;
     soil_type_code?: string | null;
+    annual_rent?: string | null;
+    annual_rent_currency?: string | null;
+    share_percentage?: number | null;
+    sharecrop_percentage?: number | null;
+    pin_code?: string | null;
+    location_scope?: Record<string, unknown>;
+    irrigation_source?: string | null;
     geometry_accuracy_meters?: string | null;
     geometry_captured_at?: string | null;
     created_at?: string | null;

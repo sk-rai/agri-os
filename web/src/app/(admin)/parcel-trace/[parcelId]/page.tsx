@@ -47,9 +47,15 @@ export default function ParcelTracePage({ params }: { params: { parcelId: string
         ["Local name", trace.parcel.local_name],
         ["Area", [trace.parcel.reported_area, trace.parcel.reported_area_unit].filter(Boolean).join(" ")],
         ["Ownership", trace.parcel.ownership_type],
+        ["Share %", trace.parcel.share_percentage],
+        ["Sharecrop %", trace.parcel.sharecrop_percentage],
+        ["Annual rent", trace.parcel.annual_rent ? `${trace.parcel.annual_rent} ${trace.parcel.annual_rent_currency || ""}` : null],
         ["Village", trace.parcel.village_name],
+        ["PIN code", trace.parcel.pin_code],
+        ["Irrigation", trace.parcel.irrigation_source],
         ["Status", trace.parcel.status],
       ]} />
+      <JsonSection title="Location scope" value={trace.parcel.location_scope || {}} />
       <InfoSection title="Geometry" rows={[
         ["Source", trace.parcel.geometry_source],
         ["Centroid", trace.parcel.centroid_lat && trace.parcel.centroid_lng ? `${trace.parcel.centroid_lat}, ${trace.parcel.centroid_lng}` : null],
@@ -131,6 +137,10 @@ function InfoSection({ title, rows, action }: { title: string; rows: Array<[stri
   </section>;
 }
 
+
+function JsonSection({ title, value }: { title: string; value: Record<string, unknown> }) {
+  return <section className="rounded bg-white p-5 shadow"><h2 className="mb-3 text-lg font-bold text-gray-900">{title}</h2><pre className="overflow-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{JSON.stringify(value, null, 2)}</pre></section>;
+}
 
 function MediaPanel({ title, attachments }: { title: string; attachments: NonNullable<ParcelTraceResponse["parcel"]["media_attachments"]> }) {
   return <section className="mb-6 rounded bg-white p-5 shadow">

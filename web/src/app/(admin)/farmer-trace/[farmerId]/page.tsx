@@ -117,11 +117,13 @@ export default function FarmerTracePage({ params }: { params: { farmerId: string
           <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
             <Mini label="Area" value={[parcel.reported_area, parcel.reported_area_unit].filter(Boolean).join(" ")} />
             <Mini label="Ownership" value={parcel.ownership_type} />
+            <Mini label="PIN" value={parcel.pin_code || "-"} />
             <Mini label="Geometry" value={parcel.geometry_source} />
             <Mini label="Cycles" value={`${parcel.crop_cycle_count} (${parcel.active_cycle_count} active)`} />
             <Mini label="Activities" value={parcel.activity_count} />
             <Mini label="Cost" value={`INR ${parcel.total_cost}`} />
           </div>
+          {parcel.location_scope && Object.keys(parcel.location_scope).length ? <pre className="mt-3 overflow-auto rounded bg-gray-950 p-2 text-[10px] text-gray-100">{JSON.stringify(parcel.location_scope, null, 2)}</pre> : null}
         </div>)}
         {trace.parcels.length === 0 && <p className="text-sm text-gray-400">No parcels found for this farmer.</p>}
       </div>
