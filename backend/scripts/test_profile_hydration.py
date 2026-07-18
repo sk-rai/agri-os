@@ -12,7 +12,7 @@ Validates:
 
 import sys
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -24,6 +24,7 @@ from app.main import app
 from app.modules.auth.models import User
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
+from app.modules.media.models import WeatherSnapshot
 from app.modules.workflow.models import CropCycle, CropStageInstance
 
 
@@ -163,7 +164,22 @@ try:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    db.add_all([user, parcel, cycle, stage])
+    weather_snapshot = WeatherSnapshot(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        farmer_id=rich_farmer.id,
+        parcel_id=parcel.id,
+        location_scope="VILLAGE",
+        location_key="Hydration Village",
+        fetched_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=6),
+        summary="Hydration readiness weather snapshot",
+        condition_code="CLEAR",
+        risk_flags=[],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add_all([user, parcel, cycle, stage, weather_snapshot])
     rich_farmer_id = str(rich_farmer.id)
     empty_duplicate_id = str(empty_duplicate.id)
     parcel_id = str(parcel.id)
@@ -188,6 +204,9 @@ test("Profile completion marks home ready", completion["is_complete_for_home"] i
 test("Profile completion includes farmer section", completion["sections"]["farmer"]["status"] == "COMPLETE")
 test("Profile completion includes land section", completion["sections"]["land"]["status"] == "COMPLETE")
 test("Profile completion recommends soil capture", any(action["code"] == "ADD_SOIL_PROFILE" for action in completion["next_actions"]))
+test("Profile completion exposes weather snapshot readiness", completion["enrichment_readiness"]["has_weather_snapshot"] is True)
+test("Profile completion marks weather advisory ready", completion["enrichment_readiness"]["ready_for_weather_advisory"] is True)
+test("Profile completion keeps soil moisture enrichment pending", completion["enrichment_readiness"]["ready_for_soil_moisture_enrichment"] is False)
 test("Hydration summary mirrors home readiness", body["summary"]["profile_ready_for_home"] is True)
 test("Default hydration omits heavy form contract", body.get("form_contract") is None)
 
@@ -199,6 +218,9 @@ test("Profile readiness schema stable", readiness_body["schema_version"] == "far
 test("Profile readiness counts active farmers", readiness_body["summary"]["farmer_count"] == 2)
 test("Profile readiness counts home-ready farmer", readiness_body["summary"]["home_ready_count"] == 1)
 test("Profile readiness counts missing parcel", readiness_body["summary"]["missing_parcel_count"] == 1)
+test("Profile readiness counts weather snapshot availability", readiness_body["summary"]["weather_snapshot_available_count"] == 1)
+test("Profile readiness counts weather advisory readiness", readiness_body["summary"]["weather_advisory_ready_count"] == 1)
+test("Profile readiness counts satellite enrichment readiness", readiness_body["summary"]["satellite_enrichment_ready_count"] == 1)
 test("Profile readiness exposes per-farmer completion", any(row["farmer"]["id"] == rich_farmer_id and row["profile_completion"]["is_complete_for_home"] for row in readiness_body["farmers"]))
 
 print("\n[1b] Hydrate with backend-owned profile form contract")
@@ -303,6 +325,7 @@ db = SessionLocal()
 try:
     db.query(CropStageInstance).filter(CropStageInstance.tenant_id == tenant_id).delete(synchronize_session=False)
     db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
+    db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
     db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
     db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
     db.query(User).filter(User.mobile_number == mobile).delete(synchronize_session=False)

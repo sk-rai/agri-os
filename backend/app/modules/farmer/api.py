@@ -576,6 +576,7 @@ def _farmer_profile_completion(
     parcels: Optional[list[Parcel]] = None,
     soil_profiles: Optional[list[object]] = None,
     project_enrollments: Optional[list[FarmerProjectEnrollment]] = None,
+    weather_snapshot_count: int = 0,
 ) -> dict:
     farmer_required = []
     farmer_recommended = []
@@ -623,6 +624,10 @@ def _farmer_profile_completion(
     if project_enrollments is not None and not any(getattr(enrollment, "status", None) == "ACTIVE" for enrollment in enrollments):
         enrollment_recommended.append("active_project_enrollment")
 
+    has_land_location = parcel_count > 0 and (parcels is None or "parcel_location" not in land_recommended)
+    has_soil_profile = soil_profile_count > 0
+    has_weather_snapshot = weather_snapshot_count > 0
+
     missing_required = farmer_required + land_required
     recommended_missing = farmer_recommended + land_recommended + soil_recommended + enrollment_recommended
     next_actions = []
@@ -637,10 +642,27 @@ def _farmer_profile_completion(
     if "active_project_enrollment" in enrollment_recommended:
         next_actions.append({"code": "OPTIONAL_PROJECT_ENROLLMENT", "label": "Farmer can continue independently or be linked to a project later", "priority": "LOW"})
 
+    is_complete_for_home = len(missing_required) == 0
+    enrichment_readiness = {
+        "has_land_location": has_land_location,
+        "has_soil_profile": has_soil_profile,
+        "has_weather_snapshot": has_weather_snapshot,
+        "weather_snapshot_count": weather_snapshot_count,
+        "ready_for_weather_advisory": is_complete_for_home and has_land_location and has_weather_snapshot,
+        "ready_for_soil_moisture_enrichment": is_complete_for_home and has_land_location and has_soil_profile,
+        "ready_for_satellite_enrichment": has_land_location,
+        "notes": [
+            "Weather advisory readiness requires a land location and a non-expired backend weather snapshot.",
+            "Soil moisture enrichment is currently readiness-only; future implementation may use paid APIs or open satellite pipelines.",
+            "Satellite enrichment is future-compatible and starts with parcel location/boundary readiness.",
+        ],
+    }
+
     return {
         "schema_version": "profile_completion.v1",
-        "is_complete_for_home": len(missing_required) == 0,
-        "is_ready_for_personalized_advisories": len(missing_required) == 0 and soil_profile_count > 0,
+        "is_complete_for_home": is_complete_for_home,
+        "is_ready_for_personalized_advisories": is_complete_for_home and has_soil_profile,
+        "enrichment_readiness": enrichment_readiness,
         "missing_fields": missing_required,
         "recommended_missing_fields": recommended_missing,
         "parcel_count": parcel_count,
@@ -653,6 +675,58 @@ def _farmer_profile_completion(
         },
         "next_actions": next_actions,
     }
+
+
+def _matching_weather_snapshot_count(
+    db: Session,
+    *,
+    tenant_id: str,
+    farmer: Farmer,
+    parcels: list[Parcel],
+    project_enrollments: Optional[list[FarmerProjectEnrollment]] = None,
+) -> int:
+    """Count current weather snapshots that can enrich a farmer/parcel profile."""
+    try:
+        from app.modules.media.models import WeatherSnapshot
+    except Exception:
+        return 0
+
+    now_ts = datetime.now(timezone.utc)
+    parcel_ids = [parcel.id for parcel in parcels]
+    village_names = {
+        str(value).strip().upper()
+        for value in [farmer.village_name_manual, *[parcel.village_name_manual for parcel in parcels]]
+        if value and str(value).strip()
+    }
+    project_ids = set()
+    if farmer.project_id:
+        project_ids.add(farmer.project_id)
+    for enrollment in project_enrollments or []:
+        if enrollment.project_id and enrollment.status != "ARCHIVED":
+            project_ids.add(enrollment.project_id)
+
+    query = db.query(WeatherSnapshot).filter(
+        WeatherSnapshot.tenant_id == tenant_id,
+        (WeatherSnapshot.expires_at.is_(None)) | (WeatherSnapshot.expires_at >= now_ts),
+    )
+    matches = set()
+    for snapshot in query.all():
+        if snapshot.farmer_id == farmer.id:
+            matches.add(snapshot.id)
+            continue
+        if snapshot.parcel_id and snapshot.parcel_id in parcel_ids:
+            matches.add(snapshot.id)
+            continue
+        if snapshot.project_id and snapshot.project_id in project_ids:
+            matches.add(snapshot.id)
+            continue
+        if snapshot.location_scope == "TENANT":
+            matches.add(snapshot.id)
+            continue
+        if snapshot.location_scope == "VILLAGE" and snapshot.location_key and snapshot.location_key.strip().upper() in village_names:
+            matches.add(snapshot.id)
+            continue
+    return len(matches)
 
 
 def _launch_navigation_decision(farmer: Farmer, enrollments: list[FarmerProjectEnrollment], completion: dict) -> str:
@@ -872,6 +946,13 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
 
     active_statuses = {"PLANNED", "ACTIVE", "PARTIALLY_TRACKED"}
     completed_statuses = {"COMPLETED"}
+    weather_snapshot_count = _matching_weather_snapshot_count(
+        db,
+        tenant_id=tenant_id,
+        farmer=farmer,
+        parcels=parcels,
+        project_enrollments=project_enrollments,
+    )
     profile_completion = _farmer_profile_completion(
         farmer,
         len(parcels),
@@ -879,6 +960,7 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         parcels=parcels,
         soil_profiles=soil_profiles,
         project_enrollments=project_enrollments,
+        weather_snapshot_count=weather_snapshot_count,
     )
 
     duplicate_payloads = []
@@ -1572,6 +1654,10 @@ def list_farmer_profile_readiness(
                     "missing_parcel_count": 0,
                     "soil_profile_recommended_count": 0,
                     "parcel_location_recommended_count": 0,
+                    "weather_snapshot_available_count": 0,
+                    "weather_advisory_ready_count": 0,
+                    "soil_moisture_enrichment_ready_count": 0,
+                    "satellite_enrichment_ready_count": 0,
                 },
                 "farmers": [],
             }
@@ -1587,6 +1673,10 @@ def list_farmer_profile_readiness(
         "missing_parcel_count": 0,
         "soil_profile_recommended_count": 0,
         "parcel_location_recommended_count": 0,
+        "weather_snapshot_available_count": 0,
+        "weather_advisory_ready_count": 0,
+        "soil_moisture_enrichment_ready_count": 0,
+        "satellite_enrichment_ready_count": 0,
     }
 
     for farmer in farmers:
@@ -1597,6 +1687,13 @@ def list_farmer_profile_readiness(
             FarmerProjectEnrollment.farmer_id == farmer.id,
             FarmerProjectEnrollment.status != "ARCHIVED",
         ).all()
+        weather_snapshot_count = _matching_weather_snapshot_count(
+            db,
+            tenant_id=x_tenant_id,
+            farmer=farmer,
+            parcels=parcels,
+            project_enrollments=enrollments,
+        )
         completion = _farmer_profile_completion(
             farmer,
             len(parcels),
@@ -1604,6 +1701,7 @@ def list_farmer_profile_readiness(
             parcels=parcels,
             soil_profiles=soil_profiles,
             project_enrollments=enrollments,
+            weather_snapshot_count=weather_snapshot_count,
         )
         summary["farmer_count"] += 1
         if completion["is_complete_for_home"]:
@@ -1618,6 +1716,15 @@ def list_farmer_profile_readiness(
             summary["soil_profile_recommended_count"] += 1
         if "parcel_location" in completion["recommended_missing_fields"]:
             summary["parcel_location_recommended_count"] += 1
+        enrichment = completion["enrichment_readiness"]
+        if enrichment["has_weather_snapshot"]:
+            summary["weather_snapshot_available_count"] += 1
+        if enrichment["ready_for_weather_advisory"]:
+            summary["weather_advisory_ready_count"] += 1
+        if enrichment["ready_for_soil_moisture_enrichment"]:
+            summary["soil_moisture_enrichment_ready_count"] += 1
+        if enrichment["ready_for_satellite_enrichment"]:
+            summary["satellite_enrichment_ready_count"] += 1
         rows.append({
             "farmer": _farmer_payload(farmer),
             "parcel_count": len(parcels),
@@ -2218,6 +2325,13 @@ def get_farmer_launch_context(
     except Exception:
         soil_profiles = []
 
+    weather_snapshot_count = _matching_weather_snapshot_count(
+        db,
+        tenant_id=x_tenant_id,
+        farmer=farmer,
+        parcels=parcels,
+        project_enrollments=enrollments,
+    )
     completion = _farmer_profile_completion(
         farmer,
         len(parcels),
@@ -2225,6 +2339,7 @@ def get_farmer_launch_context(
         parcels=parcels,
         soil_profiles=soil_profiles,
         project_enrollments=enrollments,
+        weather_snapshot_count=weather_snapshot_count,
     )
     decision = _launch_navigation_decision(farmer, enrollments, completion)
     project_selection_required = len(active_enrollments) > 1

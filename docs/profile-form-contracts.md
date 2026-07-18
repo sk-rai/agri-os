@@ -126,7 +126,9 @@ Current semantics:
 
 Soil profile remains recommended, not mandatory, for home launch. It becomes important for personalized advisories, weather/soil enrichment, and future trusted-corpus advisory generation.
 
-Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, and personalized-advisory readiness.
+`profile_completion.enrichment_readiness` exposes backend-owned advisory/enrichment gates: land location, soil profile, current weather snapshot availability, weather-advisory readiness, soil-moisture-enrichment readiness, and future satellite-enrichment readiness. Android/admin should render these flags as guidance and should not duplicate eligibility rules locally.
+
+Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
 ## Form schema contract
 

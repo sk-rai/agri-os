@@ -578,6 +578,16 @@ export interface ProfileCompletionDto {
   schema_version: string;
   is_complete_for_home: boolean;
   is_ready_for_personalized_advisories: boolean;
+  enrichment_readiness?: {
+    has_land_location: boolean;
+    has_soil_profile: boolean;
+    has_weather_snapshot: boolean;
+    weather_snapshot_count: number;
+    ready_for_weather_advisory: boolean;
+    ready_for_soil_moisture_enrichment: boolean;
+    ready_for_satellite_enrichment: boolean;
+    notes?: string[];
+  };
   missing_fields: string[];
   recommended_missing_fields: string[];
   parcel_count: number;
@@ -614,6 +624,10 @@ export interface FarmerProfileReadinessResponse {
     missing_parcel_count: number;
     soil_profile_recommended_count: number;
     parcel_location_recommended_count: number;
+    weather_snapshot_available_count?: number;
+    weather_advisory_ready_count?: number;
+    soil_moisture_enrichment_ready_count?: number;
+    satellite_enrichment_ready_count?: number;
   };
   farmers: FarmerProfileReadinessRowDto[];
 }

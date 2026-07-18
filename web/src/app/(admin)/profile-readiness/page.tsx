@@ -59,11 +59,11 @@ export default function ProfileReadinessPage() {
       <div className="mb-6 grid gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Mini label="Farmers" value={payload.summary.farmer_count} />
         <Mini label="Home ready" value={payload.summary.home_ready_count} tone="green" />
-        <Mini label="Advisory ready" value={payload.summary.personalized_advisory_ready_count} tone="blue" />
+        <Mini label="Weather ready" value={payload.summary.weather_advisory_ready_count || 0} tone="blue" />
+        <Mini label="Soil moisture" value={payload.summary.soil_moisture_enrichment_ready_count || 0} tone="blue" />
+        <Mini label="Satellite ready" value={payload.summary.satellite_enrichment_ready_count || 0} tone="green" />
         <Mini label="Blocking gaps" value={payload.summary.missing_required_count} tone={payload.summary.missing_required_count ? "red" : "slate"} />
-        <Mini label="Missing parcel" value={payload.summary.missing_parcel_count} tone={payload.summary.missing_parcel_count ? "amber" : "slate"} />
         <Mini label="Need soil" value={payload.summary.soil_profile_recommended_count} tone="amber" />
-        <Mini label="Need location" value={payload.summary.parcel_location_recommended_count} tone="amber" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
@@ -98,6 +98,13 @@ export default function ProfileReadinessPage() {
               <Mini label="Parcels" value={selected.parcel_count} />
               <Mini label="Soil profiles" value={selected.soil_profile_count} />
             </div>
+            {selected.profile_completion.enrichment_readiness ? <Section title="Enrichment readiness">
+              <ReadinessFlag label="Land location" ready={selected.profile_completion.enrichment_readiness.has_land_location} />
+              <ReadinessFlag label="Weather snapshot" ready={selected.profile_completion.enrichment_readiness.has_weather_snapshot} detail={`${selected.profile_completion.enrichment_readiness.weather_snapshot_count} snapshot(s)`} />
+              <ReadinessFlag label="Weather advisory" ready={selected.profile_completion.enrichment_readiness.ready_for_weather_advisory} />
+              <ReadinessFlag label="Soil moisture enrichment" ready={selected.profile_completion.enrichment_readiness.ready_for_soil_moisture_enrichment} />
+              <ReadinessFlag label="Satellite enrichment" ready={selected.profile_completion.enrichment_readiness.ready_for_satellite_enrichment} />
+            </Section> : null}
             <Section title="Sections">
               {Object.entries(selected.profile_completion.sections).map(([key, section]) => <div key={key} className="rounded border p-2 text-xs">
                 <div className="flex justify-between"><span className="font-semibold capitalize">{key.replaceAll("_", " ")}</span><Badge tone={section.status === "COMPLETE" ? "green" : section.status === "PARTIAL" ? "amber" : "red"}>{section.status}</Badge></div>
@@ -123,6 +130,10 @@ function Input({ label, value, onChange }: { label: string; value: string; onCha
 function Mini({ label, value, tone = "slate" }: { label: string; value: number; tone?: "slate" | "green" | "blue" | "amber" | "red" }) {
   const tones = { slate: "bg-white text-gray-900", green: "bg-green-50 text-green-900", blue: "bg-blue-50 text-blue-900", amber: "bg-amber-50 text-amber-900", red: "bg-red-50 text-red-900" };
   return <div className={`rounded border p-3 ${tones[tone]}`}><div className="text-xs opacity-70">{label}</div><div className="mt-1 text-xl font-bold">{value}</div></div>;
+}
+
+function ReadinessFlag({ label, ready, detail }: { label: string; ready: boolean; detail?: string }) {
+  return <div className="flex items-center justify-between rounded border p-2 text-xs"><div><span className="font-semibold text-gray-800">{label}</span>{detail ? <span className="ml-2 text-gray-400">{detail}</span> : null}</div><Badge tone={ready ? "green" : "amber"}>{ready ? "Ready" : "Pending"}</Badge></div>;
 }
 
 function Badge({ children, tone }: { children: React.ReactNode; tone: "green" | "amber" | "red" }) {
