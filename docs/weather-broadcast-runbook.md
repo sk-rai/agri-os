@@ -53,7 +53,7 @@ POST /api/v1/weather/providers/run-due
 POST /api/v1/weather/providers/{provider_id}/run-adapter
 ```
 
-The due-run endpoint is the backend scheduler hook: cron/worker code can call it every few minutes, and each provider still controls its cadence through `refresh_interval_hours` and `next_refresh_at`.
+The due-run endpoint is the backend scheduler hook: cron/worker code can call it every few minutes, and each provider still controls its cadence through `refresh_interval_hours` and `next_refresh_at`. Admin `/weather` exposes the same flow with **Preview due** and **Run due providers** controls, so operations can test scheduler behavior without Android involvement.
 
 The adapter writes normalized `weather_snapshots`. Downstream features should use these fields, not raw provider-specific payloads:
 

@@ -595,6 +595,8 @@ Current backend foundation:
 - Risk flags such as `HEAVY_RAIN_NEXT_24H` and normalized fields like rainfall probability, rainfall mm, temperature, humidity, and wind are stored with the raw provider payload for auditability.
 - Backend refresh orchestration is provider-driven and cadence-based; see `docs/weather-provider-adapter-contract.md` for provider adapter rules and Open-Meteo sample config:
   - `GET /api/v1/weather/providers/refresh-plan` returns enabled providers, due state, hours until due, and last refresh status/message.
+  - `POST /api/v1/weather/providers/run-due?dry_run=true` previews due providers for scheduler/admin operations.
+  - `POST /api/v1/weather/providers/run-due` runs due backend adapters and stores normalized snapshots.
   - `POST /api/v1/weather/providers/{provider_id}/refresh` records a refresh attempt and can persist normalized snapshots supplied by a scheduler/provider adapter.
   - Real provider integrations can run every `refresh_interval_hours` (default 6) and write snapshots through the same contract.
   - Android does not participate in refresh scheduling; it only receives resulting broadcasts/feed data.

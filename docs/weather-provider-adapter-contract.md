@@ -34,6 +34,7 @@ GET  /api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=...
 Admin UI:
 
 - `/weather` shows providers, refresh plan, manual snapshots, and snapshot filters.
+- `/weather` can preview due providers and run all due provider adapters through the scheduler-safe due-run endpoint.
 - Dashboard attention queues surface due providers and missing fresh snapshots.
 
 ## Adapter responsibility
