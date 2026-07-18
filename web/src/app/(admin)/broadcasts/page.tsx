@@ -8,6 +8,7 @@ const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
 const CATEGORIES = ["", "GENERAL", "ADVISORY", "WEATHER", "MARKET", "INPUT", "EMERGENCY"];
 const RULE_TYPES = ["ALL", "PROJECT", "FARMER", "CROP", "STAGE", "LOCATION", "WEATHER", "FIELD_EVENT", "INPUT", "PRODUCT", "ROLE", "LANGUAGE"];
 const MATCH_MODES = ["ANY", "ALL"];
+const WEATHER_RISK_EXAMPLES = ["HEAVY_RAIN_NEXT_24H", "FUNGAL_DISEASE_RISK", "HEAT_STRESS", "HIGH_WIND"];
 
 export default function BroadcastsPage() {
   const [projectId, setProjectId] = useState("");
@@ -260,6 +261,7 @@ export default function BroadcastsPage() {
         <Select label="Audience rule" value={ruleType} onChange={setRuleType} options={RULE_TYPES} />
         <Input label="Rule values comma-separated" value={ruleValues} onChange={setRuleValues} />
       </div>
+      {ruleType === "WEATHER" ? <WeatherRiskQuickFill onPick={(value) => setRuleValues(value)} /> : null}
       <div className="mt-4">
         <button type="submit" disabled={creating || !draftTitle.trim()} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{creating ? "Creating..." : "Create draft"}</button>
       </div>
@@ -427,6 +429,7 @@ function BroadcastDetail({
       <div className="mt-4 grid gap-2">
         <Select label="Rule type" value={newRuleType} onChange={setNewRuleType} options={RULE_TYPES} />
         <Input label="Rule values comma-separated" value={newRuleValues} onChange={setNewRuleValues} />
+        {newRuleType === "WEATHER" ? <WeatherRiskQuickFill onPick={(value) => setNewRuleValues(value)} /> : null}
         <button type="button" onClick={() => void addDraftRule()} disabled={draftEditorBusy} className="rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Add audience rule</button>
       </div>
     </div> : null}
@@ -625,6 +628,17 @@ function BroadcastDetail({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="mt-5"><h3 className="text-sm font-semibold text-gray-900">{title}</h3><div className="mt-3 space-y-3">{children}</div></div>;
+}
+
+function WeatherRiskQuickFill({ onPick }: { onPick: (value: string) => void }) {
+  return <div className="mt-2 rounded bg-blue-50 p-2 text-xs text-blue-900">
+    <div className="font-semibold">Weather risk examples</div>
+    <div className="mt-2 flex flex-wrap gap-2">
+      {WEATHER_RISK_EXAMPLES.map((value) => <button key={value} type="button" onClick={() => onPick(value)} className="rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-800 hover:bg-blue-100">{value}</button>)}
+      <button type="button" onClick={() => onPick(WEATHER_RISK_EXAMPLES.join(","))} className="rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-800 hover:bg-blue-100">Use all examples</button>
+    </div>
+    <p className="mt-2 text-[11px] text-blue-700">Matches current non-expired weather snapshots by condition_code or risk_flags, then expands farmers by tenant, project, farmer, parcel, or village scope.</p>
+  </div>;
 }
 
 function Input({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {

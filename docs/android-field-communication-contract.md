@@ -731,6 +731,22 @@ Android rendering guidance:
 - Cache media metadata with the broadcast delivery; binary/offline media caching can be added later behind the same fields.
 - Persist `delivery.id` locally so read/ack sync is idempotent.
 
+### Weather-targeted broadcast semantics
+
+Weather-targeted broadcasts use the same farmer broadcast feed and delivery/read/ack endpoints as other campaigns. Android does not need a separate weather inbox.
+
+Admin/backend can add audience rules such as:
+
+```json
+{
+  "rule_type": "WEATHER",
+  "operator": "IN",
+  "values": ["HEAVY_RAIN_NEXT_24H", "FUNGAL_DISEASE_RISK"]
+}
+```
+
+The backend expands `WEATHER` rules from current, non-expired weather snapshots. Snapshot `condition_code` and `risk_flags[]` are matched against the rule values, then recipients are resolved from snapshot scope: `TENANT`, `PROJECT`, `FARMER`, `PARCEL`, or `VILLAGE`. Android should simply render delivered broadcasts; targeting evidence is available to admin preview screens, not required on-device for MVP.
+
 ### Android read and acknowledge endpoints
 
 When a farmer opens a broadcast detail, Android should call:
