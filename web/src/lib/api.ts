@@ -1353,6 +1353,31 @@ export interface ProjectAppConfigAuditResponse {
   events: ProjectAppConfigAuditEvent[];
 }
 
+
+export interface ProfileOptionSetSummary {
+  option_set: string;
+  version: string;
+  title: Record<string, string>;
+  option_count: number;
+  source?: string;
+}
+
+export interface ProfileOptionSetsResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id?: string | null;
+  count: number;
+  option_sets: ProfileOptionSetSummary[];
+}
+
+export interface ProfileOptionSetDetail {
+  option_set: string;
+  version: string;
+  title: Record<string, string>;
+  options: FormFieldOptionContract[];
+  metadata: Record<string, unknown>;
+}
+
 export interface ProfileFormValidationIssue {
   form_id: string;
   field_id?: string | null;
@@ -1465,6 +1490,14 @@ export const appConfigApi = {
     return api<ProfileFormValidationResponse>(`/api/v1/app-config/profile-forms/validation${suffix}`);
   },
   formSchema: (formId: string) => api<FormSchemaContract>(`/api/v1/forms/${formId}`),
+  profileOptionSets: (projectId?: string) => {
+    const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    return api<ProfileOptionSetsResponse>(`/api/v1/forms/options${suffix}`);
+  },
+  profileOptionSet: (optionSet: string, projectId?: string) => {
+    const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    return api<ProfileOptionSetDetail>(`/api/v1/forms/options/${encodeURIComponent(optionSet)}${suffix}`);
+  },
 };
 
 

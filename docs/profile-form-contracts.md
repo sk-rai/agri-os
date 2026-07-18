@@ -34,7 +34,7 @@ The current static schemas now mirror the Android enrollment/profile fields so A
 
 Backend ownership/configurability rule:
 
-- Seasons, crop choices, land units, ownership modes, irrigation sources, soil textures/colors, soil data sources, and validation ranges must remain backend-owned contract values.
+- Seasons, crop choices, land units, ownership modes, irrigation sources, soil types, soil textures/colors, soil data sources, and validation ranges must remain backend-owned contract values.
 - Android may cache these values for offline use, but should refresh from bootstrap/forms/master-data and should not treat local hardcoded lists as authoritative once backend-driven forms are enabled.
 - Tenant/project-specific overrides should be introduced through form/config versioning rather than Android releases.
 
@@ -42,7 +42,7 @@ Backend-owned option registry:
 
 - `GET /api/v1/forms/options` lists available option sets for offline cache hydration.
 - `GET /api/v1/forms/options/{option_set}` returns one option set.
-- Fields may advertise sources such as `profile_options.land_units`, `profile_options.irrigation_sources`, `profile_options.soil_textures`, or `profile_options.seasons` while still embedding `options[]` for backward-compatible/offline rendering.
+- Fields may advertise sources such as `profile_options.land_units`, `profile_options.irrigation_sources`, `profile_options.soil_types`, `profile_options.soil_textures`, or `profile_options.seasons` while still embedding `options[]` for backward-compatible/offline rendering.
 - Android should prefer the backend option source when available and use embedded field options as the local fallback.
 
 Tenant/project overrides can be supplied through runtime app config under:
@@ -151,7 +151,7 @@ Key behavior:
 - `endpoints` gives Android stable next-hop URLs for hydration, trace, parcels, field events, and query threads so an agent-mode summary screen can drill into the correct backend entities.
 - An agent can also be a farmer. Android should keep individual farmer mode separate from assigned-agent worklist mode and select the mode from authenticated role/context rather than duplicating profiles locally.
 
-Android should treat this endpoint as the backend-owned source of truth for assisted profile-capture priorities. Seasons, land units, soil options, and other profile choices remain backend-configurable through profile form contracts and option sources.
+Android should treat this endpoint as the backend-owned source of truth for assisted profile-capture priorities. Seasons, land units, soil types/textures/colors, and other profile choices remain backend-configurable through profile form contracts and option sources.
 
 ## Form schema contract
 
@@ -303,7 +303,7 @@ When requested, the response includes `form_contract`:
 - `forms.farmer_registration`
 - `forms.parcel_registration`
 - `forms.soil_profile`
-- `option_sets` with effective backend-owned options such as seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, and assistance modes
+- `option_sets` with effective backend-owned options such as seasons, land units, ownership types, irrigation sources, soil types, soil textures/colors, soil data sources, languages, and assistance modes
 
 Default hydration omits this heavier bundle so older Android clients keep the same payload shape. New Android clients should use `include_form_contract=true` during login/profile hydration when they need to render or cache backend-driven profile screens. If `project_id` is supplied, tenant/project option overrides are applied; otherwise the backend uses the single active project context when unambiguous.
 

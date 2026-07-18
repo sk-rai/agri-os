@@ -298,6 +298,7 @@ def create_soil_profile(
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=body.soil_texture, path="soil_texture")
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=body.soil_color, path="soil_color")
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=body.data_source, path="data_source")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
 
     profile = SoilProfile(
         id=uuid.uuid4(),

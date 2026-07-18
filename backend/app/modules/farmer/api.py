@@ -2625,6 +2625,7 @@ def create_parcel(
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=body.reported_area_unit, path="reported_area_unit")
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
 
     # Determine geometry source from provided data
     geometry_source = "NONE"

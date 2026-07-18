@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { appConfigApi, type AppBootstrapResponse, type EffectiveAppConfigResponse, type FormFieldContract, type FormSchemaContract, type ProfileFormContractSummary, type ProjectAppConfigAuditResponse, type ProfileFormValidationResponse } from "@/lib/api";
+import { appConfigApi, type AppBootstrapResponse, type EffectiveAppConfigResponse, type FormFieldContract, type FormSchemaContract, type ProfileFormContractSummary, type ProjectAppConfigAuditResponse, type ProfileFormValidationResponse, type ProfileOptionSetsResponse } from "@/lib/api";
 
 const PROFILE_FORM_ORDER = ["farmer_registration", "parcel_registration", "soil_profile"];
 
@@ -31,6 +31,7 @@ export default function ProfileFormsPage() {
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [audit, setAudit] = useState<ProjectAppConfigAuditResponse | null>(null);
   const [validation, setValidation] = useState<ProfileFormValidationResponse | null>(null);
+  const [optionSets, setOptionSets] = useState<ProfileOptionSetsResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,11 +44,14 @@ export default function ProfileFormsPage() {
         const loadedSchemas = await Promise.all(profileForms.map((form) => appConfigApi.formSchema(form.form_id)));
         const auditPayload = projectId ? await appConfigApi.projectConfigAudit(projectId, 10) : null;
         const validationPayload = await appConfigApi.profileFormValidation(projectId || undefined);
+        const optionSetPayload = await appConfigApi.profileOptionSets(projectId || undefined);
         if (!cancelled) {
           setContext(nextContext);
           setSchemas(Object.fromEntries(loadedSchemas.map((schema) => [schema.form_id, schema])));
           setAudit(auditPayload);
           setValidation(validationPayload);
+      setOptionSets(optionSetPayload);
+          setOptionSets(optionSetPayload);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load profile form contracts");
@@ -79,6 +83,7 @@ export default function ProfileFormsPage() {
     setUpdateMessage(null);
     setAudit(null);
     setValidation(null);
+    setOptionSets(null);
   }
 
   async function toggleProfileFlag(flag: string, enabled: boolean) {
@@ -90,9 +95,11 @@ export default function ProfileFormsPage() {
       const updated = await appConfigApi.updateProjectConfig(projectId, { feature_flags: { [flag]: enabled } }, updateReason || "Update project profile form feature flag");
       const auditPayload = await appConfigApi.projectConfigAudit(projectId, 10);
       const validationPayload = await appConfigApi.profileFormValidation(projectId);
+      const optionSetPayload = await appConfigApi.profileOptionSets(projectId);
       setContext(updated);
       setAudit(auditPayload);
       setValidation(validationPayload);
+      setOptionSets(optionSetPayload);
       setUpdateMessage(`${flag} ${enabled ? "enabled" : "disabled"} for this project.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update project profile form flag");
@@ -131,6 +138,7 @@ export default function ProfileFormsPage() {
         message={updateMessage}
       />
       {validation ? <ProfileFormValidationPanel validation={validation} /> : null}
+      {optionSets ? <ProfileOptionSetsPanel payload={optionSets} /> : null}
       {audit ? <ProjectConfigAuditPanel audit={audit} /> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {orderedForms.map((form) => <FormSummaryCard key={form.form_id} form={form} schema={schemas[form.form_id]} />)}
@@ -254,6 +262,31 @@ function ProfileFlagControls({ context, projectId, reason, onReasonChange, onTog
         >
           {busy ? "Saving..." : form.enabled ? "Disable for project" : "Enable for project"}
         </button>
+      </div>)}
+    </div>
+  </section>;
+}
+
+
+function ProfileOptionSetsPanel({ payload }: { payload: ProfileOptionSetsResponse }) {
+  return <section className="mt-6 rounded bg-white p-5 shadow">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Backend option sets</h2>
+        <p className="mt-1 text-sm text-gray-500">Effective configurable values Android should use for farmer, land, soil, language, season, and agent-mode capture.</p>
+      </div>
+      <span className="rounded bg-blue-50 px-3 py-1 text-xs text-blue-700">{payload.count} option set(s)</span>
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+      {payload.option_sets.map((optionSet) => <div key={optionSet.option_set} className="rounded border p-3 text-xs">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-semibold text-gray-900">{label(optionSet.title)}</p>
+            <p className="font-mono text-[11px] text-gray-400">{optionSet.option_set}</p>
+          </div>
+          <span className={`rounded px-2 py-1 ${optionSet.source === "project" ? "bg-green-50 text-green-700" : optionSet.source === "tenant" ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-600"}`}>{optionSet.source || "default"}</span>
+        </div>
+        <div className="mt-2 text-gray-500">{optionSet.option_count} values · version {optionSet.version}</div>
       </div>)}
     </div>
   </section>;
