@@ -567,6 +567,57 @@ export interface AdminLookupParcel {
   trace_url: string;
 }
 
+export interface ProfileCompletionSectionDto {
+  status: "COMPLETE" | "PARTIAL" | "MISSING" | string;
+  required_for_home: boolean;
+  missing_required_fields: string[];
+  missing_recommended_fields: string[];
+}
+
+export interface ProfileCompletionDto {
+  schema_version: string;
+  is_complete_for_home: boolean;
+  is_ready_for_personalized_advisories: boolean;
+  missing_fields: string[];
+  recommended_missing_fields: string[];
+  parcel_count: number;
+  soil_profile_count: number;
+  sections: Record<string, ProfileCompletionSectionDto>;
+  next_actions: Array<{ code: string; label: string; priority: string }>;
+}
+
+export interface FarmerProfileReadinessRowDto {
+  farmer: {
+    id: string;
+    tenant_id: string;
+    mobile_number?: string | null;
+    display_name?: string | null;
+    village_id?: string | null;
+    status?: string | null;
+    [key: string]: unknown;
+  };
+  parcel_count: number;
+  soil_profile_count: number;
+  project_enrollment_count: number;
+  profile_completion: ProfileCompletionDto;
+}
+
+export interface FarmerProfileReadinessResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: { project_id?: string | null; status?: string | null; offset: number; limit: number };
+  summary: {
+    farmer_count: number;
+    home_ready_count: number;
+    personalized_advisory_ready_count: number;
+    missing_required_count: number;
+    missing_parcel_count: number;
+    soil_profile_recommended_count: number;
+    parcel_location_recommended_count: number;
+  };
+  farmers: FarmerProfileReadinessRowDto[];
+}
+
 
 export interface ProjectEnrollmentCsvValidationRow {
   row_number: number;
@@ -1025,6 +1076,18 @@ export const cropCatalogApi = {
   },
   applyPropagationImport: (batchId: string, reason: string) =>
     api<CropPropagationImportBatch>(`/api/v1/crop-catalog/csv/propagation-types/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
+};
+
+export const farmersApi = {
+  profileReadiness: (params?: { projectId?: string; status?: string; offset?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.status !== undefined) q.set("status", params.status);
+    if (params?.offset !== undefined) q.set("offset", String(params.offset));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<FarmerProfileReadinessResponse>(`/api/v1/farmers/profile-readiness${suffix}`);
+  },
 };
 
 export const reportsApi = {
