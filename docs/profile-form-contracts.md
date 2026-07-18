@@ -45,6 +45,28 @@ Backend-owned option registry:
 - Fields may advertise sources such as `profile_options.land_units`, `profile_options.irrigation_sources`, `profile_options.soil_textures`, or `profile_options.seasons` while still embedding `options[]` for backward-compatible/offline rendering.
 - Android should prefer the backend option source when available and use embedded field options as the local fallback.
 
+Tenant/project overrides can be supplied through runtime app config under:
+
+```json
+{
+  "profile_options": {
+    "overrides": {
+      "land_units": {
+        "version": "project-land-units-v1",
+        "title": { "en": "Project Land Units" },
+        "options": [
+          { "value": "ACRE", "label": { "en": "Acre" } },
+          { "value": "HECTARE", "label": { "en": "Hectare" } }
+        ],
+        "metadata": { "configured_for": "project" }
+      }
+    }
+  }
+}
+```
+
+Android should pass `project_id` when hydrating option sets for a project-scoped enrollment/profile flow. The backend resolves defaults first, then tenant overrides, then project overrides.
+
 
 ## Discovery contract
 

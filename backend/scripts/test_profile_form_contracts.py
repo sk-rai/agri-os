@@ -143,7 +143,25 @@ def main():
     patch = client.patch(
         f"/api/v1/app-config/projects/{project.id}/config",
         headers=headers,
-        json={"config_patch": {"feature_flags": {"backend_driven_farmer_forms": True, "backend_driven_parcel_forms": True}}, "reason": "Enable profile forms in regression"},
+        json={
+            "config_patch": {
+                "feature_flags": {"backend_driven_farmer_forms": True, "backend_driven_parcel_forms": True},
+                "profile_options": {
+                    "overrides": {
+                        "land_units": {
+                            "version": "project-test-1",
+                            "title": {"en": "Project Land Units", "hi": "Project Land Units"},
+                            "options": [
+                                {"value": "ACRE", "label": {"en": "Acre", "hi": "Acre"}},
+                                {"value": "HECTARE", "label": {"en": "Hectare", "hi": "Hectare"}},
+                            ],
+                            "metadata": {"configured_for": "profile-form-regression"},
+                        }
+                    }
+                },
+            },
+            "reason": "Enable profile forms in regression",
+        },
     )
     check(patch.status_code == 200, "Project app config patch returns 200", patch.text[:500])
     patched = patch.json()
@@ -152,6 +170,7 @@ def main():
     check(patched["profile_forms"]["parcel_registration"]["enabled"] is True, "Parcel profile form flag is enabled by project patch")
     check(patched["profile_forms"]["soil_profile"]["enabled"] is False, "Unpatched soil profile flag remains disabled")
     check(patched["layers"]["project"]["feature_flags"]["backend_driven_farmer_forms"] is True, "Project layer stores farmer flag")
+    check(patched["layers"]["project"]["profile_options"]["overrides"]["land_units"]["version"] == "project-test-1", "Project layer stores option override")
     check(patched["update"]["audit_event"]["reason"] == "Enable profile forms in regression", "Patch response includes audit reason")
     check("feature_flags" in patched["update"]["audit_event"]["patched_sections"], "Patch response includes patched sections")
 
@@ -177,6 +196,17 @@ def main():
     project_payload = project_bootstrap.json()
     check(project_payload["profile_forms"]["farmer_registration"]["enabled"] is True, "Project bootstrap advertises farmer profile flag")
     check(project_payload["profile_forms"]["parcel_registration"]["enabled"] is True, "Project bootstrap advertises parcel profile flag")
+
+    project_options = client.get(f"/api/v1/forms/options?project_id={project.id}", headers={"X-Tenant-ID": "default"})
+    check(project_options.status_code == 200, "Project profile option registry returns 200", project_options.text[:400])
+    option_sources = {item["option_set"]: item.get("source") for item in project_options.json()["option_sets"]}
+    check(option_sources["land_units"] == "project", "Project option registry marks overridden source")
+    project_land_units = client.get(f"/api/v1/forms/options/land_units?project_id={project.id}", headers={"X-Tenant-ID": "default"})
+    check(project_land_units.status_code == 200, "Project land unit override returns 200", project_land_units.text[:400])
+    project_land_payload = project_land_units.json()
+    check(project_land_payload["version"] == "project-test-1", "Project land unit override version is returned")
+    check({item["value"] for item in project_land_payload["options"]} == {"ACRE", "HECTARE"}, "Project land unit override replaces default values")
+    check(project_land_payload["metadata"]["source"] == "project", "Project land unit override exposes source metadata")
 
     db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)

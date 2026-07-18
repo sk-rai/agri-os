@@ -11,9 +11,16 @@ Form schemas are:
   Android resolves: map[currentLanguage] ?: map["en"]
 """
 
+from copy import deepcopy
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Header
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.modules.farmer.models import Project, Tenant
 
 router = APIRouter(prefix="/api/v1/forms", tags=["forms"])
 
@@ -80,6 +87,68 @@ PROFILE_OPTION_REGISTRY = {
     "languages": ProfileOptionSet(option_set="languages", title={"en": "Languages", "hi": "Languages"}, options=[FormFieldOption(value="en", label={"en": "English", "hi": "English"}), FormFieldOption(value="hi", label={"en": "Hindi", "hi": "Hindi"}), FormFieldOption(value="kn", label={"en": "Kannada", "hi": "Kannada"}), FormFieldOption(value="ta", label={"en": "Tamil", "hi": "Tamil"}), FormFieldOption(value="te", label={"en": "Telugu", "hi": "Telugu"}), FormFieldOption(value="mr", label={"en": "Marathi", "hi": "Marathi"})]),
     "assistance_modes": ProfileOptionSet(option_set="assistance_modes", title={"en": "Assistance Modes", "hi": "Assistance Modes"}, options=[FormFieldOption(value="SELF_SERVICE", label={"en": "Self service", "hi": "Self service"}), FormFieldOption(value="DEALER_ASSISTED", label={"en": "Dealer assisted", "hi": "Dealer assisted"}), FormFieldOption(value="FIELD_AGENT_ASSISTED", label={"en": "Field-agent assisted", "hi": "Field-agent assisted"}), FormFieldOption(value="AGRONOMIST_ASSISTED", label={"en": "Agronomist assisted", "hi": "Agronomist assisted"})]),
 }
+
+
+
+def _option_set_from_config(option_set: str, payload: dict, source: str) -> ProfileOptionSet:
+    """Build an option set from tenant/project config while preserving a stable shape."""
+    base = PROFILE_OPTION_REGISTRY.get(option_set)
+    if not isinstance(payload, dict):
+        payload = {}
+
+    raw_options = payload.get("options")
+    if raw_options is None and base:
+        options = deepcopy(base.options)
+    else:
+        options = [FormFieldOption(**item) for item in (raw_options or []) if isinstance(item, dict)]
+
+    title = payload.get("title") or (base.title if base else {"en": option_set.replace("_", " ").title()})
+    metadata = deepcopy(base.metadata if base else {})
+    if isinstance(payload.get("metadata"), dict):
+        metadata.update(payload["metadata"])
+    metadata.update({"source": source, "overridden": source != "default"})
+
+    return ProfileOptionSet(
+        option_set=option_set,
+        version=str(payload.get("version") or (base.version if base else "1.0.0")),
+        title=title,
+        options=options,
+        metadata=metadata,
+    )
+
+
+def _profile_option_overrides(config: Optional[dict]) -> dict:
+    if not isinstance(config, dict):
+        return {}
+    profile_options = config.get("profile_options")
+    if not isinstance(profile_options, dict):
+        return {}
+    overrides = profile_options.get("overrides")
+    return overrides if isinstance(overrides, dict) else {}
+
+
+def _apply_profile_option_overrides(registry: dict[str, ProfileOptionSet], overrides: dict, source: str) -> None:
+    for option_set, payload in sorted(overrides.items()):
+        registry[option_set] = _option_set_from_config(option_set, payload, source)
+
+
+def _effective_profile_option_registry(db: Session, *, tenant_id: str, project_id: Optional[uuid.UUID] = None) -> dict[str, ProfileOptionSet]:
+    registry = {
+        key: _option_set_from_config(key, value.model_dump() if hasattr(value, "model_dump") else value.dict(), "default")
+        for key, value in PROFILE_OPTION_REGISTRY.items()
+    }
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if tenant:
+        _apply_profile_option_overrides(registry, _profile_option_overrides(tenant.config), "tenant")
+
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id, Project.is_active == True).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+        _apply_profile_option_overrides(registry, _profile_option_overrides(project.config), "project")
+
+    return registry
 
 
 # --- Form Definitions ---
@@ -416,16 +485,21 @@ FORM_REGISTRY = {
 
 @router.get("/options")
 def list_profile_option_sets(
-    x_tenant_id: str = Header(None, alias="X-Tenant-ID"),
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
 ):
-    """List backend-owned option sets for forms and offline cache hydration."""
+    """List effective backend-owned option sets for forms and offline cache hydration."""
+    tenant_id = x_tenant_id or "default"
+    registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
     return {
         "schema_version": "profile_option_sets.v1",
-        "tenant_id": x_tenant_id,
-        "count": len(PROFILE_OPTION_REGISTRY),
+        "tenant_id": tenant_id,
+        "project_id": str(project_id) if project_id else None,
+        "count": len(registry),
         "option_sets": [
-            {"option_set": key, "version": value.version, "title": value.title, "option_count": len(value.options)}
-            for key, value in sorted(PROFILE_OPTION_REGISTRY.items())
+            {"option_set": key, "version": value.version, "title": value.title, "option_count": len(value.options), "source": value.metadata.get("source", "default")}
+            for key, value in sorted(registry.items())
         ],
     }
 
@@ -433,12 +507,16 @@ def list_profile_option_sets(
 @router.get("/options/{option_set}", response_model=ProfileOptionSet)
 def get_profile_option_set(
     option_set: str,
-    x_tenant_id: str = Header(None, alias="X-Tenant-ID"),
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
 ):
-    """Return one backend-owned option set used by profile forms."""
-    resolved = PROFILE_OPTION_REGISTRY.get(option_set)
+    """Return one effective backend-owned option set used by profile forms."""
+    tenant_id = x_tenant_id or "default"
+    registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
+    resolved = registry.get(option_set)
     if not resolved:
-        raise HTTPException(404, f"Option set '{option_set}' not found. Available: {list(PROFILE_OPTION_REGISTRY.keys())}")
+        raise HTTPException(404, f"Option set '{option_set}' not found. Available: {list(registry.keys())}")
     return resolved
 
 

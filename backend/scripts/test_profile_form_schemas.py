@@ -131,6 +131,8 @@ def main():
     option_sets = {item["option_set"] for item in options_payload["option_sets"]}
     for option_set in ["seasons", "land_units", "ownership_types", "irrigation_sources", "soil_textures", "soil_colors", "soil_data_sources", "languages", "assistance_modes"]:
         check(option_set in option_sets, f"profile option registry includes {option_set}")
+    source_by_option_set = {item["option_set"]: item.get("source") for item in options_payload["option_sets"]}
+    check(source_by_option_set["land_units"] == "default", "land unit option set defaults to global source")
 
     land_units = client.get("/api/v1/forms/options/land_units")
     check(land_units.status_code == 200, "land unit option set returns 200", land_units.text[:300])
