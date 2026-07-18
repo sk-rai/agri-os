@@ -438,6 +438,9 @@ def main():
     check(rule_counts.get("LANGUAGE") == 1, "Audience preview expands LANGUAGE rule")
     check(rule_counts.get("STAGE") == 1, "Audience preview expands STAGE rule")
     check(rule_counts.get("WEATHER") == 3, "Audience preview expands WEATHER rule from stored snapshot")
+    weather_rule = next(row for row in preview_body["rule_summaries"] if row["rule_type"] == "WEATHER")
+    check(weather_rule["weather_snapshot_matches"][0]["location_scope"] == "VILLAGE", "Audience preview explains WEATHER snapshot scope")
+    check("HEAVY_RAIN_NEXT_24H" in weather_rule["weather_snapshot_matches"][0]["matched_terms"], "Audience preview explains WEATHER matched risk term")
 
     print("\n[1c-all] Preview ALL/intersection audience mode")
     all_mode_id = uuid.uuid4()

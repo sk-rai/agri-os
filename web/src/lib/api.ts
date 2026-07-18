@@ -2815,6 +2815,19 @@ export interface BroadcastAudienceRulePreviewDto {
   sample_farmer_ids: string[];
   sample_matches?: Array<{ farmer_id: string; matched_by: string[] }>;
   match_reason_counts?: Record<string, number>;
+  weather_snapshot_matches?: Array<{
+    snapshot_id: string;
+    location_scope: string;
+    location_key?: string | null;
+    project_id?: string | null;
+    farmer_id?: string | null;
+    parcel_id?: string | null;
+    condition_code?: string | null;
+    risk_flags?: string[];
+    matched_terms?: string[];
+    fetched_at?: string | null;
+    expires_at?: string | null;
+  }>;
   note?: string | null;
 }
 

@@ -1,0 +1,174 @@
+# Weather Broadcast Runbook
+
+This runbook explains the backend-first flow for weather-triggered broadcasts. Android does not call weather APIs or evaluate weather rules locally; it only receives generated broadcast deliveries.
+
+## 1. Configure a weather provider
+
+Use admin `/weather` or `POST /api/v1/weather/providers`.
+
+Minimum Open-Meteo live config:
+
+```json
+{
+  "adapter": "open_meteo",
+  "live_fetch_enabled": true,
+  "base_url": "https://api.open-meteo.com/v1/forecast",
+  "timezone": "Asia/Kolkata",
+  "forecast_days": 2,
+  "locations": [
+    {
+      "location_scope": "VILLAGE",
+      "location_key": "Broadcast Village",
+      "lat": "12.9716",
+      "lng": "77.5946"
+    }
+  ],
+  "risk_thresholds": {
+    "heavy_rain_mm": 20,
+    "heavy_rain_probability_percent": 80,
+    "fungal_humidity_percent": 80,
+    "fungal_rain_probability_percent": 60,
+    "heat_stress_temperature_max_c": 38,
+    "high_wind_kmph": 40
+  }
+}
+```
+
+Use `refresh_interval_hours` on the provider to control cadence. The default operating model is a backend scheduler every 6 hours, customizable per provider.
+
+## 2. Refresh weather snapshots
+
+For manual/admin operation:
+
+```http
+POST /api/v1/weather/providers/{provider_id}/run-adapter
+```
+
+For scheduler operation:
+
+```http
+GET /api/v1/weather/providers/refresh-plan?enabled=true
+POST /api/v1/weather/providers/{provider_id}/run-adapter
+```
+
+The adapter writes normalized `weather_snapshots`. Downstream features should use these fields, not raw provider-specific payloads:
+
+- `location_scope`
+- `location_key`
+- `condition_code`
+- `risk_flags`
+- `fetched_at`
+- `expires_at`
+- rainfall/temperature/humidity/wind values where available
+
+## 3. Inspect snapshots
+
+Use admin `/weather` or:
+
+```http
+GET /api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village
+GET /api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village
+```
+
+Only non-expired snapshots are used for normal weather broadcast targeting.
+
+## 4. Create a weather broadcast
+
+Create a normal broadcast campaign with category `WEATHER` and a `WEATHER` audience rule:
+
+```json
+{
+  "title": "Heavy rainfall alert",
+  "category": "WEATHER",
+  "priority": "URGENT",
+  "contents": [
+    {
+      "language_code": "en",
+      "title": "Heavy rainfall expected",
+      "body_text": "Heavy rainfall is likely in your area. Avoid spraying and ensure field drainage."
+    }
+  ],
+  "audience_rules": [
+    {
+      "rule_type": "WEATHER",
+      "operator": "IN",
+      "values": ["HEAVY_RAIN_NEXT_24H"]
+    }
+  ]
+}
+```
+
+A weather rule matches snapshots whose `condition_code` or `risk_flags` contain any configured value.
+
+## 5. Combine criteria
+
+The same broadcast can combine weather with project, crop, stage, language, farmer, or location criteria.
+
+Default `audience_match_mode` is `ANY`, meaning a farmer matching any supported rule is eligible.
+
+Use campaign metadata for intersection mode:
+
+```json
+{
+  "metadata": {
+    "audience_match_mode": "ALL"
+  }
+}
+```
+
+In `ALL` mode, the farmer must match every supported rule. This is useful for precise broadcasts like: farmers in a project, growing rice, at flowering stage, in a village with heavy-rain risk.
+
+## 6. Preview before delivery
+
+```http
+GET /api/v1/broadcasts/{campaign_id}/audience-preview
+```
+
+Preview returns:
+
+- estimated farmer count;
+- matched rules per sample farmer;
+- weather snapshot evidence for `WEATHER` rules, including snapshot scope, location, matched risk terms, and risk flags;
+- unsupported rule count.
+
+Admins should preview before publishing/generating deliveries, especially when combining multiple criteria.
+
+## 7. Publish and generate deliveries
+
+```http
+POST /api/v1/broadcasts/{campaign_id}/publish
+POST /api/v1/broadcasts/{campaign_id}/generate-deliveries
+```
+
+Delivery generation is idempotent. Existing deliveries are skipped and summarized in campaign metadata.
+
+## 8. Retry undelivered broadcasts
+
+```http
+POST /api/v1/broadcasts/{campaign_id}/retry-undelivered
+```
+
+Retry applies to `PENDING` and `FAILED` delivery rows. `DELIVERED` and `ACKNOWLEDGED` rows are skipped. After 3 retry attempts, delivery is marked `FAILED` with `failure_reason=MAX_RETRIES_EXCEEDED`.
+
+## 9. Android behavior
+
+Android receives weather broadcasts through the normal farmer broadcast feed:
+
+```http
+GET /api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi&include_read=true
+```
+
+Android should:
+
+- render `category=WEATHER` prominently;
+- respect campaign priority such as `URGENT`;
+- show content/media/deeplink as delivered;
+- mark read/ack through existing delivery endpoints;
+- not call weather APIs;
+- not locally re-evaluate weather targeting.
+
+## Current limitations
+
+- Initial weather location expansion supports tenant, project, farmer, parcel, and manual village-name snapshots.
+- Pincode, district/state, climatic-zone, and geospatial weather-grid expansion remain future work.
+- Live Open-Meteo fetch is available, but production deployment should add scheduler supervision, provider rate-limit handling, and alerting for stale snapshots.

@@ -476,6 +476,15 @@ function BroadcastDetail({
               <span className={rule.supported ? "text-green-700" : "text-amber-700"}>{rule.supported ? `${rule.matched_farmer_count} match(es)` : "Not expanded"}</span>
             </div>
             {rule.note ? <p className="mt-1 text-amber-700">{rule.note}</p> : null}
+            {rule.weather_snapshot_matches?.length ? <div className="mt-2 rounded bg-blue-50 p-2 text-[10px] text-blue-900">
+              <div className="font-semibold">Weather snapshot evidence</div>
+              <div className="mt-1 space-y-1">
+                {rule.weather_snapshot_matches.slice(0, 3).map((snapshot) => <div key={snapshot.snapshot_id} className="break-all">
+                  {snapshot.location_scope}{snapshot.location_key ? ` / ${snapshot.location_key}` : ""}: {(snapshot.matched_terms || []).join(", ") || snapshot.condition_code || "matched"}
+                  {snapshot.risk_flags?.length ? <span className="text-blue-700"> ({snapshot.risk_flags.join(", ")})</span> : null}
+                </div>)}
+              </div>
+            </div> : null}
             {rule.sample_farmer_ids.length ? <p className="mt-1 break-all font-mono text-[10px] text-gray-500">Sample: {rule.sample_farmer_ids.join(", ")}</p> : null}
           </div>)}
         </div>

@@ -479,6 +479,7 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
         matched: set[str] = set()
         supported = True
         note = None
+        weather_snapshot_matches = []
 
         if rule.rule_type == "ALL":
             matched.update(str(row.id) for row in db.query(Farmer.id).filter(Farmer.tenant_id == tenant_id, Farmer.status == "ACTIVE").all())
@@ -566,9 +567,23 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
                 for snapshot in snapshots:
                     snapshot_terms = {str(snapshot.condition_code or "").strip().upper()}
                     snapshot_terms.update(str(flag).strip().upper() for flag in (snapshot.risk_flags or []) if str(flag).strip())
-                    if not weather_terms.intersection(snapshot_terms):
+                    matched_terms = sorted(weather_terms.intersection(snapshot_terms))
+                    if not matched_terms:
                         continue
                     scope = str(snapshot.location_scope or "").upper()
+                    weather_snapshot_matches.append({
+                        "snapshot_id": str(snapshot.id),
+                        "location_scope": scope,
+                        "location_key": snapshot.location_key,
+                        "project_id": str(snapshot.project_id) if snapshot.project_id else None,
+                        "farmer_id": str(snapshot.farmer_id) if snapshot.farmer_id else None,
+                        "parcel_id": str(snapshot.parcel_id) if snapshot.parcel_id else None,
+                        "condition_code": snapshot.condition_code,
+                        "risk_flags": list(snapshot.risk_flags or []),
+                        "matched_terms": matched_terms,
+                        "fetched_at": snapshot.fetched_at.isoformat() if snapshot.fetched_at else None,
+                        "expires_at": snapshot.expires_at.isoformat() if snapshot.expires_at else None,
+                    })
                     if scope == "TENANT":
                         tenant_wide_match = True
                     elif scope == "PROJECT" and snapshot.project_id:
@@ -663,7 +678,7 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
         if supported:
             supported_rule_matches.append((rule.rule_type, set(matched)))
 
-        rule_summaries.append({
+        rule_summary = {
             "rule_id": str(rule.id),
             "rule_type": rule.rule_type,
             "operator": rule.operator,
@@ -672,7 +687,10 @@ def _resolve_broadcast_audience(db: Session, *, tenant_id: str, campaign_id: uui
             "matched_farmer_count": len(matched),
             "sample_farmer_ids": sorted(matched)[:10],
             "note": note,
-        })
+        }
+        if weather_snapshot_matches:
+            rule_summary["weather_snapshot_matches"] = weather_snapshot_matches[:10]
+        rule_summaries.append(rule_summary)
 
     if audience_match_mode == "ALL" and supported_rule_matches:
         farmer_ids = set(supported_rule_matches[0][1])
