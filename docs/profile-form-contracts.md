@@ -151,6 +151,8 @@ GET /api/v1/admin/agent-profiles/{profile_id}
 PATCH /api/v1/admin/agent-profiles/{profile_id}
 ```
 
+Admin web now exposes `/agent-profiles` as the read-first management view for agent identity, linked farmer mode, skills/languages, territory scope, and project access.
+
 ## Field-agent assisted profile worklist
 
 Backend now exposes an assisted-capture worklist for field agents, agronomists, dealers, and admins who collect farmer/land/soil data on behalf of enrolled farmers.

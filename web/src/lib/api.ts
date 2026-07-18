@@ -1512,12 +1512,55 @@ export interface AdminProfileResponse {
   project_access: AdminProjectAccessProfile[];
 }
 
+export interface AgentProfileDto {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  farmer_id?: string | null;
+  agent_code?: string | null;
+  role_type: string;
+  display_name?: string | null;
+  mobile_number?: string | null;
+  status: string;
+  skills: string[];
+  languages: string[];
+  territory_scope: Record<string, unknown>;
+  availability: Record<string, unknown>;
+  certification: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  can_also_act_as_farmer: boolean;
+  user?: { id: string; mobile_number_masked: string; display_name?: string | null; role: string; tenant_id?: string | null } | null;
+  farmer?: { id: string; display_name?: string | null; mobile_number?: string | null; status?: string | null } | null;
+  project_access: AdminProjectAccessProfile[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AgentProfilesResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: { role_type?: string | null; status?: string | null };
+  count: number;
+  agent_profiles: AgentProfileDto[];
+}
+
 export const authApi = {
   requestOtp: (mobile_number: string) =>
     api("/api/v1/auth/otp/request", { method: "POST", body: { mobile_number }, noAuth: true }),
   verifyOtp: (mobile_number: string, otp_code: string, device_id: string) =>
     api("/api/v1/auth/otp/verify", { method: "POST", body: { mobile_number, otp_code, device_id }, noAuth: true }),
   me: () => api<AdminProfileResponse>("/api/v1/admin/me"),
+};
+
+export const agentProfilesApi = {
+  list: (params?: { roleType?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.roleType) query.set("role_type", params.roleType);
+    if (params?.status) query.set("status", params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<AgentProfilesResponse>(`/api/v1/admin/agent-profiles${suffix}`);
+  },
+  get: (profileId: string) => api<AgentProfileDto>(`/api/v1/admin/agent-profiles/${profileId}`),
 };
 
 // Tenants
