@@ -131,6 +131,25 @@ Soil profile remains recommended, not mandatory, for home launch. It becomes imp
 Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
 
+## Agent profile identity model
+
+Backend distinguishes identity/capability from farmer identity:
+
+- `users` remains the login/account record and can hold tenant role capabilities.
+- `agent_profiles` stores operational agent metadata such as role type, skills, languages, territory scope, availability, certification, and status.
+- `farmers` remains the farmer/farm profile.
+- One person can have both an `agent_profiles.farmer_id` link and a farmer profile, so Android should allow switching between personal farmer mode and assigned-agent mode without creating duplicate people.
+- Project assignment still comes from `project_roles` and farmer assignment still comes from `farmer_project_enrollments.assigned_user_ids`.
+
+Admin APIs:
+
+```http
+GET /api/v1/admin/agent-profiles
+POST /api/v1/admin/agent-profiles
+GET /api/v1/admin/agent-profiles/{profile_id}
+PATCH /api/v1/admin/agent-profiles/{profile_id}
+```
+
 ## Field-agent assisted profile worklist
 
 Backend now exposes an assisted-capture worklist for field agents, agronomists, dealers, and admins who collect farmer/land/soil data on behalf of enrolled farmers.

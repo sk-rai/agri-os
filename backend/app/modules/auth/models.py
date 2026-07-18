@@ -95,3 +95,38 @@ class TenantUserAccessAuditEvent(Base, UUIDPrimaryKey):
         Index("idx_tenant_user_access_audit_tenant_created", "tenant_id", "created_at"),
         Index("idx_tenant_user_access_audit_target_created", "target_user_id", "created_at"),
     )
+
+
+class AgentProfile(Base, UUIDPrimaryKey, AuditMixin):
+    """Operational profile for field agents, agronomists, dealers, and other assisted-capture users.
+
+    A person may simultaneously have:
+    - a User account for login/agent capabilities;
+    - an AgentProfile for work assignment metadata;
+    - a Farmer profile when they farm personally.
+    """
+
+    __tablename__ = "agent_profiles"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=True, index=True)
+    agent_code = Column(String(50), index=True)
+    role_type = Column(String(50), nullable=False, default="FIELD_AGENT")
+    # FIELD_AGENT, AGRONOMIST, DEALER, MANAGER, ENUMERATOR
+    display_name = Column(String(150))
+    mobile_number = Column(String(15), index=True)
+    status = Column(String(30), nullable=False, default="ACTIVE")
+    # ACTIVE, INACTIVE, SUSPENDED
+    skills = Column(JSONB, default=list)
+    languages = Column(JSONB, default=list)
+    territory_scope = Column(JSONB, default=dict)
+    availability = Column(JSONB, default=dict)
+    certification = Column(JSONB, default=dict)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_agent_profiles_tenant_user", "tenant_id", "user_id", unique=True),
+        Index("idx_agent_profiles_tenant_role", "tenant_id", "role_type"),
+        Index("idx_agent_profiles_tenant_status", "tenant_id", "status"),
+    )

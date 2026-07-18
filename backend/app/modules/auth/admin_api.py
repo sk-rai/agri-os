@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import ROLE_PERMISSIONS, AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Project, ProjectRole
+from app.modules.auth.models import AgentProfile, TenantUserAccessAuditEvent, User
+from app.modules.farmer.models import Farmer, Project, ProjectRole
 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin-users"])
@@ -84,6 +84,79 @@ class ProjectAccessUpdate(BaseModel):
         if role not in PROJECT_ACCESS_ROLES:
             raise ValueError(f"Project role must be one of {sorted(PROJECT_ACCESS_ROLES)}")
         return role
+
+
+AGENT_ROLE_TYPES = {"FIELD_AGENT", "AGRONOMIST", "DEALER", "MANAGER", "ENUMERATOR"}
+AGENT_STATUSES = {"ACTIVE", "INACTIVE", "SUSPENDED"}
+
+
+class AgentProfileUpsert(BaseModel):
+    user_id: uuid.UUID
+    farmer_id: Optional[uuid.UUID] = None
+    agent_code: Optional[str] = None
+    role_type: str = "FIELD_AGENT"
+    display_name: Optional[str] = None
+    mobile_number: Optional[str] = None
+    status: str = "ACTIVE"
+    skills: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    territory_scope: dict = Field(default_factory=dict)
+    availability: dict = Field(default_factory=dict)
+    certification: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+    reason: str = Field(..., min_length=3, max_length=500)
+
+    @field_validator("role_type")
+    @classmethod
+    def validate_role_type(cls, value: str) -> str:
+        role = value.strip().upper()
+        if role not in AGENT_ROLE_TYPES:
+            raise ValueError(f"Agent role_type must be one of {sorted(AGENT_ROLE_TYPES)}")
+        return role
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        status = value.strip().upper()
+        if status not in AGENT_STATUSES:
+            raise ValueError(f"Agent status must be one of {sorted(AGENT_STATUSES)}")
+        return status
+
+
+class AgentProfilePatch(BaseModel):
+    farmer_id: Optional[uuid.UUID] = None
+    agent_code: Optional[str] = None
+    role_type: Optional[str] = None
+    display_name: Optional[str] = None
+    mobile_number: Optional[str] = None
+    status: Optional[str] = None
+    skills: Optional[list[str]] = None
+    languages: Optional[list[str]] = None
+    territory_scope: Optional[dict] = None
+    availability: Optional[dict] = None
+    certification: Optional[dict] = None
+    metadata: Optional[dict] = None
+    reason: str = Field(..., min_length=3, max_length=500)
+
+    @field_validator("role_type")
+    @classmethod
+    def validate_role_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        role = value.strip().upper()
+        if role not in AGENT_ROLE_TYPES:
+            raise ValueError(f"Agent role_type must be one of {sorted(AGENT_ROLE_TYPES)}")
+        return role
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        status = value.strip().upper()
+        if status not in AGENT_STATUSES:
+            raise ValueError(f"Agent status must be one of {sorted(AGENT_STATUSES)}")
+        return status
 
 
 def _project_access_payload(db: Session, user_id: uuid.UUID, tenant_id: str) -> list[dict]:
@@ -215,6 +288,187 @@ def _project_access_with_permissions(db: Session, user_id: uuid.UUID, tenant_id:
         }
         for item in access
     ]
+
+
+def _agent_profile_payload(db: Session, profile: AgentProfile, tenant_id: str) -> dict:
+    user = db.query(User).filter(User.id == profile.user_id).first()
+    farmer = db.query(Farmer).filter(Farmer.id == profile.farmer_id, Farmer.tenant_id == tenant_id).first() if profile.farmer_id else None
+    return {
+        "id": str(profile.id),
+        "tenant_id": profile.tenant_id,
+        "user_id": str(profile.user_id),
+        "farmer_id": str(profile.farmer_id) if profile.farmer_id else None,
+        "agent_code": profile.agent_code,
+        "role_type": profile.role_type,
+        "display_name": profile.display_name,
+        "mobile_number": profile.mobile_number,
+        "status": profile.status,
+        "skills": profile.skills or [],
+        "languages": profile.languages or [],
+        "territory_scope": profile.territory_scope or {},
+        "availability": profile.availability or {},
+        "certification": profile.certification or {},
+        "metadata": profile.metadata_ or {},
+        "can_also_act_as_farmer": profile.farmer_id is not None,
+        "user": None if not user else {
+            "id": str(user.id),
+            "mobile_number_masked": f"******{user.mobile_number[-4:]}",
+            "display_name": user.display_name,
+            "role": user.role,
+            "tenant_id": user.tenant_id,
+        },
+        "farmer": None if not farmer else {
+            "id": str(farmer.id),
+            "display_name": farmer.display_name,
+            "mobile_number": farmer.mobile_number,
+            "status": farmer.status,
+        },
+        "project_access": _project_access_with_permissions(db, profile.user_id, tenant_id),
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+
+
+def _agent_profile_snapshot(profile: Optional[AgentProfile]) -> Optional[dict]:
+    if not profile:
+        return None
+    return {
+        "id": str(profile.id),
+        "user_id": str(profile.user_id),
+        "farmer_id": str(profile.farmer_id) if profile.farmer_id else None,
+        "role_type": profile.role_type,
+        "status": profile.status,
+        "skills": profile.skills or [],
+        "languages": profile.languages or [],
+        "territory_scope": profile.territory_scope or {},
+    }
+
+
+def _assert_agent_farmer_link(db: Session, *, tenant_id: str, farmer_id: Optional[uuid.UUID]) -> None:
+    if not farmer_id:
+        return
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id, Farmer.status != "ARCHIVED").first()
+    if not farmer:
+        raise HTTPException(404, "Linked farmer profile not found")
+
+
+@router.get("/agent-profiles")
+def list_agent_profiles(
+    role_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    query = db.query(AgentProfile).filter(AgentProfile.tenant_id == x_tenant_id, AgentProfile.is_active == True)
+    if role_type:
+        query = query.filter(AgentProfile.role_type == role_type.upper())
+    if status:
+        query = query.filter(AgentProfile.status == status.upper())
+    profiles = query.order_by(AgentProfile.display_name, AgentProfile.agent_code, AgentProfile.created_at).all()
+    return {
+        "schema_version": "agent_profiles.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {"role_type": role_type.upper() if role_type else None, "status": status.upper() if status else None},
+        "count": len(profiles),
+        "agent_profiles": [_agent_profile_payload(db, profile, x_tenant_id) for profile in profiles],
+    }
+
+
+@router.post("/agent-profiles", status_code=201)
+def upsert_agent_profile(
+    body: AgentProfileUpsert,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    user = _tenant_user(db, body.user_id, x_tenant_id)
+    _assert_agent_farmer_link(db, tenant_id=x_tenant_id, farmer_id=body.farmer_id)
+    profile = db.query(AgentProfile).filter(AgentProfile.tenant_id == x_tenant_id, AgentProfile.user_id == user.id).first()
+    created = profile is None
+    before = _agent_profile_snapshot(profile)
+    if not profile:
+        profile = AgentProfile(id=uuid.uuid4(), tenant_id=x_tenant_id, user_id=user.id, created_at=datetime.now(timezone.utc))
+        db.add(profile)
+    profile.farmer_id = body.farmer_id
+    profile.agent_code = body.agent_code
+    profile.role_type = body.role_type
+    profile.display_name = body.display_name or user.display_name
+    profile.mobile_number = body.mobile_number or user.mobile_number
+    profile.status = body.status
+    profile.skills = body.skills
+    profile.languages = body.languages
+    profile.territory_scope = body.territory_scope
+    profile.availability = body.availability
+    profile.certification = body.certification
+    profile.metadata_ = body.metadata
+    profile.is_active = True
+    profile.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    _record_access_audit(
+        db,
+        principal=principal,
+        target_user_id=user.id,
+        action="CREATE_AGENT_PROFILE" if created else "UPDATE_AGENT_PROFILE",
+        before=before,
+        after=_agent_profile_snapshot(profile),
+        reason=body.reason,
+    )
+    db.commit()
+    db.refresh(profile)
+    return {"created": created, "agent_profile": _agent_profile_payload(db, profile, x_tenant_id)}
+
+
+@router.get("/agent-profiles/{profile_id}")
+def get_agent_profile(
+    profile_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    profile = db.query(AgentProfile).filter(AgentProfile.id == profile_id, AgentProfile.tenant_id == x_tenant_id, AgentProfile.is_active == True).first()
+    if not profile:
+        raise HTTPException(404, "Agent profile not found")
+    return _agent_profile_payload(db, profile, x_tenant_id)
+
+
+@router.patch("/agent-profiles/{profile_id}")
+def update_agent_profile(
+    profile_id: uuid.UUID,
+    body: AgentProfilePatch,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    profile = db.query(AgentProfile).filter(AgentProfile.id == profile_id, AgentProfile.tenant_id == x_tenant_id, AgentProfile.is_active == True).first()
+    if not profile:
+        raise HTTPException(404, "Agent profile not found")
+    values = body.model_dump(exclude_unset=True)
+    values.pop("reason", None)
+    if not values:
+        raise HTTPException(400, "At least one agent profile field must be provided")
+    if "farmer_id" in values:
+        _assert_agent_farmer_link(db, tenant_id=x_tenant_id, farmer_id=values.get("farmer_id"))
+    before = _agent_profile_snapshot(profile)
+    for field in ["farmer_id", "agent_code", "role_type", "display_name", "mobile_number", "status", "skills", "languages", "territory_scope", "availability", "certification"]:
+        if field in values:
+            setattr(profile, field, values[field])
+    if "metadata" in values:
+        profile.metadata_ = values["metadata"]
+    profile.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    _record_access_audit(
+        db,
+        principal=principal,
+        target_user_id=profile.user_id,
+        action="UPDATE_AGENT_PROFILE",
+        before=before,
+        after=_agent_profile_snapshot(profile),
+        reason=body.reason,
+    )
+    db.commit()
+    db.refresh(profile)
+    return {"agent_profile": _agent_profile_payload(db, profile, x_tenant_id)}
 
 
 @router.get("/me")
