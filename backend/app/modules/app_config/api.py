@@ -103,6 +103,56 @@ def _deep_merge(base: dict, override: Optional[dict]) -> dict:
     return result
 
 
+def _validate_profile_option_overrides(config_patch: dict) -> list[dict]:
+    """Validate tenant/project profile option override shape before storing JSON config."""
+    errors: list[dict] = []
+    profile_options = config_patch.get("profile_options") if isinstance(config_patch, dict) else None
+    if profile_options is None:
+        return errors
+    if not isinstance(profile_options, dict):
+        return [{"code": "PROFILE_OPTIONS_NOT_OBJECT", "path": "profile_options", "message": "profile_options must be an object."}]
+
+    overrides = profile_options.get("overrides")
+    if overrides is None:
+        return errors
+    if not isinstance(overrides, dict):
+        return [{"code": "PROFILE_OPTION_OVERRIDES_NOT_OBJECT", "path": "profile_options.overrides", "message": "profile_options.overrides must be an object."}]
+
+    for option_set, payload in sorted(overrides.items()):
+        path = f"profile_options.overrides.{option_set}"
+        if option_set not in PROFILE_OPTION_REGISTRY:
+            errors.append({"code": "UNKNOWN_PROFILE_OPTION_SET", "path": path, "message": f"Unknown profile option set {option_set}."})
+            continue
+        if not isinstance(payload, dict):
+            errors.append({"code": "PROFILE_OPTION_SET_NOT_OBJECT", "path": path, "message": "Option set override must be an object."})
+            continue
+        if "title" in payload and (not isinstance(payload["title"], dict) or not payload["title"].get("en")):
+            errors.append({"code": "PROFILE_OPTION_TITLE_INVALID", "path": f"{path}.title", "message": "Option set title must include an English label."})
+        if "version" in payload and not str(payload["version"]).strip():
+            errors.append({"code": "PROFILE_OPTION_VERSION_INVALID", "path": f"{path}.version", "message": "Option set version cannot be blank."})
+        options = payload.get("options")
+        if not isinstance(options, list) or not options:
+            errors.append({"code": "PROFILE_OPTION_OPTIONS_EMPTY", "path": f"{path}.options", "message": "Option set override must include at least one option."})
+            continue
+        seen_values: set[str] = set()
+        for index, option in enumerate(options):
+            option_path = f"{path}.options[{index}]"
+            if not isinstance(option, dict):
+                errors.append({"code": "PROFILE_OPTION_NOT_OBJECT", "path": option_path, "message": "Each option must be an object."})
+                continue
+            value = str(option.get("value") or "").strip()
+            label = option.get("label")
+            if not value:
+                errors.append({"code": "PROFILE_OPTION_VALUE_REQUIRED", "path": f"{option_path}.value", "message": "Option value is required."})
+            elif value in seen_values:
+                errors.append({"code": "PROFILE_OPTION_VALUE_DUPLICATE", "path": f"{option_path}.value", "message": f"Duplicate option value {value}."})
+            else:
+                seen_values.add(value)
+            if not isinstance(label, dict) or not str(label.get("en") or "").strip():
+                errors.append({"code": "PROFILE_OPTION_LABEL_EN_REQUIRED", "path": f"{option_path}.label", "message": "Option label must include an English fallback."})
+    return errors
+
+
 def _form_versions() -> list[dict]:
     return [
         {
@@ -462,6 +512,9 @@ def update_project_app_config(
         raise HTTPException(404, "Project not found")
     if not isinstance(request.config_patch, dict) or not request.config_patch:
         raise HTTPException(400, "config_patch is required")
+    option_override_errors = _validate_profile_option_overrides(request.config_patch)
+    if option_override_errors:
+        raise HTTPException(status_code=400, detail={"error": "INVALID_PROFILE_OPTION_OVERRIDES", "errors": option_override_errors})
 
     current_config = deepcopy(project.config or {})
     updated_config = _deep_merge(current_config, request.config_patch)

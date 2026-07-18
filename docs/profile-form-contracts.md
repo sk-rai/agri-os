@@ -67,6 +67,15 @@ Tenant/project overrides can be supplied through runtime app config under:
 
 Android should pass `project_id` when hydrating option sets for a project-scoped enrollment/profile flow. The backend resolves defaults first, then tenant overrides, then project overrides.
 
+Override validation is enforced during project app-config patches:
+
+- option set keys must already exist in the backend registry;
+- each override must include at least one option;
+- option values must be non-empty and unique within the set;
+- each option label must include an English fallback under `label.en`.
+
+Invalid override patches return `400` with `detail.error = INVALID_PROFILE_OPTION_OVERRIDES` and per-field error codes.
+
 
 ## Discovery contract
 

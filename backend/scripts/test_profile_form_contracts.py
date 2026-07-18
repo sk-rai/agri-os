@@ -140,6 +140,40 @@ def main():
     )
     check(unauth_patch.status_code == 401, "Project app config patch requires admin auth", unauth_patch.text)
 
+    invalid_option_set_patch = client.patch(
+        f"/api/v1/app-config/projects/{project.id}/config",
+        headers=headers,
+        json={
+            "config_patch": {"profile_options": {"overrides": {"unknown_units": {"options": [{"value": "X", "label": {"en": "X"}}]}}}},
+            "reason": "Invalid option set regression",
+        },
+    )
+    check(invalid_option_set_patch.status_code == 400, "Unknown profile option override is rejected", invalid_option_set_patch.text)
+    check(invalid_option_set_patch.json()["detail"]["error"] == "INVALID_PROFILE_OPTION_OVERRIDES", "Unknown option override returns structured error")
+
+    duplicate_option_patch = client.patch(
+        f"/api/v1/app-config/projects/{project.id}/config",
+        headers=headers,
+        json={
+            "config_patch": {
+                "profile_options": {
+                    "overrides": {
+                        "land_units": {
+                            "options": [
+                                {"value": "ACRE", "label": {"en": "Acre"}},
+                                {"value": "ACRE", "label": {"en": "Acre duplicate"}},
+                            ]
+                        }
+                    }
+                }
+            },
+            "reason": "Duplicate option regression",
+        },
+    )
+    check(duplicate_option_patch.status_code == 400, "Duplicate profile option values are rejected", duplicate_option_patch.text)
+    duplicate_codes = {error["code"] for error in duplicate_option_patch.json()["detail"]["errors"]}
+    check("PROFILE_OPTION_VALUE_DUPLICATE" in duplicate_codes, "Duplicate profile option error code is returned")
+
     patch = client.patch(
         f"/api/v1/app-config/projects/{project.id}/config",
         headers=headers,
