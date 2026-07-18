@@ -153,6 +153,26 @@ Key behavior:
 
 Android should treat this endpoint as the backend-owned source of truth for assisted profile-capture priorities. Seasons, land units, soil types/textures/colors, and other profile choices remain backend-configurable through profile form contracts and option sources.
 
+
+## Profile maintenance/update endpoints
+
+Backend-driven profile forms now support both create and maintenance flows. Android agent mode and self-service profile screens should use these tenant-scoped endpoints when editing existing records:
+
+```http
+PATCH /api/v1/farmers/{farmer_id}
+PATCH /api/v1/parcels/{parcel_id}
+PATCH /api/v1/soil-profiles/{profile_id}
+```
+
+Update semantics:
+
+- Requests are partial patches; omitted fields are preserved.
+- Farmer updates validate backend-owned `land_units`, `languages`, and `assistance_modes` when those fields are supplied.
+- Parcel updates validate backend-owned `land_units`, `ownership_types`, `irrigation_sources`, and `soil_types`; geometry remains on `/api/v1/parcels/{parcel_id}/geometry`.
+- Soil profile updates validate backend-owned `soil_types`, `soil_textures`, `soil_colors`, and `soil_data_sources`.
+- Invalid/stale Android enum values return `INVALID_PROFILE_OPTION_VALUE` with the allowed backend option values.
+- Cross-tenant updates return 404 so Android/admin cannot infer records outside the active tenant.
+
 ## Form schema contract
 
 Each form schema includes:

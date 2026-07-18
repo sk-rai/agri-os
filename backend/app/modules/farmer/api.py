@@ -133,6 +133,25 @@ class FarmerCreate(BaseModel):
     enrollment_gps_lng: Optional[float] = None
 
 
+class FarmerUpdate(BaseModel):
+    village_id: Optional[uuid.UUID] = None
+    village_name_manual: Optional[str] = None
+    pin_code: Optional[str] = Field(None, pattern=r"^\d{6}$")
+    primary_crop_code: Optional[str] = None
+    crops_by_season: Optional[dict] = None
+    display_name: Optional[str] = None
+    father_name: Optional[str] = None
+    age: Optional[int] = Field(None, ge=1, le=120)
+    gender: Optional[str] = None
+    aadhaar_number: Optional[str] = Field(None, pattern=r"^\d{12}$")
+    total_land_area: Optional[float] = Field(None, ge=0)
+    total_land_unit: Optional[str] = None
+    language_preference: Optional[str] = None
+    assistance_mode: Optional[str] = Field(None, pattern=r"^(SELF_SERVICE|DEALER_ASSISTED|FIELD_AGENT_ASSISTED|AGRONOMIST_ASSISTED|SELF|ASSISTED|BULK_IMPORT|WEB_ADMIN|PROJECT_INVITE|SYNC_MATERIALIZED)$")
+    enrollment_gps_lat: Optional[float] = None
+    enrollment_gps_lng: Optional[float] = None
+
+
 class FarmerResponse(BaseModel):
     id: uuid.UUID
     tenant_id: str
@@ -168,6 +187,25 @@ class ParcelCreate(BaseModel):
     # Optional GPS (pin drop)
     centroid_lat: Optional[float] = None
     centroid_lng: Optional[float] = None
+
+
+class ParcelUpdate(BaseModel):
+    village_id: Optional[uuid.UUID] = None
+    village_name_manual: Optional[str] = None
+    reported_area: Optional[float] = Field(None, gt=0)
+    reported_area_unit: Optional[str] = None
+    current_crop_code: Optional[str] = None
+    soil_type_code: Optional[str] = None
+    local_name: Optional[str] = None
+    survey_number: Optional[str] = None
+    ownership_type: Optional[str] = None
+    annual_rent: Optional[float] = Field(None, ge=0)
+    annual_rent_currency: Optional[str] = None
+    share_percentage: Optional[int] = Field(None, ge=1, le=100)
+    sharecrop_percentage: Optional[int] = Field(None, ge=1, le=100)
+    irrigation_source: Optional[str] = None
+    crops_by_season: Optional[dict] = None
+    status: Optional[str] = Field(None, pattern=r"^(DRAFT|ACTIVE|INACTIVE|DISPUTED|ARCHIVED)$")
 
 
 class ParcelResponse(BaseModel):
@@ -425,6 +463,12 @@ def _select_hydration_farmer(db: Session, tenant_id: str, mobile_number: str) ->
     selected = scored[0][1]
     duplicates = [farmer for _, farmer in scored[1:]]
     return selected, duplicates
+
+
+def _model_patch_values(body: BaseModel) -> dict:
+    if hasattr(body, "model_dump"):
+        return body.model_dump(exclude_unset=True)
+    return body.dict(exclude_unset=True)
 
 
 def _farmer_payload(farmer: Farmer) -> dict:
@@ -1976,6 +2020,41 @@ def get_field_agent_worklist(
     }
 
 
+@router.patch("/farmers/{farmer_id}", response_model=FarmerResponse)
+def update_farmer_profile(
+    farmer_id: uuid.UUID,
+    body: FarmerUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Safely update mutable farmer profile fields for self-service or agent-mode maintenance."""
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    values = _model_patch_values(body)
+    if not values:
+        raise HTTPException(400, "At least one farmer profile field must be provided")
+
+    inferred_project_id = _infer_farmer_project_id_for_profile_validation(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
+    if "total_land_unit" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=values.get("total_land_unit"), path="total_land_unit")
+    if "language_preference" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="languages", value=values.get("language_preference"), path="language_preference")
+    if "assistance_mode" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="assistance_modes", value=values.get("assistance_mode"), path="assistance_mode")
+
+    for field in ["village_id", "village_name_manual", "pin_code", "primary_crop_code", "crops_by_season", "display_name", "father_name", "age", "gender", "aadhaar_number", "total_land_area", "total_land_unit", "language_preference", "enrollment_gps_lat", "enrollment_gps_lng"]:
+        if field in values:
+            setattr(farmer, field, values[field])
+    if "assistance_mode" in values:
+        farmer.enrollment_method = _normalize_assistance_mode(values.get("assistance_mode"))
+    farmer.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(farmer)
+    return farmer
+
+
 # --- Farmer Project Enrollment Endpoints ---
 
 @router.get("/projects/{project_id}/farmer-enrollments/csv/template")
@@ -2680,6 +2759,41 @@ def list_parcels(
     if village_id:
         query = query.filter(Parcel.village_id == village_id)
     return query.offset(offset).limit(limit).all()
+
+
+@router.patch("/parcels/{parcel_id}", response_model=ParcelResponse)
+def update_parcel_profile(
+    parcel_id: uuid.UUID,
+    body: ParcelUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Update parcel metadata; geometry remains handled by /parcels/{parcel_id}/geometry."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == x_tenant_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+
+    values = _model_patch_values(body)
+    if not values:
+        raise HTTPException(400, "At least one parcel field must be provided")
+
+    inferred_project_id = parcel.project_id or _infer_farmer_project_id_for_profile_validation(db, tenant_id=x_tenant_id, farmer_id=parcel.farmer_id)
+    if "reported_area_unit" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=values.get("reported_area_unit"), path="reported_area_unit")
+    if "ownership_type" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=values.get("ownership_type"), path="ownership_type")
+    if "irrigation_source" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=values.get("irrigation_source"), path="irrigation_source")
+    if "soil_type_code" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
+
+    for field in ["village_id", "village_name_manual", "reported_area", "reported_area_unit", "current_crop_code", "soil_type_code", "local_name", "survey_number", "ownership_type", "annual_rent", "annual_rent_currency", "share_percentage", "sharecrop_percentage", "irrigation_source", "crops_by_season", "status"]:
+        if field in values:
+            setattr(parcel, field, values[field])
+    parcel.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(parcel)
+    return parcel
 
 
 @router.patch("/parcels/{parcel_id}/geometry")

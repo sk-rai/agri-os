@@ -97,6 +97,12 @@ class SoilProfile(Base, UUIDPrimaryKey, AuditMixin):
 
 # --- API Schemas ---
 
+def _model_patch_values(body: BaseModel) -> dict:
+    if hasattr(body, "model_dump"):
+        return body.model_dump(exclude_unset=True)
+    return body.dict(exclude_unset=True)
+
+
 class SoilProfileCreate(BaseModel):
     """Create soil profile — supports 3 tiers of data entry."""
     parcel_id: uuid.UUID
@@ -129,6 +135,30 @@ class SoilProfileCreate(BaseModel):
 
     # Source
     data_source: str = "MANUAL"  # MANUAL, SHC_CARD, LAB_REPORT, INFERRED
+    notes: Optional[str] = None
+
+
+class SoilProfileUpdate(BaseModel):
+    soil_type_code: Optional[str] = None
+    soil_texture: Optional[str] = None
+    soil_color: Optional[str] = None
+    test_date: Optional[date] = None
+    lab_name: Optional[str] = None
+    shc_card_number: Optional[str] = None
+    nitrogen_n: Optional[float] = None
+    phosphorus_p: Optional[float] = None
+    potassium_k: Optional[float] = None
+    sulphur_s: Optional[float] = None
+    zinc_zn: Optional[float] = None
+    iron_fe: Optional[float] = None
+    copper_cu: Optional[float] = None
+    manganese_mn: Optional[float] = None
+    boron_bo: Optional[float] = None
+    boron_b: Optional[float] = None
+    ph: Optional[float] = None
+    ec: Optional[float] = None
+    organic_carbon_oc: Optional[float] = None
+    data_source: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -329,6 +359,43 @@ def create_soil_profile(
         updated_at=datetime.now(timezone.utc),
     )
     db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+@router.patch("/{profile_id}", response_model=SoilProfileResponse)
+def update_soil_profile(
+    profile_id: uuid.UUID,
+    body: SoilProfileUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Update mutable soil profile fields for backend-driven profile maintenance."""
+    profile = db.query(SoilProfile).filter(SoilProfile.id == profile_id, SoilProfile.tenant_id == x_tenant_id).first()
+    if not profile:
+        raise HTTPException(404, "Soil profile not found")
+
+    values = _model_patch_values(body)
+    if not values:
+        raise HTTPException(400, "At least one soil profile field must be provided")
+
+    inferred_project_id = _infer_soil_profile_project_id(db, tenant_id=x_tenant_id, parcel_id=profile.parcel_id, farmer_id=profile.farmer_id)
+    if "soil_texture" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=values.get("soil_texture"), path="soil_texture")
+    if "soil_color" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=values.get("soil_color"), path="soil_color")
+    if "data_source" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=values.get("data_source"), path="data_source")
+    if "soil_type_code" in values:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
+
+    for field in ["soil_type_code", "soil_texture", "soil_color", "test_date", "lab_name", "shc_card_number", "nitrogen_n", "phosphorus_p", "potassium_k", "sulphur_s", "zinc_zn", "iron_fe", "copper_cu", "manganese_mn", "ph", "ec", "organic_carbon_oc", "data_source", "notes"]:
+        if field in values:
+            setattr(profile, field, values[field])
+    if "boron_bo" in values or "boron_b" in values:
+        profile.boron_bo = values.get("boron_bo") if "boron_bo" in values else values.get("boron_b")
+    profile.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(profile)
     return profile
