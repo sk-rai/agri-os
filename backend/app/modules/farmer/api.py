@@ -617,6 +617,26 @@ def _farmer_context_payload(
     }
 
 
+def _validate_profile_option_value(db: Session, *, tenant_id: str, option_set: str, value: Optional[str], path: str, project_id: Optional[uuid.UUID] = None) -> None:
+    """Reject stale Android-hardcoded values that are no longer valid for the tenant/project option set."""
+    if value is None or value == "":
+        return
+    from app.modules.workflow.forms import _effective_profile_option_registry
+
+    registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
+    resolved = registry.get(option_set)
+    allowed = {str(option.value) for option in (resolved.options if resolved else [])}
+    if str(value) not in allowed:
+        raise HTTPException(400, {
+            "error": "INVALID_PROFILE_OPTION_VALUE",
+            "path": path,
+            "option_set": option_set,
+            "value": value,
+            "allowed_values": sorted(allowed),
+            "message": f"{path} must be one of the backend-owned {option_set} options.",
+        })
+
+
 def _profile_form_contract_payload(db: Session, tenant_id: str, project_id: Optional[uuid.UUID] = None) -> dict:
     """Return the backend-owned form/options bundle Android can cache for profile editing."""
     from app.modules.workflow.forms import FORM_REGISTRY, _effective_profile_option_registry
@@ -1313,6 +1333,11 @@ def enroll_farmer(
     # Validate: at least one of village_id or village_name_manual must be provided
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
+
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="land_units", value=body.total_land_unit, path="total_land_unit")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="languages", value=body.language_preference, path="language_preference")
+    if body.assistance_mode:
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="assistance_modes", value=body.assistance_mode, path="assistance_mode")
 
     normalized_mobile = normalize_mobile_number(body.mobile_number)
     existing_farmer = (
@@ -2012,6 +2037,10 @@ def create_parcel(
     # Validate: at least one of village_id or village_name_manual
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
+
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="land_units", value=body.reported_area_unit, path="reported_area_unit")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
 
     # Determine geometry source from provided data
     geometry_source = "NONE"

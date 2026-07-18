@@ -73,6 +73,14 @@ def main():
     finally:
         db.close()
 
+    invalid_farmer = client.post("/api/v1/farmers", headers=headers, json={
+        "mobile_number": f"+9197{uuid.uuid4().int % 100000000:08d}",
+        "village_name_manual": "Android Profile Village",
+        "total_land_unit": "ANDROID_ONLY_UNIT",
+    })
+    check(invalid_farmer.status_code == 400, "Invalid farmer profile option is rejected", invalid_farmer.text)
+    check(invalid_farmer.json()["detail"]["error"] == "INVALID_PROFILE_OPTION_VALUE", "Invalid farmer option returns structured error")
+
     print("\n[2] Parcel seasonal crop payload")
     parcel_response = client.post("/api/v1/parcels", headers=headers, json={
         "farmer_id": farmer_id,
@@ -98,6 +106,16 @@ def main():
     finally:
         db.close()
 
+    invalid_parcel = client.post("/api/v1/parcels", headers=headers, json={
+        "farmer_id": farmer_id,
+        "village_name_manual": "Android Profile Village",
+        "reported_area": 1,
+        "reported_area_unit": "ACRE",
+        "ownership_type": "ANDROID_ONLY_OWNERSHIP",
+    })
+    check(invalid_parcel.status_code == 400, "Invalid parcel profile option is rejected", invalid_parcel.text)
+    check(invalid_parcel.json()["detail"]["path"] == "ownership_type", "Invalid parcel option identifies field path")
+
     print("\n[3] Soil boron_b alias")
     soil_response = client.post("/api/v1/soil-profiles", headers=headers, json={
         "parcel_id": parcel_id,
@@ -112,6 +130,15 @@ def main():
     check(soil_response.status_code == 201, "Android soil payload creates soil profile", soil_response.text)
     soil = soil_response.json()
     check(float(soil["boron_b"]) == 0.42, "Soil response returns boron_b alias")
+
+    invalid_soil = client.post("/api/v1/soil-profiles", headers=headers, json={
+        "parcel_id": parcel_id,
+        "farmer_id": farmer_id,
+        "soil_texture": "ANDROID_ONLY_TEXTURE",
+        "data_source": "MANUAL",
+    })
+    check(invalid_soil.status_code == 400, "Invalid soil profile option is rejected", invalid_soil.text)
+    check(invalid_soil.json()["detail"]["option_set"] == "soil_textures", "Invalid soil option identifies option set")
 
     db = SessionLocal()
     try:
