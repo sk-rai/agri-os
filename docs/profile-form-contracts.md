@@ -414,3 +414,17 @@ Run after changing bootstrap/profile form contracts or Android renderer discover
 cd ~/projects/farmint/backend
 ../venv/bin/python scripts/run_platform_config_regressions.py
 ```
+
+## Agent profile admin management
+
+Admin web now exposes `/agent-profiles` as a create/update management surface for operational users such as field agents, agronomists, dealers, managers, and enumerators.
+
+Current admin capabilities:
+
+- create or upsert an agent profile for an existing backend user;
+- link an agent profile to an optional farmer profile, allowing the same person to operate in farmer and agent capacity;
+- configure role type, status, display name, mobile number, skills, languages, territory scope, availability, certification, and metadata;
+- preserve audit discipline by requiring a reason for create/update actions.
+
+This keeps Android profile behavior backend-driven: Android should consume the assigned agent profile/worklist and only switch to farmer mode when `farmer_id`/`can_also_act_as_farmer` are present in backend responses.
+

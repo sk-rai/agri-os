@@ -1544,6 +1544,23 @@ export interface AgentProfilesResponse {
   agent_profiles: AgentProfileDto[];
 }
 
+export type AgentProfileWritePayload = {
+  user_id?: string;
+  farmer_id?: string | null;
+  agent_code?: string | null;
+  role_type?: string;
+  display_name?: string | null;
+  mobile_number?: string | null;
+  status?: string;
+  skills?: string[];
+  languages?: string[];
+  territory_scope?: Record<string, unknown>;
+  availability?: Record<string, unknown>;
+  certification?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  reason: string;
+};
+
 export const authApi = {
   requestOtp: (mobile_number: string) =>
     api("/api/v1/auth/otp/request", { method: "POST", body: { mobile_number }, noAuth: true }),
@@ -1561,6 +1578,10 @@ export const agentProfilesApi = {
     return api<AgentProfilesResponse>(`/api/v1/admin/agent-profiles${suffix}`);
   },
   get: (profileId: string) => api<AgentProfileDto>(`/api/v1/admin/agent-profiles/${profileId}`),
+  create: (body: AgentProfileWritePayload & { user_id: string }) =>
+    api<{ created: boolean; agent_profile: AgentProfileDto }>("/api/v1/admin/agent-profiles", { method: "POST", body }),
+  update: (profileId: string, body: AgentProfileWritePayload) =>
+    api<{ agent_profile: AgentProfileDto }>(`/api/v1/admin/agent-profiles/${profileId}`, { method: "PATCH", body }),
 };
 
 // Tenants
