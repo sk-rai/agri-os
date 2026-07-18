@@ -38,6 +38,13 @@ Backend ownership/configurability rule:
 - Android may cache these values for offline use, but should refresh from bootstrap/forms/master-data and should not treat local hardcoded lists as authoritative once backend-driven forms are enabled.
 - Tenant/project-specific overrides should be introduced through form/config versioning rather than Android releases.
 
+Backend-owned option registry:
+
+- `GET /api/v1/forms/options` lists available option sets for offline cache hydration.
+- `GET /api/v1/forms/options/{option_set}` returns one option set.
+- Fields may advertise sources such as `profile_options.land_units`, `profile_options.irrigation_sources`, `profile_options.soil_textures`, or `profile_options.seasons` while still embedding `options[]` for backward-compatible/offline rendering.
+- Android should prefer the backend option source when available and use embedded field options as the local fallback.
+
 
 ## Discovery contract
 

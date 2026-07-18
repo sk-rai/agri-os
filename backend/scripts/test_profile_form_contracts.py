@@ -88,6 +88,9 @@ def main():
     check(validation_payload["summary"]["form_count"] == 3, "Profile form validation counts required forms")
     check(validation_payload["summary"]["gps_field_count"] >= 3, "Profile form validation counts GPS widgets")
     check(validation_payload["summary"]["error_count"] == 0, "Profile form validation has no errors")
+    option_sources = [field.get("source") for schema in schemas.values() for field in schema["fields"] if str(field.get("source", "")).startswith("profile_options.")]
+    check("profile_options.land_units" in option_sources, "Profile forms reference land unit option set")
+    check("profile_options.soil_textures" in option_sources, "Profile forms reference soil texture option set")
 
     farmer = schemas["farmer_registration"]
     check(field_by_id(farmer, "mobile_number") is not None, "Farmer form includes mobile_number")

@@ -125,6 +125,23 @@ def main():
     listed = {item["form_id"] for item in forms_response.json()}
     check({"farmer_registration", "parcel_registration", "soil_profile"}.issubset(listed), "form list includes profile forms")
 
+    options_response = client.get("/api/v1/forms/options")
+    check(options_response.status_code == 200, "profile option registry returns 200", options_response.text[:300])
+    options_payload = options_response.json()
+    option_sets = {item["option_set"] for item in options_payload["option_sets"]}
+    for option_set in ["seasons", "land_units", "ownership_types", "irrigation_sources", "soil_textures", "soil_colors", "soil_data_sources", "languages", "assistance_modes"]:
+        check(option_set in option_sets, f"profile option registry includes {option_set}")
+
+    land_units = client.get("/api/v1/forms/options/land_units")
+    check(land_units.status_code == 200, "land unit option set returns 200", land_units.text[:300])
+    check({item["value"] for item in land_units.json()["options"]} >= {"BIGHA", "BISWA", "ACRE"}, "land unit option set includes Android units")
+    irrigation_sources = client.get("/api/v1/forms/options/irrigation_sources")
+    check(irrigation_sources.status_code == 200, "irrigation option set returns 200", irrigation_sources.text[:300])
+    check("PURCHASED_WATER" in {item["value"] for item in irrigation_sources.json()["options"]}, "irrigation option set includes purchased water")
+    check(farmer_fields["total_land_unit"]["source"] == "profile_options.land_units", "Farmer land unit references backend option set")
+    check(parcel_fields["irrigation_source"]["source"] == "profile_options.irrigation_sources", "Parcel irrigation references backend option set")
+    check(soil_fields["soil_texture"]["source"] == "profile_options.soil_textures", "Soil texture references backend option set")
+
     print("=" * 72)
     print("Profile form schemas validated")
     print("=" * 72)

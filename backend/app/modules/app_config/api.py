@@ -21,7 +21,7 @@ from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_p
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.farmer.models import Project, ProjectAppConfigAuditEvent, Tenant
-from app.modules.workflow.forms import FORM_REGISTRY
+from app.modules.workflow.forms import FORM_REGISTRY, PROFILE_OPTION_REGISTRY
 
 
 router = APIRouter(prefix="/api/v1/app-config", tags=["app-config"])
@@ -245,6 +245,10 @@ def _validate_profile_forms(feature_flags: dict) -> dict:
                     errors.append({"form_id": form_id, "field_id": field.id, "code": "UNKNOWN_DEPENDENCY", "message": f"depends_on references unknown field {field.depends_on}."})
                 elif field.depends_on_value and field.depends_on in option_values_by_field and field.depends_on_value not in option_values_by_field[field.depends_on]:
                     errors.append({"form_id": form_id, "field_id": field.id, "code": "INVALID_DEPENDS_ON_VALUE", "message": f"depends_on_value {field.depends_on_value} is not an option for {field.depends_on}."})
+            if field.source and field.source.startswith("profile_options."):
+                option_set = field.source.split(".", 1)[1]
+                if option_set not in PROFILE_OPTION_REGISTRY:
+                    errors.append({"form_id": form_id, "field_id": field.id, "code": "UNKNOWN_PROFILE_OPTION_SET", "message": f"source references unknown profile option set {option_set}."})
             if field.type == "GPS_POINT":
                 if field.output_format not in {"centroid_lat_lng", "geojson_point", "lat_lng"}:
                     warnings.append({"form_id": form_id, "field_id": field.id, "code": "GPS_POINT_OUTPUT_FORMAT", "message": "GPS_POINT should declare a centroid/point output_format."})
