@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { weatherApi, type WeatherProviderDto, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotsResponse } from "@/lib/api";
+import { weatherApi, type WeatherProviderDto, type WeatherProviderDueRunResponse, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotsResponse } from "@/lib/api";
 
 const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
 const LOCATION_SCOPES = ["TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"];
@@ -44,6 +44,8 @@ export default function WeatherPage() {
   const [loading, setLoading] = useState(true);
   const [refreshingProviderId, setRefreshingProviderId] = useState<string | null>(null);
   const [runningAdapterProviderId, setRunningAdapterProviderId] = useState<string | null>(null);
+  const [runningDueProviders, setRunningDueProviders] = useState(false);
+  const [dueRunResult, setDueRunResult] = useState<WeatherProviderDueRunResponse | null>(null);
   const [savingProvider, setSavingProvider] = useState(false);
   const [providerCode, setProviderCode] = useState("");
   const [providerName, setProviderName] = useState("");
@@ -236,6 +238,20 @@ export default function WeatherPage() {
     }
   }
 
+  async function runDueProviders(dryRun: boolean) {
+    setRunningDueProviders(true);
+    setError(null);
+    try {
+      const result = await weatherApi.runDueProviders({ dryRun, limit: 50 });
+      setDueRunResult(result);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run due weather providers");
+    } finally {
+      setRunningDueProviders(false);
+    }
+  }
+
   const planProviders = refreshPlan?.providers || [];
   const freshCount = snapshots?.count || 0;
 
@@ -306,12 +322,26 @@ export default function WeatherPage() {
     </section>
 
     <section className="rounded bg-white p-5 shadow">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Refresh plan</h2>
-          <p className="text-xs text-gray-500">Generated at {refreshPlan?.generated_at || "-"}. Real schedulers can use this to decide which providers are due.</p>
+          <p className="text-xs text-gray-500">Generated at {refreshPlan?.generated_at || "-"}. Cron or workers can call the due-run endpoint; admin can preview and trigger it here.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void runDueProviders(true)} disabled={runningDueProviders} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 disabled:opacity-50">Preview due</button>
+          <button type="button" onClick={() => void runDueProviders(false)} disabled={runningDueProviders} className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{runningDueProviders ? "Running..." : "Run due providers"}</button>
         </div>
       </div>
+      {dueRunResult ? <div className="mb-4 rounded border border-amber-100 bg-amber-50 p-3 text-xs text-amber-950">
+        <div className="font-semibold">Last due-run {dueRunResult.dry_run ? "preview" : "execution"}: {dueRunResult.due_count} due, {dueRunResult.processed_count} processed, {dueRunResult.created_snapshot_count} snapshot(s) created.</div>
+        {dueRunResult.providers.length ? <div className="mt-2 grid gap-2 md:grid-cols-2">
+          {dueRunResult.providers.slice(0, 6).map((row) => <div key={row.provider_id} className="rounded bg-white p-2">
+            <div className="font-semibold text-gray-900">{row.provider?.display_name || row.display_name || row.provider_code}</div>
+            <div className="mt-1 text-gray-600">{row.status || row.refresh_status || (row.is_due ? "DUE" : "SCHEDULED")}: {row.message || row.refresh_message || "-"}</div>
+            {row.created_snapshot_count !== undefined ? <div className="mt-1 text-gray-500">Created snapshots: {row.created_snapshot_count}</div> : null}
+          </div>)}
+        </div> : <div className="mt-2 text-amber-800">No providers are due right now.</div>}
+      </div> : null}
       {loading ? <p className="text-sm text-gray-500">Loading providers...</p> : null}
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">

@@ -3053,6 +3053,34 @@ export interface WeatherProviderRefreshResponse {
   snapshots: WeatherSnapshotDto[];
 }
 
+export interface WeatherProviderDueRunResponse {
+  schema_version: string;
+  tenant_id: string;
+  generated_at: string;
+  dry_run: boolean;
+  due_count: number;
+  processed_count: number;
+  created_snapshot_count: number;
+  providers: Array<{
+    provider_id: string;
+    provider_code: string;
+    status?: string | null;
+    message?: string | null;
+    created_snapshot_count?: number;
+    snapshots?: WeatherSnapshotDto[];
+    provider?: WeatherProviderDto;
+    display_name?: string;
+    provider_type?: string;
+    refresh_interval_hours?: number;
+    last_refresh_at?: string | null;
+    next_refresh_at?: string | null;
+    is_due?: boolean;
+    hours_until_due?: number | null;
+    refresh_status?: string | null;
+    refresh_message?: string | null;
+  }>;
+}
+
 export const weatherApi = {
   createProvider: (body: { provider_code: string; display_name: string; provider_type?: string; refresh_interval_hours?: number; is_enabled?: boolean; config?: Record<string, unknown>; metadata?: Record<string, unknown> }) =>
     api<WeatherProviderDto>("/api/v1/weather/providers", { method: "POST", body: JSON.stringify(body) }),
@@ -3084,5 +3112,12 @@ export const weatherApi = {
     api<WeatherProviderRefreshResponse>(`/api/v1/weather/providers/${providerId}/refresh`, { method: "POST", body: JSON.stringify(body || { status: "SUCCESS", message: "Admin manual refresh marker" }) }),
   runAdapter: (providerId: string) =>
     api<WeatherProviderRefreshResponse>(`/api/v1/weather/providers/${providerId}/run-adapter`, { method: "POST" }),
+  runDueProviders: (params?: { dryRun?: boolean; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.dryRun !== undefined) q.set("dry_run", String(params.dryRun));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<WeatherProviderDueRunResponse>(`/api/v1/weather/providers/run-due${suffix}`, { method: "POST" });
+  },
 };
 
