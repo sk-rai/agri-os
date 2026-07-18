@@ -83,20 +83,43 @@ export default function FieldAgentWorklistPage() {
         language_preference: farmerLanguage || null,
         total_land_unit: farmerLandUnit || null,
       });
-      const parcel = selected.parcels?.[0];
-      if (parcel) {
-        await farmersApi.updateParcel(parcel.id, {
+      let parcelId: string | null = selected.parcels?.[0]?.id || null;
+      const hasParcelInput = Boolean(parcelArea || parcelLocalName || parcelUnit || parcelSoilType || farmerVillage);
+      if (parcelId) {
+        await farmersApi.updateParcel(parcelId, {
           local_name: parcelLocalName || null,
           reported_area: parcelArea ? Number(parcelArea) : undefined,
           reported_area_unit: parcelUnit || undefined,
           soil_type_code: parcelSoilType || null,
         });
+      } else if (hasParcelInput && parcelArea) {
+        const created = await farmersApi.createParcel({
+          farmer_id: selected.farmer.id,
+          village_name_manual: farmerVillage || null,
+          reported_area: Number(parcelArea),
+          reported_area_unit: parcelUnit || farmerLandUnit || "ACRE",
+          soil_type_code: parcelSoilType || null,
+          local_name: parcelLocalName || null,
+          ownership_type: "OWNED",
+        }) as { id?: string };
+        parcelId = created.id || null;
       }
       const soil = selected.soil_profiles?.[0];
+      const hasSoilInput = Boolean(soilTexture || soilColor || parcelSoilType);
       if (soil) {
         await farmersApi.updateSoilProfile(soil.id, {
+          soil_type_code: parcelSoilType || null,
           soil_texture: soilTexture || null,
           soil_color: soilColor || null,
+        });
+      } else if (parcelId && hasSoilInput) {
+        await farmersApi.createSoilProfile({
+          parcel_id: parcelId,
+          farmer_id: selected.farmer.id,
+          soil_type_code: parcelSoilType || null,
+          soil_texture: soilTexture || null,
+          soil_color: soilColor || null,
+          data_source: "MANUAL",
         });
       }
       setEditMessage("Profile updates saved. Refreshing worklist...");
@@ -189,16 +212,24 @@ export default function FieldAgentWorklistPage() {
                   <Input label="Language" value={farmerLanguage} onChange={setFarmerLanguage} />
                   <Input label="Land unit" value={farmerLandUnit} onChange={setFarmerLandUnit} />
                 </div>
-                {selected.parcels?.[0] ? <div className="grid gap-2 md:grid-cols-2">
-                  <Input label="Parcel local name" value={parcelLocalName} onChange={setParcelLocalName} />
-                  <Input label="Parcel area" value={parcelArea} onChange={setParcelArea} />
-                  <Input label="Parcel unit" value={parcelUnit} onChange={setParcelUnit} />
-                  <Input label="Parcel soil type" value={parcelSoilType} onChange={setParcelSoilType} />
-                </div> : <p className="text-gray-500">Add parcel action must be completed before parcel metadata can be edited here.</p>}
-                {selected.soil_profiles?.[0] ? <div className="grid gap-2 md:grid-cols-2">
-                  <Input label="Soil texture" value={soilTexture} onChange={setSoilTexture} />
-                  <Input label="Soil color" value={soilColor} onChange={setSoilColor} />
-                </div> : <p className="text-gray-500">Add soil profile action must be completed before soil observations can be edited here.</p>}
+                <div>
+                  <p className="mb-2 text-gray-500">{selected.parcels?.[0] ? "Edit first parcel" : "Create first parcel"}</p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Input label="Parcel local name" value={parcelLocalName} onChange={setParcelLocalName} />
+                    <Input label="Parcel area" value={parcelArea} onChange={setParcelArea} />
+                    <Input label="Parcel unit" value={parcelUnit} onChange={setParcelUnit} />
+                    <Input label="Parcel soil type" value={parcelSoilType} onChange={setParcelSoilType} />
+                  </div>
+                  {!selected.parcels?.[0] ? <p className="mt-1 text-gray-500">Parcel area is required before creating the first land record.</p> : null}
+                </div>
+                <div>
+                  <p className="mb-2 text-gray-500">{selected.soil_profiles?.[0] ? "Edit first soil profile" : "Create first soil profile after parcel exists"}</p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Input label="Soil texture" value={soilTexture} onChange={setSoilTexture} />
+                    <Input label="Soil color" value={soilColor} onChange={setSoilColor} />
+                  </div>
+                  {!selected.soil_profiles?.[0] ? <p className="mt-1 text-gray-500">Soil type, texture, or color will create a manual soil profile once a parcel exists.</p> : null}
+                </div>
                 <button type="button" onClick={() => void saveSelectedProfileEdits()} disabled={editBusy} className="rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{editBusy ? "Saving..." : "Save profile edits"}</button>
                 {editMessage ? <p className="text-green-700">{editMessage}</p> : null}
               </div>

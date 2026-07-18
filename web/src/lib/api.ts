@@ -1197,6 +1197,10 @@ export const farmersApi = {
   },
   updateFarmer: (farmerId: string, body: Record<string, unknown>) =>
     api(`/api/v1/farmers/${farmerId}`, { method: "PATCH", body }),
+  createParcel: (body: Record<string, unknown>) =>
+    api(`/api/v1/parcels`, { method: "POST", body }),
+  createSoilProfile: (body: Record<string, unknown>) =>
+    api(`/api/v1/soil-profiles`, { method: "POST", body }),
   updateParcel: (parcelId: string, body: Record<string, unknown>) =>
     api(`/api/v1/parcels/${parcelId}`, { method: "PATCH", body }),
   updateSoilProfile: (profileId: string, body: Record<string, unknown>) =>

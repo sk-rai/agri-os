@@ -147,7 +147,7 @@ Key behavior:
 
 - `assigned_only=true` filters through `farmer_project_enrollments.assigned_user_ids`; without it, project admins can view the full project worklist.
 - Each row includes `farmer`, `project_enrollments`, `parcel_count`, `soil_profile_count`, `active_crop_cycle_count`, `active_stage_count`, backend `profile_completion`, and prioritized `capture_actions`.
-- Rows also include first-page editable `parcels[]` and `soil_profiles[]` references so Android agent mode/admin can patch existing records through the profile maintenance endpoints without a separate lookup.
+- Rows also include first-page editable `parcels[]` and `soil_profiles[]` references so Android agent mode/admin can create missing records or patch existing records through the backend profile endpoints without a separate lookup.
 - `capture_actions[]` is the Android/admin checklist for assisted capture, including profile completion, parcel creation/location capture, soil profile capture, field-event reporting, crop-stage evidence, and farmer query/follow-up recording.
 - `endpoints` gives Android stable next-hop URLs for hydration, trace, parcels, field events, and query threads so an agent-mode summary screen can drill into the correct backend entities.
 - An agent can also be a farmer. Android should keep individual farmer mode separate from assigned-agent worklist mode and select the mode from authenticated role/context rather than duplicating profiles locally.
