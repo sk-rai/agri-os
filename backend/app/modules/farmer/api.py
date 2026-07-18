@@ -552,19 +552,106 @@ def _enrollment_payload(enrollment: FarmerProjectEnrollment, project: Optional[P
     }
 
 
-def _farmer_profile_completion(farmer: Farmer, parcel_count: int, soil_profile_count: int) -> dict:
-    missing = []
-    if not farmer.display_name:
-        missing.append("display_name")
-    if not farmer.village_id and not farmer.village_name_manual:
-        missing.append("village")
-    if parcel_count == 0:
-        missing.append("parcel")
+def _section_readiness(*, required_missing: list[str], recommended_missing: list[str] | None = None, required_for_home: bool = False) -> dict:
+    recommended_missing = recommended_missing or []
+    if required_missing:
+        status = "MISSING"
+    elif recommended_missing:
+        status = "PARTIAL"
+    else:
+        status = "COMPLETE"
     return {
-        "is_complete_for_home": len(missing) == 0,
-        "missing_fields": missing,
+        "status": status,
+        "required_for_home": required_for_home,
+        "missing_required_fields": required_missing,
+        "missing_recommended_fields": recommended_missing,
+    }
+
+
+def _farmer_profile_completion(
+    farmer: Farmer,
+    parcel_count: int,
+    soil_profile_count: int,
+    *,
+    parcels: Optional[list[Parcel]] = None,
+    soil_profiles: Optional[list[object]] = None,
+    project_enrollments: Optional[list[FarmerProjectEnrollment]] = None,
+) -> dict:
+    farmer_required = []
+    farmer_recommended = []
+    if not farmer.display_name:
+        farmer_required.append("display_name")
+    if not farmer.village_id and not farmer.village_name_manual:
+        farmer_required.append("village")
+    if not farmer.mobile_number:
+        farmer_required.append("mobile_number")
+    if not farmer.language_preference:
+        farmer_recommended.append("language_preference")
+    if not farmer.total_land_unit:
+        farmer_recommended.append("total_land_unit")
+
+    active_parcels = [parcel for parcel in (parcels or []) if getattr(parcel, "status", None) != "ARCHIVED"]
+    land_required = []
+    land_recommended = []
+    if parcel_count == 0:
+        land_required.append("parcel")
+    elif parcels is not None:
+        if not any(getattr(parcel, "reported_area", None) is not None for parcel in active_parcels):
+            land_recommended.append("reported_area")
+        if not any(getattr(parcel, "reported_area_unit", None) for parcel in active_parcels):
+            land_recommended.append("reported_area_unit")
+        if not any(getattr(parcel, "village_id", None) or getattr(parcel, "village_name_manual", None) for parcel in active_parcels):
+            land_recommended.append("parcel_village")
+        has_location = any(
+            (getattr(parcel, "centroid_lat", None) is not None and getattr(parcel, "centroid_lng", None) is not None)
+            or getattr(parcel, "geometry_source", None) in {"PIN_DROP", "GPS_WALK", "SATELLITE"}
+            for parcel in active_parcels
+        )
+        if not has_location:
+            land_recommended.append("parcel_location")
+
+    soil_required: list[str] = []
+    soil_recommended = []
+    if soil_profile_count == 0:
+        soil_recommended.append("soil_profile")
+    elif soil_profiles is not None:
+        if not any(getattr(profile, "soil_type_code", None) or getattr(profile, "soil_texture", None) for profile in soil_profiles):
+            soil_recommended.append("soil_type_or_texture")
+
+    enrollment_recommended = []
+    enrollments = project_enrollments or []
+    if project_enrollments is not None and not any(getattr(enrollment, "status", None) == "ACTIVE" for enrollment in enrollments):
+        enrollment_recommended.append("active_project_enrollment")
+
+    missing_required = farmer_required + land_required
+    recommended_missing = farmer_recommended + land_recommended + soil_recommended + enrollment_recommended
+    next_actions = []
+    if "display_name" in farmer_required or "village" in farmer_required or "mobile_number" in farmer_required:
+        next_actions.append({"code": "COMPLETE_FARMER_PROFILE", "label": "Complete farmer profile", "priority": "HIGH"})
+    if "parcel" in land_required:
+        next_actions.append({"code": "ADD_PARCEL", "label": "Add at least one land parcel", "priority": "HIGH"})
+    if "parcel_location" in land_recommended:
+        next_actions.append({"code": "CAPTURE_PARCEL_LOCATION", "label": "Capture parcel location or boundary", "priority": "MEDIUM"})
+    if "soil_profile" in soil_recommended:
+        next_actions.append({"code": "ADD_SOIL_PROFILE", "label": "Add soil profile for better advisories", "priority": "MEDIUM"})
+    if "active_project_enrollment" in enrollment_recommended:
+        next_actions.append({"code": "OPTIONAL_PROJECT_ENROLLMENT", "label": "Farmer can continue independently or be linked to a project later", "priority": "LOW"})
+
+    return {
+        "schema_version": "profile_completion.v1",
+        "is_complete_for_home": len(missing_required) == 0,
+        "is_ready_for_personalized_advisories": len(missing_required) == 0 and soil_profile_count > 0,
+        "missing_fields": missing_required,
+        "recommended_missing_fields": recommended_missing,
         "parcel_count": parcel_count,
         "soil_profile_count": soil_profile_count,
+        "sections": {
+            "farmer": _section_readiness(required_missing=farmer_required, recommended_missing=farmer_recommended, required_for_home=True),
+            "land": _section_readiness(required_missing=land_required, recommended_missing=land_recommended, required_for_home=True),
+            "soil": _section_readiness(required_missing=soil_required, recommended_missing=soil_recommended, required_for_home=False),
+            "project_enrollment": _section_readiness(required_missing=[], recommended_missing=enrollment_recommended, required_for_home=False),
+        },
+        "next_actions": next_actions,
     }
 
 
@@ -785,6 +872,14 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
 
     active_statuses = {"PLANNED", "ACTIVE", "PARTIALLY_TRACKED"}
     completed_statuses = {"COMPLETED"}
+    profile_completion = _farmer_profile_completion(
+        farmer,
+        len(parcels),
+        len(soil_profiles),
+        parcels=parcels,
+        soil_profiles=soil_profiles,
+        project_enrollments=project_enrollments,
+    )
 
     duplicate_payloads = []
     for duplicate in duplicate_farmers:
@@ -808,6 +903,7 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
         "parcels": [_parcel_payload(db, parcel) for parcel in parcels],
         "soil_profiles": [_soil_profile_payload(profile) for profile in soil_profiles],
         "project_enrollments": [_enrollment_payload(enrollment, enrollment_projects.get(enrollment.project_id)) for enrollment in project_enrollments],
+        "profile_completion": profile_completion,
         "farmer_context": _farmer_context_payload(project_enrollments, enrollment_projects),
         "enrollment_lifecycle": _enrollment_lifecycle_payload(project_enrollments),
         "crop_cycles": {
@@ -824,6 +920,8 @@ def _build_profile_hydration_response(db: Session, tenant_id: str, farmer: Farme
             "completed_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] in completed_statuses]),
             "archived_crop_cycle_count": len([cycle for cycle in cycle_payloads if cycle["status"] == "ARCHIVED"]),
             "duplicate_farmer_count": len(duplicate_farmers),
+            "profile_ready_for_home": profile_completion["is_complete_for_home"],
+            "profile_next_action_count": len(profile_completion["next_actions"]),
         },
         "duplicates": duplicate_payloads,
         "geometry_contract": {
@@ -2001,14 +2099,21 @@ def get_farmer_launch_context(
     farmer_context = _farmer_context_payload(enrollments, projects)
     active_project_candidate = farmer_context["active_project_candidate"]
 
-    parcel_count = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer_id, Parcel.status != "ARCHIVED").count()
+    parcels = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer_id, Parcel.status != "ARCHIVED").all()
     try:
         from app.modules.farmer.soil_profile import SoilProfile
-        soil_profile_count = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer_id).count()
+        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer_id).all()
     except Exception:
-        soil_profile_count = 0
+        soil_profiles = []
 
-    completion = _farmer_profile_completion(farmer, parcel_count, soil_profile_count)
+    completion = _farmer_profile_completion(
+        farmer,
+        len(parcels),
+        len(soil_profiles),
+        parcels=parcels,
+        soil_profiles=soil_profiles,
+        project_enrollments=enrollments,
+    )
     decision = _launch_navigation_decision(farmer, enrollments, completion)
     project_selection_required = len(active_enrollments) > 1
 

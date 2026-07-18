@@ -182,6 +182,13 @@ test("Includes parcel", body["summary"]["parcel_count"] == 1)
 test("Includes completed crop-cycle summary", body["summary"]["completed_crop_cycle_count"] == 1)
 test("PIN_DROP returns centroid", body["parcels"][0]["centroid_lat"] is not None)
 test("PIN_DROP does not return GeoJSON for MVP", body["parcels"][0]["geojson"] is None)
+completion = body["profile_completion"]
+test("Hydration includes profile completion schema", completion["schema_version"] == "profile_completion.v1")
+test("Profile completion marks home ready", completion["is_complete_for_home"] is True)
+test("Profile completion includes farmer section", completion["sections"]["farmer"]["status"] == "COMPLETE")
+test("Profile completion includes land section", completion["sections"]["land"]["status"] == "COMPLETE")
+test("Profile completion recommends soil capture", any(action["code"] == "ADD_SOIL_PROFILE" for action in completion["next_actions"]))
+test("Hydration summary mirrors home readiness", body["summary"]["profile_ready_for_home"] is True)
 test("Default hydration omits heavy form contract", body.get("form_contract") is None)
 
 print("\n[1b] Hydrate with backend-owned profile form contract")

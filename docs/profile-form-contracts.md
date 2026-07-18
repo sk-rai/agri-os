@@ -112,6 +112,20 @@ The `enabled` flag is controlled by runtime feature flags:
 
 For MVP, Android may keep existing native screens while these flags are off. Once enabled for a tenant/project, Android should prefer backend-rendered forms for that family.
 
+## Profile completion/readiness summary
+
+Profile hydration responses include backend-owned readiness guidance under `profile_completion` (`schema_version = profile_completion.v1`). Android should use this payload to decide profile completion prompts instead of hardcoding farmer, land, or soil readiness rules locally.
+
+Current semantics:
+
+- `is_complete_for_home` remains the safe launch gate. It requires basic farmer identity/location plus at least one land parcel.
+- `missing_fields` contains only required gaps that block normal home launch.
+- `recommended_missing_fields` contains non-blocking gaps such as soil profile, parcel location, language preference, or optional project enrollment.
+- `sections.farmer`, `sections.land`, `sections.soil`, and `sections.project_enrollment` expose section-level `COMPLETE`, `PARTIAL`, or `MISSING` status.
+- `next_actions[]` gives Android/admin a backend-prioritized checklist such as `ADD_PARCEL`, `CAPTURE_PARCEL_LOCATION`, or `ADD_SOIL_PROFILE`.
+
+Soil profile remains recommended, not mandatory, for home launch. It becomes important for personalized advisories, weather/soil enrichment, and future trusted-corpus advisory generation.
+
 ## Form schema contract
 
 Each form schema includes:
