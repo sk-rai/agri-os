@@ -217,6 +217,76 @@ def weather_provider_refresh_plan(enabled: Optional[bool] = Query(True), db: Ses
     }
 
 
+@router.post("/providers/run-due")
+def run_due_weather_provider_adapters(
+    limit: int = Query(50, ge=1, le=200),
+    dry_run: bool = Query(False),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+):
+    """Run adapters for enabled providers whose next_refresh_at is due.
+
+    This endpoint is the scheduler-safe hook for cron/worker orchestration. It
+    only processes provider configs already stored in the backend and records
+    adapter status even when a provider skips or fails.
+    """
+    now_ts = _now()
+    due_providers = (
+        db.query(WeatherProviderConfig)
+        .filter(
+            WeatherProviderConfig.tenant_id == x_tenant_id,
+            WeatherProviderConfig.is_enabled == True,
+            or_(WeatherProviderConfig.next_refresh_at.is_(None), WeatherProviderConfig.next_refresh_at <= now_ts),
+        )
+        .order_by(WeatherProviderConfig.next_refresh_at.asc().nullsfirst(), WeatherProviderConfig.provider_code.asc())
+        .limit(limit)
+        .all()
+    )
+    if dry_run:
+        return {
+            "schema_version": "weather_provider_due_run.v1",
+            "tenant_id": x_tenant_id,
+            "generated_at": _iso(now_ts),
+            "dry_run": True,
+            "due_count": len(due_providers),
+            "processed_count": 0,
+            "created_snapshot_count": 0,
+            "providers": [_provider_due_payload(row, now_ts) for row in due_providers],
+        }
+
+    provider_results = []
+    total_snapshots = 0
+    for provider in due_providers:
+        result = run_weather_provider_adapter(provider)
+        created_snapshots = persist_weather_provider_refresh(db, provider=provider, result=result, timestamp=now_ts)
+        total_snapshots += len(created_snapshots)
+        provider_results.append({
+            "provider_id": str(provider.id),
+            "provider_code": provider.provider_code,
+            "status": result.status,
+            "message": result.message,
+            "created_snapshot_count": len(created_snapshots),
+            "snapshots": [_snapshot_payload(row) for row in created_snapshots],
+        })
+    db.commit()
+    for row in due_providers:
+        db.refresh(row)
+
+    return {
+        "schema_version": "weather_provider_due_run.v1",
+        "tenant_id": x_tenant_id,
+        "generated_at": _iso(now_ts),
+        "dry_run": False,
+        "due_count": len(due_providers),
+        "processed_count": len(provider_results),
+        "created_snapshot_count": total_snapshots,
+        "providers": [
+            {**provider_results[index], "provider": _provider_due_payload(provider, _now())}
+            for index, provider in enumerate(due_providers)
+        ],
+    }
+
+
 @router.post("/providers/{provider_id}/refresh")
 def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProviderRefreshRequest, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
     now_ts = _now()

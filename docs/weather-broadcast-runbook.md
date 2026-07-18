@@ -48,8 +48,12 @@ For scheduler operation:
 
 ```http
 GET /api/v1/weather/providers/refresh-plan?enabled=true
+POST /api/v1/weather/providers/run-due?dry_run=true
+POST /api/v1/weather/providers/run-due
 POST /api/v1/weather/providers/{provider_id}/run-adapter
 ```
+
+The due-run endpoint is the backend scheduler hook: cron/worker code can call it every few minutes, and each provider still controls its cadence through `refresh_interval_hours` and `next_refresh_at`.
 
 The adapter writes normalized `weather_snapshots`. Downstream features should use these fields, not raw provider-specific payloads:
 

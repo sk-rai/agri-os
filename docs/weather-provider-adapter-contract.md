@@ -20,6 +20,7 @@ POST /api/v1/weather/providers
 GET  /api/v1/weather/providers?enabled=true
 GET  /api/v1/weather/providers/refresh-plan
 POST /api/v1/weather/providers/{provider_id}/refresh
+POST /api/v1/weather/providers/run-due?dry_run=false
 ```
 
 Snapshot access:
@@ -40,6 +41,8 @@ Admin UI:
 A provider adapter is responsible for:
 
 1. Reading due providers from `/api/v1/weather/providers/refresh-plan` or equivalent internal service call.
+   - `POST /api/v1/weather/providers/run-due?dry_run=true` previews due providers.
+   - `POST /api/v1/weather/providers/run-due` runs registered adapters for due enabled providers and records status/snapshots.
 2. Fetching provider data for configured geography/project/parcel/weather-grid locations.
 3. Converting provider response into normalized snapshot rows.
 4. Calling `/api/v1/weather/providers/{provider_id}/refresh` with `status`, message, metadata, and snapshots.

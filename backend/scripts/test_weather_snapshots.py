@@ -232,6 +232,49 @@ def main():
     check(live_body["snapshots"][0]["location_key"] == "Live Weather Village", "Open-Meteo live adapter preserves location")
     check("HEAT_STRESS_NEXT_48H" in live_body["snapshots"][0]["risk_flags"], "Open-Meteo live adapter derives heat risk")
 
+    due_provider_id = uuid.uuid4()
+    due_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+        "id": str(due_provider_id),
+        "provider_code": "open_meteo_due",
+        "display_name": "Open-Meteo Due",
+        "provider_type": "EXTERNAL_API",
+        "refresh_interval_hours": 6,
+        "config": {
+            "adapter": "open_meteo",
+            "locations": [{"location_scope": "VILLAGE", "location_key": "Due Weather Village", "lat": "14.0", "lng": "78.0"}],
+            "sample_payload": {
+                "fetched_at": fetched_at.isoformat(),
+                "current": {"time": fetched_at.isoformat(), "temperature_2m": 30.0, "relative_humidity_2m": 90, "rain": 25.0, "weather_code": 63, "wind_speed_10m": 22},
+                "hourly": {"precipitation_probability": [88], "rain": [25.0]},
+            },
+        },
+    })
+    check(due_provider.status_code == 201, "Create due Open-Meteo provider returns 201", due_provider.text)
+    db_due = SessionLocal()
+    try:
+        due_row = db_due.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == due_provider_id).first()
+        due_row.next_refresh_at = fetched_at - timedelta(minutes=1)
+        db_due.commit()
+    finally:
+        db_due.close()
+
+    due_dry_run = client.post("/api/v1/weather/providers/run-due?dry_run=true", headers=headers)
+    check(due_dry_run.status_code == 200, "Due weather provider dry-run returns 200", due_dry_run.text)
+    due_dry_body = due_dry_run.json()
+    check(due_dry_body["schema_version"] == "weather_provider_due_run.v1", "Due weather run schema stable")
+    check(due_dry_body["dry_run"] is True, "Due weather dry-run does not process providers")
+    check(any(row["provider_code"] == "open_meteo_due" for row in due_dry_body["providers"]), "Due weather dry-run lists due provider")
+
+    due_run = client.post("/api/v1/weather/providers/run-due", headers=headers)
+    check(due_run.status_code == 200, "Due weather provider run returns 200", due_run.text)
+    due_body = due_run.json()
+    check(due_body["dry_run"] is False, "Due weather run processes providers")
+    check(due_body["processed_count"] >= 1, "Due weather run processes at least one provider")
+    due_result = next(row for row in due_body["providers"] if row["provider_code"] == "open_meteo_due")
+    check(due_result["status"] == "SUCCESS", "Due weather run records provider success")
+    check(due_result["created_snapshot_count"] == 1, "Due weather run creates snapshot")
+    check(due_result["snapshots"][0]["location_key"] == "Due Weather Village", "Due weather run preserves snapshot location")
+
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
     check(listed.json()["count"] == 4, "List returns active snapshots")
