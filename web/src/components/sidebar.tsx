@@ -40,6 +40,7 @@ const navSections: NavSection[] = [
       { href: "/activity-usage", label: "Activity Usage", icon: "Trend" },
       { href: "/project-enrollments", label: "Project Enrollments", icon: "Enroll" },
       { href: "/profile-readiness", label: "Profile Readiness", icon: "Ready" },
+      { href: "/field-agent-worklist", label: "Agent Worklist", icon: "Agent" },
       { href: "/field-events", label: "Field Events", icon: "Event" },
       { href: "/query-threads", label: "Query Inbox", icon: "Chat" },
       { href: "/broadcasts", label: "Broadcasts", icon: "Signal" },

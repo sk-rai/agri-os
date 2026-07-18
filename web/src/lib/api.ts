@@ -633,6 +633,66 @@ export interface FarmerProfileReadinessResponse {
 }
 
 
+export interface FieldAgentWorklistEnrollmentDto {
+  id: string;
+  tenant_id: string;
+  farmer_id: string;
+  project_id: string;
+  project_name?: string | null;
+  project_status?: string | null;
+  enrollment_method?: string | null;
+  status?: string | null;
+  parcel_ids: string[];
+  assigned_user_ids: string[];
+  metadata?: Record<string, unknown>;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  [key: string]: unknown;
+}
+
+export interface FieldAgentCaptureActionDto {
+  code: string;
+  label: string;
+  priority: string;
+}
+
+export interface FieldAgentWorklistRowDto {
+  farmer: FarmerProfileReadinessRowDto["farmer"];
+  project_enrollments: FieldAgentWorklistEnrollmentDto[];
+  parcel_count: number;
+  soil_profile_count: number;
+  active_crop_cycle_count: number;
+  active_stage_count: number;
+  profile_completion: ProfileCompletionDto;
+  capture_actions: FieldAgentCaptureActionDto[];
+  endpoints: Record<string, string>;
+}
+
+export interface FieldAgentWorklistResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: {
+    project_id?: string | null;
+    actor_id?: string | null;
+    assigned_only: boolean;
+    status?: string | null;
+    offset: number;
+    limit: number;
+  };
+  summary: {
+    farmer_count: number;
+    home_ready_count: number;
+    missing_required_count: number;
+    capture_action_count: number;
+    weather_advisory_ready_count: number;
+    soil_moisture_enrichment_ready_count: number;
+    satellite_enrichment_ready_count: number;
+  };
+  farmers: FieldAgentWorklistRowDto[];
+}
+
+
 export interface ProjectEnrollmentCsvValidationRow {
   row_number: number;
   mobile_number: string;
@@ -1101,6 +1161,17 @@ export const farmersApi = {
     if (params?.limit) q.set("limit", String(params.limit));
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<FarmerProfileReadinessResponse>(`/api/v1/farmers/profile-readiness${suffix}`);
+  },
+  fieldAgentWorklist: (params?: { projectId?: string; actorId?: string; assignedOnly?: boolean; status?: string; offset?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.actorId) q.set("actor_id", params.actorId);
+    if (params?.assignedOnly !== undefined) q.set("assigned_only", String(params.assignedOnly));
+    if (params?.status !== undefined) q.set("status", params.status);
+    if (params?.offset !== undefined) q.set("offset", String(params.offset));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<FieldAgentWorklistResponse>(`/api/v1/field-agent/worklist${suffix}`);
   },
 };
 
