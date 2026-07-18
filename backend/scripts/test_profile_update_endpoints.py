@@ -58,6 +58,7 @@ def main():
                 "profile_options": {
                     "overrides": {
                         "land_units": {"options": [{"value": "ACRE", "label": {"en": "Acre"}}]},
+                        "ownership_types": {"options": [{"value": "OWNED", "label": {"en": "Owned"}}, {"value": "PART_OWNER", "label": {"en": "Part owner"}}]},
                         "soil_types": {"options": [{"value": "ALLUVIAL", "label": {"en": "Alluvial"}}]},
                         "soil_textures": {"options": [{"value": "LOAM", "label": {"en": "Loam"}}]},
                         "soil_colors": {"options": [{"value": "BROWN", "label": {"en": "Brown"}}]},
@@ -88,6 +89,8 @@ def main():
             farmer_id=farmer_id,
             project_id=project_id,
             village_name_manual="Initial Village",
+            pin_code="560001",
+            location_scope={"primary_village": "Initial Village"},
             reported_area=1.0,
             reported_area_unit="ACRE",
             ownership_type="OWNED",
@@ -135,10 +138,21 @@ def main():
         "reported_area_unit": "ACRE",
         "soil_type_code": "ALLUVIAL",
         "local_name": "North Field",
+        "pin_code": "560002",
+        "location_scope": {"primary_village": "Updated Village", "secondary_villages": ["Neighbour Village"], "pin_codes": ["560002", "560003"], "scope_reason": "plot_spans_two_villages"},
+        "ownership_type": "PART_OWNER",
+        "share_percentage": 50,
     })
     check(parcel_update.status_code == 200, "Parcel update returns 200", parcel_update.text)
     check(float(parcel_update.json()["reported_area"]) == 2.5, "Parcel update changes reported area")
     check(parcel_update.json()["local_name"] == "North Field", "Parcel update changes local name")
+    check(parcel_update.json()["pin_code"] == "560002", "Parcel update changes parcel pin code")
+    check(parcel_update.json()["location_scope"]["secondary_villages"] == ["Neighbour Village"], "Parcel update stores multi-village location scope")
+    check(parcel_update.json()["ownership_type"] == "PART_OWNER", "Parcel update accepts configured part-owner ownership type")
+
+    parcel_list_by_pin = client.get("/api/v1/parcels?pin_code=560002", headers=headers)
+    check(parcel_list_by_pin.status_code == 200, "Parcel list filters by pin code", parcel_list_by_pin.text)
+    check(len(parcel_list_by_pin.json()) == 1 and parcel_list_by_pin.json()[0]["id"] == str(parcel_id), "Parcel pin-code filter returns updated parcel")
 
     parcel_bad = client.patch(f"/api/v1/parcels/{parcel_id}", headers=headers, json={"soil_type_code": "BLACK_COTTON"})
     check(parcel_bad.status_code == 400, "Parcel update rejects invalid soil type", parcel_bad.text)

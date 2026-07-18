@@ -170,13 +170,15 @@ class ParcelCreate(BaseModel):
     farmer_id: uuid.UUID
     village_id: Optional[uuid.UUID] = None  # From geography DB (preferred)
     village_name_manual: Optional[str] = None  # If village not in DB
+    pin_code: Optional[str] = Field(None, pattern=r"^\d{6}$")
+    location_scope: dict = Field(default_factory=dict)  # Optional multi-village/pincode override for cross-village plots/FPO clusters
     reported_area: float = Field(..., gt=0)
     reported_area_unit: str = "BIGHA"
     current_crop_code: Optional[str] = None
     soil_type_code: Optional[str] = None
     local_name: Optional[str] = None
     survey_number: Optional[str] = None
-    ownership_type: str = "OWNED"  # OWNED, LEASED, SHARED, SHARECROP, FAMILY
+    ownership_type: str = "OWNED"  # OWNED, PART_OWNER, LEASED, SHARED, SHARECROP, FAMILY; backend-configurable
     annual_rent: Optional[float] = None  # Required if LEASED
     annual_rent_currency: str = "INR"
     share_percentage: Optional[int] = Field(None, ge=1, le=100)  # For SHARED
@@ -192,6 +194,8 @@ class ParcelCreate(BaseModel):
 class ParcelUpdate(BaseModel):
     village_id: Optional[uuid.UUID] = None
     village_name_manual: Optional[str] = None
+    pin_code: Optional[str] = Field(None, pattern=r"^\d{6}$")
+    location_scope: Optional[dict] = None
     reported_area: Optional[float] = Field(None, gt=0)
     reported_area_unit: Optional[str] = None
     current_crop_code: Optional[str] = None
@@ -212,11 +216,23 @@ class ParcelResponse(BaseModel):
     id: uuid.UUID
     farmer_id: uuid.UUID
     village_id: Optional[uuid.UUID] = None
+    village_name_manual: Optional[str] = None
+    pin_code: Optional[str] = None
+    location_scope: dict = Field(default_factory=dict)
     reported_area: float
     reported_area_unit: str
     geometry_source: str
     current_crop_code: Optional[str] = None
+    soil_type_code: Optional[str] = None
     local_name: Optional[str] = None
+    survey_number: Optional[str] = None
+    ownership_type: Optional[str] = None
+    annual_rent: Optional[float] = None
+    annual_rent_currency: Optional[str] = None
+    share_percentage: Optional[int] = None
+    sharecrop_percentage: Optional[int] = None
+    irrigation_source: Optional[str] = None
+    crops_by_season: dict = Field(default_factory=dict)
     status: str
     class Config:
         from_attributes = True
@@ -515,6 +531,8 @@ def _parcel_payload(db: Session, parcel: Parcel) -> dict:
         "project_id": str(parcel.project_id) if parcel.project_id else None,
         "village_id": str(parcel.village_id) if parcel.village_id else None,
         "village_name_manual": parcel.village_name_manual,
+        "pin_code": parcel.pin_code,
+        "location_scope": parcel.location_scope or {},
         "reported_area": _json_number(parcel.reported_area),
         "reported_area_unit": parcel.reported_area_unit,
         "current_crop_code": parcel.current_crop_code,
@@ -2884,6 +2902,8 @@ def create_parcel(
         project_id=inferred_project_id,
         village_id=body.village_id,  # Can be None for manual villages
         village_name_manual=body.village_name_manual,
+        pin_code=body.pin_code,
+        location_scope=body.location_scope or {},
         reported_area=body.reported_area,
         reported_area_unit=body.reported_area_unit,
         current_crop_code=body.current_crop_code,
@@ -2913,6 +2933,7 @@ def create_parcel(
 def list_parcels(
     farmer_id: Optional[uuid.UUID] = Query(None),
     village_id: Optional[uuid.UUID] = Query(None),
+    pin_code: Optional[str] = Query(None, pattern=r"^\d{6}$"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -2924,6 +2945,8 @@ def list_parcels(
         query = query.filter(Parcel.farmer_id == farmer_id)
     if village_id:
         query = query.filter(Parcel.village_id == village_id)
+    if pin_code:
+        query = query.filter(Parcel.pin_code == pin_code)
     return query.offset(offset).limit(limit).all()
 
 
@@ -2957,7 +2980,7 @@ def update_parcel_profile(
     if "crops_by_season" in values:
         _validate_crops_by_season(db, tenant_id=x_tenant_id, project_id=inferred_project_id, value=values.get("crops_by_season"), path="crops_by_season")
 
-    for field in ["village_id", "village_name_manual", "reported_area", "reported_area_unit", "current_crop_code", "soil_type_code", "local_name", "survey_number", "ownership_type", "annual_rent", "annual_rent_currency", "share_percentage", "sharecrop_percentage", "irrigation_source", "crops_by_season", "status"]:
+    for field in ["village_id", "village_name_manual", "pin_code", "location_scope", "reported_area", "reported_area_unit", "current_crop_code", "soil_type_code", "local_name", "survey_number", "ownership_type", "annual_rent", "annual_rent_currency", "share_percentage", "sharecrop_percentage", "irrigation_source", "crops_by_season", "status"]:
         if field in values:
             setattr(parcel, field, values[field])
     parcel.updated_at = datetime.now(timezone.utc)

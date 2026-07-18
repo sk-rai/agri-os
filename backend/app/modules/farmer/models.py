@@ -282,6 +282,8 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     # Always required (enrollment day)
     village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"))  # Nullable for manual
     village_name_manual = Column(String(200))  # If village not in LGD DB
+    pin_code = Column(String(6), index=True)  # Normal parcel-level location anchor for weather/advisory targeting
+    location_scope = Column(JSONB, nullable=False, default=dict)  # Optional multi-village/pincode/FPO location override
     reported_area = Column(DECIMAL(10, 2), nullable=False)  # Farmer says "3 bigha"
     reported_area_unit = Column(String(20), nullable=False, default="BIGHA")
     # BIGHA, BISWA, HECTARE, ACRE, KATHA, GUNTHA
@@ -303,7 +305,7 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     local_name = Column(String(100))  # Farmer's name for this land
     survey_number = Column(String(100))  # Government survey/khasra number
     ownership_type = Column(String(30), default="OWNED")
-    # OWNED, LEASED, SHARED, SHARECROP, FAMILY
+    # OWNED, PART_OWNER, LEASED, SHARED, SHARECROP, FAMILY; values are project-configurable via profile_options.ownership_types
     annual_rent = Column(DECIMAL(12, 2))  # Only for LEASED parcels
     annual_rent_currency = Column(String(3), default="INR")
     irrigation_source = Column(String(50))
@@ -321,5 +323,7 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_parcel_farmer", "farmer_id"),
         Index("idx_parcel_village", "village_id"),
         Index("idx_parcel_project", "project_id"),
+        Index("idx_parcel_pin_code", "tenant_id", "pin_code"),
+        Index("idx_parcel_location_scope", "location_scope", postgresql_using="gin"),
         Index("idx_parcel_geometry", "geometry", postgresql_using="gist"),
     )

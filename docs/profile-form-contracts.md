@@ -428,3 +428,13 @@ Current admin capabilities:
 
 This keeps Android profile behavior backend-driven: Android should consume the assigned agent profile/worklist and only switch to farmer mode when `farmer_id`/`can_also_act_as_farmer` are present in backend responses.
 
+## Parcel location and ownership backend contract
+
+Land parcels are now backend-owned for both the common and edge cases:
+
+- The normal case is one farmer with one or more parcels in a single village; each parcel can carry its own `pin_code` for weather, advisory, and targeting joins.
+- Farmers may own multiple parcels, and those parcels may sit in different villages or pincodes.
+- Cross-village or FPO-style edge cases should use `location_scope` as the explicit override bag, for example `primary_village`, `secondary_villages`, `pin_codes`, `village_ids`, `cluster_code`, or `scope_reason`.
+- Ownership remains backend-configurable through `profile_options.ownership_types`; deployments can include values such as `OWNED`, `PART_OWNER`, `LEASED`, `SHARED`, `SHARECROP`, and `FAMILY` without hardcoding Android.
+- Android should send the simplest parcel location fields first (`village_id`/`village_name_manual` + `pin_code`) and only populate `location_scope` when a plot spans multiple administrative locations or an FPO/tenant has custom grouping rules.
+
