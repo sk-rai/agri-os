@@ -261,6 +261,19 @@ export default function FieldAgentWorklistPage() {
               </div>
             </Section>
 
+            <Section title="Active crop/stage">
+              {selected.active_crop_cycles?.map((cycle) => <div key={cycle.id} className="rounded border p-2 text-xs">
+                <div className="font-semibold text-gray-900">{cycle.crop_name || cycle.crop_code} / {cycle.season_code} / {cycle.status}</div>
+                {cycle.current_stage ? <div className="mt-1 text-gray-600">Current: {cycle.current_stage.stage_name || cycle.current_stage.stage_code} ({cycle.current_stage.status})</div> : <div className="mt-1 text-gray-400">No active stage selected.</div>}
+                <div className="mt-1 text-gray-500">Stages pending/active: {cycle.pending_stage_count} of {cycle.stage_count}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Link href={`/crop-cycle-trace/${cycle.id}`} className="text-blue-700">Trace</Link>
+                  <span className="break-all text-gray-400">Activity: {cycle.endpoints.activity_log}</span>
+                </div>
+              </div>)}
+              {(!selected.active_crop_cycles || selected.active_crop_cycles.length === 0) ? <p className="text-xs text-gray-400">No active crop cycle context.</p> : null}
+            </Section>
+
             <Section title="Capture actions">
               {selected.capture_actions.map((action) => <ActionRow key={action.code} action={action} />)}
               {selected.capture_actions.length === 0 ? <p className="text-xs text-gray-400">No pending capture action.</p> : null}

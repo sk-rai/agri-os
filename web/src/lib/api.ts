@@ -692,6 +692,32 @@ export interface FieldAgentProfileContextDto {
   can_also_act_as_farmer: boolean;
 }
 
+export interface FieldAgentWorklistCropCycleDto {
+  id: string;
+  parcel_id: string;
+  project_id?: string | null;
+  crop_code: string;
+  crop_name?: string | null;
+  season_code: string;
+  status: string;
+  planned_sowing_date?: string | null;
+  actual_sowing_date?: string | null;
+  expected_harvest_date?: string | null;
+  current_stage?: {
+    id: string;
+    stage_code: string;
+    stage_name: string;
+    stage_order: number;
+    status: string;
+    planned_start_date?: string | null;
+    actual_start_date?: string | null;
+    actual_end_date?: string | null;
+  } | null;
+  stage_count: number;
+  pending_stage_count: number;
+  endpoints: Record<string, string>;
+}
+
 export interface FieldAgentWorklistRowDto {
   farmer: FarmerProfileReadinessRowDto["farmer"];
   project_enrollments: FieldAgentWorklistEnrollmentDto[];
@@ -701,6 +727,7 @@ export interface FieldAgentWorklistRowDto {
   soil_profile_count: number;
   active_crop_cycle_count: number;
   active_stage_count: number;
+  active_crop_cycles: FieldAgentWorklistCropCycleDto[];
   profile_completion: ProfileCompletionDto;
   capture_actions: FieldAgentCaptureActionDto[];
   endpoints: Record<string, string>;

@@ -817,6 +817,71 @@ def _active_crop_counts_for_worklist(db: Session, *, tenant_id: str, farmer_id: 
     return len(cycle_ids), active_stage_count
 
 
+def _active_crop_summaries_for_worklist(db: Session, *, tenant_id: str, farmer_id: uuid.UUID, project_id: Optional[uuid.UUID] = None) -> list[dict]:
+    try:
+        from app.modules.workflow.models import CropCycle, CropStageInstance
+        from app.modules.master_data.models.crop import Crop
+    except Exception:
+        return []
+
+    query = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.farmer_id == farmer_id,
+        CropCycle.status.in_(["PLANNED", "ACTIVE", "PARTIALLY_TRACKED"]),
+    )
+    if project_id:
+        query = query.filter(CropCycle.project_id == project_id)
+    cycles = query.order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc()).limit(5).all()
+    if not cycles:
+        return []
+    crop_codes = sorted({cycle.crop_code for cycle in cycles if cycle.crop_code})
+    crop_names = {
+        crop.code: crop.canonical_name
+        for crop in db.query(Crop).filter(Crop.code.in_(crop_codes)).all()
+    } if crop_codes else {}
+    summaries = []
+    for cycle in cycles:
+        stages = db.query(CropStageInstance).filter(
+            CropStageInstance.tenant_id == tenant_id,
+            CropStageInstance.crop_cycle_id == cycle.id,
+        ).order_by(CropStageInstance.stage_order.asc()).all()
+        current_stage = next((stage for stage in stages if stage.status == "ACTIVE"), None)
+        if current_stage is None:
+            current_stage = next((stage for stage in stages if stage.status in {"PENDING", "PARTIALLY_COMPLETED"}), None)
+        stage_payload = None if current_stage is None else {
+            "id": str(current_stage.id),
+            "stage_code": current_stage.stage_code,
+            "stage_name": current_stage.stage_name,
+            "stage_order": current_stage.stage_order,
+            "status": current_stage.status,
+            "planned_start_date": current_stage.planned_start_date.isoformat() if current_stage.planned_start_date else None,
+            "actual_start_date": current_stage.actual_start_date.isoformat() if current_stage.actual_start_date else None,
+            "actual_end_date": current_stage.actual_end_date.isoformat() if current_stage.actual_end_date else None,
+        }
+        summaries.append({
+            "id": str(cycle.id),
+            "parcel_id": str(cycle.parcel_id),
+            "project_id": str(cycle.project_id) if cycle.project_id else None,
+            "crop_code": cycle.crop_code,
+            "crop_name": crop_names.get(cycle.crop_code),
+            "season_code": cycle.season_code,
+            "status": cycle.status,
+            "planned_sowing_date": cycle.planned_sowing_date.isoformat() if cycle.planned_sowing_date else None,
+            "actual_sowing_date": cycle.actual_sowing_date.isoformat() if cycle.actual_sowing_date else None,
+            "expected_harvest_date": cycle.expected_harvest_date.isoformat() if cycle.expected_harvest_date else None,
+            "current_stage": stage_payload,
+            "stage_count": len(stages),
+            "pending_stage_count": len([stage for stage in stages if stage.status in {"PENDING", "ACTIVE", "PARTIALLY_COMPLETED"}]),
+            "endpoints": {
+                "cycle_trace": f"/api/v1/reports/crop-cycles/{cycle.id}/trace",
+                "stage_timeline": f"/api/v1/crop-cycles/{cycle.id}/stages",
+                "activity_log": f"/api/v1/activities?crop_cycle_id={cycle.id}",
+                "field_events": f"/api/v1/field-events?crop_cycle_id={cycle.id}",
+            },
+        })
+    return summaries
+
+
 def _matching_weather_snapshot_count(
     db: Session,
     *,
@@ -2006,12 +2071,6 @@ def get_field_agent_worklist(
                     "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
                     "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
                 },
-                "agent_profile": agent_profile_context,
-                "mode_switch": {
-                    "assigned_agent_mode": agent_profile_context is not None,
-                    "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
-                    "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
-                },
                 "summary": {
                     "farmer_count": 0,
                     "home_ready_count": 0,
@@ -2062,6 +2121,7 @@ def get_field_agent_worklist(
             project_enrollments=farmer_enrollments,
             weather_snapshot_count=weather_snapshot_count,
         )
+        active_crop_summaries = _active_crop_summaries_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id, project_id=project_id)
         active_cycle_count, active_stage_count = _active_crop_counts_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
         capture_actions = _field_agent_capture_actions(
             completion,
@@ -2090,6 +2150,7 @@ def get_field_agent_worklist(
             "soil_profile_count": len(soil_profiles),
             "active_crop_cycle_count": active_cycle_count,
             "active_stage_count": active_stage_count,
+            "active_crop_cycles": active_crop_summaries,
             "profile_completion": completion,
             "capture_actions": capture_actions,
             "endpoints": {

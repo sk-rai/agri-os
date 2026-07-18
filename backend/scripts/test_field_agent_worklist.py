@@ -14,6 +14,8 @@ from app.main import app
 from app.modules.auth.models import AgentProfile, User
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
+from app.modules.master_data.models.crop import Crop, CropCategory, CropLifecycleTemplate
+from app.modules.workflow.models import CropCycle, CropStageInstance
 
 
 def now():
@@ -42,9 +44,30 @@ def main():
     assigned_farmer_id = uuid.uuid4()
     unassigned_farmer_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
+    crop_category_id = uuid.uuid4()
+    crop_id = uuid.uuid4()
+    lifecycle_template_id = uuid.uuid4()
+    crop_cycle_id = uuid.uuid4()
+    crop_stage_id = uuid.uuid4()
+    test_crop_code = "WORKLIST_RICE"
 
     db = SessionLocal()
     try:
+        category = db.query(CropCategory).filter(CropCategory.code == "WORKLIST_TEST").first()
+        if category is None:
+            category = CropCategory(id=crop_category_id, code="WORKLIST_TEST", canonical_name="Worklist Test Crops", created_at=now(), updated_at=now())
+            db.add(category)
+            db.flush()
+        crop = db.query(Crop).filter(Crop.code == test_crop_code).first()
+        if crop is None:
+            crop = Crop(id=crop_id, code=test_crop_code, category_id=category.id, canonical_name="Worklist Rice", suitable_seasons=["KHARIF"], suitable_soil_types=["ALLUVIAL"], created_at=now(), updated_at=now())
+            db.add(crop)
+            db.flush()
+        template = db.query(CropLifecycleTemplate).filter(CropLifecycleTemplate.code == "WORKLIST_RICE_KHARIF").first()
+        if template is None:
+            template = CropLifecycleTemplate(id=lifecycle_template_id, code="WORKLIST_RICE_KHARIF", crop_id=crop.id, season_code="KHARIF", canonical_name="Worklist Rice Kharif", stages=[], is_default=False, created_at=now(), updated_at=now())
+            db.add(template)
+            db.flush()
         db.add(Tenant(
             id=tenant_id,
             name="Agent Worklist Tenant",
@@ -60,7 +83,7 @@ def main():
             end_date=date.today() + timedelta(days=120),
             status="ACTIVE",
             geography_scope={},
-            crop_scope=["RICE"],
+            crop_scope=[test_crop_code],
             config={},
             created_at=now(),
             updated_at=now(),
@@ -115,6 +138,36 @@ def main():
             reported_area_unit="ACRE",
             ownership_type="OWNED",
             status="ACTIVE",
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.flush()
+
+        db.add(CropCycle(
+            id=crop_cycle_id,
+            tenant_id=tenant_id,
+            farmer_id=assigned_farmer_id,
+            parcel_id=parcel_id,
+            project_id=project_id,
+            crop_code=test_crop_code,
+            season_code="KHARIF",
+            lifecycle_template_id=template.id,
+            status="ACTIVE",
+            planned_sowing_date=date.today(),
+            expected_harvest_date=date.today() + timedelta(days=100),
+            created_at=now(),
+            updated_at=now(),
+        ))
+        db.add(CropStageInstance(
+            id=crop_stage_id,
+            crop_cycle_id=crop_cycle_id,
+            tenant_id=tenant_id,
+            stage_code="VEGETATIVE",
+            stage_name="Vegetative Growth",
+            stage_order=2,
+            status="ACTIVE",
+            planned_start_date=date.today(),
+            actual_start_date=date.today(),
             created_at=now(),
             updated_at=now(),
         ))
@@ -189,6 +242,12 @@ def main():
     check(row["parcels"][0]["id"] == str(parcel_id), "Editable parcel reference preserves id")
     check(row["soil_profile_count"] == 0, "Assigned worklist includes soil profile count")
     check(row["soil_profiles"] == [], "Assigned worklist includes editable soil profile references")
+    check(len(row["active_crop_cycles"]) == 1, "Assigned worklist includes active crop cycle summary")
+    cycle = row["active_crop_cycles"][0]
+    check(cycle["id"] == str(crop_cycle_id), "Crop cycle summary preserves cycle id")
+    check(cycle["crop_code"] == test_crop_code, "Crop cycle summary preserves crop code")
+    check(cycle["current_stage"]["stage_code"] == "VEGETATIVE", "Crop cycle summary exposes current stage")
+    check("activity_log" in cycle["endpoints"], "Crop cycle summary exposes capture endpoints")
     action_codes = {action["code"] for action in row["capture_actions"]}
     check("ADD_SOIL_PROFILE" in action_codes, "Assigned worklist recommends soil capture")
     check("REPORT_FIELD_EVENT" in action_codes, "Assigned worklist includes field-event capture option")
@@ -208,6 +267,8 @@ def main():
     try:
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(AgentProfile).filter(AgentProfile.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropStageInstance).filter(CropStageInstance.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
