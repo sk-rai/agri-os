@@ -747,6 +747,8 @@ Admin/backend can add audience rules such as:
 
 The backend expands `WEATHER` rules from current, non-expired weather snapshots. Snapshot `condition_code` and `risk_flags[]` are matched against the rule values, then recipients are resolved from snapshot scope: `TENANT`, `PROJECT`, `FARMER`, `PARCEL`, or `VILLAGE`. Android should simply render delivered broadcasts; targeting evidence is available to admin preview screens, not required on-device for MVP.
 
+Admin Weather operations can create a DRAFT weather broadcast directly from a snapshot. The draft still follows the normal review flow: preview audience, publish, generate deliveries, then Android receives it through the farmer broadcast feed.
+
 ### Android read and acknowledge endpoints
 
 When a farmer opens a broadcast detail, Android should call:

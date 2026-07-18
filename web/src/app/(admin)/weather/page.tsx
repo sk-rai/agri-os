@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { weatherApi, type WeatherProviderDto, type WeatherProviderDueRunResponse, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotsResponse } from "@/lib/api";
+import { broadcastsApi, weatherApi, type WeatherProviderDto, type WeatherProviderDueRunResponse, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotDto, type WeatherSnapshotsResponse } from "@/lib/api";
 
 const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
 const LOCATION_SCOPES = ["TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"];
@@ -54,6 +54,8 @@ export default function WeatherPage() {
   const [providerEnabled, setProviderEnabled] = useState(true);
   const [providerConfig, setProviderConfig] = useState("{}");
   const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [creatingBroadcastSnapshotId, setCreatingBroadcastSnapshotId] = useState<string | null>(null);
+  const [createdBroadcastId, setCreatedBroadcastId] = useState<string | null>(null);
   const [snapshotProviderId, setSnapshotProviderId] = useState("");
   const [snapshotScope, setSnapshotScope] = useState("VILLAGE");
   const [snapshotLocationKey, setSnapshotLocationKey] = useState("");
@@ -238,6 +240,52 @@ export default function WeatherPage() {
     }
   }
 
+  async function createBroadcastFromSnapshot(snapshot: WeatherSnapshotDto) {
+    const riskValues = (snapshot.risk_flags && snapshot.risk_flags.length > 0)
+      ? snapshot.risk_flags
+      : [snapshot.condition_code].filter(Boolean) as string[];
+    if (riskValues.length === 0) {
+      setError("Snapshot needs condition_code or risk_flags before a weather broadcast can be targeted.");
+      return;
+    }
+    setCreatingBroadcastSnapshotId(snapshot.id);
+    setCreatedBroadcastId(null);
+    setError(null);
+    try {
+      const titleRisk = riskValues[0].replaceAll("_", " ").toLowerCase();
+      const created = await broadcastsApi.create({
+        title: `Weather advisory: ${titleRisk}`,
+        category: "WEATHER",
+        priority: riskValues.some((flag) => ["HEAVY_RAIN_NEXT_24H", "HEAT_STRESS", "HIGH_WIND"].includes(flag)) ? "URGENT" : "HIGH",
+        expires_at: snapshot.expires_at || undefined,
+        metadata: {
+          source: "weather_snapshot_admin_action",
+          weather_snapshot_id: snapshot.id,
+          location_scope: snapshot.location_scope,
+          location_key: snapshot.location_key,
+        },
+        contents: [{
+          language_code: "en",
+          title: `Weather advisory: ${titleRisk}`,
+          body_text: snapshot.summary || `Weather risk detected for ${snapshot.location_scope}${snapshot.location_key ? ` ${snapshot.location_key}` : ""}.`,
+          deeplink_url: "agrios://broadcast/weather-advisory",
+          metadata: { weather_snapshot_id: snapshot.id },
+        }],
+        audience_rules: [{
+          rule_type: "WEATHER",
+          operator: "IN",
+          values: riskValues,
+          metadata: { weather_snapshot_id: snapshot.id },
+        }],
+      });
+      setCreatedBroadcastId(created.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create weather broadcast draft");
+    } finally {
+      setCreatingBroadcastSnapshotId(null);
+    }
+  }
+
   async function runDueProviders(dryRun: boolean) {
     setRunningDueProviders(true);
     setError(null);
@@ -265,6 +313,7 @@ export default function WeatherPage() {
     </div>
 
     {error ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+    {createdBroadcastId ? <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">Weather broadcast draft created. <a className="font-semibold underline" href="/broadcasts">Open Broadcasts</a> to preview audience, publish, and generate deliveries.</div> : null}
 
     <section className="grid gap-3 md:grid-cols-4">
       <MiniStat label="Enabled providers" value={providers?.count ?? 0} tone="blue" />
@@ -391,6 +440,7 @@ export default function WeatherPage() {
             <div>Humidity: {snapshot.humidity_percent ?? "-"}%</div>
           </div>
           {snapshot.risk_flags?.length ? <div className="mt-3 flex flex-wrap gap-1">{snapshot.risk_flags.map((flag) => <span key={flag} className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">{flag}</span>)}</div> : null}
+          <button type="button" onClick={() => void createBroadcastFromSnapshot(snapshot)} disabled={creatingBroadcastSnapshotId === snapshot.id} className="mt-3 rounded bg-green-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{creatingBroadcastSnapshotId === snapshot.id ? "Creating draft..." : "Create broadcast draft"}</button>
         </article>)}
         {(!loading && (!snapshots || snapshots.snapshots.length === 0)) ? <p className="rounded border border-dashed p-6 text-center text-sm text-gray-400">No fresh snapshots yet.</p> : null}
       </div>
