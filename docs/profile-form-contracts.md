@@ -22,6 +22,17 @@ The backend currently exposes these profile-related form schemas through `GET /a
 
 These are currently static backend schemas, not yet admin-editable drafts.
 
+### Android-aligned profile capture coverage
+
+The current static schemas now mirror the Android enrollment/profile fields so Android can progressively switch from native hardcoded forms to backend-rendered forms without changing the captured business payload.
+
+- `farmer_registration` includes mobile number (`phone` input), village ID with manual fallback, manual village name, PIN code, display/father name, age, gender, Aadhaar, language preference, assistance mode, total land summary, primary crop, and optional enrollment GPS.
+- `parcel_registration` includes farmer/village linkage, reported area/unit, ownership, leased/shared/sharecrop conditional fields, irrigation source, current crop, Kharif/Rabi/Zaid crop sets, soil texture/color hints, GPS capture mode, GPS point, and GPS polygon.
+- `soil_profile` includes manual/inferred/SHC/lab source flows, inferred soil hint fields, texture/color, pH/EC/organic carbon, macro/micronutrients, SHC card number, test date, and notes.
+- Android payload name `boron_b` is preserved in the form schema and maps to backend canonical field `soil_profile.boron_bo` until the API/model alias is fully normalized.
+- Seasonal crop fields use `android_hint.payload_container = crops_by_season` so Android can submit the existing `{ "KHARIF": [], "RABI": [], "ZAID": [] }` structure.
+
+
 ## Discovery contract
 
 Android/web should discover profile form availability through bootstrap/config endpoints:

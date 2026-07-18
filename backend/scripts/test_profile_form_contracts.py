@@ -92,6 +92,8 @@ def main():
     farmer = schemas["farmer_registration"]
     check(field_by_id(farmer, "mobile_number") is not None, "Farmer form includes mobile_number")
     check(field_by_id(farmer, "mobile_number")["required"] is True, "Farmer mobile_number is required")
+    check(field_by_id(farmer, "pin_code") is not None, "Farmer form includes Android PIN code")
+    check(field_by_id(farmer, "assistance_mode")["android_hint"]["payload_field"] == "assistance_mode", "Farmer form advertises assistance_mode payload")
     check(field_by_id(farmer, "enrollment_location")["type"] == "GPS_POINT", "Farmer form includes GPS_POINT enrollment location")
 
     parcel = schemas["parcel_registration"]
@@ -101,12 +103,16 @@ def main():
     annual_rent = field_by_id(parcel, "annual_rent")
     check(annual_rent["depends_on"] == "ownership_type", "Parcel annual_rent depends on ownership_type")
     check(annual_rent["depends_on_value"] == "LEASED", "Parcel annual_rent serializes depends_on_value")
+    check(field_by_id(parcel, "geometry_source")["default_value"] == "NONE", "Parcel form includes geometry_source default")
+    check(field_by_id(parcel, "kharif_crops")["android_hint"]["payload_container"] == "crops_by_season", "Parcel form advertises seasonal crop payload container")
 
     soil = schemas["soil_profile"]
     lab_name = field_by_id(soil, "lab_name")
     shc = field_by_id(soil, "shc_card_number")
     check(lab_name["depends_on"] == "data_source" and lab_name["depends_on_value"] == "LAB_REPORT", "Soil lab_name conditional metadata is serialized")
     check(shc["depends_on"] == "data_source" and shc["depends_on_value"] == "SHC_CARD", "Soil SHC conditional metadata is serialized")
+    check(field_by_id(soil, "boron_b")["canonical_field"] == "soil_profile.boron_bo", "Soil form maps Android boron_b to backend boron_bo")
+    check(field_by_id(soil, "inferred_soil_type")["depends_on_value"] == "INFERRED", "Soil form includes inferred soil hint fields")
 
     project = Project(
         id=uuid.uuid4(),
