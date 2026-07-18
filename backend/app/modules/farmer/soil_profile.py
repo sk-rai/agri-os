@@ -209,13 +209,13 @@ SOIL_TYPE_DESCRIPTIONS = {
 }
 
 
-def _validate_profile_option_value(db: Session, *, tenant_id: str, option_set: str, value: Optional[str], path: str) -> None:
+def _validate_profile_option_value(db: Session, *, tenant_id: str, option_set: str, value: Optional[str], path: str, project_id: Optional[uuid.UUID] = None) -> None:
     """Reject stale Android-hardcoded values that are no longer valid for backend-owned profile option sets."""
     if value is None or value == "":
         return
     from app.modules.workflow.forms import _effective_profile_option_registry
 
-    registry = _effective_profile_option_registry(db, tenant_id=tenant_id)
+    registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
     resolved = registry.get(option_set)
     allowed = {str(option.value) for option in (resolved.options if resolved else [])}
     if str(value) not in allowed:
@@ -227,6 +227,28 @@ def _validate_profile_option_value(db: Session, *, tenant_id: str, option_set: s
             "allowed_values": sorted(allowed),
             "message": f"{path} must be one of the backend-owned {option_set} options.",
         })
+
+
+def _infer_soil_profile_project_id(db: Session, *, tenant_id: str, parcel_id: uuid.UUID, farmer_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """Infer project context for soil profile option validation from parcel/farmer linkage."""
+    from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel
+
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id, Parcel.farmer_id == farmer_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found for farmer")
+    if parcel.project_id:
+        return parcel.project_id
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id, Farmer.status != "ARCHIVED").first()
+    if farmer and farmer.project_id:
+        return farmer.project_id
+    active_enrollments = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == tenant_id,
+        FarmerProjectEnrollment.farmer_id == farmer_id,
+        FarmerProjectEnrollment.status == "ACTIVE",
+    ).all()
+    if len(active_enrollments) == 1:
+        return active_enrollments[0].project_id
+    return None
 
 
 # --- API Router ---
@@ -272,9 +294,10 @@ def create_soil_profile(
     - Tier 2: + soil_texture + soil_color (farmer observation)
     - Tier 3: + all 12 SHC parameters (lab test data)
     """
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="soil_textures", value=body.soil_texture, path="soil_texture")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="soil_colors", value=body.soil_color, path="soil_color")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="soil_data_sources", value=body.data_source, path="data_source")
+    inferred_project_id = _infer_soil_profile_project_id(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id, farmer_id=body.farmer_id)
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=body.soil_texture, path="soil_texture")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=body.soil_color, path="soil_color")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=body.data_source, path="data_source")
 
     profile = SoilProfile(
         id=uuid.uuid4(),

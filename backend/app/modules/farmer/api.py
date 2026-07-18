@@ -617,6 +617,23 @@ def _farmer_context_payload(
     }
 
 
+def _infer_farmer_project_id_for_profile_validation(db: Session, *, tenant_id: str, farmer_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """Infer one project context for profile option validation without forcing all farmers into projects."""
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id, Farmer.status != "ARCHIVED").first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+    if farmer.project_id:
+        return farmer.project_id
+    active_enrollments = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == tenant_id,
+        FarmerProjectEnrollment.farmer_id == farmer_id,
+        FarmerProjectEnrollment.status == "ACTIVE",
+    ).all()
+    if len(active_enrollments) == 1:
+        return active_enrollments[0].project_id
+    return None
+
+
 def _validate_profile_option_value(db: Session, *, tenant_id: str, option_set: str, value: Optional[str], path: str, project_id: Optional[uuid.UUID] = None) -> None:
     """Reject stale Android-hardcoded values that are no longer valid for the tenant/project option set."""
     if value is None or value == "":
@@ -2038,9 +2055,10 @@ def create_parcel(
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
 
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="land_units", value=body.reported_area_unit, path="reported_area_unit")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
+    inferred_project_id = _infer_farmer_project_id_for_profile_validation(db, tenant_id=x_tenant_id, farmer_id=body.farmer_id)
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=body.reported_area_unit, path="reported_area_unit")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
 
     # Determine geometry source from provided data
     geometry_source = "NONE"
@@ -2051,6 +2069,7 @@ def create_parcel(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
         farmer_id=body.farmer_id,
+        project_id=inferred_project_id,
         village_id=body.village_id,  # Can be None for manual villages
         village_name_manual=body.village_name_manual,
         reported_area=body.reported_area,

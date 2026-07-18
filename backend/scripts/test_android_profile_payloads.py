@@ -2,7 +2,7 @@
 
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Farmer, Parcel, Tenant
+from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
 
 
@@ -116,6 +116,57 @@ def main():
     check(invalid_parcel.status_code == 400, "Invalid parcel profile option is rejected", invalid_parcel.text)
     check(invalid_parcel.json()["detail"]["path"] == "ownership_type", "Invalid parcel option identifies field path")
 
+    print("\n[2b] Project-effective parcel option override")
+    project_id = uuid.uuid4()
+    db = SessionLocal()
+    try:
+        db.add(Project(
+            id=project_id,
+            tenant_id=tenant_id,
+            name="Android Profile Override Project",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 12, 31),
+            status="ACTIVE",
+            geography_scope={},
+            crop_scope=["RICE"],
+            config={"profile_options": {"overrides": {"ownership_types": {"version": "project-owned-only", "title": {"en": "Project Ownership"}, "options": [{"value": "OWNED", "label": {"en": "Owned"}}]}}}},
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.flush()
+        stored_farmer = db.query(Farmer).filter(Farmer.id == uuid.UUID(farmer_id), Farmer.tenant_id == tenant_id).first()
+        stored_farmer.project_id = project_id
+        stored_farmer.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
+
+    project_invalid_parcel = client.post("/api/v1/parcels", headers=headers, json={
+        "farmer_id": farmer_id,
+        "village_name_manual": "Android Profile Village",
+        "reported_area": 1,
+        "reported_area_unit": "ACRE",
+        "ownership_type": "SHARECROP",
+    })
+    check(project_invalid_parcel.status_code == 400, "Project ownership override rejects default option", project_invalid_parcel.text)
+    check(project_invalid_parcel.json()["detail"]["allowed_values"] == ["OWNED"], "Project option validation uses override values")
+
+    project_valid_parcel = client.post("/api/v1/parcels", headers=headers, json={
+        "farmer_id": farmer_id,
+        "village_name_manual": "Android Profile Village",
+        "reported_area": 1,
+        "reported_area_unit": "ACRE",
+        "ownership_type": "OWNED",
+    })
+    check(project_valid_parcel.status_code == 201, "Project ownership override accepts allowed option", project_valid_parcel.text)
+    project_parcel_id = project_valid_parcel.json()["id"]
+    db = SessionLocal()
+    try:
+        stored_project_parcel = db.query(Parcel).filter(Parcel.id == uuid.UUID(project_parcel_id), Parcel.tenant_id == tenant_id).first()
+        check(str(stored_project_parcel.project_id) == str(project_id), "Project context is stored on inferred parcel")
+    finally:
+        db.close()
+
     print("\n[3] Soil boron_b alias")
     soil_response = client.post("/api/v1/soil-profiles", headers=headers, json={
         "parcel_id": parcel_id,
@@ -149,6 +200,7 @@ def main():
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")
