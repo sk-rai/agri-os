@@ -89,6 +89,11 @@ class SoilProfile(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_soil_profile_date", "test_date"),
     )
 
+    @property
+    def boron_b(self):
+        """Android/form payload alias for SHC boron_bo storage."""
+        return self.boron_bo
+
 
 # --- API Schemas ---
 
@@ -117,6 +122,7 @@ class SoilProfileCreate(BaseModel):
     copper_cu: Optional[float] = None
     manganese_mn: Optional[float] = None
     boron_bo: Optional[float] = None
+    boron_b: Optional[float] = None  # Android/form payload alias; stored as boron_bo
     ph: Optional[float] = None
     ec: Optional[float] = None
     organic_carbon_oc: Optional[float] = None
@@ -139,6 +145,7 @@ class SoilProfileResponse(BaseModel):
     phosphorus_p: Optional[float] = None
     potassium_k: Optional[float] = None
     organic_carbon_oc: Optional[float] = None
+    boron_b: Optional[float] = None
     data_source: str
     ratings: Optional[dict] = None
     recommendations: Optional[dict] = None
@@ -264,7 +271,7 @@ def create_soil_profile(
         iron_fe=body.iron_fe,
         copper_cu=body.copper_cu,
         manganese_mn=body.manganese_mn,
-        boron_bo=body.boron_bo,
+        boron_bo=body.boron_bo if body.boron_bo is not None else body.boron_b,
         ph=body.ph,
         ec=body.ec,
         organic_carbon_oc=body.organic_carbon_oc,

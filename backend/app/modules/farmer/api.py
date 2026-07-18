@@ -117,6 +117,7 @@ class FarmerCreate(BaseModel):
     mobile_number: str = Field(..., pattern=r"^\+91[6-9]\d{9}$")
     village_id: Optional[uuid.UUID] = None  # From geography DB (preferred)
     village_name_manual: Optional[str] = None  # If village not in DB (new settlement, etc.)
+    pin_code: Optional[str] = Field(None, pattern=r"^\d{6}$")
     primary_crop_code: Optional[str] = None
     crops_by_season: Optional[dict] = None  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
     display_name: Optional[str] = None
@@ -127,6 +128,7 @@ class FarmerCreate(BaseModel):
     total_land_area: Optional[float] = None
     total_land_unit: str = "BIGHA"
     language_preference: str = "hi"  # ISO 639-1
+    assistance_mode: Optional[str] = Field(None, pattern=r"^(SELF_SERVICE|DEALER_ASSISTED|FIELD_AGENT_ASSISTED|AGRONOMIST_ASSISTED|SELF|ASSISTED|BULK_IMPORT|WEB_ADMIN|PROJECT_INVITE|SYNC_MATERIALIZED)$")
     enrollment_gps_lat: Optional[float] = None
     enrollment_gps_lng: Optional[float] = None
 
@@ -135,8 +137,9 @@ class FarmerResponse(BaseModel):
     id: uuid.UUID
     tenant_id: str
     mobile_number: str
-    village_id: uuid.UUID
+    village_id: Optional[uuid.UUID] = None
     display_name: Optional[str] = None
+    pin_code: Optional[str] = None
     primary_crop_code: Optional[str] = None
     status: str
     class Config:
@@ -170,7 +173,7 @@ class ParcelCreate(BaseModel):
 class ParcelResponse(BaseModel):
     id: uuid.UUID
     farmer_id: uuid.UUID
-    village_id: uuid.UUID
+    village_id: Optional[uuid.UUID] = None
     reported_area: float
     reported_area_unit: str
     geometry_source: str
@@ -303,6 +306,18 @@ def _iso_date(value):
     return value.isoformat() if value else None
 
 
+def _normalize_assistance_mode(value: Optional[str]) -> str:
+    """Map Android assistance_mode values to backend enrollment_method values."""
+    normalized = (value or "ASSISTED").strip().upper()
+    mapping = {
+        "SELF_SERVICE": "SELF",
+        "DEALER_ASSISTED": "ASSISTED",
+        "FIELD_AGENT_ASSISTED": "ASSISTED",
+        "AGRONOMIST_ASSISTED": "ASSISTED",
+    }
+    return mapping.get(normalized, normalized)
+
+
 
 def _validate_lng_lat(point: list, label: str) -> tuple[float, float]:
     if not isinstance(point, list) or len(point) < 2:
@@ -425,6 +440,7 @@ def _farmer_payload(farmer: Farmer) -> dict:
         "gender": farmer.gender,
         "village_id": str(farmer.village_id) if farmer.village_id else None,
         "village_name_manual": farmer.village_name_manual,
+        "pin_code": farmer.pin_code,
         "primary_crop_code": farmer.primary_crop_code,
         "crops_by_season": farmer.crops_by_season or {},
         "total_land_area": _json_number(farmer.total_land_area),
@@ -1289,6 +1305,7 @@ def enroll_farmer(
         mobile_number=normalized_mobile,
         village_id=body.village_id,  # Can be None if manual village
         village_name_manual=body.village_name_manual,
+        pin_code=body.pin_code,
         primary_crop_code=body.primary_crop_code,
         crops_by_season=body.crops_by_season or {},
         display_name=body.display_name,
@@ -1299,6 +1316,7 @@ def enroll_farmer(
         total_land_area=body.total_land_area,
         total_land_unit=body.total_land_unit,
         language_preference=body.language_preference,
+        enrollment_method=_normalize_assistance_mode(body.assistance_mode),
         enrolled_by=uuid.UUID(x_actor_id),
         enrollment_gps_lat=body.enrollment_gps_lat,
         enrollment_gps_lng=body.enrollment_gps_lng,

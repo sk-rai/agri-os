@@ -158,6 +158,7 @@ class Farmer(Base, UUIDPrimaryKey, AuditMixin):
     mobile_number = Column(String(15), nullable=False)
     village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"))  # Nullable for manual villages
     village_name_manual = Column(String(200))  # If village not in LGD DB
+    pin_code = Column(String(10))  # Postal PIN code captured during Android enrollment/profile
     primary_crop_code = Column(String(30))  # From canonical crop codes
     crops_by_season = Column(JSONB, default=dict)  # {"KHARIF": ["RICE"], "RABI": ["WHEAT"]}
 

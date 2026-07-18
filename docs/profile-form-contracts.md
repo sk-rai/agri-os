@@ -32,6 +32,12 @@ The current static schemas now mirror the Android enrollment/profile fields so A
 - Android payload name `boron_b` is preserved in the form schema and maps to backend canonical field `soil_profile.boron_bo` until the API/model alias is fully normalized.
 - Seasonal crop fields use `android_hint.payload_container = crops_by_season` so Android can submit the existing `{ "KHARIF": [], "RABI": [], "ZAID": [] }` structure.
 
+Backend ownership/configurability rule:
+
+- Seasons, crop choices, land units, ownership modes, irrigation sources, soil textures/colors, soil data sources, and validation ranges must remain backend-owned contract values.
+- Android may cache these values for offline use, but should refresh from bootstrap/forms/master-data and should not treat local hardcoded lists as authoritative once backend-driven forms are enabled.
+- Tenant/project-specific overrides should be introduced through form/config versioning rather than Android releases.
+
 
 ## Discovery contract
 
