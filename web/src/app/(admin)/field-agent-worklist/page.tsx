@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { farmersApi, type FieldAgentCaptureActionDto, type FieldAgentWorklistResponse, type FieldAgentWorklistRowDto } from "@/lib/api";
+import { appConfigApi, farmersApi, type FieldAgentCaptureActionDto, type FieldAgentWorklistResponse, type FieldAgentWorklistRowDto, type FormFieldOptionContract } from "@/lib/api";
 
 const STATUSES = ["ACTIVE", "PENDING", "INACTIVE", "ARCHIVED", ""];
+const PROFILE_OPTION_SETS = ["languages", "land_units", "soil_types", "soil_textures", "soil_colors"] as const;
+type ProfileOptionSetKey = typeof PROFILE_OPTION_SETS[number];
 
 export default function FieldAgentWorklistPage() {
   const [projectId, setProjectId] = useState("");
@@ -27,6 +29,7 @@ export default function FieldAgentWorklistPage() {
   const [parcelSoilType, setParcelSoilType] = useState("");
   const [soilTexture, setSoilTexture] = useState("");
   const [soilColor, setSoilColor] = useState("");
+  const [profileOptions, setProfileOptions] = useState<Partial<Record<ProfileOptionSetKey, FormFieldOptionContract[]>>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +52,24 @@ export default function FieldAgentWorklistPage() {
   }, [projectId, actorId, assignedOnly, status]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProfileOptions() {
+      const next: Partial<Record<ProfileOptionSetKey, FormFieldOptionContract[]>> = {};
+      await Promise.all(PROFILE_OPTION_SETS.map(async (optionSet) => {
+        try {
+          const detail = await appConfigApi.profileOptionSet(optionSet, projectId.trim() || undefined);
+          next[optionSet] = detail.options || [];
+        } catch {
+          next[optionSet] = [];
+        }
+      }));
+      if (!cancelled) setProfileOptions(next);
+    }
+    void loadProfileOptions();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   useEffect(() => {
     setEditMessage(null);
@@ -209,24 +230,24 @@ export default function FieldAgentWorklistPage() {
                 <div className="grid gap-2 md:grid-cols-2">
                   <Input label="Farmer name" value={farmerName} onChange={setFarmerName} />
                   <Input label="Village" value={farmerVillage} onChange={setFarmerVillage} />
-                  <Input label="Language" value={farmerLanguage} onChange={setFarmerLanguage} />
-                  <Input label="Land unit" value={farmerLandUnit} onChange={setFarmerLandUnit} />
+                  <OptionSelect label="Language" value={farmerLanguage} onChange={setFarmerLanguage} options={profileOptions.languages || []} />
+                  <OptionSelect label="Land unit" value={farmerLandUnit} onChange={setFarmerLandUnit} options={profileOptions.land_units || []} />
                 </div>
                 <div>
                   <p className="mb-2 text-gray-500">{selected.parcels?.[0] ? "Edit first parcel" : "Create first parcel"}</p>
                   <div className="grid gap-2 md:grid-cols-2">
                     <Input label="Parcel local name" value={parcelLocalName} onChange={setParcelLocalName} />
                     <Input label="Parcel area" value={parcelArea} onChange={setParcelArea} />
-                    <Input label="Parcel unit" value={parcelUnit} onChange={setParcelUnit} />
-                    <Input label="Parcel soil type" value={parcelSoilType} onChange={setParcelSoilType} />
+                    <OptionSelect label="Parcel unit" value={parcelUnit} onChange={setParcelUnit} options={profileOptions.land_units || []} />
+                    <OptionSelect label="Parcel soil type" value={parcelSoilType} onChange={setParcelSoilType} options={profileOptions.soil_types || []} />
                   </div>
                   {!selected.parcels?.[0] ? <p className="mt-1 text-gray-500">Parcel area is required before creating the first land record.</p> : null}
                 </div>
                 <div>
                   <p className="mb-2 text-gray-500">{selected.soil_profiles?.[0] ? "Edit first soil profile" : "Create first soil profile after parcel exists"}</p>
                   <div className="grid gap-2 md:grid-cols-2">
-                    <Input label="Soil texture" value={soilTexture} onChange={setSoilTexture} />
-                    <Input label="Soil color" value={soilColor} onChange={setSoilColor} />
+                    <OptionSelect label="Soil texture" value={soilTexture} onChange={setSoilTexture} options={profileOptions.soil_textures || []} />
+                    <OptionSelect label="Soil color" value={soilColor} onChange={setSoilColor} options={profileOptions.soil_colors || []} />
                   </div>
                   {!selected.soil_profiles?.[0] ? <p className="mt-1 text-gray-500">Soil type, texture, or color will create a manual soil profile once a parcel exists.</p> : null}
                 </div>
@@ -265,6 +286,14 @@ export default function FieldAgentWorklistPage() {
 
 function Input({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return <label className="text-xs text-gray-500">{label}<input value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>;
+}
+
+
+function OptionSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: FormFieldOptionContract[] }) {
+  return <label className="text-xs text-gray-500">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">
+    <option value="">Select...</option>
+    {options.map((option) => <option key={option.value} value={option.value}>{option.label?.en || option.value}</option>)}
+  </select></label>;
 }
 
 function Mini({ label, value, tone = "slate" }: { label: string; value: number; tone?: "slate" | "green" | "blue" | "amber" | "red" }) {
