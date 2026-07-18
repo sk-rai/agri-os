@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
+from app.modules.master_data.models.crop import Crop, CropCategory
 
 
 def now():
@@ -40,9 +41,36 @@ def main():
     farmer_id = uuid.uuid4()
     actor_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
+    crop_category_id = uuid.uuid4()
+    crop_id = uuid.uuid4()
+    test_crop_code = "PROFILE_TEST_RICE"
 
     db = SessionLocal()
     try:
+        category = db.query(CropCategory).filter(CropCategory.code == "PROFILE_OPTION_TEST").first()
+        if category is None:
+            category = CropCategory(
+                id=crop_category_id,
+                code="PROFILE_OPTION_TEST",
+                canonical_name="Profile Option Test Crops",
+                created_at=now(),
+                updated_at=now(),
+            )
+            db.add(category)
+            db.flush()
+        crop = db.query(Crop).filter(Crop.code == test_crop_code).first()
+        if crop is None:
+            db.add(Crop(
+                id=crop_id,
+                code=test_crop_code,
+                category_id=category.id,
+                canonical_name="Profile Test Rice",
+                suitable_seasons=["KHARIF"],
+                suitable_soil_types=["ALLUVIAL"],
+                created_at=now(),
+                updated_at=now(),
+            ))
+            db.flush()
         db.add(Tenant(
             id=tenant_id,
             name="Profile Soil Option Tenant",
@@ -58,7 +86,7 @@ def main():
             end_date=date.today() + timedelta(days=90),
             status="ACTIVE",
             geography_scope={},
-            crop_scope=["RICE"],
+            crop_scope=[test_crop_code],
             config={
                 "profile_options": {
                     "overrides": {
@@ -119,15 +147,43 @@ def main():
     })
     check(parcel_bad.status_code == 400, "Parcel rejects soil type outside project option set", parcel_bad.text)
 
+    parcel_bad_crop = client.post("/api/v1/parcels", headers=headers, json={
+        "farmer_id": str(farmer_id),
+        "village_name_manual": "Soil Village",
+        "reported_area": 1.2,
+        "reported_area_unit": "ACRE",
+        "soil_type_code": "ALLUVIAL",
+        "current_crop_code": "NOT_A_CROP",
+    })
+    check(parcel_bad_crop.status_code == 400, "Parcel rejects crop outside backend crop catalog", parcel_bad_crop.text)
+
+    parcel_bad_season = client.post("/api/v1/parcels", headers=headers, json={
+        "farmer_id": str(farmer_id),
+        "village_name_manual": "Soil Village",
+        "reported_area": 1.2,
+        "reported_area_unit": "ACRE",
+        "soil_type_code": "ALLUVIAL",
+        "crops_by_season": {"MONSOON": [test_crop_code]},
+    })
+    check(parcel_bad_season.status_code == 400, "Parcel rejects season outside backend season options", parcel_bad_season.text)
+
     parcel_good = client.post("/api/v1/parcels", headers=headers, json={
         "farmer_id": str(farmer_id),
         "village_name_manual": "Soil Village",
         "reported_area": 1.2,
         "reported_area_unit": "ACRE",
         "soil_type_code": "ALLUVIAL",
+        "current_crop_code": test_crop_code,
+        "crops_by_season": {"KHARIF": [test_crop_code]},
     })
-    check(parcel_good.status_code == 201, "Parcel accepts project soil type option", parcel_good.text)
+    check(parcel_good.status_code == 201, "Parcel accepts backend crop catalog and season options", parcel_good.text)
     parcel_id = parcel_good.json()["id"]
+
+    parcel_bad_patch_crop = client.patch(f"/api/v1/parcels/{parcel_id}", headers=headers, json={"current_crop_code": "NOT_A_CROP"})
+    check(parcel_bad_patch_crop.status_code == 400, "Parcel update rejects crop outside backend crop catalog", parcel_bad_patch_crop.text)
+
+    parcel_bad_patch_season = client.patch(f"/api/v1/parcels/{parcel_id}", headers=headers, json={"crops_by_season": {"MONSOON": [test_crop_code]}})
+    check(parcel_bad_patch_season.status_code == 400, "Parcel update rejects season outside backend season options", parcel_bad_patch_season.text)
 
     soil_bad = client.post("/api/v1/soil-profiles", headers=headers, json={
         "farmer_id": str(farmer_id),

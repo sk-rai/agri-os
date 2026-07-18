@@ -927,6 +927,54 @@ def _validate_profile_option_value(db: Session, *, tenant_id: str, option_set: s
         })
 
 
+def _validate_crop_catalog_value(db: Session, *, value: Optional[str], path: str) -> None:
+    """Validate crop codes against backend crop catalog instead of Android-owned lists."""
+    if value is None or value == "":
+        return
+    from app.modules.master_data.models.crop import Crop
+
+    code = str(value).strip().upper()
+    exists = db.query(Crop.id).filter(Crop.code == code).first() is not None
+    if not exists:
+        raise HTTPException(400, {
+            "error": "INVALID_CROP_CODE",
+            "path": path,
+            "value": value,
+            "message": f"{path} must reference a crop code from the backend crop catalog.",
+        })
+
+
+def _validate_crops_by_season(db: Session, *, tenant_id: str, project_id: Optional[uuid.UUID], value: Optional[dict], path: str) -> None:
+    """Validate season keys through profile_options.seasons and crop values through crop catalog."""
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise HTTPException(400, {"error": "INVALID_CROPS_BY_SEASON", "path": path, "message": f"{path} must be an object keyed by backend season codes."})
+
+    from app.modules.workflow.forms import _effective_profile_option_registry
+
+    registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
+    resolved = registry.get("seasons")
+    allowed_seasons = {str(option.value) for option in (resolved.options if resolved else [])}
+    for season, crops in value.items():
+        season_code = str(season).strip().upper()
+        if season_code not in allowed_seasons:
+            raise HTTPException(400, {
+                "error": "INVALID_PROFILE_OPTION_VALUE",
+                "path": f"{path}.{season}",
+                "option_set": "seasons",
+                "value": season,
+                "allowed_values": sorted(allowed_seasons),
+                "message": f"{path}.{season} must be one of the backend-owned seasons options.",
+            })
+        if crops is None:
+            continue
+        if not isinstance(crops, list):
+            raise HTTPException(400, {"error": "INVALID_CROPS_BY_SEASON", "path": f"{path}.{season}", "message": "Season crop values must be a list of crop codes."})
+        for idx, crop_code in enumerate(crops):
+            _validate_crop_catalog_value(db, value=str(crop_code), path=f"{path}.{season}[{idx}]")
+
+
 def _profile_form_contract_payload(db: Session, tenant_id: str, project_id: Optional[uuid.UUID] = None) -> dict:
     """Return the backend-owned form/options bundle Android can cache for profile editing."""
     from app.modules.workflow.forms import FORM_REGISTRY, _effective_profile_option_registry
@@ -2707,6 +2755,8 @@ def create_parcel(
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
     _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
+    _validate_crop_catalog_value(db, value=body.current_crop_code, path="current_crop_code")
+    _validate_crops_by_season(db, tenant_id=x_tenant_id, project_id=inferred_project_id, value=body.crops_by_season, path="crops_by_season")
 
     # Determine geometry source from provided data
     geometry_source = "NONE"
@@ -2788,6 +2838,10 @@ def update_parcel_profile(
         _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=values.get("irrigation_source"), path="irrigation_source")
     if "soil_type_code" in values:
         _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
+    if "current_crop_code" in values:
+        _validate_crop_catalog_value(db, value=values.get("current_crop_code"), path="current_crop_code")
+    if "crops_by_season" in values:
+        _validate_crops_by_season(db, tenant_id=x_tenant_id, project_id=inferred_project_id, value=values.get("crops_by_season"), path="crops_by_season")
 
     for field in ["village_id", "village_name_manual", "reported_area", "reported_area_unit", "current_crop_code", "soil_type_code", "local_name", "survey_number", "ownership_type", "annual_rent", "annual_rent_currency", "share_percentage", "sharecrop_percentage", "irrigation_source", "crops_by_season", "status"]:
         if field in values:

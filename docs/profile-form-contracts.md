@@ -171,6 +171,7 @@ Update semantics:
 - Requests are partial patches; omitted fields are preserved.
 - Farmer updates validate backend-owned `land_units`, `languages`, and `assistance_modes` when those fields are supplied.
 - Parcel updates validate backend-owned `land_units`, `ownership_types`, `irrigation_sources`, and `soil_types`; geometry remains on `/api/v1/parcels/{parcel_id}/geometry`.
+- Parcel `current_crop_code` and `crops_by_season` are backend-owned too: crop codes must exist in the crop catalog, and `crops_by_season` keys must come from `profile_options.seasons`.
 - Soil profile updates validate backend-owned `soil_types`, `soil_textures`, `soil_colors`, and `soil_data_sources`.
 - Invalid/stale Android enum values return `INVALID_PROFILE_OPTION_VALUE` with the allowed backend option values.
 - Cross-tenant updates return 404 so Android/admin cannot infer records outside the active tenant.
