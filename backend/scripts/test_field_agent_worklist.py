@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.auth.models import AgentProfile, User
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
 
@@ -66,6 +67,16 @@ def main():
         ))
         db.flush()
 
+        db.add(User(
+            id=actor_id,
+            tenant_id=tenant_id,
+            mobile_number=f"+9189{uuid.uuid4().int % 100000000:08d}",
+            role="AGRONOMIST",
+            display_name="Assigned Agent",
+            language_preference="hi",
+            created_at=now(),
+            updated_at=now(),
+        ))
         db.add(Farmer(
             id=assigned_farmer_id,
             tenant_id=tenant_id,
@@ -109,6 +120,25 @@ def main():
         ))
         db.flush()
 
+        db.add(AgentProfile(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            user_id=actor_id,
+            farmer_id=assigned_farmer_id,
+            agent_code="WORKLIST-AGENT-1",
+            role_type="AGRONOMIST",
+            display_name="Assigned Agent",
+            mobile_number="+919800000001",
+            status="ACTIVE",
+            skills=["CROP_HEALTH"],
+            languages=["hi"],
+            territory_scope={"village_names": ["Agent Village"]},
+            availability={"mode": "FIELD_VISITS"},
+            certification={},
+            metadata_={"regression": True},
+            created_at=now(),
+            updated_at=now(),
+        ))
         db.add(FarmerProjectEnrollment(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
@@ -146,6 +176,11 @@ def main():
     body = assigned.json()
     check(body["schema_version"] == "field_agent_worklist.v1", "Worklist schema stable")
     check(body["filters"]["assigned_only"] is True, "Worklist preserves assigned_only filter")
+    check(body["agent_profile"]["user_id"] == str(actor_id), "Worklist resolves active agent profile")
+    check(body["agent_profile"]["farmer_id"] == str(assigned_farmer_id), "Worklist exposes linked farmer profile for dual-capacity agent")
+    check(body["mode_switch"]["assigned_agent_mode"] is True, "Worklist indicates assigned-agent mode")
+    check(body["mode_switch"]["personal_farmer_mode_available"] is True, "Worklist indicates personal farmer mode is available")
+    check(body["mode_switch"]["personal_farmer_id"] == str(assigned_farmer_id), "Worklist returns personal farmer id for mode switch")
     check(body["summary"]["farmer_count"] == 1, "Assigned worklist includes only assigned farmer")
     row = body["farmers"][0]
     check(row["farmer"]["id"] == str(assigned_farmer_id), "Assigned worklist preserves farmer id")
@@ -172,9 +207,11 @@ def main():
     db = SessionLocal()
     try:
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(AgentProfile).filter(AgentProfile.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(User).filter(User.id == actor_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()

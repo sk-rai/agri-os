@@ -731,6 +731,34 @@ def _parse_optional_uuid(value: Optional[str]) -> Optional[uuid.UUID]:
         return None
 
 
+def _agent_profile_context_for_worklist(db: Session, *, tenant_id: str, actor_id: Optional[uuid.UUID]) -> Optional[dict]:
+    if not actor_id:
+        return None
+    from app.modules.auth.models import AgentProfile
+
+    profile = db.query(AgentProfile).filter(
+        AgentProfile.tenant_id == tenant_id,
+        AgentProfile.user_id == actor_id,
+        AgentProfile.is_active == True,
+    ).first()
+    if not profile:
+        return None
+    return {
+        "id": str(profile.id),
+        "tenant_id": profile.tenant_id,
+        "user_id": str(profile.user_id),
+        "farmer_id": str(profile.farmer_id) if profile.farmer_id else None,
+        "role_type": profile.role_type,
+        "display_name": profile.display_name,
+        "status": profile.status,
+        "skills": profile.skills or [],
+        "languages": profile.languages or [],
+        "territory_scope": profile.territory_scope or {},
+        "availability": profile.availability or {},
+        "can_also_act_as_farmer": profile.farmer_id is not None,
+    }
+
+
 def _field_agent_capture_actions(completion: dict, *, active_crop_cycle_count: int, active_stage_count: int) -> list[dict]:
     actions = [dict(action) for action in completion.get("next_actions", [])]
     existing = {action.get("code") for action in actions}
@@ -1897,6 +1925,12 @@ def list_farmer_profile_readiness(
         "schema_version": "farmer_profile_readiness.v1",
         "tenant_id": x_tenant_id,
         "filters": {"project_id": str(project_id) if project_id else None, "status": status, "offset": offset, "limit": limit},
+        "agent_profile": agent_profile_context,
+        "mode_switch": {
+            "assigned_agent_mode": agent_profile_context is not None,
+            "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
+            "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
+        },
         "summary": summary,
         "farmers": rows,
     }
@@ -1918,6 +1952,7 @@ def get_field_agent_worklist(
     from app.modules.farmer.soil_profile import SoilProfile
 
     actor_uuid = actor_id or _parse_optional_uuid(x_actor_id)
+    agent_profile_context = _agent_profile_context_for_worklist(db, tenant_id=x_tenant_id, actor_id=actor_uuid)
     if assigned_only and not actor_uuid:
         raise HTTPException(400, "actor_id query parameter or X-Actor-ID header is required when assigned_only=true")
 
@@ -1964,6 +1999,18 @@ def get_field_agent_worklist(
                     "status": status,
                     "offset": offset,
                     "limit": limit,
+                },
+                "agent_profile": agent_profile_context,
+                "mode_switch": {
+                    "assigned_agent_mode": agent_profile_context is not None,
+                    "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
+                    "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
+                },
+                "agent_profile": agent_profile_context,
+                "mode_switch": {
+                    "assigned_agent_mode": agent_profile_context is not None,
+                    "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
+                    "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
                 },
                 "summary": {
                     "farmer_count": 0,
@@ -2064,6 +2111,12 @@ def get_field_agent_worklist(
             "status": status,
             "offset": offset,
             "limit": limit,
+        },
+        "agent_profile": agent_profile_context,
+        "mode_switch": {
+            "assigned_agent_mode": agent_profile_context is not None,
+            "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
+            "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
         },
         "summary": summary,
         "farmers": rows,

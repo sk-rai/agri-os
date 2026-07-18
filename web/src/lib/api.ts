@@ -677,6 +677,21 @@ export interface FieldAgentWorklistParcelDto {
   [key: string]: unknown;
 }
 
+export interface FieldAgentProfileContextDto {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  farmer_id?: string | null;
+  role_type?: string | null;
+  display_name?: string | null;
+  status?: string | null;
+  skills: string[];
+  languages: string[];
+  territory_scope: Record<string, unknown>;
+  availability: Record<string, unknown>;
+  can_also_act_as_farmer: boolean;
+}
+
 export interface FieldAgentWorklistRowDto {
   farmer: FarmerProfileReadinessRowDto["farmer"];
   project_enrollments: FieldAgentWorklistEnrollmentDto[];
@@ -701,6 +716,12 @@ export interface FieldAgentWorklistResponse {
     status?: string | null;
     offset: number;
     limit: number;
+  };
+  agent_profile?: FieldAgentProfileContextDto | null;
+  mode_switch?: {
+    assigned_agent_mode: boolean;
+    personal_farmer_mode_available: boolean;
+    personal_farmer_id?: string | null;
   };
   summary: {
     farmer_count: number;

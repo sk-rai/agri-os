@@ -139,6 +139,7 @@ Backend distinguishes identity/capability from farmer identity:
 - `agent_profiles` stores operational agent metadata such as role type, skills, languages, territory scope, availability, certification, and status.
 - `farmers` remains the farmer/farm profile.
 - One person can have both an `agent_profiles.farmer_id` link and a farmer profile, so Android should allow switching between personal farmer mode and assigned-agent mode without creating duplicate people.
+- `GET /api/v1/field-agent/worklist` returns `agent_profile` and `mode_switch` when actor context resolves to an active agent profile; Android should use this to show “My Farm” and “Assigned Farmers” modes.
 - Project assignment still comes from `project_roles` and farmer assignment still comes from `farmer_project_enrollments.assigned_user_ids`.
 
 Admin APIs:

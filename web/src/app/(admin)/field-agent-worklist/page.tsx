@@ -176,6 +176,11 @@ export default function FieldAgentWorklistPage() {
     {loading ? <p className="rounded bg-white p-5 text-sm text-gray-500 shadow">Loading worklist...</p> : null}
 
     {payload && !loading ? <>
+      {payload.agent_profile || payload.mode_switch ? <div className="mb-6 rounded bg-blue-50 p-4 text-sm text-blue-900">
+        <div className="font-semibold">Agent context</div>
+        {payload.agent_profile ? <div className="mt-1">{payload.agent_profile.display_name || payload.agent_profile.user_id} / {payload.agent_profile.role_type || "AGENT"} / {payload.agent_profile.status || "-"}</div> : <div className="mt-1">No active agent profile found for the actor id; showing worklist by requested filters.</div>}
+        {payload.mode_switch?.personal_farmer_mode_available ? <div className="mt-1 text-xs">This user can also switch to personal farmer mode: {payload.mode_switch.personal_farmer_id}</div> : null}
+      </div> : null}
       <div className="mb-6 grid gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Mini label="Farmers" value={payload.summary.farmer_count} />
         <Mini label="Home ready" value={payload.summary.home_ready_count} tone="green" />
