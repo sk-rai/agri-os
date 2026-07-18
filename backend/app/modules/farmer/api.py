@@ -1523,6 +1523,118 @@ def list_farmers(
     return query.offset(offset).limit(limit).all()
 
 
+@router.get("/farmers/profile-readiness")
+def list_farmer_profile_readiness(
+    project_id: Optional[uuid.UUID] = Query(None),
+    status: Optional[str] = Query("ACTIVE"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return backend-owned farmer/land/soil profile readiness for admin and agent summary screens."""
+    from app.modules.farmer.soil_profile import SoilProfile
+
+    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    if status:
+        query = query.filter(Farmer.status == status)
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+        enrolled_farmer_ids = [
+            row[0]
+            for row in db.query(FarmerProjectEnrollment.farmer_id)
+            .filter(
+                FarmerProjectEnrollment.tenant_id == x_tenant_id,
+                FarmerProjectEnrollment.project_id == project_id,
+                FarmerProjectEnrollment.status != "ARCHIVED",
+            )
+            .all()
+        ]
+        project_farmer_ids = [
+            row[0]
+            for row in db.query(Farmer.id)
+            .filter(Farmer.tenant_id == x_tenant_id, Farmer.project_id == project_id)
+            .all()
+        ]
+        farmer_ids = sorted(set(enrolled_farmer_ids + project_farmer_ids))
+        if not farmer_ids:
+            return {
+                "schema_version": "farmer_profile_readiness.v1",
+                "tenant_id": x_tenant_id,
+                "filters": {"project_id": str(project_id), "status": status, "offset": offset, "limit": limit},
+                "summary": {
+                    "farmer_count": 0,
+                    "home_ready_count": 0,
+                    "personalized_advisory_ready_count": 0,
+                    "missing_required_count": 0,
+                    "missing_parcel_count": 0,
+                    "soil_profile_recommended_count": 0,
+                    "parcel_location_recommended_count": 0,
+                },
+                "farmers": [],
+            }
+        query = query.filter(Farmer.id.in_(farmer_ids))
+
+    farmers = query.order_by(Farmer.updated_at.desc(), Farmer.created_at.desc()).offset(offset).limit(limit).all()
+    rows = []
+    summary = {
+        "farmer_count": 0,
+        "home_ready_count": 0,
+        "personalized_advisory_ready_count": 0,
+        "missing_required_count": 0,
+        "missing_parcel_count": 0,
+        "soil_profile_recommended_count": 0,
+        "parcel_location_recommended_count": 0,
+    }
+
+    for farmer in farmers:
+        parcels = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id, Parcel.status != "ARCHIVED").all()
+        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer.id).all()
+        enrollments = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        ).all()
+        completion = _farmer_profile_completion(
+            farmer,
+            len(parcels),
+            len(soil_profiles),
+            parcels=parcels,
+            soil_profiles=soil_profiles,
+            project_enrollments=enrollments,
+        )
+        summary["farmer_count"] += 1
+        if completion["is_complete_for_home"]:
+            summary["home_ready_count"] += 1
+        else:
+            summary["missing_required_count"] += 1
+        if completion["is_ready_for_personalized_advisories"]:
+            summary["personalized_advisory_ready_count"] += 1
+        if "parcel" in completion["missing_fields"]:
+            summary["missing_parcel_count"] += 1
+        if "soil_profile" in completion["recommended_missing_fields"]:
+            summary["soil_profile_recommended_count"] += 1
+        if "parcel_location" in completion["recommended_missing_fields"]:
+            summary["parcel_location_recommended_count"] += 1
+        rows.append({
+            "farmer": _farmer_payload(farmer),
+            "parcel_count": len(parcels),
+            "soil_profile_count": len(soil_profiles),
+            "project_enrollment_count": len(enrollments),
+            "profile_completion": completion,
+        })
+
+    return {
+        "schema_version": "farmer_profile_readiness.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {"project_id": str(project_id) if project_id else None, "status": status, "offset": offset, "limit": limit},
+        "summary": summary,
+        "farmers": rows,
+    }
+
+
 # --- Farmer Project Enrollment Endpoints ---
 
 @router.get("/projects/{project_id}/farmer-enrollments/csv/template")

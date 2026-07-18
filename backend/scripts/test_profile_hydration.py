@@ -191,6 +191,16 @@ test("Profile completion recommends soil capture", any(action["code"] == "ADD_SO
 test("Hydration summary mirrors home readiness", body["summary"]["profile_ready_for_home"] is True)
 test("Default hydration omits heavy form contract", body.get("form_contract") is None)
 
+print("\n[1a] Profile readiness summary")
+readiness = client.get("/api/v1/farmers/profile-readiness", headers={"X-Tenant-ID": tenant_id})
+test("Profile readiness returns 200", readiness.status_code == 200, f"Status: {readiness.status_code} Body: {readiness.text[:300]}")
+readiness_body = readiness.json()
+test("Profile readiness schema stable", readiness_body["schema_version"] == "farmer_profile_readiness.v1")
+test("Profile readiness counts active farmers", readiness_body["summary"]["farmer_count"] == 2)
+test("Profile readiness counts home-ready farmer", readiness_body["summary"]["home_ready_count"] == 1)
+test("Profile readiness counts missing parcel", readiness_body["summary"]["missing_parcel_count"] == 1)
+test("Profile readiness exposes per-farmer completion", any(row["farmer"]["id"] == rich_farmer_id and row["profile_completion"]["is_complete_for_home"] for row in readiness_body["farmers"]))
+
 print("\n[1b] Hydrate with backend-owned profile form contract")
 r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}?include_form_contract=true", headers={"X-Tenant-ID": tenant_id})
 test("Hydration with form contract returns 200", r.status_code == 200, f"Status: {r.status_code}")
