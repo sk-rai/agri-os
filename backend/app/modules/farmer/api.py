@@ -677,6 +677,74 @@ def _farmer_profile_completion(
     }
 
 
+
+def _parse_optional_uuid(value: Optional[str]) -> Optional[uuid.UUID]:
+    if not value:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
+
+
+def _field_agent_capture_actions(completion: dict, *, active_crop_cycle_count: int, active_stage_count: int) -> list[dict]:
+    actions = [dict(action) for action in completion.get("next_actions", [])]
+    existing = {action.get("code") for action in actions}
+    if active_crop_cycle_count > 0 and "CAPTURE_STAGE_EVIDENCE" not in existing:
+        actions.append({
+            "code": "CAPTURE_STAGE_EVIDENCE",
+            "label": "Capture crop-stage evidence/photos if field visit is due",
+            "priority": "MEDIUM" if active_stage_count > 0 else "LOW",
+        })
+    if completion.get("is_complete_for_home") and "REPORT_FIELD_EVENT" not in existing:
+        actions.append({
+            "code": "REPORT_FIELD_EVENT",
+            "label": "Report pest, disease, weather, irrigation, or other field event if observed",
+            "priority": "LOW",
+        })
+    if "RECORD_FARMER_QUERY" not in existing:
+        actions.append({
+            "code": "RECORD_FARMER_QUERY",
+            "label": "Record farmer query, advisory follow-up, photo, or voice note when needed",
+            "priority": "LOW",
+        })
+    priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    return sorted(actions, key=lambda item: (priority_order.get(item.get("priority"), 9), item.get("code", "")))
+
+
+def _farmer_project_enrollments_for_worklist(db: Session, *, tenant_id: str, farmer_id: uuid.UUID, project_id: Optional[uuid.UUID] = None) -> list[FarmerProjectEnrollment]:
+    query = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == tenant_id,
+        FarmerProjectEnrollment.farmer_id == farmer_id,
+        FarmerProjectEnrollment.status != "ARCHIVED",
+    )
+    if project_id:
+        query = query.filter(FarmerProjectEnrollment.project_id == project_id)
+    return query.order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).all()
+
+
+def _active_crop_counts_for_worklist(db: Session, *, tenant_id: str, farmer_id: uuid.UUID) -> tuple[int, int]:
+    try:
+        from app.modules.workflow.models import CropCycle, CropStageInstance
+    except Exception:
+        return 0, 0
+
+    active_cycles = db.query(CropCycle.id).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.farmer_id == farmer_id,
+        CropCycle.status.in_(["PLANNED", "ACTIVE", "PARTIALLY_TRACKED"]),
+    ).all()
+    cycle_ids = [row[0] for row in active_cycles]
+    if not cycle_ids:
+        return 0, 0
+    active_stage_count = db.query(CropStageInstance.id).filter(
+        CropStageInstance.tenant_id == tenant_id,
+        CropStageInstance.crop_cycle_id.in_(cycle_ids),
+        CropStageInstance.status.in_(["PENDING", "ACTIVE", "PARTIALLY_COMPLETED"]),
+    ).count()
+    return len(cycle_ids), active_stage_count
+
+
 def _matching_weather_snapshot_count(
     db: Session,
     *,
@@ -1737,6 +1805,172 @@ def list_farmer_profile_readiness(
         "schema_version": "farmer_profile_readiness.v1",
         "tenant_id": x_tenant_id,
         "filters": {"project_id": str(project_id) if project_id else None, "status": status, "offset": offset, "limit": limit},
+        "summary": summary,
+        "farmers": rows,
+    }
+
+
+@router.get("/field-agent/worklist")
+def get_field_agent_worklist(
+    project_id: Optional[uuid.UUID] = Query(None),
+    actor_id: Optional[uuid.UUID] = Query(None),
+    assigned_only: bool = Query(False),
+    status: Optional[str] = Query("ACTIVE"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    """Return a backend-owned field-agent worklist for assisted farmer/land/soil capture."""
+    from app.modules.farmer.soil_profile import SoilProfile
+
+    actor_uuid = actor_id or _parse_optional_uuid(x_actor_id)
+    if assigned_only and not actor_uuid:
+        raise HTTPException(400, "actor_id query parameter or X-Actor-ID header is required when assigned_only=true")
+
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    if status:
+        query = query.filter(Farmer.status == status)
+
+    candidate_farmer_ids: Optional[set[uuid.UUID]] = None
+    enrollment_query = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.status != "ARCHIVED",
+    )
+    if project_id:
+        enrollment_query = enrollment_query.filter(FarmerProjectEnrollment.project_id == project_id)
+    enrollments = enrollment_query.all()
+
+    if project_id or assigned_only:
+        candidate_farmer_ids = {enrollment.farmer_id for enrollment in enrollments}
+        if project_id:
+            candidate_farmer_ids.update(
+                row[0]
+                for row in db.query(Farmer.id).filter(Farmer.tenant_id == x_tenant_id, Farmer.project_id == project_id).all()
+            )
+        if assigned_only and actor_uuid:
+            assigned_ids = {
+                enrollment.farmer_id
+                for enrollment in enrollments
+                if str(actor_uuid) in {str(value) for value in (enrollment.assigned_user_ids or [])}
+            }
+            candidate_farmer_ids = candidate_farmer_ids.intersection(assigned_ids) if project_id else assigned_ids
+        if not candidate_farmer_ids:
+            return {
+                "schema_version": "field_agent_worklist.v1",
+                "tenant_id": x_tenant_id,
+                "filters": {
+                    "project_id": str(project_id) if project_id else None,
+                    "actor_id": str(actor_uuid) if actor_uuid else None,
+                    "assigned_only": assigned_only,
+                    "status": status,
+                    "offset": offset,
+                    "limit": limit,
+                },
+                "summary": {
+                    "farmer_count": 0,
+                    "home_ready_count": 0,
+                    "missing_required_count": 0,
+                    "capture_action_count": 0,
+                    "weather_advisory_ready_count": 0,
+                    "soil_moisture_enrichment_ready_count": 0,
+                    "satellite_enrichment_ready_count": 0,
+                },
+                "farmers": [],
+            }
+        query = query.filter(Farmer.id.in_(candidate_farmer_ids))
+
+    farmers = query.order_by(Farmer.updated_at.desc(), Farmer.created_at.desc()).offset(offset).limit(limit).all()
+    rows = []
+    summary = {
+        "farmer_count": 0,
+        "home_ready_count": 0,
+        "missing_required_count": 0,
+        "capture_action_count": 0,
+        "weather_advisory_ready_count": 0,
+        "soil_moisture_enrichment_ready_count": 0,
+        "satellite_enrichment_ready_count": 0,
+    }
+
+    for farmer in farmers:
+        parcels = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id, Parcel.status != "ARCHIVED").all()
+        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer.id).all()
+        farmer_enrollments = _farmer_project_enrollments_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id, project_id=project_id)
+        project_ids = {enrollment.project_id for enrollment in farmer_enrollments}
+        projects = {
+            project.id: project
+            for project in db.query(Project).filter(Project.tenant_id == x_tenant_id, Project.id.in_(project_ids)).all()
+        } if project_ids else {}
+        weather_snapshot_count = _matching_weather_snapshot_count(
+            db,
+            tenant_id=x_tenant_id,
+            farmer=farmer,
+            parcels=parcels,
+            project_enrollments=farmer_enrollments,
+        )
+        completion = _farmer_profile_completion(
+            farmer,
+            len(parcels),
+            len(soil_profiles),
+            parcels=parcels,
+            soil_profiles=soil_profiles,
+            project_enrollments=farmer_enrollments,
+            weather_snapshot_count=weather_snapshot_count,
+        )
+        active_cycle_count, active_stage_count = _active_crop_counts_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
+        capture_actions = _field_agent_capture_actions(
+            completion,
+            active_crop_cycle_count=active_cycle_count,
+            active_stage_count=active_stage_count,
+        )
+        enrichment = completion["enrichment_readiness"]
+        summary["farmer_count"] += 1
+        if completion["is_complete_for_home"]:
+            summary["home_ready_count"] += 1
+        else:
+            summary["missing_required_count"] += 1
+        if enrichment["ready_for_weather_advisory"]:
+            summary["weather_advisory_ready_count"] += 1
+        if enrichment["ready_for_soil_moisture_enrichment"]:
+            summary["soil_moisture_enrichment_ready_count"] += 1
+        if enrichment["ready_for_satellite_enrichment"]:
+            summary["satellite_enrichment_ready_count"] += 1
+        summary["capture_action_count"] += len(capture_actions)
+        rows.append({
+            "farmer": _farmer_payload(farmer),
+            "project_enrollments": [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in farmer_enrollments],
+            "parcel_count": len(parcels),
+            "soil_profile_count": len(soil_profiles),
+            "active_crop_cycle_count": active_cycle_count,
+            "active_stage_count": active_stage_count,
+            "profile_completion": completion,
+            "capture_actions": capture_actions,
+            "endpoints": {
+                "profile_hydration": f"/api/v1/farmers/by-mobile/{farmer.mobile_number}",
+                "farmer_trace": f"/api/v1/reports/farmers/{farmer.id}/trace",
+                "parcels": f"/api/v1/parcels?farmer_id={farmer.id}",
+                "field_events": f"/api/v1/field-events?farmer_id={farmer.id}",
+                "query_threads": f"/api/v1/query-threads?farmer_id={farmer.id}",
+            },
+        })
+
+    return {
+        "schema_version": "field_agent_worklist.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "actor_id": str(actor_uuid) if actor_uuid else None,
+            "assigned_only": assigned_only,
+            "status": status,
+            "offset": offset,
+            "limit": limit,
+        },
         "summary": summary,
         "farmers": rows,
     }

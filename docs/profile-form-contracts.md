@@ -130,6 +130,29 @@ Soil profile remains recommended, not mandatory, for home launch. It becomes imp
 
 Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
+
+## Field-agent assisted profile worklist
+
+Backend now exposes an assisted-capture worklist for field agents, agronomists, dealers, and admins who collect farmer/land/soil data on behalf of enrolled farmers.
+
+```http
+GET /api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true
+X-Tenant-ID: {tenant_id}
+X-Actor-ID: {agent_user_id}
+```
+
+Response schema: `field_agent_worklist.v1`.
+
+Key behavior:
+
+- `assigned_only=true` filters through `farmer_project_enrollments.assigned_user_ids`; without it, project admins can view the full project worklist.
+- Each row includes `farmer`, `project_enrollments`, `parcel_count`, `soil_profile_count`, `active_crop_cycle_count`, `active_stage_count`, backend `profile_completion`, and prioritized `capture_actions`.
+- `capture_actions[]` is the Android/admin checklist for assisted capture, including profile completion, parcel creation/location capture, soil profile capture, field-event reporting, crop-stage evidence, and farmer query/follow-up recording.
+- `endpoints` gives Android stable next-hop URLs for hydration, trace, parcels, field events, and query threads so an agent-mode summary screen can drill into the correct backend entities.
+- An agent can also be a farmer. Android should keep individual farmer mode separate from assigned-agent worklist mode and select the mode from authenticated role/context rather than duplicating profiles locally.
+
+Android should treat this endpoint as the backend-owned source of truth for assisted profile-capture priorities. Seasons, land units, soil options, and other profile choices remain backend-configurable through profile form contracts and option sources.
+
 ## Form schema contract
 
 Each form schema includes:
