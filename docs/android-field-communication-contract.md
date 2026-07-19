@@ -930,7 +930,19 @@ Payload: `project_id`, `agent_user_id`, `action=ASSIGN|UNASSIGN`, and `reason`. 
 
 ## Soil enrichment source provenance
 
-Android should treat soil baseline and soil-water data as backend-owned enrichment snapshots. The backend now exposes the source contract:
+Android should treat soil baseline and soil-water data as backend-owned enrichment snapshots. Android should not call SoilGrids, Open-Meteo, SLUSI/SHC, or future satellite providers directly.
+
+Summary endpoint for Android/admin:
+
+    GET /api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}
+    GET /api/v1/soil-profiles/enrichments/summary?parcel_id={parcel_id}
+    GET /api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}&snapshot_type=MOISTURE
+
+Response `schema_version=soil_enrichment_summary.v1` returns `snapshot_count`, `provider_counts`, `snapshot_type_counts`, `status_counts`, `has_baseline`, `has_moisture`, `has_slusi_or_shc`, `latest_by_type`, `latest_baseline`, `latest_moisture`, and `latest_slusi_or_shc`.
+
+Use this endpoint for farmer/parcel profile screens and readiness explanations. Use raw snapshot list endpoints only for debug/drilldown screens.
+
+The backend now exposes the source contract:
 
 ```http
 GET /api/v1/soil-profiles/enrichments/source-contract

@@ -128,6 +128,8 @@ Soil profile remains recommended, not mandatory, for home launch. It becomes imp
 
 `profile_completion.enrichment_readiness` exposes backend-owned advisory/enrichment gates: land location, soil profile, current weather snapshot availability, weather-advisory readiness, soil-moisture-enrichment readiness, and future satellite-enrichment readiness. Android/admin should render these flags as guidance and should not duplicate eligibility rules locally.
 
+For soil/land enrichment detail, use `GET /api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}` or `?parcel_id={parcel_id}`. The summary groups latest SoilGrids-style baseline snapshots, Open-Meteo/soil-moisture snapshots, and SLUSI/SHC point captures so Android does not need to group raw provider records locally.
+
 Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
 Server-side filters keep Android/admin from duplicating readiness logic locally:
