@@ -534,6 +534,7 @@ def _profile_contract_android_handoff() -> dict:
             "snapshot_endpoint": "/api/v1/soil-profiles/enrichments",
             "summary_endpoint": "/api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}",
             "queue_endpoint": "/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}",
+            "job_audit_endpoint": "/api/v1/soil-profiles/enrichments/jobs/audit",
             "latest_snapshot_endpoint": "/api/v1/soil-profiles/enrichments/latest",
             "source_contract_endpoint": "/api/v1/soil-profiles/enrichments/source-contract",
             "baseline_sources": ["SOILGRIDS", "SHC_SLUSI", "IN_HOUSE_SATELLITE"],
