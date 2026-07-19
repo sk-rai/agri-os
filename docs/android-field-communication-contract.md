@@ -942,6 +942,8 @@ Response `schema_version=soil_enrichment_summary.v1` returns `snapshot_count`, `
 
 Use this endpoint for farmer/parcel profile screens and readiness explanations. Use raw snapshot list endpoints only for debug/drilldown screens.
 
+Profile readiness also exposes source-specific fields: `has_soilgrids_baseline_snapshot`, `soilgrids_baseline_snapshot_count`, `has_shc_slusi_snapshot`, and `shc_slusi_snapshot_count`. Android should use them for labels, not for provider calls.
+
 The backend now exposes the source contract:
 
 ```http

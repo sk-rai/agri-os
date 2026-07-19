@@ -130,6 +130,8 @@ Soil profile remains recommended, not mandatory, for home launch. It becomes imp
 
 For soil/land enrichment detail, use `GET /api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}` or `?parcel_id={parcel_id}`. The summary groups latest SoilGrids-style baseline snapshots, Open-Meteo/soil-moisture snapshots, and SLUSI/SHC point captures so Android does not need to group raw provider records locally.
 
+Readiness now distinguishes provider families for Android labels: `has_soilgrids_baseline_snapshot`, `soilgrids_baseline_snapshot_count`, `has_shc_slusi_snapshot`, and `shc_slusi_snapshot_count`. Use these to display source-specific messages such as SoilGrids baseline available, government SHC/SLUSI sample available, or soil moisture snapshot pending.
+
 Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
 Server-side filters keep Android/admin from duplicating readiness logic locally:
