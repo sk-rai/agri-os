@@ -132,20 +132,23 @@ def main():
     check(baseline["normalized_values"]["texture_class"] == "CLAY_LOAM", "Normalized provider values stored")
     check(baseline["metadata"]["provider_family"] == "OPEN_SOURCE_BASELINE", "SoilGrids provenance metadata stored")
 
-    slusi = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
+    slusi = client.post("/api/v1/soil-profiles/enrichments/shc-slusi/manual-capture", headers=headers, json={
         "parcel_id": str(parcel_id),
-        "provider": "SHC_SLUSI",
-        "provider_dataset": "soilhealth.dac.gov.in/slusi-visualisation",
-        "snapshot_type": "BASELINE",
-        "confidence": "GOVT_VISUAL_LAYER",
-        "depth_layer": "district_visual_layer",
-        "normalized_values": {"state": "UTTAR PRADESH", "district": "AZAMGARH", "manganese_status": "SUFFICIENT"},
+        "state": "UTTAR PRADESH",
+        "district": "AZAMGARH",
+        "cycle": "2024-25",
+        "parameter": "Manganese",
+        "status_class": "SUFFICIENT",
+        "value_text": ">= 2.0 ppm",
+        "unit": "ppm",
         "raw_payload": {"source": "manual-map-observation"},
-        "metadata": {"capture_method": "ADMIN_VISUAL_CAPTURE", "cycle": "2024-25"},
+        "notes": "Captured from public SLUSI visualisation; no raw API discovered.",
     })
-    check(slusi.status_code == 201, "Create SHC/SLUSI visual baseline snapshot returns 201", slusi.text)
+    check(slusi.status_code == 201, "Create SHC/SLUSI manual visual baseline snapshot returns 201", slusi.text)
     slusi_body = slusi.json()
     check(slusi_body["provider"] == "SHC_SLUSI", "SHC/SLUSI provider normalized")
+    check(slusi_body["normalized_values"]["parameter"] == "MANGANESE", "SHC/SLUSI manual capture stores parameter")
+    check(slusi_body["normalized_values"]["status_class"] == "SUFFICIENT", "SHC/SLUSI manual capture stores class")
     check(slusi_body["metadata"]["provider_family"] == "GOVT_VISUAL_BASELINE", "SHC/SLUSI provenance metadata stored")
     check(slusi_body["metadata"]["automation_mode"] == "MANUAL_OR_IMPORT_UNTIL_OFFICIAL_API", "SHC/SLUSI automation mode documented")
 

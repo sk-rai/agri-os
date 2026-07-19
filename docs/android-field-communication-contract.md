@@ -888,3 +888,11 @@ Current source families:
 
 Every stored enrichment snapshot includes provenance metadata such as `provider_family`, `source_granularity`, `automation_mode`, `provider_key`, and `provenance_contract=soil_enrichment_sources.v1`. Android should render these snapshots as informational/backend-provided evidence and should not call external soil/weather providers directly.
 
+For SHC/SLUSI, because raw public data/API is not currently available, the backend supports explicit manual/admin capture instead of scraping:
+
+```http
+POST /api/v1/soil-profiles/enrichments/shc-slusi/manual-capture
+```
+
+Required payload: `parcel_id`, `state`, `district`, and `parameter`. Optional fields include `cycle`, `status_class`, `value_text`, `unit`, `source_url`, `notes`, and `raw_payload`. The backend stores this as `provider=SHC_SLUSI`, `snapshot_type=BASELINE`, `confidence=GOVT_VISUAL_LAYER`, and `metadata.capture_method=ADMIN_VISUAL_CAPTURE`.
+

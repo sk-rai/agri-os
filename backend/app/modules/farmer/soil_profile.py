@@ -182,6 +182,22 @@ class SoilGridsFetchRequest(BaseModel):
     use_live_provider: bool = False
 
 
+class ShcSlusiManualCaptureRequest(BaseModel):
+    parcel_id: uuid.UUID
+    state: str = Field(..., min_length=2, max_length=100)
+    district: str = Field(..., min_length=2, max_length=100)
+    cycle: Optional[str] = Field(None, max_length=20)
+    parameter: str = Field(..., min_length=1, max_length=80)
+    status_class: Optional[str] = Field(None, max_length=80)
+    value_text: Optional[str] = Field(None, max_length=200)
+    unit: Optional[str] = Field(None, max_length=50)
+    depth_layer: str = "district_visual_layer"
+    source_url: str = "https://soilhealth.dac.gov.in/slusi-visualisation/"
+    observed_at: Optional[datetime] = None
+    notes: Optional[str] = Field(None, max_length=1000)
+    raw_payload: dict = Field(default_factory=dict)
+
+
 class SoilEnrichmentSnapshotCreate(BaseModel):
     parcel_id: uuid.UUID
     farmer_id: Optional[uuid.UUID] = None
@@ -644,6 +660,64 @@ def fetch_soilgrids_baseline_snapshot(
         normalized_values=normalized.get("normalized_values") or {},
         raw_payload=normalized.get("raw_payload") or {},
         metadata_=_soil_enrichment_source_metadata(normalized["provider"], normalized.get("metadata") or {}),
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return _soil_enrichment_payload(snapshot)
+
+
+@router.post("/enrichments/shc-slusi/manual-capture", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
+def create_shc_slusi_manual_capture_snapshot(
+    body: ShcSlusiManualCaptureRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Store an admin-observed SHC/SLUSI visual-layer soil baseline.
+
+    This endpoint intentionally does not scrape/fetch SLUSI data. It records a trusted manual
+    observation or future import row from the government visualisation with explicit provenance.
+    """
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    timestamp = datetime.now(timezone.utc)
+    parameter_key = body.parameter.strip().upper().replace(" ", "_")
+    normalized_values = {
+        "state": body.state.strip().upper(),
+        "district": body.district.strip().upper(),
+        "parameter": parameter_key,
+    }
+    if body.cycle:
+        normalized_values["cycle"] = body.cycle.strip()
+    if body.status_class:
+        normalized_values["status_class"] = body.status_class.strip().upper()
+    if body.value_text:
+        normalized_values["value_text"] = body.value_text.strip()
+    if body.unit:
+        normalized_values["unit"] = body.unit.strip()
+
+    metadata = _soil_enrichment_source_metadata("SHC_SLUSI", {
+        "capture_method": "ADMIN_VISUAL_CAPTURE",
+        "source_url": body.source_url,
+        "notes": body.notes,
+    })
+    snapshot = SoilEnrichmentSnapshot(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        parcel_id=parcel.id,
+        farmer_id=parcel.farmer_id,
+        provider="SHC_SLUSI",
+        provider_dataset="soilhealth.dac.gov.in/slusi-visualisation",
+        snapshot_type="BASELINE",
+        status="AVAILABLE",
+        depth_layer=body.depth_layer,
+        confidence="GOVT_VISUAL_LAYER",
+        observed_at=body.observed_at or timestamp,
+        fetched_at=timestamp,
+        normalized_values=normalized_values,
+        raw_payload=body.raw_payload or {},
+        metadata_=metadata,
         created_at=timestamp,
         updated_at=timestamp,
     )
