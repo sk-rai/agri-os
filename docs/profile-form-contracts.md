@@ -132,6 +132,8 @@ For soil/land enrichment detail, use `GET /api/v1/soil-profiles/enrichments/summ
 
 Readiness now distinguishes provider families for Android labels: `has_soilgrids_baseline_snapshot`, `soilgrids_baseline_snapshot_count`, `has_shc_slusi_snapshot`, and `shc_slusi_snapshot_count`. Use these to display source-specific messages such as SoilGrids baseline available, government SHC/SLUSI sample available, or soil moisture snapshot pending.
 
+Backend/admin enrichment jobs can use `GET /api/v1/soil-profiles/enrichments/queue?project_id={project_id}&missing=ANY` to list location-ready parcels missing baseline or moisture snapshots. The queue is provider-neutral and returns `recommended_jobs[]` for future SoilGrids, Open-Meteo, SLUSI/SHC, or in-house satellite workers.
+
 Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
 Server-side filters keep Android/admin from duplicating readiness logic locally:

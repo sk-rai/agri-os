@@ -944,6 +944,13 @@ Use this endpoint for farmer/parcel profile screens and readiness explanations. 
 
 Profile readiness also exposes source-specific fields: `has_soilgrids_baseline_snapshot`, `soilgrids_baseline_snapshot_count`, `has_shc_slusi_snapshot`, and `shc_slusi_snapshot_count`. Android should use them for labels, not for provider calls.
 
+Backend/admin operational queue for enrichment jobs:
+
+    GET /api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}
+    GET /api/v1/soil-profiles/enrichments/queue?project_id={project_id}&missing=ANY
+
+Response `schema_version=soil_enrichment_queue.v1` returns location-ready parcels, snapshot counts, missing baseline/moisture flags, reason counts, and recommended backend jobs such as `FETCH_SOIL_BASELINE` or `FETCH_SOIL_MOISTURE`. Android MVP can treat this as admin/backend-only; future admin or agent screens may surface it as an enrichment work queue.
+
 The backend now exposes the source contract:
 
 ```http
