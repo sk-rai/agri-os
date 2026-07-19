@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     DB_PORT: int = 5432
     DB_NAME: str = "agrios_dev"
 
+    # Soil enrichment providers
+    SOILGRIDS_BASE_URL: str = "https://rest.isric.org/soilgrids/v2.0/properties/query"
+    SOILGRIDS_TIMEOUT_SECONDS: int = 20
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

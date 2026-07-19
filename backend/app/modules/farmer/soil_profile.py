@@ -175,6 +175,13 @@ def _iso_datetime(value):
     return value.isoformat() if value else None
 
 
+class SoilGridsFetchRequest(BaseModel):
+    parcel_id: uuid.UUID
+    depth_layer: str = "0-5cm"
+    provider_payload: Optional[dict] = None
+    use_live_provider: bool = False
+
+
 class SoilEnrichmentSnapshotCreate(BaseModel):
     parcel_id: uuid.UUID
     farmer_id: Optional[uuid.UUID] = None
@@ -498,6 +505,83 @@ def infer_soil_from_district(
         confidence=defaults["confidence"],
         description=SOIL_TYPE_DESCRIPTIONS.get(soil_code, ""),
     )
+
+
+@router.post("/enrichments/soilgrids/fetch", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
+def fetch_soilgrids_baseline_snapshot(
+    body: SoilGridsFetchRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Fetch/normalize a SoilGrids baseline snapshot for a parcel.
+
+    Regression and scheduled jobs may pass provider_payload to avoid live network.
+    Set use_live_provider=true only when backend provider access is intentionally enabled.
+    """
+    from app.modules.farmer.soilgrids_service import (
+        fetch_soilgrids_payload,
+        normalize_soilgrids_payload,
+        resolve_parcel_soilgrids_coordinate,
+    )
+
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    try:
+        coordinate = resolve_parcel_soilgrids_coordinate(db, parcel)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    if body.provider_payload is not None:
+        provider_payload = body.provider_payload
+    elif body.use_live_provider:
+        try:
+            provider_payload = fetch_soilgrids_payload(coordinate.latitude, coordinate.longitude, depth_layer=body.depth_layer)
+        except Exception as exc:
+            raise HTTPException(502, f"SoilGrids provider fetch failed: {exc}")
+    else:
+        raise HTTPException(400, "provider_payload is required unless use_live_provider=true")
+
+    normalized = normalize_soilgrids_payload(
+        provider_payload,
+        latitude=coordinate.latitude,
+        longitude=coordinate.longitude,
+        depth_layer=body.depth_layer,
+        coordinate_source=coordinate.source,
+    )
+    timestamp = datetime.now(timezone.utc)
+    snapshot = SoilEnrichmentSnapshot(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        parcel_id=parcel.id,
+        farmer_id=parcel.farmer_id,
+        provider=normalized["provider"],
+        provider_dataset=normalized.get("provider_dataset"),
+        snapshot_type=normalized["snapshot_type"],
+        status=normalized["status"],
+        latitude=normalized.get("latitude"),
+        longitude=normalized.get("longitude"),
+        depth_layer=normalized.get("depth_layer"),
+        resolution_meters=normalized.get("resolution_meters"),
+        confidence=normalized.get("confidence"),
+        observed_at=normalized.get("observed_at") or timestamp,
+        fetched_at=normalized.get("fetched_at") or timestamp,
+        ph=normalized.get("ph"),
+        organic_carbon=normalized.get("organic_carbon"),
+        nitrogen=normalized.get("nitrogen"),
+        clay_percent=normalized.get("clay_percent"),
+        silt_percent=normalized.get("silt_percent"),
+        sand_percent=normalized.get("sand_percent"),
+        bulk_density=normalized.get("bulk_density"),
+        cec=normalized.get("cec"),
+        normalized_values=normalized.get("normalized_values") or {},
+        raw_payload=normalized.get("raw_payload") or {},
+        metadata_=normalized.get("metadata") or {},
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return _soil_enrichment_payload(snapshot)
 
 
 @router.post("/enrichments", response_model=SoilEnrichmentSnapshotResponse, status_code=201)

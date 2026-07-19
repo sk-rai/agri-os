@@ -455,3 +455,14 @@ Initial provider contract supports:
 
 Use parcel centroid/polygon first for provider lookup. Use parcel `pin_code`/`location_scope` only as fallback or grouping metadata where exact field geometry is not yet available.
 
+## SoilGrids adapter handoff
+
+Backend now has a SoilGrids adapter boundary for parcel-level baseline enrichment:
+
+- `POST /api/v1/soil-profiles/enrichments/soilgrids/fetch` resolves parcel coordinates from centroid/GPS geometry/location-scope centroid and writes a normalized `SOILGRIDS` baseline snapshot.
+- The endpoint accepts `provider_payload` for offline-safe scheduled jobs, tests, or future workers that fetch SoilGrids through WCS/WebDAV/GEE.
+- `use_live_provider=true` enables the direct REST call path, but this should be treated as best-effort only because the SoilGrids REST API is beta/fair-use and may be unavailable.
+- Android should never call SoilGrids directly; Android should read backend enrichment snapshots and display the latest baseline/moisture values supplied by backend.
+
+Production provider strategy should prefer stable bulk/geospatial access paths where needed: WCS, WebDAV VRT/GeoTIFF, Google Earth Engine, or an internal cached tile/vector job. The normalized backend snapshot contract remains unchanged across those provider choices.
+

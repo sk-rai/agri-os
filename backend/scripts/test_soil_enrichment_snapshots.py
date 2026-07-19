@@ -122,6 +122,35 @@ def main():
     check(baseline["resolution_meters"] == 250, "Resolution stored")
     check(baseline["normalized_values"]["texture_class"] == "CLAY_LOAM", "Normalized provider values stored")
 
+
+    fake_soilgrids_payload = {
+        "provider_dataset": "soilgrids.v2.0",
+        "layers": [
+            {"name": "phh2o", "depths": [{"label": "0-5cm", "values": {"Q0.5": 68}}]},
+            {"name": "soc", "depths": [{"label": "0-5cm", "values": {"Q0.5": 123}}]},
+            {"name": "nitrogen", "depths": [{"label": "0-5cm", "values": {"Q0.5": 18}}]},
+            {"name": "clay", "depths": [{"label": "0-5cm", "values": {"Q0.5": 312}}]},
+            {"name": "silt", "depths": [{"label": "0-5cm", "values": {"Q0.5": 245}}]},
+            {"name": "sand", "depths": [{"label": "0-5cm", "values": {"Q0.5": 443}}]},
+        ],
+    }
+    fetched = client.post("/api/v1/soil-profiles/enrichments/soilgrids/fetch", headers=headers, json={
+        "parcel_id": str(parcel_id),
+        "depth_layer": "0-5cm",
+        "provider_payload": fake_soilgrids_payload,
+    })
+    check(fetched.status_code == 201, "SoilGrids fetch endpoint stores normalized baseline", fetched.text)
+    fetched_body = fetched.json()
+    check(fetched_body["provider"] == "SOILGRIDS", "SoilGrids fetch normalizes provider")
+    check(fetched_body["ph"] == 6.8, "SoilGrids fetch scales pH x10 value")
+    check(fetched_body["clay_percent"] == 31.2, "SoilGrids fetch scales texture percentage")
+    check(fetched_body["metadata"]["coordinate_source"] == "PARCEL_CENTROID", "SoilGrids fetch records coordinate source")
+
+    fetch_without_payload = client.post("/api/v1/soil-profiles/enrichments/soilgrids/fetch", headers=headers, json={
+        "parcel_id": str(parcel_id),
+    })
+    check(fetch_without_payload.status_code == 400, "SoilGrids fetch requires payload unless live provider enabled", fetch_without_payload.text)
+
     moisture = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
         "farmer_id": str(farmer_id),
@@ -139,11 +168,11 @@ def main():
 
     latest_baseline = client.get(f"/api/v1/soil-profiles/enrichments/latest?parcel_id={parcel_id}&provider=soilgrids&snapshot_type=baseline", headers=headers)
     check(latest_baseline.status_code == 200, "Latest SoilGrids baseline returns 200", latest_baseline.text)
-    check(latest_baseline.json()["id"] == baseline["id"], "Latest baseline returns seeded SoilGrids row")
+    check(latest_baseline.json()["id"] == fetched_body["id"], "Latest baseline returns most recent SoilGrids row")
 
     listing = client.get(f"/api/v1/soil-profiles/enrichments?parcel_id={parcel_id}", headers=headers)
     check(listing.status_code == 200, "List enrichment snapshots returns 200", listing.text)
-    check(len(listing.json()) == 2, "List returns baseline and moisture snapshots")
+    check(len(listing.json()) == 3, "List returns direct baseline, fetched SoilGrids baseline, and moisture snapshots")
 
     mismatch = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
