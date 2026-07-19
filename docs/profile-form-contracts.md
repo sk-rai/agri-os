@@ -498,3 +498,5 @@ Company Profile admin also exposes source, verification status, source reference
 ### Company discovery candidates
 
 Future company prepopulation should land first in `company_discovery_candidates`, not directly in live tenant/company profiles. Use `POST /api/v1/company-discovery-candidates` for public-web, government-registry, partner-directory, or bulk-import discoveries; `GET /api/v1/company-discovery-candidates` for review queues; and `PATCH /api/v1/company-discovery-candidates/{candidate_id}/review` to mark records approved, rejected, duplicate, merged, stale, or linked to an existing tenant/profile.
+
+Admin web exposes `/company-discovery` for reviewing staged company discovery candidates before they become live tenant/company profile data.

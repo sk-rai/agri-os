@@ -411,6 +411,39 @@ export interface CropCycleTraceResponse {
   activities: ActivityUsageRow[];
   media_attachments?: Record<string, MediaAttachmentTrace[]>;
 }
+export interface CompanyDiscoveryCandidateDto {
+  id: string;
+  tenant_id: string;
+  candidate_name: string;
+  normalized_name?: string | null;
+  company_type?: string | null;
+  source: string;
+  source_references?: Array<Record<string, unknown>>;
+  discovered_profile?: Record<string, unknown>;
+  operating_geography?: Record<string, unknown>;
+  crop_focus?: string[];
+  confidence_score?: number | null;
+  duplicate_keys?: Record<string, unknown>;
+  matched_tenant_id?: string | null;
+  matched_company_profile_id?: string | null;
+  review_status: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_notes?: string | null;
+  metadata?: Record<string, unknown>;
+  is_active?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CompanyDiscoveryCandidatesResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  candidates: CompanyDiscoveryCandidateDto[];
+}
+
 export interface CompanyProfileDto {
   id?: string;
   tenant_id?: string;
@@ -1407,6 +1440,19 @@ export const companyApi = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<CompanyProfileAuditResponse>(`/api/v1/tenants/${encodeURIComponent(tenantId)}/company-profile/audit${suffix}`);
   },
+  companyDiscoveryCandidates: (params?: { reviewStatus?: string; source?: string; q?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.reviewStatus) query.set("review_status", params.reviewStatus);
+    if (params?.source) query.set("source", params.source);
+    if (params?.q) query.set("q", params.q);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api<CompanyDiscoveryCandidatesResponse>(`/api/v1/company-discovery-candidates${suffix}`);
+  },
+  createCompanyDiscoveryCandidate: (body: Record<string, unknown>) =>
+    api<CompanyDiscoveryCandidateDto>("/api/v1/company-discovery-candidates", { method: "POST", body }),
+  reviewCompanyDiscoveryCandidate: (candidateId: string, body: Record<string, unknown>) =>
+    api<CompanyDiscoveryCandidateDto>(`/api/v1/company-discovery-candidates/${encodeURIComponent(candidateId)}/review`, { method: "PATCH", body }),
 };
 
 export const farmersApi = {

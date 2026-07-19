@@ -22,6 +22,7 @@ const navSections: NavSection[] = [
       { href: "/users", label: "Tenant Users", icon: "Users" },
       { href: "/agent-profiles", label: "Agent Profiles", icon: "Agent" },
       { href: "/company-profile", label: "Company Profile", icon: "Org" },
+      { href: "/company-discovery", label: "Company Discovery", icon: "Find" },
     ],
   },
   {
