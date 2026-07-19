@@ -132,7 +132,7 @@ For soil/land enrichment detail, use `GET /api/v1/soil-profiles/enrichments/summ
 
 Readiness now distinguishes provider families for Android labels: `has_soilgrids_baseline_snapshot`, `soilgrids_baseline_snapshot_count`, `has_shc_slusi_snapshot`, and `shc_slusi_snapshot_count`. Use these to display source-specific messages such as SoilGrids baseline available, government SHC/SLUSI sample available, or soil moisture snapshot pending.
 
-Backend/admin enrichment jobs can use `GET /api/v1/soil-profiles/enrichments/queue?project_id={project_id}&missing=ANY` to list location-ready parcels missing baseline or moisture snapshots. The queue is provider-neutral and returns `recommended_jobs[]` for future SoilGrids, Open-Meteo, SLUSI/SHC, or in-house satellite workers.
+Backend/admin enrichment jobs can use `GET /api/v1/soil-profiles/enrichments/queue?project_id={project_id}&missing=ANY` to list location-ready parcels missing baseline or moisture snapshots. The queue is provider-neutral and returns `recommended_jobs[]` plus `latest_audit_by_job` for future SoilGrids, Open-Meteo, SLUSI/SHC, or in-house satellite workers.
 
 Workers/admin tools can record queue attempt outcomes through `POST /api/v1/soil-profiles/enrichments/jobs/audit` and inspect history through `GET /api/v1/soil-profiles/enrichments/jobs/audit`. Status values are `QUEUED`, `FETCHED`, `FAILED`, `SKIPPED`, and `DEFERRED`.
 

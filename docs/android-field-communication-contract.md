@@ -949,7 +949,7 @@ Backend/admin operational queue for enrichment jobs:
     GET /api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}
     GET /api/v1/soil-profiles/enrichments/queue?project_id={project_id}&missing=ANY
 
-Response `schema_version=soil_enrichment_queue.v1` returns location-ready parcels, snapshot counts, missing baseline/moisture flags, reason counts, and recommended backend jobs such as `FETCH_SOIL_BASELINE` or `FETCH_SOIL_MOISTURE`. Android MVP can treat this as admin/backend-only; future admin or agent screens may surface it as an enrichment work queue.
+Response `schema_version=soil_enrichment_queue.v1` returns location-ready parcels, snapshot counts, missing baseline/moisture flags, reason counts, recommended backend jobs such as `FETCH_SOIL_BASELINE` or `FETCH_SOIL_MOISTURE`, and `latest_audit_by_job` for the most recent attempt status/error per recommended job. Android MVP can treat this as admin/backend-only; future admin or agent screens may surface it as an enrichment work queue.
 
 Backend workers/admin tools can record enrichment attempt status:
 
