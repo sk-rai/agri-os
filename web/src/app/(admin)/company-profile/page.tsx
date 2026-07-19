@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, companyApi, type CompanyProfileDto } from "@/lib/api";
+import { ApiError, companyApi, type CompanyProfileAuditEventDto, type CompanyProfileDto } from "@/lib/api";
 
 const COMPANY_TYPES = ["ENTERPRISE", "FPO", "COOPERATIVE", "NGO", "GOVERNMENT", "INSURER", "PROCESSOR", "INPUT_COMPANY", "AGRI_TECH", "OTHER"];
+const PROFILE_SOURCES = ["MANUAL", "PUBLIC_WEB", "BULK_IMPORT", "CLIENT_PROVIDED", "GOVERNMENT_REGISTRY", "PARTNER_DIRECTORY", "OTHER"];
+const VERIFICATION_STATUSES = ["UNVERIFIED", "CLAIMED", "VERIFIED", "REJECTED", "STALE"];
 
 function getTenantId() {
   if (typeof window === "undefined") return "default";
@@ -27,6 +29,15 @@ function parseCropFocus(value: string) {
   return value.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
 }
 
+function parseJsonArray(label: string, value: string) {
+  if (!value.trim()) return [];
+  const parsed = JSON.parse(value);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON array.`);
+  }
+  return parsed as Array<Record<string, unknown>>;
+}
+
 export default function CompanyProfilePage() {
   const [tenantId, setTenantId] = useState("default");
   const [profile, setProfile] = useState<CompanyProfileDto>({});
@@ -36,6 +47,8 @@ export default function CompanyProfilePage() {
   const [legalName, setLegalName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [companyType, setCompanyType] = useState("ENTERPRISE");
+  const [profileSource, setProfileSource] = useState("MANUAL");
+  const [verificationStatus, setVerificationStatus] = useState("UNVERIFIED");
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [gstin, setGstin] = useState("");
   const [pan, setPan] = useState("");
@@ -43,12 +56,15 @@ export default function CompanyProfilePage() {
   const [supportEmail, setSupportEmail] = useState("");
   const [supportPhone, setSupportPhone] = useState("");
   const [cropFocus, setCropFocus] = useState("");
+  const [sourceReferences, setSourceReferences] = useState("[]");
   const [headOffice, setHeadOffice] = useState("{}");
   const [operatingGeography, setOperatingGeography] = useState("{}");
   const [serviceModel, setServiceModel] = useState("{}");
   const [config, setConfig] = useState("{}");
   const [metadata, setMetadata] = useState("{}");
+  const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
+  const [auditEvents, setAuditEvents] = useState<CompanyProfileAuditEventDto[]>([]);
 
   const configured = useMemo(() => Boolean(profile.id), [profile.id]);
 
@@ -57,6 +73,8 @@ export default function CompanyProfilePage() {
     setLegalName(next?.legal_name || "");
     setDisplayName(next?.display_name || "");
     setCompanyType(next?.company_type || "ENTERPRISE");
+    setProfileSource(next?.profile_source || "MANUAL");
+    setVerificationStatus(next?.verification_status || "UNVERIFIED");
     setRegistrationNumber(next?.registration_number || "");
     setGstin(next?.gstin || "");
     setPan(next?.pan || "");
@@ -64,6 +82,7 @@ export default function CompanyProfilePage() {
     setSupportEmail(next?.support_email || "");
     setSupportPhone(next?.support_phone || "");
     setCropFocus((next?.crop_focus || []).join(", "));
+    setSourceReferences(JSON.stringify(next?.source_references || [], null, 2));
     setHeadOffice(jsonText(next?.head_office));
     setOperatingGeography(jsonText(next?.operating_geography));
     setServiceModel(jsonText(next?.service_model));
@@ -79,6 +98,8 @@ export default function CompanyProfilePage() {
       setTenantId(activeTenant);
       const response = await companyApi.companyProfile(activeTenant);
       loadIntoForm(response.profile || {});
+      const audit = await companyApi.companyProfileAudit(activeTenant, { limit: 20 });
+      setAuditEvents(audit.events || []);
       setMessage(response.message || "Company profile loaded.");
     } catch (error) {
       setMessage(error instanceof ApiError ? error.message : "Failed to load company profile.");
@@ -95,6 +116,9 @@ export default function CompanyProfilePage() {
         legal_name: legalName || null,
         display_name: displayName || null,
         company_type: companyType,
+        profile_source: profileSource,
+        verification_status: verificationStatus,
+        source_references: parseJsonArray("Source references", sourceReferences),
         registration_number: registrationNumber || null,
         gstin: gstin || null,
         pan: pan || null,
@@ -107,6 +131,7 @@ export default function CompanyProfilePage() {
         service_model: parseJsonObject("Service model", serviceModel),
         config: parseJsonObject("Config", config),
         metadata: parseJsonObject("Metadata", metadata),
+        reason: reason || "Company profile admin update",
       };
       const response = await companyApi.upsertCompanyProfile(tenantId, body);
       loadIntoForm(response.profile || {});
@@ -155,6 +180,16 @@ export default function CompanyProfilePage() {
               {COMPANY_TYPES.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
+          <label className="text-xs text-gray-500">Profile source
+            <select value={profileSource} onChange={(event) => setProfileSource(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">
+              {PROFILE_SOURCES.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-gray-500">Verification status
+            <select value={verificationStatus} onChange={(event) => setVerificationStatus(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900">
+              {VERIFICATION_STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
           <Input label="Registration number" value={registrationNumber} onChange={setRegistrationNumber} />
           <Input label="GSTIN" value={gstin} onChange={setGstin} />
           <Input label="PAN" value={pan} onChange={setPan} />
@@ -165,6 +200,7 @@ export default function CompanyProfilePage() {
           <Input label="Support email" value={supportEmail} onChange={setSupportEmail} />
           <Input label="Support phone" value={supportPhone} onChange={setSupportPhone} />
           <Input label="Crop focus, comma-separated" value={cropFocus} onChange={setCropFocus} />
+          <Textarea label="Source references JSON array" value={sourceReferences} onChange={setSourceReferences} />
           <Textarea label="Head office JSON" value={headOffice} onChange={setHeadOffice} />
         </Section>
 
@@ -176,6 +212,7 @@ export default function CompanyProfilePage() {
         <Section title="Backend config">
           <Textarea label="Config JSON" value={config} onChange={setConfig} />
           <Textarea label="Metadata JSON" value={metadata} onChange={setMetadata} />
+          <Input label="Reason for change" value={reason} onChange={setReason} />
         </Section>
       </div>
 
@@ -184,6 +221,25 @@ export default function CompanyProfilePage() {
           {saving ? "Saving..." : "Save company profile"}
         </button>
       </div>
+
+      <section className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-900">Audit history</h2>
+          <button type="button" onClick={() => void loadProfile()} className="rounded border px-3 py-1 text-xs text-gray-700">Refresh</button>
+        </div>
+        <div className="mt-3 divide-y rounded border">
+          {auditEvents.map((event) => <div key={event.id} className="p-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-gray-900">{event.action}</span>
+              <span className="text-gray-400">{event.created_at || "-"}</span>
+            </div>
+            <div className="mt-1 text-gray-600">Source: {event.source || "-"} · Actor: {event.actor_id || "-"}</div>
+            <div className="mt-1 text-gray-600">Fields: {(event.patched_fields || []).join(", ") || "-"}</div>
+            {event.reason ? <div className="mt-1 text-amber-700">Reason: {event.reason}</div> : null}
+          </div>)}
+          {auditEvents.length === 0 ? <div className="p-4 text-center text-xs text-gray-400">No audit events yet.</div> : null}
+        </div>
+      </section>
     </main>
   );
 }

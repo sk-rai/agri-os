@@ -417,6 +417,9 @@ export interface CompanyProfileDto {
   legal_name?: string | null;
   display_name?: string | null;
   company_type?: string | null;
+  profile_source?: string | null;
+  verification_status?: string | null;
+  source_references?: Array<Record<string, unknown>>;
   registration_number?: string | null;
   gstin?: string | null;
   pan?: string | null;
@@ -432,6 +435,28 @@ export interface CompanyProfileDto {
   is_active?: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface CompanyProfileAuditEventDto {
+  id: string;
+  tenant_id: string;
+  company_profile_id?: string | null;
+  actor_id?: string | null;
+  action: string;
+  patched_fields: string[];
+  before_profile?: Record<string, unknown>;
+  after_profile?: Record<string, unknown>;
+  source?: string | null;
+  reason?: string | null;
+  created_at?: string | null;
+}
+
+export interface CompanyProfileAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  events: CompanyProfileAuditEventDto[];
 }
 
 export interface CompanyProfileResponse {
@@ -1376,6 +1401,12 @@ export const companyApi = {
     api<CompanyProfileResponse>(`/api/v1/tenants/${encodeURIComponent(tenantId)}/company-profile`),
   upsertCompanyProfile: (tenantId: string, body: Record<string, unknown>) =>
     api<CompanyProfileResponse>(`/api/v1/tenants/${encodeURIComponent(tenantId)}/company-profile`, { method: "PUT", body }),
+  companyProfileAudit: (tenantId: string, params?: { limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<CompanyProfileAuditResponse>(`/api/v1/tenants/${encodeURIComponent(tenantId)}/company-profile/audit${suffix}`);
+  },
 };
 
 export const farmersApi = {
