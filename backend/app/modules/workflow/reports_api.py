@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, Parcel, Project, ProjectAppConfigAuditEvent
+from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot
 from app.modules.media.models import BroadcastAuditEvent, BroadcastCampaign, BroadcastDelivery, FieldEventReport, QueryThread, MediaAsset, MediaAttachment, WeatherProviderConfig, WeatherSnapshot
 from app.modules.master_data.models import (
     AgriculturalInput,
@@ -1457,9 +1458,58 @@ def admin_dashboard_report(
     )
 
 
-def _farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel):
+def _soil_enrichment_trace_row(snapshot: Optional[SoilEnrichmentSnapshot]) -> Optional[dict]:
+    if not snapshot:
+        return None
+    return {
+        "id": str(snapshot.id),
+        "provider": snapshot.provider,
+        "provider_dataset": snapshot.provider_dataset,
+        "snapshot_type": snapshot.snapshot_type,
+        "status": snapshot.status,
+        "depth_layer": snapshot.depth_layer,
+        "resolution_meters": snapshot.resolution_meters,
+        "confidence": snapshot.confidence,
+        "observed_at": snapshot.observed_at.isoformat() if snapshot.observed_at else None,
+        "fetched_at": snapshot.fetched_at.isoformat() if snapshot.fetched_at else None,
+        "expires_at": snapshot.expires_at.isoformat() if snapshot.expires_at else None,
+        "ph": _decimal_text(snapshot.ph),
+        "organic_carbon": _decimal_text(snapshot.organic_carbon),
+        "nitrogen": _decimal_text(snapshot.nitrogen),
+        "clay_percent": _decimal_text(snapshot.clay_percent),
+        "silt_percent": _decimal_text(snapshot.silt_percent),
+        "sand_percent": _decimal_text(snapshot.sand_percent),
+        "surface_soil_moisture": _decimal_text(snapshot.surface_soil_moisture),
+        "root_zone_soil_moisture": _decimal_text(snapshot.root_zone_soil_moisture),
+        "soil_temperature_c": _decimal_text(snapshot.soil_temperature_c),
+        "evapotranspiration_mm": _decimal_text(snapshot.evapotranspiration_mm),
+        "metadata": snapshot.metadata_ or {},
+    }
+
+
+def _latest_soil_enrichments_for_parcels(db: Session, *, tenant_id: str, parcel_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    result = {parcel_id: {"baseline": None, "moisture": None} for parcel_id in parcel_ids}
+    if not parcel_ids:
+        return result
+    rows = (
+        db.query(SoilEnrichmentSnapshot)
+        .filter(SoilEnrichmentSnapshot.tenant_id == tenant_id, SoilEnrichmentSnapshot.parcel_id.in_(parcel_ids))
+        .order_by(SoilEnrichmentSnapshot.parcel_id.asc(), SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc())
+        .all()
+    )
+    for row in rows:
+        bucket = result.setdefault(row.parcel_id, {"baseline": None, "moisture": None})
+        if row.snapshot_type == "BASELINE" and bucket["baseline"] is None:
+            bucket["baseline"] = _soil_enrichment_trace_row(row)
+        elif row.snapshot_type == "MOISTURE" and bucket["moisture"] is None:
+            bucket["moisture"] = _soil_enrichment_trace_row(row)
+    return result
+
+
+def _farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel, latest_soil_enrichments=None):
     parcel_cycles = cycles_by_parcel.get(parcel.id, [])
     parcel_activities = activities_by_parcel.get(parcel.id, [])
+    enrichment = (latest_soil_enrichments or {}).get(parcel.id, {"baseline": None, "moisture": None})
     return {
         "id": str(parcel.id),
         "project_id": str(parcel.project_id) if parcel.project_id else None,
@@ -1469,7 +1519,14 @@ def _farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, tot
         "reported_area": _decimal_text(parcel.reported_area),
         "reported_area_unit": parcel.reported_area_unit,
         "ownership_type": parcel.ownership_type,
+        "annual_rent": _decimal_text(parcel.annual_rent),
+        "annual_rent_currency": parcel.annual_rent_currency,
+        "share_percentage": parcel.share_percentage,
+        "sharecrop_percentage": parcel.sharecrop_percentage,
         "village_name": parcel.village_name_manual,
+        "pin_code": parcel.pin_code,
+        "location_scope": parcel.location_scope or {},
+        "irrigation_source": parcel.irrigation_source,
         "current_crop_code": parcel.current_crop_code,
         "geometry_source": parcel.geometry_source,
         "centroid_lat": _decimal_text(parcel.centroid_lat),
@@ -1481,6 +1538,7 @@ def _farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, tot
         "completed_cycle_count": sum(1 for cycle in parcel_cycles if cycle.status == "COMPLETED"),
         "activity_count": len(parcel_activities),
         "total_cost": _decimal_sum(total_cost_by_parcel.get(parcel.id, [])),
+        "latest_soil_enrichments": enrichment,
     }
 
 
@@ -1539,6 +1597,8 @@ def _parcel_trace_payload(*, db: Session, parcel, farmer, project, cycles, activ
             if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
                 variance_count += 1
 
+    latest_soil_enrichments = _latest_soil_enrichments_for_parcels(db, tenant_id=tenant_id, parcel_ids=[parcel.id]).get(parcel.id, {"baseline": None, "moisture": None})
+
     return {
         "schema_version": "parcel_trace.v1",
         "tenant_id": tenant_id,
@@ -1572,6 +1632,7 @@ def _parcel_trace_payload(*, db: Session, parcel, farmer, project, cycles, activ
             "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
             "updated_at": parcel.updated_at.isoformat() if parcel.updated_at else None,
             "media_attachments": _media_attachments_for_entity(db, tenant_id, "PARCEL", parcel.id),
+            "latest_soil_enrichments": latest_soil_enrichments,
         },
         "farmer": {
             "id": str(farmer.id),
@@ -1706,6 +1767,10 @@ def farmer_trace_report(
             if Decimal(str(row["recommended_quantity"])) != Decimal(str(row["actual_quantity"])):
                 variance_count += 1
 
+    latest_soil_enrichments = _latest_soil_enrichments_for_parcels(db, tenant_id=x_tenant_id, parcel_ids=[parcel.id for parcel in parcels])
+    parcels_with_baseline_enrichment = sum(1 for parcel in parcels if latest_soil_enrichments.get(parcel.id, {}).get("baseline"))
+    parcels_with_moisture_enrichment = sum(1 for parcel in parcels if latest_soil_enrichments.get(parcel.id, {}).get("moisture"))
+
     enrollment_rows = [_farmer_enrollment_trace_row(enrollment, enrollment_projects.get(enrollment.project_id)) for enrollment in enrollments]
     enrollment_status_counts = defaultdict(int)
     lifecycle_events = []
@@ -1747,6 +1812,8 @@ def farmer_trace_report(
             "activity_count": len(activities),
             "total_cost": _decimal_sum([row.get("cost_amount") for row in activities]),
             "variance_count": variance_count,
+            "parcels_with_baseline_enrichment": parcels_with_baseline_enrichment,
+            "parcels_with_moisture_enrichment": parcels_with_moisture_enrichment,
         },
         "project_enrollments": enrollment_rows,
         "enrollment_lifecycle": {
@@ -1761,7 +1828,7 @@ def farmer_trace_report(
             "events": lifecycle_events[:25],
             "project_enrollments_url": f"/project-enrollments?farmerId={farmer.id}",
         },
-        "parcels": [_farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel) for parcel in parcels],
+        "parcels": [_farmer_trace_parcel_row(parcel, cycles_by_parcel, activities_by_parcel, total_cost_by_parcel, latest_soil_enrichments) for parcel in parcels],
         "crop_cycles": [_farmer_trace_cycle_row(cycle, activities_by_cycle, total_cost_by_cycle) for cycle in cycles],
         "activities": activities[:250],
     }

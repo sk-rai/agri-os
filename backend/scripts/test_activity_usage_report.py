@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
+from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot
 from app.modules.master_data.models import AgriculturalInput, AgriculturalProduct, AgriculturalProductPackage, CropStageInputRule, Manufacturer, ProjectProductApproval
 from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance, WorkflowTemplate, WorkflowTemplateVersion
 from app.modules.sync.models import SyncProcessedEvent
@@ -42,6 +43,7 @@ def cleanup(db, *, admin=None, farmer_id, parcel_id, project_id, cycle_id=None):
         db.query(AgriculturalProduct).filter(AgriculturalProduct.id == product.id).delete(synchronize_session=False)
     db.query(Manufacturer).filter(Manufacturer.code == MFG).delete(synchronize_session=False)
     db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.farmer_id == farmer_id).delete(synchronize_session=False)
+    db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.parcel_id == parcel_id).delete(synchronize_session=False)
     db.query(Parcel).filter(Parcel.id == parcel_id).delete(synchronize_session=False)
     db.query(Farmer).filter(Farmer.id == farmer_id).delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project_id).delete(synchronize_session=False)
@@ -79,7 +81,24 @@ def main():
         parcel_sync_event = SyncProcessedEvent(event_id=uuid.uuid4(), tenant_id=TENANT, actor_id=admin.id, entity_type="PARCEL", entity_id=parcel_id, operation="CREATE", server_version=1, status="COMMITTED", processed_at=now())
         geometry_sync_event = SyncProcessedEvent(event_id=uuid.uuid4(), tenant_id=TENANT, actor_id=admin.id, entity_type="PARCEL_GEOMETRY", entity_id=parcel_id, operation="UPDATE", server_version=1, status="COMMITTED", processed_at=now())
         db.add_all([farmer_sync_event, parcel_sync_event, geometry_sync_event])
-        db.add_all([package, approval, rule, cycle, stage, activity]); db.commit()
+        baseline_snapshot = SoilEnrichmentSnapshot(
+            id=uuid.uuid4(), tenant_id=TENANT, parcel_id=parcel_id, farmer_id=farmer_id,
+            provider="SOILGRIDS", provider_dataset="soilgrids.v2.0", snapshot_type="BASELINE", status="AVAILABLE",
+            latitude="12.97160000", longitude="77.59460000", depth_layer="0-5cm", resolution_meters=250, confidence="MODELLED",
+            observed_at=now(), fetched_at=now(), ph="6.80", organic_carbon="1.2300", nitrogen="0.1800",
+            clay_percent="31.20", silt_percent="24.50", sand_percent="44.30",
+            normalized_values={"texture_class": "CLAY_LOAM"}, raw_payload={"source": "activity-regression"}, metadata_={"coordinate_source": "PARCEL_CENTROID"},
+            created_at=now(), updated_at=now(),
+        )
+        moisture_snapshot = SoilEnrichmentSnapshot(
+            id=uuid.uuid4(), tenant_id=TENANT, parcel_id=parcel_id, farmer_id=farmer_id,
+            provider="OPEN_METEO", provider_dataset="open-meteo.soil", snapshot_type="MOISTURE", status="AVAILABLE",
+            latitude="12.97160000", longitude="77.59460000", depth_layer="9-27cm", resolution_meters=10000, confidence="FORECAST_MODEL",
+            observed_at=now(), fetched_at=now(), expires_at=now(), surface_soil_moisture="0.2200", root_zone_soil_moisture="0.3100",
+            soil_temperature_c="24.70", evapotranspiration_mm="3.100", normalized_values={"soil_moisture_layer": "9-27cm"}, raw_payload={"source": "activity-regression"},
+            metadata_={"refresh_interval_hours": 6}, created_at=now(), updated_at=now(),
+        )
+        db.add_all([package, approval, rule, cycle, stage, activity, baseline_snapshot, moisture_snapshot]); db.commit()
 
         client = TestClient(app, headers=headers)
         response = client.get(f"/api/v1/reports/activity-usage?project_id={project_id}&crop_code=RICE&stage_code=TILLERING&product_code={PRODUCT}")
@@ -208,10 +227,14 @@ def main():
         check(farmer_trace["summary"]["parcel_count"] == 1, "farmer trace parcel count is correct")
         check(farmer_trace["summary"]["crop_cycle_count"] == 1 and farmer_trace["summary"]["activity_count"] == 1, "farmer trace cycle/activity counts are correct")
         check(farmer_trace["summary"]["total_cost"] == "1200.00" and farmer_trace["summary"]["variance_count"] == 1, "farmer trace summary totals are correct")
+        check(farmer_trace["summary"]["parcels_with_baseline_enrichment"] == 1, "farmer trace counts soil baseline enrichments")
+        check(farmer_trace["summary"]["parcels_with_moisture_enrichment"] == 1, "farmer trace counts soil moisture enrichments")
         check(farmer_trace["enrollment_lifecycle"]["active_pending_count"] == 1, "farmer trace reports open project enrollment lifecycle")
         check(farmer_trace["enrollment_lifecycle"]["project_enrollments_url"] == f"/project-enrollments?farmerId={farmer_id}", "farmer trace links to filtered project enrollments")
         check(farmer_trace["project_enrollments"][0]["project_id"] == str(project_id), "farmer trace includes project enrollment rows")
         check(farmer_trace["parcels"][0]["id"] == str(parcel_id) and farmer_trace["parcels"][0]["activity_count"] == 1, "farmer trace includes parcel usage")
+        check(farmer_trace["parcels"][0]["latest_soil_enrichments"]["baseline"]["provider"] == "SOILGRIDS", "farmer trace parcel includes latest soil baseline")
+        check(farmer_trace["parcels"][0]["latest_soil_enrichments"]["moisture"]["provider"] == "OPEN_METEO", "farmer trace parcel includes latest soil moisture")
         check(farmer_trace["crop_cycles"][0]["id"] == str(cycle_id) and farmer_trace["crop_cycles"][0]["workflow_template_version_id"] == str(workflow_version.id), "farmer trace includes cycle usage")
         check(farmer_trace["activities"][0]["activity_id"] == str(activity.id), "farmer trace includes activity row")
         parcel_trace_response = client.get(f"/api/v1/reports/parcels/{parcel_id}/trace")
@@ -222,6 +245,9 @@ def main():
         check(parcel_trace["project"]["id"] == str(project_id), "parcel trace includes project")
         check(parcel_trace["summary"]["crop_cycle_count"] == 1 and parcel_trace["summary"]["activity_count"] == 1, "parcel trace cycle/activity counts are correct")
         check(parcel_trace["summary"]["total_cost"] == "1200.00" and parcel_trace["summary"]["variance_count"] == 1, "parcel trace summary totals are correct")
+        check(parcel_trace["parcel"]["latest_soil_enrichments"]["baseline"]["provider"] == "SOILGRIDS", "parcel trace includes latest SoilGrids baseline")
+        check(parcel_trace["parcel"]["latest_soil_enrichments"]["moisture"]["provider"] == "OPEN_METEO", "parcel trace includes latest moisture snapshot")
+        check(parcel_trace["parcel"]["latest_soil_enrichments"]["baseline"]["ph"] == "6.80", "parcel trace includes baseline pH")
         check(parcel_trace["crop_cycles"][0]["id"] == str(cycle_id), "parcel trace includes cycle")
         check(parcel_trace["activities"][0]["activity_id"] == str(activity.id), "parcel trace includes activity row")
         lookup_response = client.get("/api/v1/reports/lookup?q=Usage%20Report")

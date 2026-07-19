@@ -34,11 +34,13 @@ export default function FarmerTracePage({ params }: { params: { farmerId: string
       </div>
     </div>
 
-    <div className="mb-6 grid gap-4 md:grid-cols-4">
+    <div className="mb-6 grid gap-4 md:grid-cols-6">
       <Card label="Parcels" value={trace.summary.parcel_count} />
       <Card label="Crop cycles" value={trace.summary.crop_cycle_count} />
       <Card label="Activities" value={trace.summary.activity_count} />
       <Card label="Total cost" value={`INR ${trace.summary.total_cost}`} />
+      <Card label="Soil baselines" value={trace.summary.parcels_with_baseline_enrichment ?? 0} />
+      <Card label="Moisture" value={trace.summary.parcels_with_moisture_enrichment ?? 0} />
     </div>
 
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
@@ -122,6 +124,8 @@ export default function FarmerTracePage({ params }: { params: { farmerId: string
             <Mini label="Cycles" value={`${parcel.crop_cycle_count} (${parcel.active_cycle_count} active)`} />
             <Mini label="Activities" value={parcel.activity_count} />
             <Mini label="Cost" value={`INR ${parcel.total_cost}`} />
+            <Mini label="Soil baseline" value={parcel.latest_soil_enrichments?.baseline?.provider || "-"} />
+            <Mini label="Moisture" value={parcel.latest_soil_enrichments?.moisture?.provider || "-"} />
           </div>
           {parcel.location_scope && Object.keys(parcel.location_scope).length ? <pre className="mt-3 overflow-auto rounded bg-gray-950 p-2 text-[10px] text-gray-100">{JSON.stringify(parcel.location_scope, null, 2)}</pre> : null}
         </div>)}

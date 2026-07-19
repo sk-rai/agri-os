@@ -411,6 +411,35 @@ export interface CropCycleTraceResponse {
   activities: ActivityUsageRow[];
   media_attachments?: Record<string, MediaAttachmentTrace[]>;
 }
+export interface SoilEnrichmentTrace {
+  id: string;
+  provider: string;
+  provider_dataset?: string | null;
+  snapshot_type: string;
+  status: string;
+  depth_layer?: string | null;
+  resolution_meters?: number | null;
+  confidence?: string | null;
+  observed_at?: string | null;
+  fetched_at?: string | null;
+  expires_at?: string | null;
+  ph?: string | null;
+  organic_carbon?: string | null;
+  nitrogen?: string | null;
+  clay_percent?: string | null;
+  silt_percent?: string | null;
+  sand_percent?: string | null;
+  surface_soil_moisture?: string | null;
+  root_zone_soil_moisture?: string | null;
+  soil_temperature_c?: string | null;
+  evapotranspiration_mm?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LatestSoilEnrichmentsTrace {
+  baseline?: SoilEnrichmentTrace | null;
+  moisture?: SoilEnrichmentTrace | null;
+}
 export interface FarmerTraceParcel {
   id: string;
   project_id?: string | null;
@@ -439,6 +468,7 @@ export interface FarmerTraceParcel {
   completed_cycle_count: number;
   activity_count: number;
   total_cost: string;
+  latest_soil_enrichments?: LatestSoilEnrichmentsTrace;
   media_attachments?: MediaAttachmentTrace[];
 }
 export interface FarmerTraceCycle {
@@ -499,6 +529,8 @@ export interface FarmerTraceResponse {
     activity_count: number;
     total_cost: string;
     variance_count: number;
+    parcels_with_baseline_enrichment?: number;
+    parcels_with_moisture_enrichment?: number;
   };
   project_enrollments: FarmerTraceEnrollment[];
   enrollment_lifecycle: FarmerTraceEnrollmentLifecycle;

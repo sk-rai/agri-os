@@ -72,6 +72,8 @@ export default function ParcelTracePage({ params }: { params: { parcelId: string
       ]} action={trace.farmer?.id ? <Link href={`/farmer-trace/${trace.farmer.id}`} className="rounded bg-gray-900 px-3 py-1 text-xs text-white">Open farmer</Link> : undefined} />
     </div>
 
+    <SoilEnrichmentPanel enrichments={trace.parcel.latest_soil_enrichments} />
+
     <MediaPanel title="Parcel media attachments" attachments={trace.parcel.media_attachments || []} />
 
     <section className="mb-6 overflow-hidden rounded bg-white shadow">
@@ -140,6 +142,56 @@ function InfoSection({ title, rows, action }: { title: string; rows: Array<[stri
 
 function JsonSection({ title, value }: { title: string; value: Record<string, unknown> }) {
   return <section className="rounded bg-white p-5 shadow"><h2 className="mb-3 text-lg font-bold text-gray-900">{title}</h2><pre className="overflow-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{JSON.stringify(value, null, 2)}</pre></section>;
+}
+
+function SoilEnrichmentPanel({ enrichments }: { enrichments?: ParcelTraceResponse["parcel"]["latest_soil_enrichments"] }) {
+  const baseline = enrichments?.baseline;
+  const moisture = enrichments?.moisture;
+  return <section className="mb-6 rounded bg-white p-5 shadow">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 className="text-lg font-bold text-gray-900">Soil enrichment snapshots</h2>
+        <p className="text-sm text-gray-500">Latest backend-owned provider snapshots for baseline soil properties and dynamic soil-water status.</p>
+      </div>
+      <span className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{[baseline, moisture].filter(Boolean).length} available</span>
+    </div>
+    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      <EnrichmentCard title="Baseline / SoilGrids" snapshot={baseline} rows={[
+        ["pH", baseline?.ph],
+        ["Organic carbon", baseline?.organic_carbon],
+        ["Nitrogen", baseline?.nitrogen],
+        ["Texture", [baseline?.clay_percent && `Clay ${baseline.clay_percent}%`, baseline?.silt_percent && `Silt ${baseline.silt_percent}%`, baseline?.sand_percent && `Sand ${baseline.sand_percent}%`].filter(Boolean).join(" / ")],
+      ]} />
+      <EnrichmentCard title="Moisture / Weather" snapshot={moisture} rows={[
+        ["Surface moisture", moisture?.surface_soil_moisture],
+        ["Root-zone moisture", moisture?.root_zone_soil_moisture],
+        ["Soil temp C", moisture?.soil_temperature_c],
+        ["ET mm", moisture?.evapotranspiration_mm],
+      ]} />
+    </div>
+  </section>;
+}
+
+function EnrichmentCard({ title, snapshot, rows }: { title: string; snapshot?: NonNullable<ParcelTraceResponse["parcel"]["latest_soil_enrichments"]>["baseline"]; rows: Array<[string, string | null | undefined]> }) {
+  if (!snapshot) return <div className="rounded border border-dashed p-4 text-sm text-gray-400">No {title.toLowerCase()} snapshot yet.</div>;
+  return <div className="rounded border p-4 text-sm">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="font-semibold text-gray-900">{title}</div>
+        <div className="font-mono text-xs text-gray-500">{snapshot.provider} / {snapshot.provider_dataset || "-"}</div>
+      </div>
+      <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">{snapshot.status}</span>
+    </div>
+    <div className="mt-3 grid gap-2 md:grid-cols-2">
+      <Mini label="Depth" value={snapshot.depth_layer} />
+      <Mini label="Resolution m" value={snapshot.resolution_meters ?? "-"} />
+      <Mini label="Observed" value={snapshot.observed_at} />
+      <Mini label="Fetched" value={snapshot.fetched_at} />
+    </div>
+    <div className="mt-3 grid gap-2 md:grid-cols-2">
+      {rows.map(([label, value]) => <Mini key={label} label={label} value={value || "-"} />)}
+    </div>
+  </div>;
 }
 
 function MediaPanel({ title, attachments }: { title: string; attachments: NonNullable<ParcelTraceResponse["parcel"]["media_attachments"]> }) {
