@@ -260,6 +260,35 @@ def main():
     check(all_body["summary"]["farmer_count"] == 2, "Project worklist includes assigned and unassigned farmers")
     check(any(item["farmer"]["id"] == str(unassigned_farmer_id) for item in all_body["farmers"]), "Project worklist includes unassigned farmer when assigned_only=false")
 
+    assign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=headers, json={
+        "project_id": str(project_id),
+        "agent_user_id": str(actor_id),
+        "action": "ASSIGN",
+        "reason": "Regression assign agent",
+    })
+    check(assign.status_code == 200, "Assign agent to farmer project enrollment returns 200", assign.text)
+    assign_body = assign.json()
+    check(str(actor_id) in assign_body["assigned_user_ids"], "Assignment endpoint adds agent user id")
+    check(assign_body["metadata"]["last_assignment_action"] == "ASSIGN", "Assignment endpoint records assignment metadata")
+
+    assigned_after_assign = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true", headers=headers)
+    check(assigned_after_assign.status_code == 200, "Assigned worklist returns 200 after assignment", assigned_after_assign.text)
+    check(assigned_after_assign.json()["summary"]["farmer_count"] == 2, "Assigned worklist includes newly assigned farmer")
+
+    unassign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=headers, json={
+        "project_id": str(project_id),
+        "agent_user_id": str(actor_id),
+        "action": "UNASSIGN",
+        "reason": "Regression unassign agent",
+    })
+    check(unassign.status_code == 200, "Unassign agent from farmer project enrollment returns 200", unassign.text)
+    check(str(actor_id) not in unassign.json()["assigned_user_ids"], "Assignment endpoint removes agent user id")
+    check(unassign.json()["metadata"]["last_assignment_action"] == "UNASSIGN", "Unassignment records assignment metadata")
+
+    assigned_after_unassign = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true", headers=headers)
+    check(assigned_after_unassign.status_code == 200, "Assigned worklist returns 200 after unassignment", assigned_after_unassign.text)
+    check(assigned_after_unassign.json()["summary"]["farmer_count"] == 1, "Assigned worklist removes unassigned farmer")
+
     missing_actor = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true", headers={"X-Tenant-ID": tenant_id})
     check(missing_actor.status_code == 400, "Assigned-only worklist requires actor context", missing_actor.text)
 

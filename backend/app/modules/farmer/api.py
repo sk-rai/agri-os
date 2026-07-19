@@ -267,6 +267,13 @@ class FarmerProjectEnrollmentCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class FarmerProjectAgentAssignmentRequest(BaseModel):
+    project_id: uuid.UUID
+    agent_user_id: uuid.UUID
+    action: str = Field(default="ASSIGN", pattern=r"^(ASSIGN|UNASSIGN)$")
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
 class FarmerProjectEnrollmentResponse(BaseModel):
     id: uuid.UUID
     tenant_id: str
@@ -2587,6 +2594,88 @@ def create_farmer_project_enrollment(
         farmer.project_id = body.project_id
         farmer.updated_at = datetime.now(timezone.utc)
 
+    db.commit()
+    db.refresh(enrollment)
+    return _enrollment_payload(enrollment, project)
+
+
+@router.post("/farmers/{farmer_id}/project-agent-assignment", response_model=FarmerProjectEnrollmentResponse)
+def update_farmer_project_agent_assignment(
+    farmer_id: uuid.UUID,
+    body: FarmerProjectAgentAssignmentRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    """Assign or unassign one agent/user from a farmer's project enrollment.
+
+    This is the operational helper behind the field-agent worklist. It keeps
+    assignment changes narrow and auditable in enrollment metadata while preserving
+    the existing project enrollment contract.
+    """
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id, Farmer.status != "ARCHIVED").first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+    project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id, Project.is_active == True).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    from app.modules.auth.models import User
+
+    agent_user = db.query(User).filter(User.id == body.agent_user_id, User.tenant_id == x_tenant_id, User.is_active == True).first()
+    if not agent_user:
+        raise HTTPException(404, "Agent user not found")
+    enrollment = db.query(FarmerProjectEnrollment).filter(
+        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.farmer_id == farmer_id,
+        FarmerProjectEnrollment.project_id == body.project_id,
+    ).first()
+    if not enrollment:
+        enrollment = FarmerProjectEnrollment(
+            id=uuid.uuid4(),
+            tenant_id=x_tenant_id,
+            farmer_id=farmer_id,
+            project_id=body.project_id,
+            enrollment_method="ASSISTED",
+            enrollment_source="PROJECT_AGENT_ASSIGNMENT",
+            status="ACTIVE",
+            parcel_ids=[],
+            assigned_user_ids=[],
+            metadata_={},
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(enrollment)
+
+    assigned = [str(value) for value in (enrollment.assigned_user_ids or [])]
+    agent_id = str(body.agent_user_id)
+    changed = False
+    if body.action == "ASSIGN" and agent_id not in assigned:
+        assigned.append(agent_id)
+        changed = True
+    if body.action == "UNASSIGN" and agent_id in assigned:
+        assigned = [value for value in assigned if value != agent_id]
+        changed = True
+
+    metadata = dict(enrollment.metadata_ or {})
+    history = list(metadata.get("assignment_events") or [])
+    history.append({
+        "action": body.action,
+        "agent_user_id": agent_id,
+        "actor_id": x_actor_id,
+        "reason": body.reason,
+        "changed": changed,
+        "at": datetime.now(timezone.utc).isoformat(),
+    })
+    metadata["assignment_events"] = history[-25:]
+    metadata["last_assignment_action"] = body.action
+    metadata["last_assignment_reason"] = body.reason
+    metadata["last_assignment_changed"] = changed
+
+    enrollment.assigned_user_ids = assigned
+    enrollment.metadata_ = metadata
+    enrollment.updated_at = datetime.now(timezone.utc)
+    if farmer.project_id is None and enrollment.status in {"PENDING", "ACTIVE"}:
+        farmer.project_id = body.project_id
+        farmer.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(enrollment)
     return _enrollment_payload(enrollment, project)

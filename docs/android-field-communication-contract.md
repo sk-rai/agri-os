@@ -871,6 +871,28 @@ The response uses `schema_version=profile_contract.v1` and summarizes:
 
 Android should still fetch full form schemas from `/api/v1/forms/{form_id}` and effective options from `/api/v1/forms/options/{option_set}`. This summary is intended as a lightweight bootstrap/readiness contract so Android can avoid hardcoding seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, or assistance modes.
 
+
+## Field-agent assignment and dual farmer/agent mode
+
+A person can be both a normal farmer and an operational agent/agronomist/dealer. Backend represents this with a `User` login, optional `AgentProfile`, and optional linked `Farmer` profile. Android should use the field-agent worklist for assisted capture when operating in agent mode, and use the linked `personal_farmer_id` when the same person switches to personal farmer mode.
+
+Assigned-farmer worklist:
+
+```http
+GET /api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true
+X-Actor-ID: {agent_user_id}
+```
+
+The response includes `agent_profile`, `mode_switch.personal_farmer_mode_available`, `mode_switch.personal_farmer_id`, farmer rows, parcels, soil profiles, active crop cycles/stages, capture actions, and backend endpoint hints for the relevant farmer/parcel/crop entities.
+
+Backend/admin assignment helper:
+
+```http
+POST /api/v1/farmers/{farmer_id}/project-agent-assignment
+```
+
+Payload: `project_id`, `agent_user_id`, `action=ASSIGN|UNASSIGN`, and `reason`. The endpoint updates the farmer project enrollment `assigned_user_ids` and records assignment history in enrollment metadata. Android field apps normally consume this assignment through the worklist; admin/back-office tools can call the assignment helper.
+
 ## Soil enrichment source provenance
 
 Android should treat soil baseline and soil-water data as backend-owned enrichment snapshots. The backend now exposes the source contract:
