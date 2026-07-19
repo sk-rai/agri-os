@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import CompanyProfile, Project, ProjectAppConfigAuditEvent, Tenant
+from app.modules.farmer.models import CompanyProfile, CompanyProfileAuditEvent, Project, ProjectAppConfigAuditEvent, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -52,6 +52,9 @@ def main():
     admin = None
     project = None
     ensure_tenant(db)
+    db.query(CompanyProfileAuditEvent).filter(CompanyProfileAuditEvent.tenant_id == "default").delete(synchronize_session=False)
+    db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
+    db.commit()
     client = TestClient(app)
     admin, headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id="default")
 
@@ -73,6 +76,9 @@ def main():
             "legal_name": "Default Agri OS Customer Pvt Ltd",
             "display_name": "Default Customer",
             "company_type": "FPO",
+            "profile_source": "PUBLIC_WEB",
+            "verification_status": "UNVERIFIED",
+            "source_references": [{"label": "Public directory seed", "url": "https://example.test/company"}],
             "registration_number": "REG-DEFAULT-001",
             "support_email": "support@example.test",
             "support_phone": "+910000000000",
@@ -88,12 +94,25 @@ def main():
     company_payload = company_patch.json()
     check(company_payload["updated"] is True, "Company profile upsert marks updated")
     check(company_payload["profile"]["company_type"] == "FPO", "Company profile stores company type")
+    check(company_payload["profile"]["profile_source"] == "PUBLIC_WEB", "Company profile stores prepopulation source")
+    check(company_payload["profile"]["verification_status"] == "UNVERIFIED", "Company profile stores verification status")
+    check(company_payload["profile"]["source_references"][0]["label"] == "Public directory seed", "Company profile stores source references")
     check(company_payload["profile"]["operating_geography"]["districts"] == ["AZAMGARH"], "Company profile stores operating geography")
     check(company_payload["profile"]["config"]["backend_only"] is True, "Company profile stores backend-only config")
 
     company_read = client.get("/api/v1/tenants/default/company-profile", headers={"X-Tenant-ID": "default"})
     check(company_read.status_code == 200, "Company profile read returns 200 after save", company_read.text[:400])
     check(company_read.json()["profile"]["display_name"] == "Default Customer", "Company profile read returns saved profile")
+
+    company_audit = client.get("/api/v1/tenants/default/company-profile/audit", headers=headers)
+    check(company_audit.status_code == 200, "Company profile audit returns 200", company_audit.text[:500])
+    company_audit_payload = company_audit.json()
+    check(company_audit_payload["schema_version"] == "company_profile_audit.v1", "Company profile audit schema is stable")
+    check(company_audit_payload["count"] >= 1, "Company profile audit returns events")
+    check(company_audit_payload["events"][0]["action"] == "UPSERT_COMPANY_PROFILE", "Company profile audit records action")
+    check(company_audit_payload["events"][0]["source"] == "PUBLIC_WEB", "Company profile audit records source")
+    check(company_audit_payload["events"][0]["after_profile"]["display_name"] == "Default Customer", "Company profile audit records after profile")
+
 
     advertised = payload["profile_forms"]
     check(REQUIRED_FORMS.issubset(set(advertised.keys())), "Bootstrap advertises required profile forms", advertised.keys())
@@ -296,6 +315,7 @@ def main():
     check(project_land_payload["metadata"]["source"] == "project", "Project land unit override exposes source metadata")
 
     db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
+    db.query(CompanyProfileAuditEvent).filter(CompanyProfileAuditEvent.tenant_id == "default").delete(synchronize_session=False)
     db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
     db.commit()
@@ -311,7 +331,6 @@ def main():
         delete_test_admin(db, admin.id)
     if project:
         db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
-        db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
         db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
         db.commit()
     db.close()

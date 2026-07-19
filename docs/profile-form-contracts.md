@@ -488,3 +488,7 @@ Production provider strategy should prefer stable bulk/geospatial access paths w
 Agri-OS now keeps a backend-only tenant-scoped company profile for the organization using the product, separate from farmer, agent, project, and Android profile data. This profile stores legal/display names, organization type, registration identifiers, support contacts, head-office details, operating geography, crop focus, service model, and backend configuration. Use `GET /api/v1/tenants/{tenant_id}/company-profile` and `PUT /api/v1/tenants/{tenant_id}/company-profile`; Android MVP does not need to render or mutate it.
 
 Admin web exposes `/company-profile` for tenant admins to maintain this backend-only company profile without involving Android clients.
+
+### Company profile prepopulation
+
+Company profiles are now ready for future metadata seeding from public directories, government registries, partner lists, or bulk imports. Seeded records should use `profile_source`, `verification_status`, and `source_references[]`; when a company later enrolls, admins can claim/edit the existing profile and every change is recorded in `GET /api/v1/tenants/{tenant_id}/company-profile/audit`.

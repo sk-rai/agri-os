@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, CompanyProfile, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
+from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -57,6 +57,9 @@ class CompanyProfileUpsert(BaseModel):
     legal_name: Optional[str] = Field(None, max_length=200)
     display_name: Optional[str] = Field(None, max_length=200)
     company_type: str = Field(default="ENTERPRISE", pattern=r"^(ENTERPRISE|FPO|COOPERATIVE|NGO|GOVERNMENT|INSURER|PROCESSOR|INPUT_COMPANY|AGRI_TECH|OTHER)$")
+    profile_source: str = Field(default="MANUAL", pattern=r"^(MANUAL|PUBLIC_WEB|BULK_IMPORT|CLIENT_PROVIDED|GOVERNMENT_REGISTRY|PARTNER_DIRECTORY|OTHER)$")
+    verification_status: str = Field(default="UNVERIFIED", pattern=r"^(UNVERIFIED|CLAIMED|VERIFIED|REJECTED|STALE)$")
+    source_references: list[dict] = Field(default_factory=list)
     registration_number: Optional[str] = Field(None, max_length=100)
     gstin: Optional[str] = Field(None, max_length=30)
     pan: Optional[str] = Field(None, max_length=20)
@@ -69,6 +72,7 @@ class CompanyProfileUpsert(BaseModel):
     service_model: dict = Field(default_factory=dict)
     config: dict = Field(default_factory=dict)
     metadata: dict = Field(default_factory=dict)
+    reason: Optional[str] = Field(None, min_length=3, max_length=500)
 
 
 class CompanyProfileResponse(BaseModel):
@@ -1566,6 +1570,9 @@ def _company_profile_payload(profile: CompanyProfile) -> dict:
         "legal_name": profile.legal_name,
         "display_name": profile.display_name,
         "company_type": profile.company_type,
+        "profile_source": profile.profile_source,
+        "verification_status": profile.verification_status,
+        "source_references": profile.source_references or [],
         "registration_number": profile.registration_number,
         "gstin": profile.gstin,
         "pan": profile.pan,
@@ -1581,6 +1588,23 @@ def _company_profile_payload(profile: CompanyProfile) -> dict:
         "is_active": profile.is_active,
         "created_at": profile.created_at.isoformat() if profile.created_at else None,
         "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+
+
+
+def _company_profile_audit_payload(event: CompanyProfileAuditEvent) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "company_profile_id": str(event.company_profile_id) if event.company_profile_id else None,
+        "actor_id": str(event.actor_id) if event.actor_id else None,
+        "action": event.action,
+        "patched_fields": event.patched_fields or [],
+        "before_profile": event.before_profile or {},
+        "after_profile": event.after_profile or {},
+        "source": event.source,
+        "reason": event.reason,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
     }
 
 
@@ -1673,6 +1697,7 @@ def upsert_company_profile(
 
     profile = db.query(CompanyProfile).filter(CompanyProfile.tenant_id == tenant_id).first()
     now = datetime.now(timezone.utc)
+    before_profile = _company_profile_payload(profile) if profile else {}
     if not profile:
         profile = CompanyProfile(tenant_id=tenant_id, created_at=now)
 
@@ -1680,6 +1705,9 @@ def upsert_company_profile(
         "legal_name",
         "display_name",
         "company_type",
+        "profile_source",
+        "verification_status",
+        "source_references",
         "registration_number",
         "gstin",
         "pan",
@@ -1701,13 +1729,64 @@ def upsert_company_profile(
     db.commit()
     db.refresh(profile)
 
+    after_profile = _company_profile_payload(profile)
+    patched_fields = sorted([key for key in after_profile.keys() if before_profile.get(key) != after_profile.get(key)])
+    db.add(CompanyProfileAuditEvent(
+        tenant_id=tenant_id,
+        company_profile_id=profile.id,
+        actor_id=principal.user_id,
+        action="UPSERT_COMPANY_PROFILE",
+        patched_fields=patched_fields,
+        before_profile=before_profile,
+        after_profile=after_profile,
+        source=body.profile_source,
+        reason=body.reason,
+        created_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
     return {
         "schema_version": "company_profile.v1",
         "tenant_id": tenant_id,
-        "profile": _company_profile_payload(profile),
+        "profile": after_profile,
         "updated": True,
         "message": "Company profile saved.",
     }
+
+
+@router.get("/tenants/{tenant_id}/company-profile/audit")
+def list_company_profile_audit(
+    tenant_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    if tenant_id != x_tenant_id:
+        raise HTTPException(403, {
+            "error": "TENANT_ID_MISMATCH",
+            "message": "Path tenant_id must match X-Tenant-ID.",
+        })
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    events = (
+        db.query(CompanyProfileAuditEvent)
+        .filter(CompanyProfileAuditEvent.tenant_id == tenant_id)
+        .order_by(CompanyProfileAuditEvent.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "schema_version": "company_profile_audit.v1",
+        "tenant_id": tenant_id,
+        "filters": {"limit": limit},
+        "count": len(events),
+        "events": [_company_profile_audit_payload(event) for event in events],
+    }
+
 
 @router.patch("/tenants/{tenant_id}/app-config", response_model=TenantAppConfigResponse)
 def update_tenant_app_config(

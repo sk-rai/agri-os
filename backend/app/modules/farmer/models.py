@@ -59,6 +59,9 @@ class CompanyProfile(Base, UUIDPrimaryKey, AuditMixin):
     legal_name = Column(String(200), nullable=True)
     display_name = Column(String(200), nullable=True)
     company_type = Column(String(50), nullable=False, default="ENTERPRISE")
+    profile_source = Column(String(50), nullable=False, default="MANUAL")
+    verification_status = Column(String(50), nullable=False, default="UNVERIFIED")
+    source_references = Column(JSONB, default=list)
     registration_number = Column(String(100), nullable=True)
     gstin = Column(String(30), nullable=True)
     pan = Column(String(20), nullable=True)
@@ -78,6 +81,31 @@ class CompanyProfile(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_company_profile_tenant", "tenant_id"),
         Index("idx_company_profile_company_type", "company_type"),
     )
+
+
+class CompanyProfileAuditEvent(Base, UUIDPrimaryKey):
+    """Immutable audit trail for backend company profile changes."""
+
+    __tablename__ = "company_profile_audit_events"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    company_profile_id = Column(UUID(as_uuid=True), ForeignKey("company_profiles.id"), nullable=True)
+    actor_id = Column(UUID(as_uuid=True), nullable=True)
+    action = Column(String(50), nullable=False, default="UPSERT_COMPANY_PROFILE")
+    patched_fields = Column(JSONB, default=list)
+    before_profile = Column(JSONB)
+    after_profile = Column(JSONB)
+    source = Column(String(50), nullable=True)
+    reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_company_profile_audit_tenant_created", "tenant_id", "created_at"),
+        Index("idx_company_profile_audit_profile_created", "company_profile_id", "created_at"),
+        Index("idx_company_profile_audit_actor", "actor_id"),
+        Index("idx_company_profile_audit_action", "action"),
+    )
+
 
 class Project(Base, UUIDPrimaryKey, AuditMixin):
     """A time-bound operational project within a tenant.
