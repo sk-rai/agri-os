@@ -637,3 +637,7 @@ Agri-OS now keeps a backend-only tenant-scoped company profile for the organizat
 ### Company profile prepopulation
 
 Company profiles are now ready for future metadata seeding from public directories, government registries, partner lists, or bulk imports. Seeded records should use `profile_source`, `verification_status`, and `source_references[]`; when a company later enrolls, admins can claim/edit the existing profile and every change is recorded in `GET /api/v1/tenants/{tenant_id}/company-profile/audit`.
+
+### Company discovery candidates
+
+Future company prepopulation should land first in `company_discovery_candidates`, not directly in live tenant/company profiles. Use `POST /api/v1/company-discovery-candidates` for public-web, government-registry, partner-directory, or bulk-import discoveries; `GET /api/v1/company-discovery-candidates` for review queues; and `PATCH /api/v1/company-discovery-candidates/{candidate_id}/review` to mark records approved, rejected, duplicate, merged, stale, or linked to an existing tenant/profile.

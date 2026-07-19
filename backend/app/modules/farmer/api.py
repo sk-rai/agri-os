@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
+from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -73,6 +73,33 @@ class CompanyProfileUpsert(BaseModel):
     config: dict = Field(default_factory=dict)
     metadata: dict = Field(default_factory=dict)
     reason: Optional[str] = Field(None, min_length=3, max_length=500)
+
+
+
+class CompanyDiscoveryCandidateCreate(BaseModel):
+    candidate_name: str = Field(..., min_length=2, max_length=250)
+    normalized_name: Optional[str] = Field(None, max_length=250)
+    company_type: Optional[str] = Field(None, max_length=50)
+    source: str = Field(..., pattern=r"^(PUBLIC_WEB|BULK_IMPORT|GOVERNMENT_REGISTRY|PARTNER_DIRECTORY|CLIENT_PROVIDED|OTHER)$")
+    source_references: list[dict] = Field(default_factory=list)
+    discovered_profile: dict = Field(default_factory=dict)
+    operating_geography: dict = Field(default_factory=dict)
+    crop_focus: list[str] = Field(default_factory=list)
+    confidence_score: Optional[float] = Field(None, ge=0, le=1)
+    duplicate_keys: dict = Field(default_factory=dict)
+    matched_tenant_id: Optional[str] = None
+    matched_company_profile_id: Optional[uuid.UUID] = None
+    review_status: str = Field(default="PENDING_REVIEW", pattern=r"^(PENDING_REVIEW|APPROVED|REJECTED|DUPLICATE|MERGED|STALE)$")
+    review_notes: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class CompanyDiscoveryCandidateReview(BaseModel):
+    review_status: str = Field(..., pattern=r"^(PENDING_REVIEW|APPROVED|REJECTED|DUPLICATE|MERGED|STALE)$")
+    matched_tenant_id: Optional[str] = None
+    matched_company_profile_id: Optional[uuid.UUID] = None
+    review_notes: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 class CompanyProfileResponse(BaseModel):
@@ -1563,6 +1590,34 @@ def _enrollment_validation_report(rows: list[dict], file_name: str, project_id: 
 
 
 
+
+def _company_discovery_candidate_payload(candidate: CompanyDiscoveryCandidate) -> dict:
+    return {
+        "id": str(candidate.id),
+        "tenant_id": candidate.tenant_id,
+        "candidate_name": candidate.candidate_name,
+        "normalized_name": candidate.normalized_name,
+        "company_type": candidate.company_type,
+        "source": candidate.source,
+        "source_references": candidate.source_references or [],
+        "discovered_profile": candidate.discovered_profile or {},
+        "operating_geography": candidate.operating_geography or {},
+        "crop_focus": candidate.crop_focus or [],
+        "confidence_score": float(candidate.confidence_score) if candidate.confidence_score is not None else None,
+        "duplicate_keys": candidate.duplicate_keys or {},
+        "matched_tenant_id": candidate.matched_tenant_id,
+        "matched_company_profile_id": str(candidate.matched_company_profile_id) if candidate.matched_company_profile_id else None,
+        "review_status": candidate.review_status,
+        "reviewed_by": str(candidate.reviewed_by) if candidate.reviewed_by else None,
+        "reviewed_at": candidate.reviewed_at.isoformat() if candidate.reviewed_at else None,
+        "review_notes": candidate.review_notes,
+        "metadata": candidate.metadata_ or {},
+        "is_active": candidate.is_active,
+        "created_at": candidate.created_at.isoformat() if candidate.created_at else None,
+        "updated_at": candidate.updated_at.isoformat() if candidate.updated_at else None,
+    }
+
+
 def _company_profile_payload(profile: CompanyProfile) -> dict:
     return {
         "id": str(profile.id),
@@ -1643,6 +1698,128 @@ def list_tenants(
         .all()
     )
 
+
+
+
+@router.post("/company-discovery-candidates", status_code=201)
+def create_company_discovery_candidate(
+    body: CompanyDiscoveryCandidateCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    candidate = CompanyDiscoveryCandidate(
+        tenant_id=x_tenant_id,
+        candidate_name=body.candidate_name,
+        normalized_name=body.normalized_name or body.candidate_name.strip().upper(),
+        company_type=body.company_type.strip().upper() if body.company_type else None,
+        source=body.source,
+        source_references=body.source_references or [],
+        discovered_profile=body.discovered_profile or {},
+        operating_geography=body.operating_geography or {},
+        crop_focus=body.crop_focus or [],
+        confidence_score=body.confidence_score,
+        duplicate_keys=body.duplicate_keys or {},
+        matched_tenant_id=body.matched_tenant_id,
+        matched_company_profile_id=body.matched_company_profile_id,
+        review_status=body.review_status,
+        review_notes=body.review_notes,
+        metadata_=body.metadata or {},
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    if body.review_status != "PENDING_REVIEW":
+        candidate.reviewed_by = principal.user_id
+        candidate.reviewed_at = datetime.now(timezone.utc)
+
+    db.add(candidate)
+    db.commit()
+    db.refresh(candidate)
+    return _company_discovery_candidate_payload(candidate)
+
+
+@router.get("/company-discovery-candidates")
+def list_company_discovery_candidates(
+    review_status: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    query = db.query(CompanyDiscoveryCandidate).filter(
+        CompanyDiscoveryCandidate.tenant_id == x_tenant_id,
+        CompanyDiscoveryCandidate.is_active == True,
+    )
+    if review_status:
+        query = query.filter(CompanyDiscoveryCandidate.review_status == review_status.strip().upper())
+    if source:
+        query = query.filter(CompanyDiscoveryCandidate.source == source.strip().upper())
+    if q:
+        like = f"%{q.strip().upper()}%"
+        query = query.filter(CompanyDiscoveryCandidate.normalized_name.like(like))
+
+    candidates = query.order_by(CompanyDiscoveryCandidate.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "company_discovery_candidates.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "review_status": review_status.strip().upper() if review_status else None,
+            "source": source.strip().upper() if source else None,
+            "q": q,
+            "limit": limit,
+        },
+        "count": len(candidates),
+        "candidates": [_company_discovery_candidate_payload(candidate) for candidate in candidates],
+    }
+
+
+@router.patch("/company-discovery-candidates/{candidate_id}/review")
+def review_company_discovery_candidate(
+    candidate_id: uuid.UUID,
+    body: CompanyDiscoveryCandidateReview,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    candidate = db.query(CompanyDiscoveryCandidate).filter(
+        CompanyDiscoveryCandidate.id == candidate_id,
+        CompanyDiscoveryCandidate.tenant_id == x_tenant_id,
+        CompanyDiscoveryCandidate.is_active == True,
+    ).first()
+    if not candidate:
+        raise HTTPException(404, "Company discovery candidate not found")
+
+    if body.matched_tenant_id:
+        matched_tenant = db.query(Tenant).filter(Tenant.id == body.matched_tenant_id, Tenant.is_active == True).first()
+        if not matched_tenant:
+            raise HTTPException(404, "Matched tenant not found")
+    if body.matched_company_profile_id:
+        matched_profile = db.query(CompanyProfile).filter(
+            CompanyProfile.id == body.matched_company_profile_id,
+            CompanyProfile.is_active == True,
+        ).first()
+        if not matched_profile:
+            raise HTTPException(404, "Matched company profile not found")
+
+    candidate.review_status = body.review_status
+    candidate.matched_tenant_id = body.matched_tenant_id
+    candidate.matched_company_profile_id = body.matched_company_profile_id
+    candidate.review_notes = body.review_notes
+    if body.metadata is not None:
+        candidate.metadata_ = body.metadata
+    candidate.reviewed_by = principal.user_id
+    candidate.reviewed_at = datetime.now(timezone.utc)
+    candidate.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(candidate)
+    return _company_discovery_candidate_payload(candidate)
 
 
 @router.get("/tenants/{tenant_id}/company-profile", response_model=CompanyProfileResponse)

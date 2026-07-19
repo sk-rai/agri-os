@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import CompanyProfile, CompanyProfileAuditEvent, Project, ProjectAppConfigAuditEvent, Tenant
+from app.modules.farmer.models import CompanyDiscoveryCandidate, CompanyProfile, CompanyProfileAuditEvent, Project, ProjectAppConfigAuditEvent, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -52,6 +52,7 @@ def main():
     admin = None
     project = None
     ensure_tenant(db)
+    db.query(CompanyDiscoveryCandidate).filter(CompanyDiscoveryCandidate.tenant_id == "default").delete(synchronize_session=False)
     db.query(CompanyProfileAuditEvent).filter(CompanyProfileAuditEvent.tenant_id == "default").delete(synchronize_session=False)
     db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
     db.commit()
@@ -112,6 +113,49 @@ def main():
     check(company_audit_payload["events"][0]["action"] == "UPSERT_COMPANY_PROFILE", "Company profile audit records action")
     check(company_audit_payload["events"][0]["source"] == "PUBLIC_WEB", "Company profile audit records source")
     check(company_audit_payload["events"][0]["after_profile"]["display_name"] == "Default Customer", "Company profile audit records after profile")
+
+
+    company_candidate = client.post(
+        "/api/v1/company-discovery-candidates",
+        headers=headers,
+        json={
+            "candidate_name": "Azamgarh Farmer Producer Company",
+            "company_type": "FPO",
+            "source": "PUBLIC_WEB",
+            "source_references": [{"label": "Registry/search seed", "url": "https://example.test/fpo"}],
+            "discovered_profile": {"display_name": "Azamgarh FPC", "support_phone": "+910000000001"},
+            "operating_geography": {"state": "UTTAR_PRADESH", "district": "AZAMGARH"},
+            "crop_focus": ["RICE"],
+            "confidence_score": 0.82,
+            "duplicate_keys": {"normalized_name": "AZAMGARH FARMER PRODUCER COMPANY"},
+            "metadata": {"prepopulation_batch": "regression"},
+        },
+    )
+    check(company_candidate.status_code == 201, "Company discovery candidate create returns 201", company_candidate.text[:500])
+    candidate_payload = company_candidate.json()
+    check(candidate_payload["schema_version"] if "schema_version" in candidate_payload else "candidate.v1", "Company discovery candidate payload returned")
+    check(candidate_payload["review_status"] == "PENDING_REVIEW", "Company discovery candidate starts pending review")
+    check(candidate_payload["source"] == "PUBLIC_WEB", "Company discovery candidate stores source")
+    check(candidate_payload["operating_geography"]["district"] == "AZAMGARH", "Company discovery candidate stores geography")
+    candidate_id = candidate_payload["id"]
+
+    candidate_list = client.get("/api/v1/company-discovery-candidates?review_status=PENDING_REVIEW&source=PUBLIC_WEB&q=azamgarh", headers=headers)
+    check(candidate_list.status_code == 200, "Company discovery candidate list returns 200", candidate_list.text[:500])
+    candidate_list_payload = candidate_list.json()
+    check(candidate_list_payload["schema_version"] == "company_discovery_candidates.v1", "Company discovery candidate list schema is stable")
+    check(candidate_list_payload["count"] >= 1, "Company discovery candidate list returns pending rows")
+
+    candidate_review = client.patch(
+        f"/api/v1/company-discovery-candidates/{candidate_id}/review",
+        headers=headers,
+        json={"review_status": "APPROVED", "matched_tenant_id": "default", "review_notes": "Approved for future tenant claim."},
+    )
+    check(candidate_review.status_code == 200, "Company discovery candidate review returns 200", candidate_review.text[:500])
+    reviewed_candidate = candidate_review.json()
+    check(reviewed_candidate["review_status"] == "APPROVED", "Company discovery candidate review status updates")
+    check(reviewed_candidate["matched_tenant_id"] == "default", "Company discovery candidate can link matched tenant")
+    check(reviewed_candidate["reviewed_by"] is not None, "Company discovery candidate records reviewer")
+
 
 
     advertised = payload["profile_forms"]
@@ -315,6 +359,7 @@ def main():
     check(project_land_payload["metadata"]["source"] == "project", "Project land unit override exposes source metadata")
 
     db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
+    db.query(CompanyDiscoveryCandidate).filter(CompanyDiscoveryCandidate.tenant_id == "default").delete(synchronize_session=False)
     db.query(CompanyProfileAuditEvent).filter(CompanyProfileAuditEvent.tenant_id == "default").delete(synchronize_session=False)
     db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)

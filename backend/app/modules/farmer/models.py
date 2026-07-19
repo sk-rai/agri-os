@@ -107,6 +107,39 @@ class CompanyProfileAuditEvent(Base, UUIDPrimaryKey):
     )
 
 
+
+class CompanyDiscoveryCandidate(Base, UUIDPrimaryKey, AuditMixin):
+    """Staging record for discovered/prepopulated companies before tenant claim/merge."""
+
+    __tablename__ = "company_discovery_candidates"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    candidate_name = Column(String(250), nullable=False)
+    normalized_name = Column(String(250), nullable=True)
+    company_type = Column(String(50), nullable=True)
+    source = Column(String(50), nullable=False)
+    source_references = Column(JSONB, default=list)
+    discovered_profile = Column(JSONB, default=dict)
+    operating_geography = Column(JSONB, default=dict)
+    crop_focus = Column(JSONB, default=list)
+    confidence_score = Column(DECIMAL(5, 4), nullable=True)
+    duplicate_keys = Column(JSONB, default=dict)
+    matched_tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=True)
+    matched_company_profile_id = Column(UUID(as_uuid=True), ForeignKey("company_profiles.id"), nullable=True)
+    review_status = Column(String(50), nullable=False, default="PENDING_REVIEW")
+    reviewed_by = Column(UUID(as_uuid=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    review_notes = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_company_discovery_candidate_tenant_status", "tenant_id", "review_status"),
+        Index("idx_company_discovery_candidate_source", "source"),
+        Index("idx_company_discovery_candidate_normalized_name", "normalized_name"),
+        Index("idx_company_discovery_candidate_matched_tenant", "matched_tenant_id"),
+    )
+
+
 class Project(Base, UUIDPrimaryKey, AuditMixin):
     """A time-bound operational project within a tenant.
 
