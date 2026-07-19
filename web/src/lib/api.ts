@@ -411,6 +411,37 @@ export interface CropCycleTraceResponse {
   activities: ActivityUsageRow[];
   media_attachments?: Record<string, MediaAttachmentTrace[]>;
 }
+export interface CompanyProfileDto {
+  id?: string;
+  tenant_id?: string;
+  legal_name?: string | null;
+  display_name?: string | null;
+  company_type?: string | null;
+  registration_number?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  website_url?: string | null;
+  support_email?: string | null;
+  support_phone?: string | null;
+  head_office?: Record<string, unknown>;
+  operating_geography?: Record<string, unknown>;
+  crop_focus?: string[];
+  service_model?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  is_active?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CompanyProfileResponse {
+  schema_version: string;
+  tenant_id: string;
+  profile: CompanyProfileDto;
+  updated: boolean;
+  message?: string | null;
+}
+
 export interface SoilEnrichmentJobAuditDto {
   id: string;
   tenant_id: string;
@@ -1338,6 +1369,13 @@ export const cropCatalogApi = {
   },
   applyPropagationImport: (batchId: string, reason: string) =>
     api<CropPropagationImportBatch>(`/api/v1/crop-catalog/csv/propagation-types/imports/${batchId}/apply`, { method: "POST", body: { reason } }),
+};
+
+export const companyApi = {
+  companyProfile: (tenantId: string) =>
+    api<CompanyProfileResponse>(`/api/v1/tenants/${encodeURIComponent(tenantId)}/company-profile`),
+  upsertCompanyProfile: (tenantId: string, body: Record<string, unknown>) =>
+    api<CompanyProfileResponse>(`/api/v1/tenants/${encodeURIComponent(tenantId)}/company-profile`, { method: "PUT", body }),
 };
 
 export const farmersApi = {
