@@ -872,6 +872,27 @@ The response uses `schema_version=profile_contract.v1` and summarizes:
 Android should still fetch full form schemas from `/api/v1/forms/{form_id}` and effective options from `/api/v1/forms/options/{option_set}`. This summary is intended as a lightweight bootstrap/readiness contract so Android can avoid hardcoding seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, or assistance modes.
 
 
+
+## Android post-login mode bootstrap
+
+After OTP or device-key login, Android should call a single backend-owned bootstrap endpoint before choosing the first screen:
+
+```http
+GET /api/v1/auth/mode-bootstrap
+Authorization: Bearer {access_token}
+X-Tenant-ID: {tenant_id}
+```
+
+Response `schema_version=auth_mode_bootstrap.v1` returns the authenticated `user`, available `modes.farmer` and `modes.agent`, optional `farmer_profile`, optional `agent_profile`, `project_access`, `primary_project_id`, and endpoint hints.
+
+Use `first_screen_hint` as the navigation decision:
+
+- `FARMER_HOME`: open personal farmer home/profile flow.
+- `AGENT_WORKLIST`: open assigned field-agent worklist.
+- `MODE_CHOOSER`: user has both farmer and agent capability; show a mode switcher and remember last selected mode locally.
+
+This prevents Android from inferring farmer/agent mode from scattered endpoints. A farmer can be both a personal farmer and an agent/agronomist/dealer when `modes.farmer.available=true` and `modes.agent.available=true`.
+
 ## Field-agent assignment and dual farmer/agent mode
 
 A person can be both a normal farmer and an operational agent/agronomist/dealer. Backend represents this with a `User` login, optional `AgentProfile`, and optional linked `Farmer` profile. Android should use the field-agent worklist for assisted capture when operating in agent mode, and use the linked `personal_farmer_id` when the same person switches to personal farmer mode.
