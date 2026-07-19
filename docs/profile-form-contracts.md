@@ -438,3 +438,20 @@ Land parcels are now backend-owned for both the common and edge cases:
 - Ownership remains backend-configurable through `profile_options.ownership_types`; deployments can include values such as `OWNED`, `PART_OWNER`, `LEASED`, `SHARED`, `SHARECROP`, and `FAMILY` without hardcoding Android.
 - Android should send the simplest parcel location fields first (`village_id`/`village_name_manual` + `pin_code`) and only populate `location_scope` when a plot spans multiple administrative locations or an FPO/tenant has custom grouping rules.
 
+## Soil enrichment provider snapshots
+
+Soil profile data now has two layers:
+
+- `soil_profiles`: farmer/agent/manual/lab/SHC soil health records that represent the farmer's known soil profile.
+- `soil_enrichment_snapshots`: provider-derived enrichment records for baseline or dynamic soil intelligence.
+
+Provider snapshots are backend-only ingestion targets. Android should not call SoilGrids, Open-Meteo, satellite APIs, or future in-house models directly. Backend jobs/providers should write normalized snapshots and Android should consume the resulting backend contract.
+
+Initial provider contract supports:
+
+- `SOILGRIDS` baseline fields such as pH, organic carbon, nitrogen, clay/silt/sand percentages, bulk density, CEC, provider dataset, depth layer, and 250m resolution metadata.
+- `OPEN_METEO` or future weather providers for dynamic moisture fields such as surface soil moisture, root-zone soil moisture, soil temperature, evapotranspiration, and expiry timestamps.
+- Future in-house satellite/model-derived providers through the same `provider`, `snapshot_type`, `normalized_values`, `raw_payload`, and `metadata` fields.
+
+Use parcel centroid/polygon first for provider lookup. Use parcel `pin_code`/`location_scope` only as fallback or grouping metadata where exact field geometry is not yet available.
+

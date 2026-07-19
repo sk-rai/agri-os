@@ -15,7 +15,7 @@ from typing import Optional
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import Column, String, Date, DECIMAL, Text, ForeignKey, Index, DateTime, Boolean
+from sqlalchemy import Column, String, Date, DECIMAL, Text, ForeignKey, Index, DateTime, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -95,12 +95,154 @@ class SoilProfile(Base, UUIDPrimaryKey, AuditMixin):
         return self.boron_bo
 
 
+class SoilEnrichmentSnapshot(Base, UUIDPrimaryKey, AuditMixin):
+    """Provider-derived soil baseline or dynamic soil-water snapshot for a parcel.
+
+    Examples:
+    - SOILGRIDS baseline pH/OC/N/texture at 250m resolution.
+    - OPEN_METEO soil moisture/temperature forecast snapshot.
+    - Future in-house satellite/model-derived parcel enrichment.
+    """
+
+    __tablename__ = "soil_enrichment_snapshots"
+
+    tenant_id = Column(String(50), nullable=False)
+    parcel_id = Column(UUID(as_uuid=True), ForeignKey("parcels.id"), nullable=False)
+    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=False)
+
+    provider = Column(String(50), nullable=False)
+    provider_dataset = Column(String(100))
+    snapshot_type = Column(String(30), nullable=False, default="BASELINE")
+    status = Column(String(30), nullable=False, default="AVAILABLE")
+
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
+    depth_layer = Column(String(50))
+    resolution_meters = Column(Integer)
+    confidence = Column(String(30))
+
+    observed_at = Column(DateTime(timezone=True))
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True))
+
+    ph = Column(DECIMAL(5, 2))
+    organic_carbon = Column(DECIMAL(10, 4))
+    nitrogen = Column(DECIMAL(10, 4))
+    clay_percent = Column(DECIMAL(6, 2))
+    silt_percent = Column(DECIMAL(6, 2))
+    sand_percent = Column(DECIMAL(6, 2))
+    bulk_density = Column(DECIMAL(10, 4))
+    cec = Column(DECIMAL(10, 4))
+
+    surface_soil_moisture = Column(DECIMAL(10, 4))
+    root_zone_soil_moisture = Column(DECIMAL(10, 4))
+    soil_temperature_c = Column(DECIMAL(6, 2))
+    evapotranspiration_mm = Column(DECIMAL(8, 3))
+
+    normalized_values = Column(JSONB, nullable=False, default=dict)
+    raw_payload = Column(JSONB, nullable=False, default=dict)
+    metadata_ = Column("metadata", JSONB, nullable=False, default=dict)
+    error_message = Column(Text)
+
+    __table_args__ = (
+        Index("idx_soil_enrichment_tenant", "tenant_id"),
+        Index("idx_soil_enrichment_parcel", "parcel_id"),
+        Index("idx_soil_enrichment_farmer", "farmer_id"),
+        Index("idx_soil_enrichment_provider", "provider"),
+        Index("idx_soil_enrichment_type", "snapshot_type"),
+        Index("idx_soil_enrichment_observed", "observed_at"),
+        Index("idx_soil_enrichment_latest", "tenant_id", "parcel_id", "provider", "snapshot_type", "observed_at"),
+    )
+
+
 # --- API Schemas ---
 
 def _model_patch_values(body: BaseModel) -> dict:
     if hasattr(body, "model_dump"):
         return body.model_dump(exclude_unset=True)
     return body.dict(exclude_unset=True)
+
+
+def _json_number(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def _iso_datetime(value):
+    return value.isoformat() if value else None
+
+
+class SoilEnrichmentSnapshotCreate(BaseModel):
+    parcel_id: uuid.UUID
+    farmer_id: Optional[uuid.UUID] = None
+    provider: str = Field(..., min_length=2, max_length=50)
+    provider_dataset: Optional[str] = None
+    snapshot_type: str = Field(default="BASELINE", pattern=r"^(BASELINE|MOISTURE|FORECAST|MODEL_DERIVED)$")
+    status: str = Field(default="AVAILABLE", pattern=r"^(AVAILABLE|STALE|FAILED)$")
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    depth_layer: Optional[str] = None
+    resolution_meters: Optional[int] = Field(None, ge=1)
+    confidence: Optional[str] = None
+    observed_at: Optional[datetime] = None
+    fetched_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    ph: Optional[float] = None
+    organic_carbon: Optional[float] = None
+    nitrogen: Optional[float] = None
+    clay_percent: Optional[float] = None
+    silt_percent: Optional[float] = None
+    sand_percent: Optional[float] = None
+    bulk_density: Optional[float] = None
+    cec: Optional[float] = None
+    surface_soil_moisture: Optional[float] = None
+    root_zone_soil_moisture: Optional[float] = None
+    soil_temperature_c: Optional[float] = None
+    evapotranspiration_mm: Optional[float] = None
+    normalized_values: dict = Field(default_factory=dict)
+    raw_payload: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+    error_message: Optional[str] = None
+
+
+class SoilEnrichmentSnapshotResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: str
+    parcel_id: uuid.UUID
+    farmer_id: uuid.UUID
+    provider: str
+    provider_dataset: Optional[str] = None
+    snapshot_type: str
+    status: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    depth_layer: Optional[str] = None
+    resolution_meters: Optional[int] = None
+    confidence: Optional[str] = None
+    observed_at: Optional[str] = None
+    fetched_at: str
+    expires_at: Optional[str] = None
+    ph: Optional[float] = None
+    organic_carbon: Optional[float] = None
+    nitrogen: Optional[float] = None
+    clay_percent: Optional[float] = None
+    silt_percent: Optional[float] = None
+    sand_percent: Optional[float] = None
+    bulk_density: Optional[float] = None
+    cec: Optional[float] = None
+    surface_soil_moisture: Optional[float] = None
+    root_zone_soil_moisture: Optional[float] = None
+    soil_temperature_c: Optional[float] = None
+    evapotranspiration_mm: Optional[float] = None
+    normalized_values: dict = Field(default_factory=dict)
+    raw_payload: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+    error_message: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class SoilProfileCreate(BaseModel):
@@ -281,6 +423,54 @@ def _infer_soil_profile_project_id(db: Session, *, tenant_id: str, parcel_id: uu
     return None
 
 
+def _soil_enrichment_payload(snapshot: SoilEnrichmentSnapshot) -> dict:
+    return {
+        "id": snapshot.id,
+        "tenant_id": snapshot.tenant_id,
+        "parcel_id": snapshot.parcel_id,
+        "farmer_id": snapshot.farmer_id,
+        "provider": snapshot.provider,
+        "provider_dataset": snapshot.provider_dataset,
+        "snapshot_type": snapshot.snapshot_type,
+        "status": snapshot.status,
+        "latitude": _json_number(snapshot.latitude),
+        "longitude": _json_number(snapshot.longitude),
+        "depth_layer": snapshot.depth_layer,
+        "resolution_meters": snapshot.resolution_meters,
+        "confidence": snapshot.confidence,
+        "observed_at": _iso_datetime(snapshot.observed_at),
+        "fetched_at": _iso_datetime(snapshot.fetched_at),
+        "expires_at": _iso_datetime(snapshot.expires_at),
+        "ph": _json_number(snapshot.ph),
+        "organic_carbon": _json_number(snapshot.organic_carbon),
+        "nitrogen": _json_number(snapshot.nitrogen),
+        "clay_percent": _json_number(snapshot.clay_percent),
+        "silt_percent": _json_number(snapshot.silt_percent),
+        "sand_percent": _json_number(snapshot.sand_percent),
+        "bulk_density": _json_number(snapshot.bulk_density),
+        "cec": _json_number(snapshot.cec),
+        "surface_soil_moisture": _json_number(snapshot.surface_soil_moisture),
+        "root_zone_soil_moisture": _json_number(snapshot.root_zone_soil_moisture),
+        "soil_temperature_c": _json_number(snapshot.soil_temperature_c),
+        "evapotranspiration_mm": _json_number(snapshot.evapotranspiration_mm),
+        "normalized_values": snapshot.normalized_values or {},
+        "raw_payload": snapshot.raw_payload or {},
+        "metadata": snapshot.metadata_ or {},
+        "error_message": snapshot.error_message,
+        "created_at": _iso_datetime(snapshot.created_at),
+        "updated_at": _iso_datetime(snapshot.updated_at),
+    }
+
+
+def _parcel_for_soil_enrichment(db: Session, *, tenant_id: str, parcel_id: uuid.UUID):
+    from app.modules.farmer.models import Parcel
+
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id, Parcel.status != "ARCHIVED").first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+    return parcel
+
+
 # --- API Router ---
 
 router = APIRouter(prefix="/api/v1/soil-profiles", tags=["soil-profiles"])
@@ -308,6 +498,108 @@ def infer_soil_from_district(
         confidence=defaults["confidence"],
         description=SOIL_TYPE_DESCRIPTIONS.get(soil_code, ""),
     )
+
+
+@router.post("/enrichments", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
+def create_soil_enrichment_snapshot(
+    body: SoilEnrichmentSnapshotCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Store a provider-derived soil baseline/moisture snapshot for a parcel."""
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    farmer_id = body.farmer_id or parcel.farmer_id
+    if farmer_id != parcel.farmer_id:
+        raise HTTPException(400, "farmer_id must match parcel farmer_id")
+
+    timestamp = datetime.now(timezone.utc)
+    snapshot = SoilEnrichmentSnapshot(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        parcel_id=body.parcel_id,
+        farmer_id=farmer_id,
+        provider=body.provider.strip().upper(),
+        provider_dataset=body.provider_dataset,
+        snapshot_type=body.snapshot_type.strip().upper(),
+        status=body.status.strip().upper(),
+        latitude=body.latitude,
+        longitude=body.longitude,
+        depth_layer=body.depth_layer,
+        resolution_meters=body.resolution_meters,
+        confidence=body.confidence,
+        observed_at=body.observed_at or body.fetched_at or timestamp,
+        fetched_at=body.fetched_at or timestamp,
+        expires_at=body.expires_at,
+        ph=body.ph,
+        organic_carbon=body.organic_carbon,
+        nitrogen=body.nitrogen,
+        clay_percent=body.clay_percent,
+        silt_percent=body.silt_percent,
+        sand_percent=body.sand_percent,
+        bulk_density=body.bulk_density,
+        cec=body.cec,
+        surface_soil_moisture=body.surface_soil_moisture,
+        root_zone_soil_moisture=body.root_zone_soil_moisture,
+        soil_temperature_c=body.soil_temperature_c,
+        evapotranspiration_mm=body.evapotranspiration_mm,
+        normalized_values=body.normalized_values or {},
+        raw_payload=body.raw_payload or {},
+        metadata_=body.metadata or {},
+        error_message=body.error_message,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return _soil_enrichment_payload(snapshot)
+
+
+@router.get("/enrichments/latest", response_model=SoilEnrichmentSnapshotResponse)
+def latest_soil_enrichment_snapshot(
+    parcel_id: uuid.UUID = Query(...),
+    provider: Optional[str] = Query(None),
+    snapshot_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return the latest provider-derived soil enrichment for a parcel."""
+    _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=parcel_id)
+    query = db.query(SoilEnrichmentSnapshot).filter(
+        SoilEnrichmentSnapshot.tenant_id == x_tenant_id,
+        SoilEnrichmentSnapshot.parcel_id == parcel_id,
+    )
+    if provider:
+        query = query.filter(SoilEnrichmentSnapshot.provider == provider.strip().upper())
+    if snapshot_type:
+        query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
+    snapshot = query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).first()
+    if not snapshot:
+        raise HTTPException(404, "Soil enrichment snapshot not found")
+    return _soil_enrichment_payload(snapshot)
+
+
+@router.get("/enrichments", response_model=list[SoilEnrichmentSnapshotResponse])
+def list_soil_enrichment_snapshots(
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    provider: Optional[str] = Query(None),
+    snapshot_type: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """List provider-derived soil enrichment snapshots."""
+    query = db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == x_tenant_id)
+    if parcel_id:
+        query = query.filter(SoilEnrichmentSnapshot.parcel_id == parcel_id)
+    if farmer_id:
+        query = query.filter(SoilEnrichmentSnapshot.farmer_id == farmer_id)
+    if provider:
+        query = query.filter(SoilEnrichmentSnapshot.provider == provider.strip().upper())
+    if snapshot_type:
+        query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
+    return [_soil_enrichment_payload(row) for row in query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).limit(limit).all()]
 
 
 @router.post("", response_model=SoilProfileResponse, status_code=201)
