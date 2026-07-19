@@ -1229,13 +1229,32 @@ def list_soil_enrichment_queue(
             continue
 
         reasons = []
+        recommended_jobs = []
         if missing_baseline:
             reasons.append("MISSING_BASELINE")
             reasons.append("READY_FOR_BASELINE_FETCH")
+            recommended_jobs.append("FETCH_SOIL_BASELINE")
         if missing_moisture:
             reasons.append("MISSING_MOISTURE")
             reasons.append("READY_FOR_MOISTURE_FETCH")
+            recommended_jobs.append("FETCH_SOIL_MOISTURE")
         reasons.append("LOCATION_READY")
+
+        latest_audit_by_job = {}
+        if recommended_jobs:
+            latest_events = (
+                db.query(SoilEnrichmentJobAudit)
+                .filter(
+                    SoilEnrichmentJobAudit.tenant_id == x_tenant_id,
+                    SoilEnrichmentJobAudit.parcel_id == parcel.id,
+                    SoilEnrichmentJobAudit.job_type.in_(recommended_jobs),
+                )
+                .order_by(SoilEnrichmentJobAudit.created_at.desc())
+                .all()
+            )
+            for event in latest_events:
+                if event.job_type not in latest_audit_by_job:
+                    latest_audit_by_job[event.job_type] = _soil_enrichment_job_audit_payload(event)
 
         for reason in reasons:
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
@@ -1261,12 +1280,8 @@ def list_soil_enrichment_queue(
             "missing_baseline": missing_baseline,
             "missing_moisture": missing_moisture,
             "reasons": reasons,
-            "recommended_jobs": [
-                job for job, should_run in [
-                    ("FETCH_SOIL_BASELINE", missing_baseline),
-                    ("FETCH_SOIL_MOISTURE", missing_moisture),
-                ] if should_run
-            ],
+            "recommended_jobs": recommended_jobs,
+            "latest_audit_by_job": latest_audit_by_job,
         })
 
     return {

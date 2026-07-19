@@ -334,13 +334,69 @@ def main():
     missing_filter_summary = client.get("/api/v1/soil-profiles/enrichments/summary", headers=headers)
     check(missing_filter_summary.status_code == 400, "Soil enrichment summary requires farmer or parcel filter", missing_filter_summary.text)
 
+    db = SessionLocal()
+    missing_enrichment_farmer_id = uuid.uuid4()
+    missing_enrichment_parcel_id = uuid.uuid4()
+    try:
+        db.add(Farmer(
+            id=missing_enrichment_farmer_id,
+            tenant_id=tenant_id,
+            mobile_number=f"+9196{uuid.uuid4().int % 100000000:08d}",
+            display_name="Missing Enrichment Farmer",
+            village_name_manual="Android Profile Village",
+            pin_code="560004",
+            status="ACTIVE",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.add(Parcel(
+            id=missing_enrichment_parcel_id,
+            tenant_id=tenant_id,
+            farmer_id=missing_enrichment_farmer_id,
+            village_name_manual="Android Profile Village",
+            pin_code="560004",
+            reported_area=0.75,
+            reported_area_unit="ACRE",
+            ownership_type="OWNED",
+            geometry_source="PIN_DROP",
+            centroid_lat=12.9716,
+            centroid_lng=77.5946,
+            status="ACTIVE",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.add(SoilEnrichmentJobAudit(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            farmer_id=missing_enrichment_farmer_id,
+            parcel_id=missing_enrichment_parcel_id,
+            job_type="FETCH_SOIL_BASELINE",
+            provider="SOILGRIDS",
+            status="FAILED",
+            attempt_count=1,
+            reason="Regression previous baseline fetch failed",
+            error_code="PROVIDER_TIMEOUT",
+            metadata_={"queue_reason": "MISSING_BASELINE"},
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     print("\n[4c] Soil enrichment queue endpoint")
-    queue_response = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}", headers=headers)
+    queue_response = client.get("/api/v1/soil-profiles/enrichments/queue", headers=headers)
     check(queue_response.status_code == 200, "Soil enrichment queue returns 200", queue_response.text)
     queue = queue_response.json()
     check(queue["schema_version"] == "soil_enrichment_queue.v1", "Soil enrichment queue schema stable")
-    check(queue["filters"]["farmer_id"] == farmer_id, "Soil enrichment queue preserves farmer filter")
-    check(queue["count"] >= 1, "Soil enrichment queue returns location-ready parcel rows")
+    check(queue["filters"]["farmer_id"] is None, "Soil enrichment queue preserves empty farmer filter")
+    check(queue["count"] >= 2, "Soil enrichment queue returns location-ready parcel rows")
+    missing_queue_item = next(item for item in queue["items"] if item["parcel"]["id"] == str(missing_enrichment_parcel_id))
+    check(missing_queue_item["missing_baseline"] is True, "Soil enrichment queue detects missing baseline")
+    check(missing_queue_item["missing_moisture"] is True, "Soil enrichment queue detects missing moisture")
+    check(missing_queue_item["recommended_jobs"] == ["FETCH_SOIL_BASELINE", "FETCH_SOIL_MOISTURE"], "Soil enrichment queue recommends missing jobs")
+    check(missing_queue_item["latest_audit_by_job"]["FETCH_SOIL_BASELINE"]["status"] == "FAILED", "Soil enrichment queue includes latest audit status")
+    check(missing_queue_item["latest_audit_by_job"]["FETCH_SOIL_BASELINE"]["error_code"] == "PROVIDER_TIMEOUT", "Soil enrichment queue includes latest audit error")
     queue_item = next(item for item in queue["items"] if item["parcel"]["id"] == parcel_id)
     check(queue_item["snapshot_counts"]["baseline"] == 2, "Soil enrichment queue includes baseline count")
     check(queue_item["snapshot_counts"]["moisture"] == 1, "Soil enrichment queue includes moisture count")
@@ -349,9 +405,11 @@ def main():
     check("LOCATION_READY" in queue_item["reasons"], "Soil enrichment queue marks location-ready parcel")
     check(queue_item["recommended_jobs"] == [], "Soil enrichment queue has no jobs when snapshots exist")
 
-    missing_any_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANY", headers=headers)
+    missing_any_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={missing_enrichment_farmer_id}&missing=ANY", headers=headers)
     check(missing_any_queue.status_code == 200, "Soil enrichment missing ANY queue returns 200", missing_any_queue.text)
-    check(missing_any_queue.json()["count"] == 0, "Soil enrichment missing ANY queue excludes complete parcel")
+    missing_any_body = missing_any_queue.json()
+    check(missing_any_body["count"] == 1, "Soil enrichment missing ANY queue returns incomplete parcel")
+    check(missing_any_body["items"][0]["parcel"]["id"] == str(missing_enrichment_parcel_id), "Soil enrichment missing ANY queue excludes complete parcel")
 
     invalid_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANDROID_ONLY", headers=headers)
     check(invalid_queue.status_code == 400, "Soil enrichment queue rejects invalid missing filter", invalid_queue.text)
