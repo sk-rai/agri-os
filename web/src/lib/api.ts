@@ -1453,6 +1453,8 @@ export const companyApi = {
     api<CompanyDiscoveryCandidateDto>("/api/v1/company-discovery-candidates", { method: "POST", body }),
   reviewCompanyDiscoveryCandidate: (candidateId: string, body: Record<string, unknown>) =>
     api<CompanyDiscoveryCandidateDto>(`/api/v1/company-discovery-candidates/${encodeURIComponent(candidateId)}/review`, { method: "PATCH", body }),
+  applyCompanyDiscoveryCandidate: (candidateId: string, body: Record<string, unknown>) =>
+    api<CompanyProfileResponse>(`/api/v1/company-discovery-candidates/${encodeURIComponent(candidateId)}/apply`, { method: "POST", body }),
 };
 
 export const farmersApi = {

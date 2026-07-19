@@ -120,7 +120,7 @@ def main():
         headers=headers,
         json={
             "candidate_name": "Azamgarh Farmer Producer Company",
-            "company_type": "FPO",
+            "company_type": "FERTILIZER_COMPANY",
             "source": "PUBLIC_WEB",
             "source_references": [{"label": "Registry/search seed", "url": "https://example.test/fpo"}],
             "discovered_profile": {"display_name": "Azamgarh FPC", "support_phone": "+910000000001"},
@@ -136,6 +136,7 @@ def main():
     check(candidate_payload["schema_version"] if "schema_version" in candidate_payload else "candidate.v1", "Company discovery candidate payload returned")
     check(candidate_payload["review_status"] == "PENDING_REVIEW", "Company discovery candidate starts pending review")
     check(candidate_payload["source"] == "PUBLIC_WEB", "Company discovery candidate stores source")
+    check(candidate_payload["company_type"] == "FERTILIZER_COMPANY", "Company discovery candidate stores specific company type")
     check(candidate_payload["operating_geography"]["district"] == "AZAMGARH", "Company discovery candidate stores geography")
     candidate_id = candidate_payload["id"]
 
@@ -155,6 +156,20 @@ def main():
     check(reviewed_candidate["review_status"] == "APPROVED", "Company discovery candidate review status updates")
     check(reviewed_candidate["matched_tenant_id"] == "default", "Company discovery candidate can link matched tenant")
     check(reviewed_candidate["reviewed_by"] is not None, "Company discovery candidate records reviewer")
+
+
+    candidate_apply = client.post(
+        f"/api/v1/company-discovery-candidates/{candidate_id}/apply",
+        headers=headers,
+        json={"tenant_id": "default", "reason": "Apply candidate into company profile regression", "verification_status": "CLAIMED"},
+    )
+    check(candidate_apply.status_code == 200, "Company discovery candidate apply returns 200", candidate_apply.text[:500])
+    applied_profile = candidate_apply.json()["profile"]
+    check(applied_profile["company_type"] == "FERTILIZER_COMPANY", "Applied company profile preserves specific company type")
+    check(applied_profile["profile_source"] == "PUBLIC_WEB", "Applied company profile records discovery source")
+    check(applied_profile["verification_status"] == "CLAIMED", "Applied company profile records claim status")
+    check(applied_profile["metadata"]["applied_company_discovery_candidate_id"] == candidate_id, "Applied company profile links source candidate")
+
 
 
 

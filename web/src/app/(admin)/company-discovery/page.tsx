@@ -5,7 +5,7 @@ import { ApiError, companyApi, type CompanyDiscoveryCandidateDto } from "@/lib/a
 
 const SOURCES = ["", "PUBLIC_WEB", "BULK_IMPORT", "GOVERNMENT_REGISTRY", "PARTNER_DIRECTORY", "CLIENT_PROVIDED", "OTHER"];
 const STATUSES = ["", "PENDING_REVIEW", "APPROVED", "REJECTED", "DUPLICATE", "MERGED", "STALE"];
-const COMPANY_TYPES = ["FPO", "COOPERATIVE", "NGO", "GOVERNMENT", "INSURER", "PROCESSOR", "INPUT_COMPANY", "AGRI_TECH", "ENTERPRISE", "OTHER"];
+const COMPANY_TYPES = ["FPO", "SEED_COMPANY", "FERTILIZER_COMPANY", "PESTICIDE_COMPANY", "MACHINERY_COMPANY", "INPUT_COMPANY", "COOPERATIVE", "NGO", "GOVERNMENT", "INSURER", "PROCESSOR", "BUYER", "TRADER", "WAREHOUSE", "FINANCIAL_INSTITUTION", "AGRI_TECH", "ENTERPRISE", "OTHER"];
 
 function parseJsonObject(label: string, value: string) {
   if (!value.trim()) return {};
@@ -82,6 +82,22 @@ export default function CompanyDiscoveryPage() {
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to create candidate.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applyCandidate(candidate: CompanyDiscoveryCandidateDto) {
+    const tenantId = typeof window === "undefined" ? "default" : localStorage.getItem("agrios_tenant_id") || "default";
+    const reason = window.prompt("Reason for applying this candidate to the live company profile", "Apply discovered company candidate") || "Apply discovered company candidate";
+    setLoading(true);
+    setMessage("");
+    try {
+      await companyApi.applyCompanyDiscoveryCandidate(candidate.id, { tenant_id: tenantId, reason, verification_status: "CLAIMED" });
+      setMessage("Candidate applied to live company profile.");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to apply candidate.");
     } finally {
       setLoading(false);
     }
@@ -170,6 +186,7 @@ export default function CompanyDiscoveryPage() {
                 <div className="mt-1 text-xs text-gray-500">Confidence: {item.confidence_score ?? "-"} · Created: {item.created_at || "-"}</div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void applyCandidate(item)} className="rounded bg-green-700 px-2 py-1 text-xs font-semibold text-white">Apply to profile</button>
                 {["APPROVED", "REJECTED", "DUPLICATE", "MERGED", "STALE"].map((status) => (
                   <button key={status} type="button" onClick={() => void reviewCandidate(item, status)} className="rounded border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">{status}</button>
                 ))}

@@ -500,3 +500,7 @@ Company Profile admin also exposes source, verification status, source reference
 Future company prepopulation should land first in `company_discovery_candidates`, not directly in live tenant/company profiles. Use `POST /api/v1/company-discovery-candidates` for public-web, government-registry, partner-directory, or bulk-import discoveries; `GET /api/v1/company-discovery-candidates` for review queues; and `PATCH /api/v1/company-discovery-candidates/{candidate_id}/review` to mark records approved, rejected, duplicate, merged, stale, or linked to an existing tenant/profile.
 
 Admin web exposes `/company-discovery` for reviewing staged company discovery candidates before they become live tenant/company profile data.
+
+Specific company type values now include seed, fertilizer, pesticide, machinery, buyer, trader, warehouse, and financial-institution categories in addition to FPO, input company, processor, insurer, NGO, government, cooperative, agri-tech, enterprise, and other.
+
+Approved discovery candidates can be applied into the live tenant company profile through `POST /api/v1/company-discovery-candidates/{candidate_id}/apply`; the action marks the candidate `MERGED`, updates the profile source/verification fields, and writes a company profile audit event.

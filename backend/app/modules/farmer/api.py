@@ -56,7 +56,7 @@ class TenantResponse(BaseModel):
 class CompanyProfileUpsert(BaseModel):
     legal_name: Optional[str] = Field(None, max_length=200)
     display_name: Optional[str] = Field(None, max_length=200)
-    company_type: str = Field(default="ENTERPRISE", pattern=r"^(ENTERPRISE|FPO|COOPERATIVE|NGO|GOVERNMENT|INSURER|PROCESSOR|INPUT_COMPANY|AGRI_TECH|OTHER)$")
+    company_type: str = Field(default="ENTERPRISE", pattern=r"^(ENTERPRISE|FPO|COOPERATIVE|NGO|GOVERNMENT|INSURER|PROCESSOR|INPUT_COMPANY|SEED_COMPANY|FERTILIZER_COMPANY|PESTICIDE_COMPANY|MACHINERY_COMPANY|BUYER|TRADER|WAREHOUSE|FINANCIAL_INSTITUTION|AGRI_TECH|OTHER)$")
     profile_source: str = Field(default="MANUAL", pattern=r"^(MANUAL|PUBLIC_WEB|BULK_IMPORT|CLIENT_PROVIDED|GOVERNMENT_REGISTRY|PARTNER_DIRECTORY|OTHER)$")
     verification_status: str = Field(default="UNVERIFIED", pattern=r"^(UNVERIFIED|CLAIMED|VERIFIED|REJECTED|STALE)$")
     source_references: list[dict] = Field(default_factory=list)
@@ -79,7 +79,7 @@ class CompanyProfileUpsert(BaseModel):
 class CompanyDiscoveryCandidateCreate(BaseModel):
     candidate_name: str = Field(..., min_length=2, max_length=250)
     normalized_name: Optional[str] = Field(None, max_length=250)
-    company_type: Optional[str] = Field(None, max_length=50)
+    company_type: Optional[str] = Field(None, pattern=r"^(ENTERPRISE|FPO|COOPERATIVE|NGO|GOVERNMENT|INSURER|PROCESSOR|INPUT_COMPANY|SEED_COMPANY|FERTILIZER_COMPANY|PESTICIDE_COMPANY|MACHINERY_COMPANY|BUYER|TRADER|WAREHOUSE|FINANCIAL_INSTITUTION|AGRI_TECH|OTHER)$")
     source: str = Field(..., pattern=r"^(PUBLIC_WEB|BULK_IMPORT|GOVERNMENT_REGISTRY|PARTNER_DIRECTORY|CLIENT_PROVIDED|OTHER)$")
     source_references: list[dict] = Field(default_factory=list)
     discovered_profile: dict = Field(default_factory=dict)
@@ -92,6 +92,13 @@ class CompanyDiscoveryCandidateCreate(BaseModel):
     review_status: str = Field(default="PENDING_REVIEW", pattern=r"^(PENDING_REVIEW|APPROVED|REJECTED|DUPLICATE|MERGED|STALE)$")
     review_notes: Optional[str] = None
     metadata: dict = Field(default_factory=dict)
+
+
+
+class CompanyDiscoveryCandidateApply(BaseModel):
+    tenant_id: str = Field(..., min_length=3, max_length=50)
+    reason: Optional[str] = Field(default="Apply discovered company candidate to live company profile", min_length=3, max_length=500)
+    verification_status: str = Field(default="CLAIMED", pattern=r"^(UNVERIFIED|CLAIMED|VERIFIED|REJECTED|STALE)$")
 
 
 class CompanyDiscoveryCandidateReview(BaseModel):
@@ -1820,6 +1827,102 @@ def review_company_discovery_candidate(
     db.commit()
     db.refresh(candidate)
     return _company_discovery_candidate_payload(candidate)
+
+
+
+@router.post("/company-discovery-candidates/{candidate_id}/apply", response_model=CompanyProfileResponse)
+def apply_company_discovery_candidate(
+    candidate_id: uuid.UUID,
+    body: CompanyDiscoveryCandidateApply,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    if body.tenant_id != x_tenant_id:
+        raise HTTPException(403, {
+            "error": "TENANT_ID_MISMATCH",
+            "message": "Body tenant_id must match X-Tenant-ID.",
+        })
+
+    tenant = db.query(Tenant).filter(Tenant.id == body.tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    candidate = db.query(CompanyDiscoveryCandidate).filter(
+        CompanyDiscoveryCandidate.id == candidate_id,
+        CompanyDiscoveryCandidate.tenant_id == x_tenant_id,
+        CompanyDiscoveryCandidate.is_active == True,
+    ).first()
+    if not candidate:
+        raise HTTPException(404, "Company discovery candidate not found")
+
+    now = datetime.now(timezone.utc)
+    profile = db.query(CompanyProfile).filter(CompanyProfile.tenant_id == body.tenant_id).first()
+    before_profile = _company_profile_payload(profile) if profile else {}
+    if not profile:
+        profile = CompanyProfile(tenant_id=body.tenant_id, created_at=now)
+
+    discovered = candidate.discovered_profile or {}
+    profile.legal_name = discovered.get("legal_name") or candidate.candidate_name
+    profile.display_name = discovered.get("display_name") or candidate.candidate_name
+    profile.company_type = candidate.company_type or profile.company_type or "OTHER"
+    profile.profile_source = candidate.source
+    profile.verification_status = body.verification_status
+    profile.source_references = candidate.source_references or []
+    profile.registration_number = discovered.get("registration_number") or profile.registration_number
+    profile.gstin = discovered.get("gstin") or profile.gstin
+    profile.pan = discovered.get("pan") or profile.pan
+    profile.website_url = discovered.get("website_url") or profile.website_url
+    profile.support_email = discovered.get("support_email") or profile.support_email
+    profile.support_phone = discovered.get("support_phone") or profile.support_phone
+    profile.head_office = discovered.get("head_office") or profile.head_office or {}
+    profile.operating_geography = candidate.operating_geography or profile.operating_geography or {}
+    profile.crop_focus = candidate.crop_focus or profile.crop_focus or []
+    profile.service_model = discovered.get("service_model") or profile.service_model or {}
+    profile.config = profile.config or {}
+    profile.metadata_ = {
+        **(profile.metadata_ or {}),
+        "applied_company_discovery_candidate_id": str(candidate.id),
+        "candidate_confidence_score": float(candidate.confidence_score) if candidate.confidence_score is not None else None,
+    }
+    profile.updated_at = now
+    profile.is_active = True
+
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+
+    after_profile = _company_profile_payload(profile)
+    patched_fields = sorted([key for key in after_profile.keys() if before_profile.get(key) != after_profile.get(key)])
+    db.add(CompanyProfileAuditEvent(
+        tenant_id=body.tenant_id,
+        company_profile_id=profile.id,
+        actor_id=principal.user_id,
+        action="APPLY_DISCOVERY_CANDIDATE",
+        patched_fields=patched_fields,
+        before_profile=before_profile,
+        after_profile=after_profile,
+        source=candidate.source,
+        reason=body.reason,
+        created_at=datetime.now(timezone.utc),
+    ))
+
+    candidate.review_status = "MERGED"
+    candidate.matched_tenant_id = body.tenant_id
+    candidate.matched_company_profile_id = profile.id
+    candidate.reviewed_by = principal.user_id
+    candidate.reviewed_at = datetime.now(timezone.utc)
+    candidate.review_notes = body.reason
+    candidate.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "schema_version": "company_profile.v1",
+        "tenant_id": body.tenant_id,
+        "profile": after_profile,
+        "updated": True,
+        "message": "Company discovery candidate applied to company profile.",
+    }
 
 
 @router.get("/tenants/{tenant_id}/company-profile", response_model=CompanyProfileResponse)
