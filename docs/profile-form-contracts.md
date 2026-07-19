@@ -130,6 +130,12 @@ Soil profile remains recommended, not mandatory, for home launch. It becomes imp
 
 Admin/agent summary screens can use `GET /api/v1/farmers/profile-readiness?project_id={project_id}` to list farmers with the same backend-owned readiness payload and aggregate counts for missing parcel, missing soil profile, parcel location capture, home readiness, personalized-advisory readiness, weather-advisory readiness, soil-moisture-enrichment readiness, and satellite-enrichment readiness.
 
+Server-side filters keep Android/admin from duplicating readiness logic locally:
+
+- `action_code=ADD_PARCEL|CAPTURE_PARCEL_LOCATION|ADD_SOIL_PROFILE` filters by backend `next_actions[].code`.
+- `missing_field=parcel|parcel_location|soil_profile` filters across required and recommended missing fields.
+- `section=land|soil|farmer|project_enrollment&section_status=MISSING|PARTIAL|COMPLETE` filters by backend section readiness.
+
 
 ## Agent profile identity model
 
@@ -173,6 +179,7 @@ Key behavior:
 - Rows also include first-page editable `parcels[]` and `soil_profiles[]` references so Android agent mode/admin can create missing records or patch existing records through the backend profile endpoints without a separate lookup.
 - Agent/admin profile edit controls should hydrate `profile_options.*` from `/api/v1/forms/options/{option_set}` for languages, land units, soil types, textures, and colors instead of using hardcoded client lists.
 - `capture_actions[]` is the Android/admin checklist for assisted capture, including profile completion, parcel creation/location capture, soil profile capture, field-event reporting, crop-stage evidence, and farmer query/follow-up recording.
+- Optional filters `action_code`, `missing_field`, `section`, and `section_status` are supported here too, for example `action_code=ADD_SOIL_PROFILE` to show only assigned farmers needing soil capture.
 - `endpoints` gives Android stable next-hop URLs for hydration, trace, parcels, field events, and query threads so an agent-mode summary screen can drill into the correct backend entities.
 - An agent can also be a farmer. Android should keep individual farmer mode separate from assigned-agent worklist mode and select the mode from authenticated role/context rather than duplicating profiles locally.
 

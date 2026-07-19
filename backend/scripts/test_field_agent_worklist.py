@@ -254,11 +254,33 @@ def main():
     check(row["project_enrollments"][0]["assigned_user_ids"] == [str(actor_id)], "Worklist exposes assignment context")
     check("profile_hydration" in row["endpoints"], "Worklist includes Android handoff endpoints")
 
+    needs_soil = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true&action_code=ADD_SOIL_PROFILE", headers=headers)
+    check(needs_soil.status_code == 200, "Worklist action filter returns 200", needs_soil.text)
+    needs_soil_body = needs_soil.json()
+    check(needs_soil_body["filters"]["action_code"] == "ADD_SOIL_PROFILE", "Worklist echoes action_code filter")
+    check(needs_soil_body["summary"]["farmer_count"] == 1, "Worklist action filter keeps assigned farmer needing soil")
+    check(needs_soil_body["farmers"][0]["farmer"]["id"] == str(assigned_farmer_id), "Worklist action filter preserves expected farmer")
+
+    no_weather_ready = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true&missing_field=parcel_location", headers=headers)
+    check(no_weather_ready.status_code == 200, "Worklist missing_field filter returns 200", no_weather_ready.text)
+    check(no_weather_ready.json()["summary"]["farmer_count"] == 1, "Worklist missing_field filter finds missing parcel location")
+
     all_rows = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}", headers=headers)
     check(all_rows.status_code == 200, "Project worklist returns 200", all_rows.text)
     all_body = all_rows.json()
     check(all_body["summary"]["farmer_count"] == 2, "Project worklist includes assigned and unassigned farmers")
     check(any(item["farmer"]["id"] == str(unassigned_farmer_id) for item in all_body["farmers"]), "Project worklist includes unassigned farmer when assigned_only=false")
+
+    missing_parcel = client.get(f"/api/v1/farmers/profile-readiness?project_id={project_id}&action_code=ADD_PARCEL", headers=headers)
+    check(missing_parcel.status_code == 200, "Profile readiness action filter returns 200", missing_parcel.text)
+    missing_parcel_body = missing_parcel.json()
+    check(missing_parcel_body["filters"]["action_code"] == "ADD_PARCEL", "Profile readiness echoes action_code filter")
+    check(missing_parcel_body["summary"]["farmer_count"] == 1, "Profile readiness action filter finds farmer needing parcel")
+    check(missing_parcel_body["farmers"][0]["farmer"]["id"] == str(unassigned_farmer_id), "Profile readiness action filter preserves expected farmer")
+
+    land_partial = client.get(f"/api/v1/farmers/profile-readiness?project_id={project_id}&section=land&section_status=PARTIAL", headers=headers)
+    check(land_partial.status_code == 200, "Profile readiness section filter returns 200", land_partial.text)
+    check(land_partial.json()["summary"]["farmer_count"] == 1, "Profile readiness section filter finds partial land profile")
 
     assign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=headers, json={
         "project_id": str(project_id),

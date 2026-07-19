@@ -637,6 +637,38 @@ def _section_readiness(*, required_missing: list[str], recommended_missing: list
     }
 
 
+def _profile_completion_matches_filters(
+    completion: dict,
+    *,
+    action_code: Optional[str] = None,
+    missing_field: Optional[str] = None,
+    section: Optional[str] = None,
+    section_status: Optional[str] = None,
+) -> bool:
+    """Backend-owned filter helper for Android/admin profile worklists."""
+    if action_code:
+        wanted = action_code.upper()
+        if wanted not in {str(action.get("code", "")).upper() for action in completion.get("next_actions", [])}:
+            return False
+    if missing_field:
+        wanted_field = missing_field
+        missing = set(completion.get("missing_fields", [])) | set(completion.get("recommended_missing_fields", []))
+        if wanted_field not in missing:
+            return False
+    if section or section_status:
+        sections = completion.get("sections", {})
+        if section:
+            section_payload = sections.get(section)
+            if not section_payload:
+                return False
+            if section_status and section_payload.get("status") != section_status.upper():
+                return False
+        elif section_status:
+            if not any(payload.get("status") == section_status.upper() for payload in sections.values()):
+                return False
+    return True
+
+
 def _farmer_profile_completion(
     farmer: Farmer,
     parcel_count: int,
@@ -1922,6 +1954,10 @@ def list_farmers(
 def list_farmer_profile_readiness(
     project_id: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query("ACTIVE"),
+    action_code: Optional[str] = Query(None),
+    missing_field: Optional[str] = Query(None),
+    section: Optional[str] = Query(None),
+    section_status: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -1959,7 +1995,7 @@ def list_farmer_profile_readiness(
             return {
                 "schema_version": "farmer_profile_readiness.v1",
                 "tenant_id": x_tenant_id,
-                "filters": {"project_id": str(project_id), "status": status, "offset": offset, "limit": limit},
+                "filters": {"project_id": str(project_id), "status": status, "action_code": action_code.upper() if action_code else None, "missing_field": missing_field, "section": section, "section_status": section_status.upper() if section_status else None, "offset": offset, "limit": limit},
                 "summary": {
                     "farmer_count": 0,
                     "home_ready_count": 0,
@@ -2026,6 +2062,8 @@ def list_farmer_profile_readiness(
             soil_baseline_snapshot_count=soil_enrichment_counts["baseline"],
             soil_moisture_snapshot_count=soil_enrichment_counts["moisture"],
         )
+        if not _profile_completion_matches_filters(completion, action_code=action_code, missing_field=missing_field, section=section, section_status=section_status):
+            continue
         summary["farmer_count"] += 1
         if completion["is_complete_for_home"]:
             summary["home_ready_count"] += 1
@@ -2065,7 +2103,7 @@ def list_farmer_profile_readiness(
     return {
         "schema_version": "farmer_profile_readiness.v1",
         "tenant_id": x_tenant_id,
-        "filters": {"project_id": str(project_id) if project_id else None, "status": status, "offset": offset, "limit": limit},
+        "filters": {"project_id": str(project_id) if project_id else None, "status": status, "action_code": action_code.upper() if action_code else None, "missing_field": missing_field, "section": section, "section_status": section_status.upper() if section_status else None, "offset": offset, "limit": limit},
         "agent_profile": agent_profile_context,
         "mode_switch": {
             "assigned_agent_mode": agent_profile_context is not None,
@@ -2083,6 +2121,10 @@ def get_field_agent_worklist(
     actor_id: Optional[uuid.UUID] = Query(None),
     assigned_only: bool = Query(False),
     status: Optional[str] = Query("ACTIVE"),
+    action_code: Optional[str] = Query(None),
+    missing_field: Optional[str] = Query(None),
+    section: Optional[str] = Query(None),
+    section_status: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -2138,6 +2180,10 @@ def get_field_agent_worklist(
                     "actor_id": str(actor_uuid) if actor_uuid else None,
                     "assigned_only": assigned_only,
                     "status": status,
+                    "action_code": action_code.upper() if action_code else None,
+                    "missing_field": missing_field,
+                    "section": section,
+                    "section_status": section_status.upper() if section_status else None,
                     "offset": offset,
                     "limit": limit,
                 },
@@ -2197,6 +2243,8 @@ def get_field_agent_worklist(
             project_enrollments=farmer_enrollments,
             weather_snapshot_count=weather_snapshot_count,
         )
+        if not _profile_completion_matches_filters(completion, action_code=action_code, missing_field=missing_field, section=section, section_status=section_status):
+            continue
         active_crop_summaries = _active_crop_summaries_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id, project_id=project_id)
         active_cycle_count, active_stage_count = _active_crop_counts_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
         capture_actions = _field_agent_capture_actions(
@@ -2246,6 +2294,10 @@ def get_field_agent_worklist(
             "actor_id": str(actor_uuid) if actor_uuid else None,
             "assigned_only": assigned_only,
             "status": status,
+            "action_code": action_code.upper() if action_code else None,
+            "missing_field": missing_field,
+            "section": section,
+            "section_status": section_status.upper() if section_status else None,
             "offset": offset,
             "limit": limit,
         },

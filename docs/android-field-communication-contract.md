@@ -910,6 +910,16 @@ X-Actor-ID: {agent_user_id}
 
 The response includes `agent_profile`, `mode_switch.personal_farmer_mode_available`, `mode_switch.personal_farmer_id`, farmer rows, parcels, soil profiles, active crop cycles/stages, capture actions, and backend endpoint hints for the relevant farmer/parcel/crop entities.
 
+Android can request backend-filtered worklists instead of filtering readiness locally:
+
+```http
+GET /api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true&action_code=ADD_SOIL_PROFILE
+GET /api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true&missing_field=parcel_location
+GET /api/v1/farmers/profile-readiness?project_id={project_id}&section=land&section_status=PARTIAL
+```
+
+Supported filter keys are `action_code`, `missing_field`, `section`, and `section_status`; responses echo the active filters.
+
 Backend/admin assignment helper:
 
 ```http
