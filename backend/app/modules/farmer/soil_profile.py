@@ -252,6 +252,59 @@ class SoilEnrichmentSnapshotResponse(BaseModel):
     updated_at: Optional[str] = None
 
 
+SOIL_ENRICHMENT_SOURCE_REGISTRY = {
+    "SOILGRIDS": {
+        "provider_family": "OPEN_SOURCE_BASELINE",
+        "display_name": "ISRIC SoilGrids",
+        "snapshot_types": ["BASELINE"],
+        "default_confidence": "MODELLED",
+        "source_granularity": "GRID_CELL_250M",
+        "automation_mode": "BACKEND_PROVIDER_ADAPTER",
+        "notes": "Automated lat/lon baseline for pH, organic carbon, nitrogen, texture, and related soil properties.",
+    },
+    "OPEN_METEO": {
+        "provider_family": "WEATHER_SOIL_MOISTURE",
+        "display_name": "Open-Meteo Weather & Soil",
+        "snapshot_types": ["MOISTURE", "FORECAST"],
+        "default_confidence": "FORECAST_MODEL",
+        "source_granularity": "WEATHER_GRID",
+        "automation_mode": "BACKEND_PROVIDER_ADAPTER",
+        "notes": "Backend-scheduled soil moisture, soil temperature, evapotranspiration, and forecast snapshots.",
+    },
+    "SHC_SLUSI": {
+        "provider_family": "GOVT_VISUAL_BASELINE",
+        "display_name": "Soil Health Card / SLUSI visualisation",
+        "snapshot_types": ["BASELINE"],
+        "default_confidence": "GOVT_VISUAL_LAYER",
+        "source_granularity": "DISTRICT_OR_MICROWATERSHED",
+        "automation_mode": "MANUAL_OR_IMPORT_UNTIL_OFFICIAL_API",
+        "notes": "Use for government visual-layer/manual or future CSV imports. Do not scrape the map UI unless an official API/export is identified.",
+    },
+    "IN_HOUSE_SATELLITE": {
+        "provider_family": "IN_HOUSE_MODEL",
+        "display_name": "Agri-OS satellite/model pipeline",
+        "snapshot_types": ["BASELINE", "MOISTURE", "MODEL_DERIVED"],
+        "default_confidence": "MODEL_DERIVED",
+        "source_granularity": "PARCEL_OR_GRID",
+        "automation_mode": "FUTURE_BACKEND_MODEL",
+        "notes": "Future open-source satellite/remote-sensing pipeline for parcel-level enrichment.",
+    },
+}
+
+
+def _soil_enrichment_source_metadata(provider: str, metadata: Optional[dict] = None) -> dict:
+    provider_key = (provider or "").strip().upper()
+    contract = SOIL_ENRICHMENT_SOURCE_REGISTRY.get(provider_key, {})
+    merged = dict(metadata or {})
+    merged.setdefault("provider_key", provider_key)
+    if contract:
+        merged.setdefault("provider_family", contract["provider_family"])
+        merged.setdefault("source_granularity", contract["source_granularity"])
+        merged.setdefault("automation_mode", contract["automation_mode"])
+        merged.setdefault("provenance_contract", "soil_enrichment_sources.v1")
+    return merged
+
+
 class SoilProfileCreate(BaseModel):
     """Create soil profile — supports 3 tiers of data entry."""
     parcel_id: uuid.UUID
@@ -483,6 +536,22 @@ def _parcel_for_soil_enrichment(db: Session, *, tenant_id: str, parcel_id: uuid.
 router = APIRouter(prefix="/api/v1/soil-profiles", tags=["soil-profiles"])
 
 
+@router.get("/enrichments/source-contract")
+def soil_enrichment_source_contract():
+    """Describe supported soil enrichment source families and provenance expectations."""
+    return {
+        "schema_version": "soil_enrichment_sources.v1",
+        "sources": SOIL_ENRICHMENT_SOURCE_REGISTRY,
+        "guidance": {
+            "android_calls_provider_directly": False,
+            "admin_map_capture_allowed": True,
+            "slusi_scraping_allowed_by_default": False,
+            "preferred_baseline_order": ["SOILGRIDS", "SHC_SLUSI", "IN_HOUSE_SATELLITE"],
+            "dynamic_moisture_sources": ["OPEN_METEO", "IN_HOUSE_SATELLITE"],
+        },
+    }
+
+
 @router.get("/infer/{district_name}", response_model=InferredSoilResponse)
 def infer_soil_from_district(
     district_name: str,
@@ -574,7 +643,7 @@ def fetch_soilgrids_baseline_snapshot(
         cec=normalized.get("cec"),
         normalized_values=normalized.get("normalized_values") or {},
         raw_payload=normalized.get("raw_payload") or {},
-        metadata_=normalized.get("metadata") or {},
+        metadata_=_soil_enrichment_source_metadata(normalized["provider"], normalized.get("metadata") or {}),
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -628,7 +697,7 @@ def create_soil_enrichment_snapshot(
         evapotranspiration_mm=body.evapotranspiration_mm,
         normalized_values=body.normalized_values or {},
         raw_payload=body.raw_payload or {},
-        metadata_=body.metadata or {},
+        metadata_=_soil_enrichment_source_metadata(body.provider, body.metadata or {}),
         error_message=body.error_message,
         created_at=timestamp,
         updated_at=timestamp,

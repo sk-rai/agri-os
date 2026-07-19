@@ -871,3 +871,20 @@ The response uses `schema_version=profile_contract.v1` and summarizes:
 
 Android should still fetch full form schemas from `/api/v1/forms/{form_id}` and effective options from `/api/v1/forms/options/{option_set}`. This summary is intended as a lightweight bootstrap/readiness contract so Android can avoid hardcoding seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, or assistance modes.
 
+## Soil enrichment source provenance
+
+Android should treat soil baseline and soil-water data as backend-owned enrichment snapshots. The backend now exposes the source contract:
+
+```http
+GET /api/v1/soil-profiles/enrichments/source-contract
+```
+
+Current source families:
+
+- `SOILGRIDS`: automated open-source baseline by lat/lon/grid cell.
+- `OPEN_METEO`: backend weather/soil-moisture snapshot source.
+- `SHC_SLUSI`: Government Soil Health Card / SLUSI visual-layer baseline. Use as manual/admin capture or future CSV/import source until an official raw API/export is identified. Do not scrape the map UI by default.
+- `IN_HOUSE_SATELLITE`: future Agri-OS satellite/model-derived enrichment.
+
+Every stored enrichment snapshot includes provenance metadata such as `provider_family`, `source_granularity`, `automation_mode`, `provider_key`, and `provenance_contract=soil_enrichment_sources.v1`. Android should render these snapshots as informational/backend-provided evidence and should not call external soil/weather providers directly.
+

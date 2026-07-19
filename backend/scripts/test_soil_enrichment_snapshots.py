@@ -95,6 +95,15 @@ def main():
     client = TestClient(app)
     headers = {"X-Tenant-ID": tenant_id}
 
+    source_contract = client.get("/api/v1/soil-profiles/enrichments/source-contract", headers=headers)
+    check(source_contract.status_code == 200, "Soil enrichment source contract returns 200", source_contract.text)
+    source_payload = source_contract.json()
+    check(source_payload["schema_version"] == "soil_enrichment_sources.v1", "Soil source contract schema stable")
+    check("SOILGRIDS" in source_payload["sources"], "Source contract includes SoilGrids")
+    check("SHC_SLUSI" in source_payload["sources"], "Source contract includes SHC/SLUSI visual baseline")
+    check(source_payload["guidance"]["android_calls_provider_directly"] is False, "Source contract keeps provider calls backend-only")
+    check(source_payload["guidance"]["slusi_scraping_allowed_by_default"] is False, "Source contract discourages default SLUSI scraping")
+
     soilgrids = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
         "provider": "SOILGRIDS",
@@ -121,6 +130,24 @@ def main():
     check(baseline["farmer_id"] == str(farmer_id), "Farmer inferred from parcel")
     check(baseline["resolution_meters"] == 250, "Resolution stored")
     check(baseline["normalized_values"]["texture_class"] == "CLAY_LOAM", "Normalized provider values stored")
+    check(baseline["metadata"]["provider_family"] == "OPEN_SOURCE_BASELINE", "SoilGrids provenance metadata stored")
+
+    slusi = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
+        "parcel_id": str(parcel_id),
+        "provider": "SHC_SLUSI",
+        "provider_dataset": "soilhealth.dac.gov.in/slusi-visualisation",
+        "snapshot_type": "BASELINE",
+        "confidence": "GOVT_VISUAL_LAYER",
+        "depth_layer": "district_visual_layer",
+        "normalized_values": {"state": "UTTAR PRADESH", "district": "AZAMGARH", "manganese_status": "SUFFICIENT"},
+        "raw_payload": {"source": "manual-map-observation"},
+        "metadata": {"capture_method": "ADMIN_VISUAL_CAPTURE", "cycle": "2024-25"},
+    })
+    check(slusi.status_code == 201, "Create SHC/SLUSI visual baseline snapshot returns 201", slusi.text)
+    slusi_body = slusi.json()
+    check(slusi_body["provider"] == "SHC_SLUSI", "SHC/SLUSI provider normalized")
+    check(slusi_body["metadata"]["provider_family"] == "GOVT_VISUAL_BASELINE", "SHC/SLUSI provenance metadata stored")
+    check(slusi_body["metadata"]["automation_mode"] == "MANUAL_OR_IMPORT_UNTIL_OFFICIAL_API", "SHC/SLUSI automation mode documented")
 
 
     fake_soilgrids_payload = {
@@ -172,7 +199,7 @@ def main():
 
     listing = client.get(f"/api/v1/soil-profiles/enrichments?parcel_id={parcel_id}", headers=headers)
     check(listing.status_code == 200, "List enrichment snapshots returns 200", listing.text)
-    check(len(listing.json()) == 3, "List returns direct baseline, fetched SoilGrids baseline, and moisture snapshots")
+    check(len(listing.json()) == 4, "List returns direct baseline, SHC/SLUSI baseline, fetched SoilGrids baseline, and moisture snapshots")
 
     mismatch = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
