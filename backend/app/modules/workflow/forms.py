@@ -481,8 +481,72 @@ FORM_REGISTRY = {
     "activity_log": ACTIVITY_LOG_FORM,
 }
 
+PROFILE_FORM_IDS = ["farmer_registration", "parcel_registration", "soil_profile"]
+
+
+def _field_payload(field: FormField) -> dict:
+    return field.model_dump() if hasattr(field, "model_dump") else field.dict()
+
+
+def _profile_contract_form_summary(schema: FormSchema) -> dict:
+    fields = [_field_payload(field) for field in schema.fields]
+    option_sets = sorted({str(field.get("source", "")).replace("profile_options.", "") for field in fields if str(field.get("source", "")).startswith("profile_options.")})
+    gps_fields = [field["id"] for field in fields if str(field.get("type", "")).startswith("GPS")]
+    required_fields = [field["id"] for field in fields if field.get("required")]
+    recommended_fields = [field["id"] for field in fields if not field.get("required") and field.get("canonical_field")]
+    canonical_fields = sorted({field["canonical_field"] for field in fields if field.get("canonical_field")})
+    return {
+        "form_id": schema.form_id,
+        "version": schema.version,
+        "title": schema.title,
+        "submit_endpoint": schema.submit_endpoint,
+        "submit_method": schema.submit_method,
+        "field_count": len(fields),
+        "required_fields": required_fields,
+        "recommended_fields": recommended_fields,
+        "canonical_fields": canonical_fields,
+        "option_sets": option_sets,
+        "gps_fields": gps_fields,
+        "offline_supported": all(field.get("allow_offline_capture", True) for field in fields),
+    }
+
 
 # --- Endpoints ---
+
+@router.get("/profile-contract")
+def get_profile_contract_summary(
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+):
+    """Return a compact backend-owned farmer/land/soil profile contract for Android/admin hydration."""
+    tenant_id = x_tenant_id or "default"
+    registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
+    forms = [_profile_contract_form_summary(FORM_REGISTRY[form_id]) for form_id in PROFILE_FORM_IDS]
+    required_by_form = {form["form_id"]: form["required_fields"] for form in forms}
+    option_sets_used = sorted({option_set for form in forms for option_set in form["option_sets"]})
+    return {
+        "schema_version": "profile_contract.v1",
+        "tenant_id": tenant_id,
+        "project_id": str(project_id) if project_id else None,
+        "forms": forms,
+        "required_by_form": required_by_form,
+        "option_sets_used": option_sets_used,
+        "option_set_sources": {
+            key: {"version": value.version, "source": value.metadata.get("source", "default"), "option_count": len(value.options)}
+            for key, value in sorted(registry.items())
+            if key in option_sets_used
+        },
+        "backend_owned_contract": {
+            "forms": True,
+            "option_sets": True,
+            "validation": True,
+            "readiness": True,
+            "soil_enrichment_snapshots": True,
+            "android_should_hardcode_options": False,
+        },
+    }
+
 
 @router.get("/options")
 def list_profile_option_sets(

@@ -852,3 +852,22 @@ Audit currently records:
 
 This is important for client/company deployments because advisory delivery must be explainable: who sent what, when, to whom, and whether the farmer saw or acknowledged it.
 
+## Backend-owned profile contract endpoint
+
+Android should treat farmer, parcel, and soil profile schemas/options as backend-owned. Before rendering or caching profile forms, Android can fetch:
+
+```http
+GET /api/v1/forms/profile-contract?project_id={project_id}
+```
+
+The response uses `schema_version=profile_contract.v1` and summarizes:
+
+- profile forms in scope: `farmer_registration`, `parcel_registration`, `soil_profile`;
+- required fields by form;
+- canonical backend field mappings;
+- option sets used by the forms, including source/version metadata;
+- GPS/offline capture hints;
+- `backend_owned_contract.android_should_hardcode_options=false`.
+
+Android should still fetch full form schemas from `/api/v1/forms/{form_id}` and effective options from `/api/v1/forms/options/{option_set}`. This summary is intended as a lightweight bootstrap/readiness contract so Android can avoid hardcoding seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, or assistance modes.
+

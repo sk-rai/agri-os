@@ -125,6 +125,19 @@ def main():
     listed = {item["form_id"] for item in forms_response.json()}
     check({"farmer_registration", "parcel_registration", "soil_profile"}.issubset(listed), "form list includes profile forms")
 
+    contract_response = client.get("/api/v1/forms/profile-contract")
+    check(contract_response.status_code == 200, "profile contract summary returns 200", contract_response.text[:300])
+    contract = contract_response.json()
+    check(contract["schema_version"] == "profile_contract.v1", "profile contract schema is stable")
+    check({form["form_id"] for form in contract["forms"]} == {"farmer_registration", "parcel_registration", "soil_profile"}, "profile contract includes only profile forms")
+    check(contract["backend_owned_contract"]["android_should_hardcode_options"] is False, "profile contract tells Android not to hardcode options")
+    check("ownership_types" in contract["option_sets_used"], "profile contract lists ownership option dependency")
+    check("soil_textures" in contract["option_sets_used"], "profile contract lists soil texture option dependency")
+    check("mobile_number" in contract["required_by_form"]["farmer_registration"], "profile contract exposes farmer required fields")
+    check("reported_area" in contract["required_by_form"]["parcel_registration"], "profile contract exposes parcel required fields")
+    check("parcel_id" in contract["required_by_form"]["soil_profile"], "profile contract exposes soil required fields")
+    check(contract["option_set_sources"]["land_units"]["source"] == "default", "profile contract includes option source metadata")
+
     options_response = client.get("/api/v1/forms/options")
     check(options_response.status_code == 200, "profile option registry returns 200", options_response.text[:300])
     options_payload = options_response.json()
