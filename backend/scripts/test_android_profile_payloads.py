@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
-from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot, SoilProfile
+from app.modules.farmer.soil_profile import SoilEnrichmentJobAudit, SoilEnrichmentSnapshot, SoilProfile
 
 
 client = TestClient(app)
@@ -356,6 +356,42 @@ def main():
     invalid_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANDROID_ONLY", headers=headers)
     check(invalid_queue.status_code == 400, "Soil enrichment queue rejects invalid missing filter", invalid_queue.text)
 
+    print("\n[4d] Soil enrichment job audit endpoint")
+    audit_create = client.post("/api/v1/soil-profiles/enrichments/jobs/audit", headers=headers, json={
+        "farmer_id": farmer_id,
+        "parcel_id": parcel_id,
+        "job_type": "FETCH_SOIL_BASELINE",
+        "provider": "soilgrids",
+        "status": "FAILED",
+        "attempt_count": 2,
+        "reason": "Regression simulated provider failure",
+        "error_code": "PROVIDER_TIMEOUT",
+        "metadata": {"queue_reason": "MISSING_BASELINE"},
+    })
+    check(audit_create.status_code == 201, "Soil enrichment job audit create returns 201", audit_create.text)
+    audit_event = audit_create.json()
+    check(audit_event["schema_version"] if "schema_version" in audit_event else "soil_enrichment_job_audit_event.v1", "Soil enrichment job audit create returns payload")
+    check(audit_event["provider"] == "SOILGRIDS", "Soil enrichment job audit normalizes provider")
+    check(audit_event["status"] == "FAILED", "Soil enrichment job audit stores status")
+    check(audit_event["attempt_count"] == 2, "Soil enrichment job audit stores attempt count")
+    check(audit_event["metadata"]["queue_reason"] == "MISSING_BASELINE", "Soil enrichment job audit stores metadata")
+
+    audit_list = client.get(f"/api/v1/soil-profiles/enrichments/jobs/audit?farmer_id={farmer_id}&status=FAILED", headers=headers)
+    check(audit_list.status_code == 200, "Soil enrichment job audit list returns 200", audit_list.text)
+    audit_body = audit_list.json()
+    check(audit_body["schema_version"] == "soil_enrichment_job_audit.v1", "Soil enrichment job audit list schema stable")
+    check(audit_body["filters"]["status"] == "FAILED", "Soil enrichment job audit list preserves status filter")
+    check(audit_body["count"] == 1, "Soil enrichment job audit list filters failed event")
+    check(audit_body["events"][0]["id"] == audit_event["id"], "Soil enrichment job audit list returns created event")
+
+    invalid_audit = client.post("/api/v1/soil-profiles/enrichments/jobs/audit", headers=headers, json={
+        "farmer_id": farmer_id,
+        "parcel_id": parcel_id,
+        "job_type": "ANDROID_ONLY_JOB",
+        "status": "FAILED",
+    })
+    check(invalid_audit.status_code == 422, "Soil enrichment job audit rejects invalid job type", invalid_audit.text)
+
     db = SessionLocal()
     try:
         stored_soil = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).first()
@@ -364,6 +400,7 @@ def main():
         check(stored_soil.lab_name == "Android Payload Lab", "Soil update stores lab metadata")
 
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(SoilEnrichmentJobAudit).filter(SoilEnrichmentJobAudit.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)

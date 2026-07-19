@@ -95,6 +95,34 @@ class SoilProfile(Base, UUIDPrimaryKey, AuditMixin):
         return self.boron_bo
 
 
+class SoilEnrichmentJobAudit(Base, UUIDPrimaryKey, AuditMixin):
+    """Operational audit trail for backend soil enrichment queue attempts."""
+
+    __tablename__ = "soil_enrichment_job_audit_events"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=True)
+    parcel_id = Column(UUID(as_uuid=True), ForeignKey("parcels.id"), nullable=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+
+    job_type = Column(String(50), nullable=False)
+    provider = Column(String(50), nullable=True)
+    status = Column(String(30), nullable=False)
+    attempt_count = Column(Integer, nullable=False, default=1)
+    reason = Column(Text)
+    error_code = Column(String(100))
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_soil_enrichment_job_audit_tenant", "tenant_id"),
+        Index("idx_soil_enrichment_job_audit_farmer", "farmer_id"),
+        Index("idx_soil_enrichment_job_audit_parcel", "parcel_id"),
+        Index("idx_soil_enrichment_job_audit_project", "project_id"),
+        Index("idx_soil_enrichment_job_audit_status", "status"),
+        Index("idx_soil_enrichment_job_audit_job_type", "job_type"),
+    )
+
+
 class SoilEnrichmentSnapshot(Base, UUIDPrimaryKey, AuditMixin):
     """Provider-derived soil baseline or dynamic soil-water snapshot for a parcel.
 
@@ -232,6 +260,39 @@ class ShcSlusiPointCaptureRequest(BaseModel):
     cec_text: Optional[str] = Field(None, max_length=100)
     soil_code: Optional[str] = Field(None, max_length=100)
     raw_payload: dict = Field(default_factory=dict)
+
+
+class SoilEnrichmentJobAuditCreate(BaseModel):
+    farmer_id: Optional[uuid.UUID] = None
+    parcel_id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    job_type: str = Field(..., pattern=r"^(FETCH_SOIL_BASELINE|FETCH_SOIL_MOISTURE|FETCH_SLUSI_POINT|FETCH_SATELLITE_SOIL)$")
+    provider: Optional[str] = None
+    status: str = Field(..., pattern=r"^(QUEUED|FETCHED|FAILED|SKIPPED|DEFERRED)$")
+    attempt_count: int = Field(default=1, ge=1, le=100)
+    reason: Optional[str] = None
+    error_code: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class SoilEnrichmentJobAuditResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: str
+    farmer_id: Optional[uuid.UUID] = None
+    parcel_id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    job_type: str
+    provider: Optional[str] = None
+    status: str
+    attempt_count: int
+    reason: Optional[str] = None
+    error_code: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class SoilEnrichmentSnapshotCreate(BaseModel):
@@ -589,6 +650,25 @@ def _soil_enrichment_summary_payload(snapshots: list[SoilEnrichmentSnapshot]) ->
         "latest_baseline": latest_baseline,
         "latest_moisture": latest_moisture,
         "latest_slusi_or_shc": latest_slusi,
+    }
+
+
+def _soil_enrichment_job_audit_payload(event: SoilEnrichmentJobAudit) -> dict:
+    return {
+        "id": str(event.id),
+        "tenant_id": event.tenant_id,
+        "farmer_id": str(event.farmer_id) if event.farmer_id else None,
+        "parcel_id": str(event.parcel_id) if event.parcel_id else None,
+        "project_id": str(event.project_id) if event.project_id else None,
+        "job_type": event.job_type,
+        "provider": event.provider,
+        "status": event.status,
+        "attempt_count": event.attempt_count,
+        "reason": event.reason,
+        "error_code": event.error_code,
+        "metadata": event.metadata_ or {},
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+        "updated_at": event.updated_at.isoformat() if event.updated_at else None,
     }
 
 
@@ -1009,6 +1089,74 @@ def list_soil_enrichment_snapshots(
     if snapshot_type:
         query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
     return [_soil_enrichment_payload(row) for row in query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).limit(limit).all()]
+
+
+@router.post("/enrichments/jobs/audit", response_model=SoilEnrichmentJobAuditResponse, status_code=201)
+def record_soil_enrichment_job_audit(
+    body: SoilEnrichmentJobAuditCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Record a backend soil enrichment job attempt."""
+    event = SoilEnrichmentJobAudit(
+        tenant_id=x_tenant_id,
+        farmer_id=body.farmer_id,
+        parcel_id=body.parcel_id,
+        project_id=body.project_id,
+        job_type=body.job_type,
+        provider=body.provider.strip().upper() if body.provider else None,
+        status=body.status,
+        attempt_count=body.attempt_count,
+        reason=body.reason,
+        error_code=body.error_code,
+        metadata_=body.metadata or {},
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return _soil_enrichment_job_audit_payload(event)
+
+
+@router.get("/enrichments/jobs/audit")
+def list_soil_enrichment_job_audit(
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    project_id: Optional[uuid.UUID] = Query(None),
+    job_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    query = db.query(SoilEnrichmentJobAudit).filter(SoilEnrichmentJobAudit.tenant_id == x_tenant_id)
+    if farmer_id:
+        query = query.filter(SoilEnrichmentJobAudit.farmer_id == farmer_id)
+    if parcel_id:
+        query = query.filter(SoilEnrichmentJobAudit.parcel_id == parcel_id)
+    if project_id:
+        query = query.filter(SoilEnrichmentJobAudit.project_id == project_id)
+    if job_type:
+        query = query.filter(SoilEnrichmentJobAudit.job_type == job_type.strip().upper())
+    if status:
+        query = query.filter(SoilEnrichmentJobAudit.status == status.strip().upper())
+
+    events = query.order_by(SoilEnrichmentJobAudit.created_at.desc()).limit(limit).all()
+    return {
+        "schema_version": "soil_enrichment_job_audit.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "farmer_id": str(farmer_id) if farmer_id else None,
+            "parcel_id": str(parcel_id) if parcel_id else None,
+            "project_id": str(project_id) if project_id else None,
+            "job_type": job_type.strip().upper() if job_type else None,
+            "status": status.strip().upper() if status else None,
+            "limit": limit,
+        },
+        "count": len(events),
+        "events": [_soil_enrichment_job_audit_payload(event) for event in events],
+    }
 
 
 @router.get("/enrichments/queue")
