@@ -296,6 +296,30 @@ def main():
     check(readiness["summary"]["soil_baseline_snapshot_available_count"] >= 1, "Readiness summary counts baseline availability")
     check(readiness["summary"]["soil_moisture_snapshot_available_count"] >= 1, "Readiness summary counts moisture availability")
 
+    print("\n[4b] Soil enrichment summary endpoint")
+    summary_response = client.get(f"/api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}", headers=headers)
+    check(summary_response.status_code == 200, "Soil enrichment summary returns 200", summary_response.text)
+    summary = summary_response.json()
+    check(summary["schema_version"] == "soil_enrichment_summary.v1", "Soil enrichment summary schema stable")
+    check(summary["filters"]["farmer_id"] == farmer_id, "Soil enrichment summary preserves farmer filter")
+    check(summary["snapshot_count"] == 2, "Soil enrichment summary counts snapshots")
+    check(summary["has_baseline"] is True, "Soil enrichment summary detects baseline")
+    check(summary["has_moisture"] is True, "Soil enrichment summary detects moisture")
+    check(summary["provider_counts"]["SOILGRIDS"] == 1, "Soil enrichment summary counts SoilGrids provider")
+    check(summary["provider_counts"]["OPEN_METEO"] == 1, "Soil enrichment summary counts moisture provider")
+    check(summary["latest_baseline"]["provider"] == "SOILGRIDS", "Soil enrichment summary exposes latest baseline")
+    check(summary["latest_moisture"]["provider"] == "OPEN_METEO", "Soil enrichment summary exposes latest moisture")
+
+    moisture_summary_response = client.get(f"/api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}&snapshot_type=MOISTURE", headers=headers)
+    check(moisture_summary_response.status_code == 200, "Soil enrichment summary type filter returns 200", moisture_summary_response.text)
+    moisture_summary = moisture_summary_response.json()
+    check(moisture_summary["snapshot_count"] == 1, "Soil enrichment summary type filter narrows rows")
+    check(moisture_summary["has_baseline"] is False, "Filtered moisture summary omits baseline")
+    check(moisture_summary["has_moisture"] is True, "Filtered moisture summary keeps moisture")
+
+    missing_filter_summary = client.get("/api/v1/soil-profiles/enrichments/summary", headers=headers)
+    check(missing_filter_summary.status_code == 400, "Soil enrichment summary requires farmer or parcel filter", missing_filter_summary.text)
+
     db = SessionLocal()
     try:
         stored_soil = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).first()

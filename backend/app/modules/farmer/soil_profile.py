@@ -550,6 +550,48 @@ def _infer_soil_profile_project_id(db: Session, *, tenant_id: str, parcel_id: uu
     return None
 
 
+def _soil_enrichment_summary_payload(snapshots: list[SoilEnrichmentSnapshot]) -> dict:
+    """Summarize backend-owned soil enrichment snapshots for Android/admin."""
+    latest_by_type: dict[str, dict] = {}
+    provider_counts: dict[str, int] = {}
+    type_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+
+    for snapshot in snapshots:
+        payload = _soil_enrichment_payload(snapshot)
+        provider = payload.get("provider") or "UNKNOWN"
+        snapshot_type = payload.get("snapshot_type") or "UNKNOWN"
+        status = payload.get("status") or "UNKNOWN"
+
+        provider_counts[provider] = provider_counts.get(provider, 0) + 1
+        type_counts[snapshot_type] = type_counts.get(snapshot_type, 0) + 1
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+        if snapshot_type not in latest_by_type:
+            latest_by_type[snapshot_type] = payload
+
+    latest_baseline = latest_by_type.get("BASELINE")
+    latest_moisture = latest_by_type.get("MOISTURE")
+    latest_slusi = next(
+        (payload for payload in latest_by_type.values() if payload.get("provider") in {"SHC_SLUSI", "SLUSI", "SHC"}),
+        None,
+    )
+
+    return {
+        "snapshot_count": len(snapshots),
+        "provider_counts": provider_counts,
+        "snapshot_type_counts": type_counts,
+        "status_counts": status_counts,
+        "has_baseline": latest_baseline is not None,
+        "has_moisture": latest_moisture is not None,
+        "has_slusi_or_shc": latest_slusi is not None,
+        "latest_by_type": latest_by_type,
+        "latest_baseline": latest_baseline,
+        "latest_moisture": latest_moisture,
+        "latest_slusi_or_shc": latest_slusi,
+    }
+
+
 def _soil_enrichment_payload(snapshot: SoilEnrichmentSnapshot) -> dict:
     return {
         "id": snapshot.id,
@@ -967,6 +1009,55 @@ def list_soil_enrichment_snapshots(
     if snapshot_type:
         query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
     return [_soil_enrichment_payload(row) for row in query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).limit(limit).all()]
+
+
+@router.get("/enrichments/summary")
+def get_soil_enrichment_summary(
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    provider: Optional[str] = Query(None),
+    snapshot_type: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return grouped soil enrichment snapshot summary for Android/admin.
+
+    Android should use this endpoint to understand whether backend-owned
+    SoilGrids/SLUSI/soil-moisture enrichment is available for a farmer/parcel,
+    instead of grouping raw snapshots locally.
+    """
+    if not parcel_id and not farmer_id:
+        raise HTTPException(400, "parcel_id or farmer_id is required")
+
+    query = db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == x_tenant_id)
+    if parcel_id:
+        query = query.filter(SoilEnrichmentSnapshot.parcel_id == parcel_id)
+    if farmer_id:
+        query = query.filter(SoilEnrichmentSnapshot.farmer_id == farmer_id)
+    if provider:
+        query = query.filter(SoilEnrichmentSnapshot.provider == provider.strip().upper())
+    if snapshot_type:
+        query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
+
+    snapshots = query.order_by(
+        SoilEnrichmentSnapshot.observed_at.desc().nullslast(),
+        SoilEnrichmentSnapshot.fetched_at.desc(),
+    ).limit(limit).all()
+
+    summary = _soil_enrichment_summary_payload(snapshots)
+    return {
+        "schema_version": "soil_enrichment_summary.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "parcel_id": str(parcel_id) if parcel_id else None,
+            "farmer_id": str(farmer_id) if farmer_id else None,
+            "provider": provider.strip().upper() if provider else None,
+            "snapshot_type": snapshot_type.strip().upper() if snapshot_type else None,
+            "limit": limit,
+        },
+        **summary,
+    }
 
 
 @router.post("", response_model=SoilProfileResponse, status_code=201)
