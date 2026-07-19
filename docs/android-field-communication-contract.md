@@ -888,11 +888,21 @@ Current source families:
 
 Every stored enrichment snapshot includes provenance metadata such as `provider_family`, `source_granularity`, `automation_mode`, `provider_key`, and `provenance_contract=soil_enrichment_sources.v1`. Android should render these snapshots as informational/backend-provided evidence and should not call external soil/weather providers directly.
 
-For SHC/SLUSI, because raw public data/API is not currently available, the backend supports explicit manual/admin capture instead of scraping:
+For SHC/SLUSI, the public visualisation has been observed returning GeoServer-style WMS `GetFeatureInfo` JSON for clicked/zoomed map features. Example transport metadata is now represented in the backend source contract as `observed_transport=OGC_WMS_GETFEATUREINFO_JSON`. Because the WMS path includes a long tokenized segment and usage/stability still needs confirmation, Android must not call or hardcode that WMS endpoint directly. The backend supports explicit admin/import capture first, with a future controlled adapter possible after endpoint and permission review.
+
+Simple visual-layer/manual parameter capture:
 
 ```http
 POST /api/v1/soil-profiles/enrichments/shc-slusi/manual-capture
 ```
 
 Required payload: `parcel_id`, `state`, `district`, and `parameter`. Optional fields include `cycle`, `status_class`, `value_text`, `unit`, `source_url`, `notes`, and `raw_payload`. The backend stores this as `provider=SHC_SLUSI`, `snapshot_type=BASELINE`, `confidence=GOVT_VISUAL_LAYER`, and `metadata.capture_method=ADMIN_VISUAL_CAPTURE`.
+
+Full point-popup capture from observed SHC/SLUSI WMS/visualisation data:
+
+```http
+POST /api/v1/soil-profiles/enrichments/shc-slusi/point-capture
+```
+
+Important payload fields include `parcel_id`, `state`, `district`, optional `village`, `latitude`, `longitude`, `cycle`, `source_url`, optional observed `wms_url`, nutrient values (`n_kg_ha`, `p_kg_ha`, `k_kg_ha`, `b_ppm`, `fe_ppm`, `zn_ppm`, `cu_ppm`, `s_ppm`, `organic_carbon_percent`, `ph`, `ec_ds_m`, `mn_ppm`), and land-property values (`depth_50k`, `slope_50k`, `erosion_50k`, `texture_50k`, `lcc_50k`, `lic_50k`, `hsg_50k`, `cec_text`, `soil_code`). The backend stores canonical values where fields exist (`nitrogen`, `ph`, `organic_carbon`) and keeps the remaining nutrient/land-property data in `normalized_values.nutrients` and `normalized_values.soil_land_properties`, with `confidence=GOVT_POINT_POPUP` and `metadata.capture_method=ADMIN_POINT_POPUP_CAPTURE`.
 

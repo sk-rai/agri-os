@@ -198,6 +198,42 @@ class ShcSlusiManualCaptureRequest(BaseModel):
     raw_payload: dict = Field(default_factory=dict)
 
 
+class ShcSlusiPointCaptureRequest(BaseModel):
+    parcel_id: uuid.UUID
+    state: str = Field(..., min_length=2, max_length=100)
+    district: str = Field(..., min_length=2, max_length=100)
+    village: Optional[str] = Field(None, max_length=150)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    cycle: Optional[str] = Field(None, max_length=20)
+    source_url: str = "https://soilhealth.dac.gov.in/slusi-visualisation/"
+    wms_url: Optional[str] = Field(None, max_length=2000)
+    observed_at: Optional[datetime] = None
+    notes: Optional[str] = Field(None, max_length=1000)
+    n_kg_ha: Optional[float] = None
+    p_kg_ha: Optional[float] = None
+    k_kg_ha: Optional[float] = None
+    b_ppm: Optional[float] = None
+    fe_ppm: Optional[float] = None
+    zn_ppm: Optional[float] = None
+    cu_ppm: Optional[float] = None
+    s_ppm: Optional[float] = None
+    organic_carbon_percent: Optional[float] = None
+    ph: Optional[float] = None
+    ec_ds_m: Optional[float] = None
+    mn_ppm: Optional[float] = None
+    depth_50k: Optional[str] = Field(None, max_length=100)
+    slope_50k: Optional[str] = Field(None, max_length=150)
+    erosion_50k: Optional[str] = Field(None, max_length=100)
+    texture_50k: Optional[str] = Field(None, max_length=100)
+    lcc_50k: Optional[str] = Field(None, max_length=50)
+    lic_50k: Optional[str] = Field(None, max_length=50)
+    hsg_50k: Optional[str] = Field(None, max_length=50)
+    cec_text: Optional[str] = Field(None, max_length=100)
+    soil_code: Optional[str] = Field(None, max_length=100)
+    raw_payload: dict = Field(default_factory=dict)
+
+
 class SoilEnrichmentSnapshotCreate(BaseModel):
     parcel_id: uuid.UUID
     farmer_id: Optional[uuid.UUID] = None
@@ -292,9 +328,24 @@ SOIL_ENRICHMENT_SOURCE_REGISTRY = {
         "display_name": "Soil Health Card / SLUSI visualisation",
         "snapshot_types": ["BASELINE"],
         "default_confidence": "GOVT_VISUAL_LAYER",
-        "source_granularity": "DISTRICT_OR_MICROWATERSHED",
+        "source_granularity": "DISTRICT_OR_MICROWATERSHED_OR_POINT_POPUP",
         "automation_mode": "MANUAL_OR_IMPORT_UNTIL_OFFICIAL_API",
-        "notes": "Use for government visual-layer/manual or future CSV imports. Do not scrape the map UI unless an official API/export is identified.",
+        "observed_transport": "OGC_WMS_GETFEATUREINFO_JSON",
+        "observed_request": {
+            "service": "WMS",
+            "version": "1.1.1",
+            "request": "GetFeatureInfo",
+            "info_format": "application/json",
+            "srs": "EPSG:4326",
+            "hide_geometry": True,
+        },
+        "expected_point_fields": [
+            "state", "district", "village", "latitude", "longitude", "cycle",
+            "n_kg_ha", "p_kg_ha", "k_kg_ha", "b_ppm", "fe_ppm", "zn_ppm",
+            "cu_ppm", "s_ppm", "organic_carbon_percent", "ph", "ec_ds_m", "mn_ppm",
+            "depth_50k", "slope_50k", "erosion_50k", "texture_50k", "lcc_50k", "lic_50k", "hsg_50k", "cec_text", "soil_code",
+        ],
+        "notes": "Observed as GeoServer-style WMS GetFeatureInfo JSON behind the public UI. Store observed/admin-imported point payloads now; enable automated fetch only after endpoint stability and usage permission are confirmed.",
     },
     "IN_HOUSE_SATELLITE": {
         "provider_family": "IN_HOUSE_MODEL",
@@ -715,6 +766,95 @@ def create_shc_slusi_manual_capture_snapshot(
         confidence="GOVT_VISUAL_LAYER",
         observed_at=body.observed_at or timestamp,
         fetched_at=timestamp,
+        normalized_values=normalized_values,
+        raw_payload=body.raw_payload or {},
+        metadata_=metadata,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return _soil_enrichment_payload(snapshot)
+
+
+@router.post("/enrichments/shc-slusi/point-capture", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
+def create_shc_slusi_point_capture_snapshot(
+    body: ShcSlusiPointCaptureRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Store a full SHC/SLUSI point popup or WMS GetFeatureInfo observation.
+
+    This records the richer point-level values visible after zoom/click in the public UI.
+    It still does not fetch/scrape the government service directly.
+    """
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    timestamp = datetime.now(timezone.utc)
+    numeric_values = {
+        "n_kg_ha": body.n_kg_ha,
+        "p_kg_ha": body.p_kg_ha,
+        "k_kg_ha": body.k_kg_ha,
+        "b_ppm": body.b_ppm,
+        "fe_ppm": body.fe_ppm,
+        "zn_ppm": body.zn_ppm,
+        "cu_ppm": body.cu_ppm,
+        "s_ppm": body.s_ppm,
+        "organic_carbon_percent": body.organic_carbon_percent,
+        "ph": body.ph,
+        "ec_ds_m": body.ec_ds_m,
+        "mn_ppm": body.mn_ppm,
+    }
+    land_properties = {
+        "depth_50k": body.depth_50k,
+        "slope_50k": body.slope_50k,
+        "erosion_50k": body.erosion_50k,
+        "texture_50k": body.texture_50k,
+        "lcc_50k": body.lcc_50k,
+        "lic_50k": body.lic_50k,
+        "hsg_50k": body.hsg_50k,
+        "cec_text": body.cec_text,
+        "soil_code": body.soil_code,
+    }
+    normalized_values = {
+        "state": body.state.strip().upper(),
+        "district": body.district.strip().upper(),
+        "capture_granularity": "POINT_POPUP",
+        "nutrients": {key: value for key, value in numeric_values.items() if value is not None},
+        "soil_land_properties": {key: value for key, value in land_properties.items() if value not in (None, "")},
+    }
+    if body.village:
+        normalized_values["village"] = body.village.strip()
+    if body.cycle:
+        normalized_values["cycle"] = body.cycle.strip()
+
+    metadata = _soil_enrichment_source_metadata("SHC_SLUSI", {
+        "capture_method": "ADMIN_POINT_POPUP_CAPTURE",
+        "source_granularity": "POINT_POPUP",
+        "observed_transport": "OGC_WMS_GETFEATUREINFO_JSON",
+        "source_url": body.source_url,
+        "wms_url": body.wms_url,
+        "notes": body.notes,
+    })
+    snapshot = SoilEnrichmentSnapshot(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        parcel_id=parcel.id,
+        farmer_id=parcel.farmer_id,
+        provider="SHC_SLUSI",
+        provider_dataset="soilhealth.dac.gov.in/slusi-visualisation/wms",
+        snapshot_type="BASELINE",
+        status="AVAILABLE",
+        latitude=body.latitude,
+        longitude=body.longitude,
+        depth_layer="point_popup",
+        confidence="GOVT_POINT_POPUP",
+        observed_at=body.observed_at or timestamp,
+        fetched_at=timestamp,
+        ph=body.ph,
+        organic_carbon=body.organic_carbon_percent,
+        nitrogen=body.n_kg_ha,
+        cec=body.cec_text if isinstance(body.cec_text, (int, float)) else None,
         normalized_values=normalized_values,
         raw_payload=body.raw_payload or {},
         metadata_=metadata,

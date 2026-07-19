@@ -104,6 +104,10 @@ def main():
     check(source_payload["guidance"]["android_calls_provider_directly"] is False, "Source contract keeps provider calls backend-only")
     check(source_payload["guidance"]["slusi_scraping_allowed_by_default"] is False, "Source contract discourages default SLUSI scraping")
 
+    shc_contract = source_payload["sources"]["SHC_SLUSI"]
+    check(shc_contract["observed_transport"] == "OGC_WMS_GETFEATUREINFO_JSON", "Source contract records observed SHC/SLUSI WMS transport")
+    check("n_kg_ha" in shc_contract["expected_point_fields"], "Source contract documents SHC/SLUSI point nutrient fields")
+
     soilgrids = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
         "provider": "SOILGRIDS",
@@ -151,6 +155,53 @@ def main():
     check(slusi_body["normalized_values"]["status_class"] == "SUFFICIENT", "SHC/SLUSI manual capture stores class")
     check(slusi_body["metadata"]["provider_family"] == "GOVT_VISUAL_BASELINE", "SHC/SLUSI provenance metadata stored")
     check(slusi_body["metadata"]["automation_mode"] == "MANUAL_OR_IMPORT_UNTIL_OFFICIAL_API", "SHC/SLUSI automation mode documented")
+
+    slusi_point = client.post("/api/v1/soil-profiles/enrichments/shc-slusi/point-capture", headers=headers, json={
+        "parcel_id": str(parcel_id),
+        "state": "Uttar Pradesh",
+        "district": "Azamgarh",
+        "village": "Pakari Khurd",
+        "latitude": 25.821004,
+        "longitude": 82.977274,
+        "cycle": "2024-25",
+        "source_url": "https://soilhealth.dac.gov.in/slusi-visualisation/",
+        "wms_url": "https://soilhealth.dac.gov.in/.../shc/wms/wms?request=GetFeatureInfo",
+        "n_kg_ha": 163,
+        "p_kg_ha": 9,
+        "k_kg_ha": 213,
+        "b_ppm": 0.35,
+        "fe_ppm": 3.25,
+        "zn_ppm": 0.256,
+        "cu_ppm": 0.56,
+        "s_ppm": 5.36,
+        "organic_carbon_percent": 0.25,
+        "ph": 7.6,
+        "ec_ds_m": 0.34,
+        "mn_ppm": 1.65,
+        "depth_50k": "Very deep",
+        "slope_50k": "Very gentle slope (1-3%)",
+        "texture_50k": "Fine Loamy",
+        "lcc_50k": "II",
+        "lic_50k": "2",
+        "hsg_50k": "B",
+        "soil_code": "0101020508070501",
+        "raw_payload": {"type": "FeatureCollection", "features": [{"id": "9_123_shc_2024-25.sample"}]},
+        "notes": "Captured from WMS GetFeatureInfo point popup.",
+    })
+    check(slusi_point.status_code == 201, "Create SHC/SLUSI point popup snapshot returns 201", slusi_point.text)
+    slusi_point_body = slusi_point.json()
+    check(slusi_point_body["confidence"] == "GOVT_POINT_POPUP", "SHC/SLUSI point capture confidence stored")
+    check(slusi_point_body["latitude"] == 25.821004, "SHC/SLUSI point latitude stored")
+    check(slusi_point_body["longitude"] == 82.977274, "SHC/SLUSI point longitude stored")
+    check(slusi_point_body["nitrogen"] == 163, "SHC/SLUSI point N stored in canonical field")
+    check(slusi_point_body["ph"] == 7.6, "SHC/SLUSI point pH stored in canonical field")
+    check(slusi_point_body["organic_carbon"] == 0.25, "SHC/SLUSI point organic carbon stored in canonical field")
+    check(slusi_point_body["normalized_values"]["village"] == "Pakari Khurd", "SHC/SLUSI point village stored")
+    check(slusi_point_body["normalized_values"]["nutrients"]["p_kg_ha"] == 9, "SHC/SLUSI point P stored in normalized nutrients")
+    check(slusi_point_body["normalized_values"]["nutrients"]["mn_ppm"] == 1.65, "SHC/SLUSI point Mn stored in normalized nutrients")
+    check(slusi_point_body["normalized_values"]["soil_land_properties"]["texture_50k"] == "Fine Loamy", "SHC/SLUSI point texture stored")
+    check(slusi_point_body["metadata"]["capture_method"] == "ADMIN_POINT_POPUP_CAPTURE", "SHC/SLUSI point capture provenance stored")
+    check(slusi_point_body["metadata"]["observed_transport"] == "OGC_WMS_GETFEATUREINFO_JSON", "SHC/SLUSI point WMS provenance stored")
 
 
     fake_soilgrids_payload = {
@@ -202,7 +253,7 @@ def main():
 
     listing = client.get(f"/api/v1/soil-profiles/enrichments?parcel_id={parcel_id}", headers=headers)
     check(listing.status_code == 200, "List enrichment snapshots returns 200", listing.text)
-    check(len(listing.json()) == 4, "List returns direct baseline, SHC/SLUSI baseline, fetched SoilGrids baseline, and moisture snapshots")
+    check(len(listing.json()) == 5, "List returns direct baseline, SHC/SLUSI manual baseline, SHC/SLUSI point baseline, fetched SoilGrids baseline, and moisture snapshots")
 
     mismatch = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
