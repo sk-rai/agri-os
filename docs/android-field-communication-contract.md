@@ -958,6 +958,8 @@ Backend workers/admin tools can record enrichment attempt status:
 
 Audit payloads use `schema_version=soil_enrichment_job_audit.v1` for listing and include `job_type`, `provider`, `status`, `attempt_count`, `reason`, `error_code`, and `metadata`. This is backend/admin operational state; Android MVP should not call provider APIs directly.
 
+Admin web exposes a read-only soil enrichment queue plus manual audit actions for recommended jobs. Admins can mark a job `SKIPPED`, `DEFERRED`, or `FAILED`; this writes an audit event and refreshes `latest_audit_by_job` on the queue response.
+
 The backend now exposes the source contract:
 
 ```http
