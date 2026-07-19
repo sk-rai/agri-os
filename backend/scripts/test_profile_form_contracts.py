@@ -108,6 +108,8 @@ def main():
     check(annual_rent["depends_on_value"] == "LEASED", "Parcel annual_rent serializes depends_on_value")
     check(field_by_id(parcel, "geometry_source")["default_value"] == "NONE", "Parcel form includes geometry_source default")
     check(field_by_id(parcel, "kharif_crops")["android_hint"]["payload_container"] == "crops_by_season", "Parcel form advertises seasonal crop payload container")
+    ownership_values = {option["value"] for option in field_by_id(parcel, "ownership_type")["options"]}
+    check("PART_OWNER" in ownership_values, "Parcel ownership types include part owner")
 
     soil = schemas["soil_profile"]
     lab_name = field_by_id(soil, "lab_name")
@@ -230,6 +232,23 @@ def main():
     project_payload = project_bootstrap.json()
     check(project_payload["profile_forms"]["farmer_registration"]["enabled"] is True, "Project bootstrap advertises farmer profile flag")
     check(project_payload["profile_forms"]["parcel_registration"]["enabled"] is True, "Project bootstrap advertises parcel profile flag")
+
+    profile_contract = client.get(f"/api/v1/forms/profile-contract?project_id={project.id}", headers={"X-Tenant-ID": "default"})
+    check(profile_contract.status_code == 200, "Profile contract summary returns 200", profile_contract.text[:500])
+    contract_payload = profile_contract.json()
+    check(contract_payload["schema_version"] == "profile_contract.v1", "Profile contract schema is stable")
+    check(contract_payload["backend_owned_contract"]["android_should_hardcode_options"] is False, "Profile contract forbids Android hardcoded options")
+    check(contract_payload["backend_owned_contract"]["agent_assisted_capture"] is True, "Profile contract advertises agent-assisted capture")
+    check(contract_payload["backend_owned_contract"]["mode_bootstrap"] is True, "Profile contract advertises mode bootstrap")
+    handoff = contract_payload["android_handoff"]
+    check(handoff["mode_bootstrap_endpoint"] == "/api/v1/auth/mode-bootstrap", "Profile contract links mode bootstrap endpoint")
+    check(handoff["agent_assisted_capture"]["dual_mode_supported"] is True, "Profile contract supports dual farmer/agent mode")
+    check(handoff["location_model"]["normal_anchor"] == "parcel.pin_code", "Profile contract documents parcel PIN code anchor")
+    check(handoff["location_model"]["multi_village_override"] == "parcel.location_scope", "Profile contract documents multi-village override")
+    check("SHC_SLUSI" in handoff["soil_enrichment"]["manual_import_sources"], "Profile contract advertises SHC/SLUSI manual/import source")
+    check("parcel_registration" in handoff["offline_sync"]["replay_order"], "Profile contract documents offline replay order")
+    check(contract_payload["payload_mappings"]["parcel_registration"]["location_scope"] == "parcel.location_scope", "Profile contract maps parcel location_scope payload")
+    check(contract_payload["payload_mappings"]["soil_profile"]["boron_b"] == "soil_profile.boron_bo", "Profile contract maps Android boron alias")
 
     project_options = client.get(f"/api/v1/forms/options?project_id={project.id}", headers={"X-Tenant-ID": "default"})
     check(project_options.status_code == 200, "Project profile option registry returns 200", project_options.text[:400])

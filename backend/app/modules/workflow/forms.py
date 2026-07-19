@@ -78,7 +78,7 @@ class ProfileOptionSet(BaseModel):
 PROFILE_OPTION_REGISTRY = {
     "seasons": ProfileOptionSet(option_set="seasons", title={"en": "Seasons", "hi": "Seasons"}, options=[FormFieldOption(value="KHARIF", label={"en": "Kharif", "hi": "Kharif"}), FormFieldOption(value="RABI", label={"en": "Rabi", "hi": "Rabi"}), FormFieldOption(value="ZAID", label={"en": "Zaid", "hi": "Zaid"})]),
     "land_units": ProfileOptionSet(option_set="land_units", title={"en": "Land Units", "hi": "Land Units"}, options=[FormFieldOption(value="ACRE", label={"en": "Acre", "hi": "Acre"}), FormFieldOption(value="HECTARE", label={"en": "Hectare", "hi": "Hectare"}), FormFieldOption(value="BIGHA", label={"en": "Bigha", "hi": "Bigha"}), FormFieldOption(value="BISWA", label={"en": "Biswa", "hi": "Biswa"}), FormFieldOption(value="KATHA", label={"en": "Katha", "hi": "Katha"}), FormFieldOption(value="GUNTHA", label={"en": "Guntha", "hi": "Guntha"})]),
-    "ownership_types": ProfileOptionSet(option_set="ownership_types", title={"en": "Ownership Types", "hi": "Ownership Types"}, options=[FormFieldOption(value="OWNED", label={"en": "Owned", "hi": "Owned"}), FormFieldOption(value="LEASED", label={"en": "Leased", "hi": "Leased"}), FormFieldOption(value="SHARED", label={"en": "Shared", "hi": "Shared"}), FormFieldOption(value="SHARECROP", label={"en": "Sharecrop", "hi": "Sharecrop"}), FormFieldOption(value="FAMILY", label={"en": "Family", "hi": "Family"})]),
+    "ownership_types": ProfileOptionSet(option_set="ownership_types", title={"en": "Ownership Types", "hi": "Ownership Types"}, options=[FormFieldOption(value="OWNED", label={"en": "Owned", "hi": "Owned"}), FormFieldOption(value="PART_OWNER", label={"en": "Part owner", "hi": "Part owner"}), FormFieldOption(value="LEASED", label={"en": "Leased", "hi": "Leased"}), FormFieldOption(value="SHARED", label={"en": "Shared", "hi": "Shared"}), FormFieldOption(value="SHARECROP", label={"en": "Sharecrop", "hi": "Sharecrop"}), FormFieldOption(value="FAMILY", label={"en": "Family", "hi": "Family"})]),
     "irrigation_sources": ProfileOptionSet(option_set="irrigation_sources", title={"en": "Irrigation Sources", "hi": "Irrigation Sources"}, options=[FormFieldOption(value="TUBEWELL_DIESEL", label={"en": "Tubewell (Diesel)", "hi": "Tubewell (Diesel)"}), FormFieldOption(value="TUBEWELL_ELECTRIC", label={"en": "Tubewell (Electric)", "hi": "Tubewell (Electric)"}), FormFieldOption(value="CANAL", label={"en": "Canal", "hi": "Canal"}), FormFieldOption(value="PURCHASED_WATER", label={"en": "Purchased Water", "hi": "Purchased Water"}), FormFieldOption(value="RAIN_FED", label={"en": "Rain-fed", "hi": "Rain-fed"}), FormFieldOption(value="POND_TANK", label={"en": "Pond/Tank", "hi": "Pond/Tank"}), FormFieldOption(value="RIVER_STREAM", label={"en": "River/Stream", "hi": "River/Stream"})]),
     "geometry_sources": ProfileOptionSet(option_set="geometry_sources", title={"en": "GPS Capture Modes", "hi": "GPS Capture Modes"}, options=[FormFieldOption(value="NONE", label={"en": "No GPS", "hi": "No GPS"}), FormFieldOption(value="PIN_DROP", label={"en": "Pin drop", "hi": "Pin drop"}), FormFieldOption(value="PIN_CORNERS", label={"en": "Pin corners", "hi": "Pin corners"}), FormFieldOption(value="GPS_WALK", label={"en": "GPS walk", "hi": "GPS walk"})]),
     "soil_types": ProfileOptionSet(option_set="soil_types", title={"en": "Soil Types", "hi": "Soil Types"}, options=[FormFieldOption(value="ALLUVIAL", label={"en": "Alluvial Soil", "hi": "Alluvial Soil"}), FormFieldOption(value="BLACK_COTTON", label={"en": "Black Cotton Soil", "hi": "Black Cotton Soil"}), FormFieldOption(value="RED", label={"en": "Red Soil", "hi": "Red Soil"}), FormFieldOption(value="LATERITE", label={"en": "Laterite Soil", "hi": "Laterite Soil"}), FormFieldOption(value="DESERT", label={"en": "Desert Soil", "hi": "Desert Soil"}), FormFieldOption(value="MOUNTAIN", label={"en": "Mountain Soil", "hi": "Mountain Soil"}), FormFieldOption(value="SALINE_ALKALINE", label={"en": "Saline/Alkaline Soil", "hi": "Saline/Alkaline Soil"})]),
@@ -197,7 +197,7 @@ PARCEL_REGISTRATION_FORM = FormSchema(
         FormField(id="survey_number", type="text", label={"en": "Survey/Khasra Number", "hi": "Survey/Khasra Number"}, required=False, canonical_field="parcel.survey_number"),
         FormField(id="reported_area", type="number", label={"en": "Reported Area", "hi": "Reported Area"}, required=True, validation={"min": 0.01}, canonical_field="parcel.reported_area"),
         FormField(id="reported_area_unit", type="single_select", label={"en": "Area Unit", "hi": "Area Unit"}, source="profile_options.land_units", required=True, default_value="BIGHA", options=[FormFieldOption(value="ACRE", label={"en": "Acre", "hi": "Acre"}), FormFieldOption(value="HECTARE", label={"en": "Hectare", "hi": "Hectare"}), FormFieldOption(value="BIGHA", label={"en": "Bigha", "hi": "Bigha"}), FormFieldOption(value="BISWA", label={"en": "Biswa", "hi": "Biswa"}), FormFieldOption(value="KATHA", label={"en": "Katha", "hi": "Katha"}), FormFieldOption(value="GUNTHA", label={"en": "Guntha", "hi": "Guntha"})], canonical_field="parcel.reported_area_unit"),
-        FormField(id="ownership_type", type="single_select", label={"en": "Ownership", "hi": "Ownership"}, source="profile_options.ownership_types", required=False, default_value="OWNED", options=[FormFieldOption(value="OWNED", label={"en": "Owned", "hi": "Owned"}), FormFieldOption(value="LEASED", label={"en": "Leased", "hi": "Leased"}), FormFieldOption(value="SHARED", label={"en": "Shared", "hi": "Shared"}), FormFieldOption(value="SHARECROP", label={"en": "Sharecrop", "hi": "Sharecrop"}), FormFieldOption(value="FAMILY", label={"en": "Family", "hi": "Family"})], canonical_field="parcel.ownership_type"),
+        FormField(id="ownership_type", type="single_select", label={"en": "Ownership", "hi": "Ownership"}, source="profile_options.ownership_types", required=False, default_value="OWNED", options=[FormFieldOption(value="OWNED", label={"en": "Owned", "hi": "Owned"}), FormFieldOption(value="PART_OWNER", label={"en": "Part owner", "hi": "Part owner"}), FormFieldOption(value="LEASED", label={"en": "Leased", "hi": "Leased"}), FormFieldOption(value="SHARED", label={"en": "Shared", "hi": "Shared"}), FormFieldOption(value="SHARECROP", label={"en": "Sharecrop", "hi": "Sharecrop"}), FormFieldOption(value="FAMILY", label={"en": "Family", "hi": "Family"})], canonical_field="parcel.ownership_type"),
         FormField(id="share_percentage", type="number", label={"en": "Shared Ownership %", "hi": "Shared Ownership %"}, required=False, depends_on="ownership_type", depends_on_value="SHARED", validation={"min": 1, "max": 100}, canonical_field="parcel.share_percentage"),
         FormField(id="sharecrop_percentage", type="number", label={"en": "Sharecrop Harvest %", "hi": "Sharecrop Harvest %"}, required=False, depends_on="ownership_type", depends_on_value="SHARECROP", validation={"min": 1, "max": 100}, canonical_field="parcel.sharecrop_percentage"),
         FormField(id="annual_rent", type="number", label={"en": "Annual Rent", "hi": "Annual Rent"}, required=False, depends_on="ownership_type", depends_on_value="LEASED", validation={"min": 0, "required_when": {"field": "ownership_type", "value": "LEASED"}}, canonical_field="parcel.annual_rent"),
@@ -488,6 +488,102 @@ def _field_payload(field: FormField) -> dict:
     return field.model_dump() if hasattr(field, "model_dump") else field.dict()
 
 
+def _profile_contract_android_handoff() -> dict:
+    return {
+        "schema_version": "profile_contract_android_handoff.v1",
+        "mode_bootstrap_endpoint": "/api/v1/auth/mode-bootstrap",
+        "agent_worklist_endpoint": "/api/v1/field-agent/worklist",
+        "assignment_endpoint": "/api/v1/farmers/{farmer_id}/project-agent-assignment",
+        "forms_endpoint_template": "/api/v1/forms/{form_id}",
+        "option_endpoint_template": "/api/v1/forms/options/{option_set}?project_id={project_id}",
+        "screen_groups": {
+            "farmer_registration": {
+                "identity": ["display_name", "mobile_number", "father_name", "age", "gender"],
+                "location": ["village_id", "village_name_manual", "pin_code", "enrollment_location"],
+                "crop_and_language": ["primary_crop_code", "total_land_area", "total_land_unit", "language_preference"],
+                "assistance": ["assistance_mode"],
+            },
+            "parcel_registration": {
+                "location": ["pin_code", "village_id", "village_name_manual", "parcel_location", "parcel_boundary", "location_scope"],
+                "land_holding": ["reported_area", "reported_area_unit", "ownership_type", "share_percentage", "sharecrop_percentage", "annual_rent"],
+                "water_and_crops": ["irrigation_source", "kharif_crops", "rabi_crops", "zaid_crops"],
+                "identity": ["local_name", "survey_number"],
+            },
+            "soil_profile": {
+                "observation": ["soil_type_code", "soil_texture", "soil_color", "data_source"],
+                "lab_or_shc": ["test_date", "lab_name", "shc_card_number", "nitrogen_n", "phosphorus_p", "potassium_k", "sulphur_s", "zinc_zn", "iron_fe", "copper_cu", "manganese_mn", "boron_b", "ph", "ec", "organic_carbon_oc"],
+                "backend_enrichment": ["SOILGRIDS", "SHC_SLUSI", "OPEN_METEO", "IN_HOUSE_SATELLITE"],
+            },
+        },
+        "agent_assisted_capture": {
+            "supported": True,
+            "actor_header": "X-Actor-ID",
+            "assignment_source": "farmer_project_enrollments.assigned_user_ids",
+            "dual_mode_supported": True,
+            "dual_mode_rule": "A user can have an AgentProfile and a linked Farmer profile; Android should use mode-bootstrap first_screen_hint.",
+        },
+        "offline_sync": {
+            "forms_cacheable": True,
+            "option_sets_cacheable": True,
+            "queue_mutations_when_offline": True,
+            "replay_order": ["farmer_registration", "parcel_registration", "soil_profile", "soil_enrichment_snapshot", "field_event", "query_thread"],
+            "idempotency_hint": "Use client-generated UUIDs where endpoint accepts ids; otherwise replay by stable local entity linkage and sync conflict rules.",
+        },
+        "soil_enrichment": {
+            "android_calls_external_providers": False,
+            "snapshot_endpoint": "/api/v1/soil-profiles/enrichments",
+            "latest_snapshot_endpoint": "/api/v1/soil-profiles/enrichments/latest",
+            "source_contract_endpoint": "/api/v1/soil-profiles/enrichments/source-contract",
+            "baseline_sources": ["SOILGRIDS", "SHC_SLUSI", "IN_HOUSE_SATELLITE"],
+            "dynamic_sources": ["OPEN_METEO", "IN_HOUSE_SATELLITE"],
+            "manual_import_sources": ["SHC_SLUSI"],
+        },
+        "location_model": {
+            "normal_anchor": "parcel.pin_code",
+            "manual_village_supported": True,
+            "multi_village_override": "parcel.location_scope",
+            "fpo_multi_village_supported": True,
+            "gps_progression": ["NONE", "PIN_DROP", "GPS_WALK", "SATELLITE"],
+        },
+    }
+
+
+def _profile_contract_payload_mappings() -> dict:
+    return {
+        "farmer_registration": {
+            "mobile_number": "farmer.mobile_number",
+            "pin_code": "farmer.pin_code",
+            "village_name_manual": "farmer.village_name_manual",
+            "primary_crop_code": "farmer.primary_crop_code",
+            "language_preference": "farmer.language_preference",
+            "assistance_mode": "farmer.enrollment_method",
+        },
+        "parcel_registration": {
+            "pin_code": "parcel.pin_code",
+            "location_scope": "parcel.location_scope",
+            "reported_area": "parcel.reported_area",
+            "reported_area_unit": "parcel.reported_area_unit",
+            "ownership_type": "parcel.ownership_type",
+            "share_percentage": "parcel.share_percentage",
+            "sharecrop_percentage": "parcel.sharecrop_percentage",
+            "irrigation_source": "parcel.irrigation_source",
+            "parcel_location": "parcel.centroid_lat_lng",
+            "parcel_boundary": "parcel.geojson",
+            "kharif_crops": "parcel.crops_by_season.KHARIF",
+            "rabi_crops": "parcel.crops_by_season.RABI",
+            "zaid_crops": "parcel.crops_by_season.ZAID",
+        },
+        "soil_profile": {
+            "soil_type_code": "soil_profile.soil_type_code",
+            "soil_texture": "soil_profile.soil_texture",
+            "soil_color": "soil_profile.soil_color",
+            "data_source": "soil_profile.data_source",
+            "boron_b": "soil_profile.boron_bo",
+            "organic_carbon_oc": "soil_profile.organic_carbon_oc",
+        },
+    }
+
+
 def _profile_contract_form_summary(schema: FormSchema) -> dict:
     fields = [_field_payload(field) for field in schema.fields]
     option_sets = sorted({str(field.get("source", "")).replace("profile_options.", "") for field in fields if str(field.get("source", "")).startswith("profile_options.")})
@@ -543,8 +639,12 @@ def get_profile_contract_summary(
             "validation": True,
             "readiness": True,
             "soil_enrichment_snapshots": True,
+            "agent_assisted_capture": True,
+            "mode_bootstrap": True,
             "android_should_hardcode_options": False,
         },
+        "android_handoff": _profile_contract_android_handoff(),
+        "payload_mappings": _profile_contract_payload_mappings(),
     }
 
 

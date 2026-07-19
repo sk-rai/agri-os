@@ -863,13 +863,17 @@ GET /api/v1/forms/profile-contract?project_id={project_id}
 The response uses `schema_version=profile_contract.v1` and summarizes:
 
 - profile forms in scope: `farmer_registration`, `parcel_registration`, `soil_profile`;
-- required fields by form;
-- canonical backend field mappings;
+- required and recommended fields by form;
+- canonical backend field mappings plus explicit `payload_mappings`;
 - option sets used by the forms, including source/version metadata;
-- GPS/offline capture hints;
+- grouped Android screen hints under `android_handoff.screen_groups`;
+- agent-assisted capture and dual farmer/agent mode hints;
+- location model hints: normal parcel anchor is `parcel.pin_code`, with `parcel.location_scope` for multi-village/FPO/edge cases;
+- offline cache/replay guidance;
+- soil enrichment source hints for SoilGrids, SHC/SLUSI, Open-Meteo, and future satellite snapshots;
 - `backend_owned_contract.android_should_hardcode_options=false`.
 
-Android should still fetch full form schemas from `/api/v1/forms/{form_id}` and effective options from `/api/v1/forms/options/{option_set}`. This summary is intended as a lightweight bootstrap/readiness contract so Android can avoid hardcoding seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, or assistance modes.
+Android should still fetch full form schemas from `/api/v1/forms/{form_id}` and effective options from `/api/v1/forms/options/{option_set}`. This summary is intended as a lightweight bootstrap/readiness contract so Android can avoid hardcoding seasons, land units, ownership types, irrigation sources, soil textures/colors, soil data sources, languages, assistance modes, agent mode behavior, location semantics, or soil enrichment provider assumptions.
 
 
 
