@@ -206,6 +206,8 @@ test("Profile completion includes land section", completion["sections"]["land"][
 test("Profile completion recommends soil capture", any(action["code"] == "ADD_SOIL_PROFILE" for action in completion["next_actions"]))
 test("Profile completion exposes weather snapshot readiness", completion["enrichment_readiness"]["has_weather_snapshot"] is True)
 test("Profile completion marks weather advisory ready", completion["enrichment_readiness"]["ready_for_weather_advisory"] is True)
+test("Profile completion exposes SoilGrids baseline flag", completion["enrichment_readiness"]["has_soilgrids_baseline_snapshot"] is False)
+test("Profile completion exposes SHC/SLUSI baseline flag", completion["enrichment_readiness"]["has_shc_slusi_snapshot"] is False)
 test("Profile completion marks soil moisture enrichment ready when land location exists", completion["enrichment_readiness"]["ready_for_soil_moisture_enrichment"] is True)
 test("Hydration summary mirrors home readiness", body["summary"]["profile_ready_for_home"] is True)
 test("Default hydration omits heavy form contract", body.get("form_contract") is None)

@@ -274,6 +274,13 @@ def main():
             ),
             SoilEnrichmentSnapshot(
                 id=uuid.uuid4(), tenant_id=tenant_id, parcel_id=uuid.UUID(parcel_id), farmer_id=uuid.UUID(farmer_id),
+                provider="SHC_SLUSI", provider_dataset="shc-slusi.wms", snapshot_type="BASELINE", status="AVAILABLE",
+                depth_layer="surface", resolution_meters=50000, confidence="GOVT_SAMPLE_POINT", observed_at=datetime.now(timezone.utc), fetched_at=datetime.now(timezone.utc),
+                ph=7.2, organic_carbon=0.25, nitrogen=163, normalized_values={"district": "AZAMGARH", "village": "Pakari Khurd"}, raw_payload={}, metadata_={"source_contract": "OGC_WMS_GETFEATUREINFO_JSON"},
+                created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+            ),
+            SoilEnrichmentSnapshot(
+                id=uuid.uuid4(), tenant_id=tenant_id, parcel_id=uuid.UUID(parcel_id), farmer_id=uuid.UUID(farmer_id),
                 provider="OPEN_METEO", provider_dataset="open-meteo.soil", snapshot_type="MOISTURE", status="AVAILABLE",
                 depth_layer="9-27cm", resolution_meters=10000, confidence="FORECAST_MODEL", observed_at=datetime.now(timezone.utc), fetched_at=datetime.now(timezone.utc),
                 surface_soil_moisture=0.22, root_zone_soil_moisture=0.31, normalized_values={}, raw_payload={}, metadata_={},
@@ -289,12 +296,18 @@ def main():
     readiness = readiness_response.json()
     readiness_row = next(row for row in readiness["farmers"] if row["farmer"]["id"] == farmer_id)
     enrichment = readiness_row["profile_completion"]["enrichment_readiness"]
-    check(enrichment["has_soil_baseline_snapshot"] is True, "Readiness detects SoilGrids baseline snapshot")
+    check(enrichment["has_soil_baseline_snapshot"] is True, "Readiness detects baseline snapshots")
     check(enrichment["has_soil_moisture_snapshot"] is True, "Readiness detects soil moisture snapshot")
-    check(enrichment["soil_baseline_snapshot_count"] == 1, "Readiness counts baseline snapshots")
+    check(enrichment["has_soilgrids_baseline_snapshot"] is True, "Readiness detects SoilGrids baseline snapshot")
+    check(enrichment["has_shc_slusi_snapshot"] is True, "Readiness detects SHC/SLUSI point snapshot")
+    check(enrichment["soil_baseline_snapshot_count"] == 2, "Readiness counts baseline snapshots")
     check(enrichment["soil_moisture_snapshot_count"] == 1, "Readiness counts moisture snapshots")
+    check(enrichment["soilgrids_baseline_snapshot_count"] == 1, "Readiness counts SoilGrids snapshots")
+    check(enrichment["shc_slusi_snapshot_count"] == 1, "Readiness counts SHC/SLUSI snapshots")
     check(readiness["summary"]["soil_baseline_snapshot_available_count"] >= 1, "Readiness summary counts baseline availability")
     check(readiness["summary"]["soil_moisture_snapshot_available_count"] >= 1, "Readiness summary counts moisture availability")
+    check(readiness["summary"]["soilgrids_baseline_snapshot_available_count"] >= 1, "Readiness summary counts SoilGrids availability")
+    check(readiness["summary"]["shc_slusi_snapshot_available_count"] >= 1, "Readiness summary counts SHC/SLUSI availability")
 
     print("\n[4b] Soil enrichment summary endpoint")
     summary_response = client.get(f"/api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}", headers=headers)
@@ -302,12 +315,13 @@ def main():
     summary = summary_response.json()
     check(summary["schema_version"] == "soil_enrichment_summary.v1", "Soil enrichment summary schema stable")
     check(summary["filters"]["farmer_id"] == farmer_id, "Soil enrichment summary preserves farmer filter")
-    check(summary["snapshot_count"] == 2, "Soil enrichment summary counts snapshots")
+    check(summary["snapshot_count"] == 3, "Soil enrichment summary counts snapshots")
     check(summary["has_baseline"] is True, "Soil enrichment summary detects baseline")
     check(summary["has_moisture"] is True, "Soil enrichment summary detects moisture")
     check(summary["provider_counts"]["SOILGRIDS"] == 1, "Soil enrichment summary counts SoilGrids provider")
     check(summary["provider_counts"]["OPEN_METEO"] == 1, "Soil enrichment summary counts moisture provider")
-    check(summary["latest_baseline"]["provider"] == "SOILGRIDS", "Soil enrichment summary exposes latest baseline")
+    check(summary["provider_counts"]["SHC_SLUSI"] == 1, "Soil enrichment summary counts SHC/SLUSI provider")
+    check(summary["latest_baseline"]["provider"] in {"SOILGRIDS", "SHC_SLUSI"}, "Soil enrichment summary exposes latest baseline")
     check(summary["latest_moisture"]["provider"] == "OPEN_METEO", "Soil enrichment summary exposes latest moisture")
 
     moisture_summary_response = client.get(f"/api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}&snapshot_type=MOISTURE", headers=headers)
