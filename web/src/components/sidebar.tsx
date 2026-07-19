@@ -46,6 +46,7 @@ const navSections: NavSection[] = [
       { href: "/query-threads", label: "Query Inbox", icon: "Chat" },
       { href: "/broadcasts", label: "Broadcasts", icon: "Signal" },
       { href: "/weather", label: "Weather", icon: "Cloud" },
+      { href: "/soil-enrichment", label: "Soil Enrichment", icon: "Soil" },
       { href: "/lookup", label: "Lookup", icon: "Search" },
     ],
   },

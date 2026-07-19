@@ -411,6 +411,70 @@ export interface CropCycleTraceResponse {
   activities: ActivityUsageRow[];
   media_attachments?: Record<string, MediaAttachmentTrace[]>;
 }
+export interface SoilEnrichmentJobAuditDto {
+  id: string;
+  tenant_id: string;
+  farmer_id?: string | null;
+  parcel_id?: string | null;
+  project_id?: string | null;
+  job_type: string;
+  provider?: string | null;
+  status: string;
+  attempt_count: number;
+  reason?: string | null;
+  error_code?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface SoilEnrichmentQueueItemDto {
+  farmer: {
+    id: string;
+    display_name?: string | null;
+    mobile_number?: string | null;
+    village_name_manual?: string | null;
+    pin_code?: string | null;
+  };
+  parcel: {
+    id: string;
+    project_id?: string | null;
+    village_id?: string | null;
+    village_name_manual?: string | null;
+    pin_code?: string | null;
+    geometry_source?: string | null;
+    has_centroid: boolean;
+  };
+  snapshot_counts: Record<string, number>;
+  missing_baseline: boolean;
+  missing_moisture: boolean;
+  reasons: string[];
+  recommended_jobs: string[];
+  latest_audit_by_job: Record<string, SoilEnrichmentJobAuditDto>;
+}
+
+export interface SoilEnrichmentQueueResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: {
+    project_id?: string | null;
+    farmer_id?: string | null;
+    missing?: string | null;
+    limit: number;
+  };
+  count: number;
+  reason_counts: Record<string, number>;
+  items: SoilEnrichmentQueueItemDto[];
+}
+
+export interface SoilEnrichmentJobAuditListResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: Record<string, unknown>;
+  count: number;
+  events: SoilEnrichmentJobAuditDto[];
+}
+
 export interface SoilEnrichmentTrace {
   id: string;
   provider: string;
@@ -1307,6 +1371,26 @@ export const farmersApi = {
     api(`/api/v1/parcels/${parcelId}`, { method: "PATCH", body }),
   updateSoilProfile: (profileId: string, body: Record<string, unknown>) =>
     api(`/api/v1/soil-profiles/${profileId}`, { method: "PATCH", body }),
+  soilEnrichmentQueue: (params?: { projectId?: string; farmerId?: string; missing?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.farmerId) q.set("farmer_id", params.farmerId);
+    if (params?.missing) q.set("missing", params.missing);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<SoilEnrichmentQueueResponse>(`/api/v1/soil-profiles/enrichments/queue${suffix}`);
+  },
+  soilEnrichmentJobAudit: (params?: { farmerId?: string; parcelId?: string; projectId?: string; jobType?: string; status?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.farmerId) q.set("farmer_id", params.farmerId);
+    if (params?.parcelId) q.set("parcel_id", params.parcelId);
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.jobType) q.set("job_type", params.jobType);
+    if (params?.status) q.set("status", params.status);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<SoilEnrichmentJobAuditListResponse>(`/api/v1/soil-profiles/enrichments/jobs/audit${suffix}`);
+  },
 };
 
 export const reportsApi = {
