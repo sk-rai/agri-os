@@ -1011,6 +1011,131 @@ def list_soil_enrichment_snapshots(
     return [_soil_enrichment_payload(row) for row in query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).limit(limit).all()]
 
 
+@router.get("/enrichments/queue")
+def list_soil_enrichment_queue(
+    project_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    missing: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return backend operational queue for soil enrichment fetch jobs.
+
+    This endpoint is intentionally provider-neutral. It tells admin/jobs which
+    farmer/parcel records have enough location context for backend enrichment
+    and which snapshot families are currently missing.
+    """
+    from app.modules.farmer.models import Farmer, Parcel
+    from app.modules.farmer.api import _soil_enrichment_snapshot_counts
+
+    missing_filter = missing.strip().upper() if missing else None
+    allowed_missing = {None, "BASELINE", "MOISTURE", "ANY"}
+    if missing_filter not in allowed_missing:
+        raise HTTPException(400, "missing must be BASELINE, MOISTURE, or ANY")
+
+    parcel_query = db.query(Parcel).filter(
+        Parcel.tenant_id == x_tenant_id,
+        Parcel.status != "ARCHIVED",
+    )
+    if project_id:
+        parcel_query = parcel_query.filter(Parcel.project_id == project_id)
+    if farmer_id:
+        parcel_query = parcel_query.filter(Parcel.farmer_id == farmer_id)
+
+    parcels = parcel_query.order_by(Parcel.updated_at.desc(), Parcel.created_at.desc()).limit(limit).all()
+    farmer_ids = {parcel.farmer_id for parcel in parcels if parcel.farmer_id}
+    farmers = {
+        farmer.id: farmer
+        for farmer in db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.id.in_(farmer_ids)).all()
+    } if farmer_ids else {}
+
+    rows = []
+    reason_counts = {
+        "MISSING_BASELINE": 0,
+        "MISSING_MOISTURE": 0,
+        "READY_FOR_BASELINE_FETCH": 0,
+        "READY_FOR_MOISTURE_FETCH": 0,
+        "LOCATION_READY": 0,
+    }
+
+    for parcel in parcels:
+        farmer = farmers.get(parcel.farmer_id)
+        has_location = (
+            (parcel.centroid_lat is not None and parcel.centroid_lng is not None)
+            or parcel.geometry_source in {"PIN_DROP", "GPS_WALK", "SATELLITE", "MANUAL_DRAW"}
+            or bool(parcel.village_id or parcel.village_name_manual or parcel.pin_code)
+        )
+        if not has_location:
+            continue
+
+        counts = _soil_enrichment_snapshot_counts(db, tenant_id=x_tenant_id, farmer_id=parcel.farmer_id)
+        missing_baseline = counts["baseline"] == 0
+        missing_moisture = counts["moisture"] == 0
+
+        if missing_filter == "BASELINE" and not missing_baseline:
+            continue
+        if missing_filter == "MOISTURE" and not missing_moisture:
+            continue
+        if missing_filter == "ANY" and not (missing_baseline or missing_moisture):
+            continue
+
+        reasons = []
+        if missing_baseline:
+            reasons.append("MISSING_BASELINE")
+            reasons.append("READY_FOR_BASELINE_FETCH")
+        if missing_moisture:
+            reasons.append("MISSING_MOISTURE")
+            reasons.append("READY_FOR_MOISTURE_FETCH")
+        reasons.append("LOCATION_READY")
+
+        for reason in reasons:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+        rows.append({
+            "farmer": {
+                "id": str(parcel.farmer_id),
+                "display_name": farmer.display_name if farmer else None,
+                "mobile_number": farmer.mobile_number if farmer else None,
+                "village_name_manual": farmer.village_name_manual if farmer else None,
+                "pin_code": farmer.pin_code if farmer else None,
+            },
+            "parcel": {
+                "id": str(parcel.id),
+                "project_id": str(parcel.project_id) if parcel.project_id else None,
+                "village_id": str(parcel.village_id) if parcel.village_id else None,
+                "village_name_manual": parcel.village_name_manual,
+                "pin_code": parcel.pin_code,
+                "geometry_source": parcel.geometry_source,
+                "has_centroid": parcel.centroid_lat is not None and parcel.centroid_lng is not None,
+            },
+            "snapshot_counts": counts,
+            "missing_baseline": missing_baseline,
+            "missing_moisture": missing_moisture,
+            "reasons": reasons,
+            "recommended_jobs": [
+                job for job, should_run in [
+                    ("FETCH_SOIL_BASELINE", missing_baseline),
+                    ("FETCH_SOIL_MOISTURE", missing_moisture),
+                ] if should_run
+            ],
+        })
+
+    return {
+        "schema_version": "soil_enrichment_queue.v1",
+        "tenant_id": x_tenant_id,
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "farmer_id": str(farmer_id) if farmer_id else None,
+            "missing": missing_filter,
+            "limit": limit,
+        },
+        "count": len(rows),
+        "reason_counts": reason_counts,
+        "items": rows,
+    }
+
+
 @router.get("/enrichments/summary")
 def get_soil_enrichment_summary(
     parcel_id: Optional[uuid.UUID] = Query(None),

@@ -334,6 +334,28 @@ def main():
     missing_filter_summary = client.get("/api/v1/soil-profiles/enrichments/summary", headers=headers)
     check(missing_filter_summary.status_code == 400, "Soil enrichment summary requires farmer or parcel filter", missing_filter_summary.text)
 
+    print("\n[4c] Soil enrichment queue endpoint")
+    queue_response = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}", headers=headers)
+    check(queue_response.status_code == 200, "Soil enrichment queue returns 200", queue_response.text)
+    queue = queue_response.json()
+    check(queue["schema_version"] == "soil_enrichment_queue.v1", "Soil enrichment queue schema stable")
+    check(queue["filters"]["farmer_id"] == farmer_id, "Soil enrichment queue preserves farmer filter")
+    check(queue["count"] >= 1, "Soil enrichment queue returns location-ready parcel rows")
+    queue_item = next(item for item in queue["items"] if item["parcel"]["id"] == parcel_id)
+    check(queue_item["snapshot_counts"]["baseline"] == 2, "Soil enrichment queue includes baseline count")
+    check(queue_item["snapshot_counts"]["moisture"] == 1, "Soil enrichment queue includes moisture count")
+    check(queue_item["missing_baseline"] is False, "Soil enrichment queue detects existing baseline")
+    check(queue_item["missing_moisture"] is False, "Soil enrichment queue detects existing moisture")
+    check("LOCATION_READY" in queue_item["reasons"], "Soil enrichment queue marks location-ready parcel")
+    check(queue_item["recommended_jobs"] == [], "Soil enrichment queue has no jobs when snapshots exist")
+
+    missing_any_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANY", headers=headers)
+    check(missing_any_queue.status_code == 200, "Soil enrichment missing ANY queue returns 200", missing_any_queue.text)
+    check(missing_any_queue.json()["count"] == 0, "Soil enrichment missing ANY queue excludes complete parcel")
+
+    invalid_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANDROID_ONLY", headers=headers)
+    check(invalid_queue.status_code == 400, "Soil enrichment queue rejects invalid missing filter", invalid_queue.text)
+
     db = SessionLocal()
     try:
         stored_soil = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).first()
