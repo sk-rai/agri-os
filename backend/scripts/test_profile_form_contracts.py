@@ -158,6 +158,35 @@ def main():
     check(reviewed_candidate["reviewed_by"] is not None, "Company discovery candidate records reviewer")
 
 
+    csv_payload = (
+        "candidate_name,company_type,source,website_url,support_email,support_phone,state,district,crop_focus,confidence_score,source_url,source_label,notes\n"
+        "Kashi Seeds Pvt Ltd,SEED_COMPANY,PUBLIC_WEB,https://example.test/kashi,seed@example.test,+910000000002,UTTAR_PRADESH,VARANASI,RICE|WHEAT,0.91,https://example.test/kashi,Public search,Seed candidate\n"
+    )
+    csv_validation = client.post(
+        "/api/v1/company-discovery-candidates/csv/validate",
+        headers=headers,
+        files={"file": ("company-discovery.csv", csv_payload, "text/csv")},
+    )
+    check(csv_validation.status_code == 200, "Company discovery CSV validation returns 200", csv_validation.text[:500])
+    csv_validation_body = csv_validation.json()
+    check(csv_validation_body["schema_version"] == "company_discovery_csv_validation.v1", "Company discovery CSV validation schema is stable")
+    check(csv_validation_body["valid"] is True, "Company discovery CSV validation accepts valid rows")
+    check(csv_validation_body["valid_count"] == 1, "Company discovery CSV validation counts valid rows")
+    check(csv_validation_body["rows"][0]["candidate"]["company_type"] == "SEED_COMPANY", "Company discovery CSV preserves specific company type")
+
+    csv_import = client.post(
+        "/api/v1/company-discovery-candidates/csv/import",
+        headers=headers,
+        files={"file": ("company-discovery.csv", csv_payload, "text/csv")},
+    )
+    check(csv_import.status_code == 200, "Company discovery CSV import returns 200", csv_import.text[:500])
+    csv_import_body = csv_import.json()
+    check(csv_import_body["schema_version"] == "company_discovery_csv_import.v1", "Company discovery CSV import schema is stable")
+    check(csv_import_body["imported_count"] == 1, "Company discovery CSV imports one candidate")
+    check(csv_import_body["candidates"][0]["candidate_name"] == "Kashi Seeds Pvt Ltd", "Company discovery CSV import returns created candidate")
+
+
+
     candidate_apply = client.post(
         f"/api/v1/company-discovery-candidates/{candidate_id}/apply",
         headers=headers,

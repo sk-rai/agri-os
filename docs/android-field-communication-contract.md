@@ -993,3 +993,6 @@ POST /api/v1/soil-profiles/enrichments/shc-slusi/point-capture
 
 Important payload fields include `parcel_id`, `state`, `district`, optional `village`, `latitude`, `longitude`, `cycle`, `source_url`, optional observed `wms_url`, nutrient values (`n_kg_ha`, `p_kg_ha`, `k_kg_ha`, `b_ppm`, `fe_ppm`, `zn_ppm`, `cu_ppm`, `s_ppm`, `organic_carbon_percent`, `ph`, `ec_ds_m`, `mn_ppm`), and land-property values (`depth_50k`, `slope_50k`, `erosion_50k`, `texture_50k`, `lcc_50k`, `lic_50k`, `hsg_50k`, `cec_text`, `soil_code`). The backend stores canonical values where fields exist (`nitrogen`, `ph`, `organic_carbon`) and keeps the remaining nutrient/land-property data in `normalized_values.nutrients` and `normalized_values.soil_land_properties`, with `confidence=GOVT_POINT_POPUP` and `metadata.capture_method=ADMIN_POINT_POPUP_CAPTURE`.
 
+### Company discovery CSV
+
+Company discovery candidates can be staged in bulk through CSV: download `GET /api/v1/company-discovery-candidates/template.csv`, validate with `POST /api/v1/company-discovery-candidates/csv/validate`, and import with `POST /api/v1/company-discovery-candidates/csv/import`. Imported rows remain `PENDING_REVIEW`; they do not become live company profiles until reviewed/applied.

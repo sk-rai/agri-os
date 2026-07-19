@@ -436,6 +436,29 @@ export interface CompanyDiscoveryCandidateDto {
   updated_at?: string | null;
 }
 
+export interface CompanyDiscoveryCsvValidationResponse {
+  schema_version: string;
+  tenant_id: string;
+  file_name: string;
+  valid: boolean;
+  row_count: number;
+  valid_count: number;
+  error_count: number;
+  rows: Array<{ line_number: number; valid: boolean; errors: string[]; candidate: Record<string, unknown> }>;
+  required_columns: string[];
+  optional_columns: string[];
+  message: string;
+}
+
+export interface CompanyDiscoveryCsvImportResponse {
+  schema_version: string;
+  tenant_id: string;
+  file_name: string;
+  imported_count: number;
+  candidates: CompanyDiscoveryCandidateDto[];
+  message: string;
+}
+
 export interface CompanyDiscoveryCandidatesResponse {
   schema_version: string;
   tenant_id: string;
@@ -1449,6 +1472,12 @@ export const companyApi = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return api<CompanyDiscoveryCandidatesResponse>(`/api/v1/company-discovery-candidates${suffix}`);
   },
+  downloadCompanyDiscoveryTemplate: () =>
+    apiDownload("/api/v1/company-discovery-candidates/template.csv", "company-discovery-candidates-template.csv"),
+  validateCompanyDiscoveryCsv: (file: File) =>
+    apiUpload<CompanyDiscoveryCsvValidationResponse>("/api/v1/company-discovery-candidates/csv/validate", file),
+  importCompanyDiscoveryCsv: (file: File) =>
+    apiUpload<CompanyDiscoveryCsvImportResponse>("/api/v1/company-discovery-candidates/csv/import", file),
   createCompanyDiscoveryCandidate: (body: Record<string, unknown>) =>
     api<CompanyDiscoveryCandidateDto>("/api/v1/company-discovery-candidates", { method: "POST", body }),
   reviewCompanyDiscoveryCandidate: (candidateId: string, body: Record<string, unknown>) =>

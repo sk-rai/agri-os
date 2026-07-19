@@ -504,3 +504,7 @@ Admin web exposes `/company-discovery` for reviewing staged company discovery ca
 Specific company type values now include seed, fertilizer, pesticide, machinery, buyer, trader, warehouse, and financial-institution categories in addition to FPO, input company, processor, insurer, NGO, government, cooperative, agri-tech, enterprise, and other.
 
 Approved discovery candidates can be applied into the live tenant company profile through `POST /api/v1/company-discovery-candidates/{candidate_id}/apply`; the action marks the candidate `MERGED`, updates the profile source/verification fields, and writes a company profile audit event.
+
+### Company discovery CSV
+
+Company discovery candidates can be staged in bulk through CSV: download `GET /api/v1/company-discovery-candidates/template.csv`, validate with `POST /api/v1/company-discovery-candidates/csv/validate`, and import with `POST /api/v1/company-discovery-candidates/csv/import`. Imported rows remain `PENDING_REVIEW`; they do not become live company profiles until reviewed/applied.

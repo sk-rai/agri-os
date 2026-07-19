@@ -32,6 +32,54 @@ from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAudi
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
+COMPANY_DISCOVERY_CSV_COLUMNS = [
+    "candidate_name",
+    "company_type",
+    "source",
+    "website_url",
+    "support_email",
+    "support_phone",
+    "state",
+    "district",
+    "crop_focus",
+    "confidence_score",
+    "source_url",
+    "source_label",
+    "notes",
+]
+
+COMPANY_DISCOVERY_COMPANY_TYPES = {
+    "ENTERPRISE",
+    "FPO",
+    "COOPERATIVE",
+    "NGO",
+    "GOVERNMENT",
+    "INSURER",
+    "PROCESSOR",
+    "INPUT_COMPANY",
+    "SEED_COMPANY",
+    "FERTILIZER_COMPANY",
+    "PESTICIDE_COMPANY",
+    "MACHINERY_COMPANY",
+    "BUYER",
+    "TRADER",
+    "WAREHOUSE",
+    "FINANCIAL_INSTITUTION",
+    "AGRI_TECH",
+    "OTHER",
+}
+
+COMPANY_DISCOVERY_SOURCES = {
+    "PUBLIC_WEB",
+    "BULK_IMPORT",
+    "GOVERNMENT_REGISTRY",
+    "PARTNER_DIRECTORY",
+    "CLIENT_PROVIDED",
+    "OTHER",
+}
+
+
+
 
 # --- Schemas ---
 
@@ -74,6 +122,21 @@ class CompanyProfileUpsert(BaseModel):
     metadata: dict = Field(default_factory=dict)
     reason: Optional[str] = Field(None, min_length=3, max_length=500)
 
+
+
+
+class CompanyDiscoveryCsvValidationResponse(BaseModel):
+    schema_version: str
+    tenant_id: str
+    file_name: str
+    valid: bool
+    row_count: int
+    valid_count: int
+    error_count: int
+    rows: list[dict]
+    required_columns: list[str]
+    optional_columns: list[str]
+    message: str
 
 
 class CompanyDiscoveryCandidateCreate(BaseModel):
@@ -1598,6 +1661,128 @@ def _enrollment_validation_report(rows: list[dict], file_name: str, project_id: 
 
 
 
+
+def _csv_text(value: Optional[str]) -> str:
+    return str(value or "").strip()
+
+
+def _parse_csv_json_list(value: str, *, fallback_item: Optional[dict] = None) -> list:
+    raw = _csv_text(value)
+    if not raw:
+        return [fallback_item] if fallback_item else []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+    except Exception:
+        pass
+    return [item.strip() for item in raw.split("|") if item.strip()]
+
+
+def _parse_company_discovery_csv(contents: bytes, *, file_name: str, tenant_id: str) -> dict:
+    text_stream = io.StringIO(contents.decode("utf-8-sig"))
+    reader = csv.DictReader(text_stream)
+    rows = []
+    errors = []
+    required = ["candidate_name", "source"]
+    fieldnames = reader.fieldnames or []
+    missing_columns = [column for column in required if column not in fieldnames]
+
+    if missing_columns:
+        return {
+            "schema_version": "company_discovery_csv_validation.v1",
+            "tenant_id": tenant_id,
+            "file_name": file_name,
+            "valid": False,
+            "row_count": 0,
+            "valid_count": 0,
+            "error_count": len(missing_columns),
+            "rows": [],
+            "required_columns": required,
+            "optional_columns": [column for column in COMPANY_DISCOVERY_CSV_COLUMNS if column not in required],
+            "message": "Missing required columns: " + ", ".join(missing_columns),
+        }
+
+    for index, row in enumerate(reader, start=2):
+        row_errors = []
+        candidate_name = _csv_text(row.get("candidate_name"))
+        source = (_csv_text(row.get("source")) or "BULK_IMPORT").upper()
+        company_type = _csv_text(row.get("company_type")).upper() or None
+        confidence_raw = _csv_text(row.get("confidence_score"))
+
+        if not candidate_name:
+            row_errors.append("candidate_name is required")
+        if source not in COMPANY_DISCOVERY_SOURCES:
+            row_errors.append("source must be one of " + ", ".join(sorted(COMPANY_DISCOVERY_SOURCES)))
+        if company_type and company_type not in COMPANY_DISCOVERY_COMPANY_TYPES:
+            row_errors.append("company_type must be one of " + ", ".join(sorted(COMPANY_DISCOVERY_COMPANY_TYPES)))
+
+        confidence_score = None
+        if confidence_raw:
+            try:
+                confidence_score = float(confidence_raw)
+                if confidence_score < 0 or confidence_score > 1:
+                    row_errors.append("confidence_score must be between 0 and 1")
+            except ValueError:
+                row_errors.append("confidence_score must be numeric")
+
+        state = _csv_text(row.get("state"))
+        district = _csv_text(row.get("district"))
+        source_url = _csv_text(row.get("source_url"))
+        source_label = _csv_text(row.get("source_label")) or source
+        crop_focus = [item.strip().upper() for item in _csv_text(row.get("crop_focus")).replace("|", ",").split(",") if item.strip()]
+        source_references = _parse_csv_json_list(
+            _csv_text(row.get("source_references")),
+            fallback_item={"label": source_label, "url": source_url} if source_url else None,
+        )
+        discovered_profile = {
+            key: value for key, value in {
+                "website_url": _csv_text(row.get("website_url")),
+                "support_email": _csv_text(row.get("support_email")),
+                "support_phone": _csv_text(row.get("support_phone")),
+            }.items() if value
+        }
+        operating_geography = {key: value for key, value in {"state": state, "district": district}.items() if value}
+
+        item = {
+            "line_number": index,
+            "valid": not row_errors,
+            "errors": row_errors,
+            "candidate": {
+                "candidate_name": candidate_name,
+                "normalized_name": candidate_name.upper() if candidate_name else None,
+                "company_type": company_type,
+                "source": source,
+                "source_references": source_references,
+                "discovered_profile": discovered_profile,
+                "operating_geography": operating_geography,
+                "crop_focus": crop_focus,
+                "confidence_score": confidence_score,
+                "duplicate_keys": {"normalized_name": candidate_name.upper()} if candidate_name else {},
+                "review_status": "PENDING_REVIEW",
+                "review_notes": _csv_text(row.get("notes")) or None,
+                "metadata": {"csv_file_name": file_name, "csv_line_number": index},
+            },
+        }
+        rows.append(item)
+        errors.extend(row_errors)
+
+    valid_count = sum(1 for row in rows if row["valid"])
+    return {
+        "schema_version": "company_discovery_csv_validation.v1",
+        "tenant_id": tenant_id,
+        "file_name": file_name,
+        "valid": len(errors) == 0,
+        "row_count": len(rows),
+        "valid_count": valid_count,
+        "error_count": len(errors),
+        "rows": rows,
+        "required_columns": required,
+        "optional_columns": [column for column in COMPANY_DISCOVERY_CSV_COLUMNS if column not in required],
+        "message": "Validation passed." if len(errors) == 0 else "Validation failed. Fix errors before import.",
+    }
+
+
 def _company_discovery_candidate_payload(candidate: CompanyDiscoveryCandidate) -> dict:
     return {
         "id": str(candidate.id),
@@ -1706,6 +1891,99 @@ def list_tenants(
     )
 
 
+
+
+
+@router.get("/company-discovery-candidates/template.csv")
+def download_company_discovery_template():
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=COMPANY_DISCOVERY_CSV_COLUMNS)
+    writer.writeheader()
+    writer.writerow({
+        "candidate_name": "Example Seed Company",
+        "company_type": "SEED_COMPANY",
+        "source": "PUBLIC_WEB",
+        "website_url": "https://example.test",
+        "support_email": "support@example.test",
+        "support_phone": "+910000000000",
+        "state": "UTTAR_PRADESH",
+        "district": "AZAMGARH",
+        "crop_focus": "RICE,WHEAT",
+        "confidence_score": "0.80",
+        "source_url": "https://example.test/directory",
+        "source_label": "Public directory",
+        "notes": "Seeded for review",
+    })
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=company-discovery-candidates-template.csv"},
+    )
+
+
+@router.post("/company-discovery-candidates/csv/validate", response_model=CompanyDiscoveryCsvValidationResponse)
+def validate_company_discovery_csv(
+    file: UploadFile = File(...),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    contents = file.file.read()
+    return _parse_company_discovery_csv(contents, file_name=file.filename or "company-discovery.csv", tenant_id=x_tenant_id)
+
+
+@router.post("/company-discovery-candidates/csv/import")
+def import_company_discovery_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    contents = file.file.read()
+    validation = _parse_company_discovery_csv(contents, file_name=file.filename or "company-discovery.csv", tenant_id=x_tenant_id)
+    if not validation["valid"]:
+        raise HTTPException(400, validation)
+
+    imported = []
+    now = datetime.now(timezone.utc)
+    for row in validation["rows"]:
+        candidate_body = row["candidate"]
+        candidate = CompanyDiscoveryCandidate(
+            tenant_id=x_tenant_id,
+            candidate_name=candidate_body["candidate_name"],
+            normalized_name=candidate_body["normalized_name"],
+            company_type=candidate_body["company_type"],
+            source=candidate_body["source"],
+            source_references=candidate_body["source_references"],
+            discovered_profile=candidate_body["discovered_profile"],
+            operating_geography=candidate_body["operating_geography"],
+            crop_focus=candidate_body["crop_focus"],
+            confidence_score=candidate_body["confidence_score"],
+            duplicate_keys=candidate_body["duplicate_keys"],
+            review_status="PENDING_REVIEW",
+            review_notes=candidate_body["review_notes"],
+            metadata_=candidate_body["metadata"],
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(candidate)
+        imported.append(candidate)
+
+    db.commit()
+    for candidate in imported:
+        db.refresh(candidate)
+
+    return {
+        "schema_version": "company_discovery_csv_import.v1",
+        "tenant_id": x_tenant_id,
+        "file_name": validation["file_name"],
+        "imported_count": len(imported),
+        "candidates": [_company_discovery_candidate_payload(candidate) for candidate in imported],
+        "message": "Company discovery candidates imported for review.",
+    }
 
 
 @router.post("/company-discovery-candidates", status_code=201)
