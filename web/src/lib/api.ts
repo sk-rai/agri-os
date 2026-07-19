@@ -1391,6 +1391,18 @@ export const farmersApi = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<SoilEnrichmentJobAuditListResponse>(`/api/v1/soil-profiles/enrichments/jobs/audit${suffix}`);
   },
+  createSoilEnrichmentJobAudit: (body: {
+    farmer_id?: string | null;
+    parcel_id?: string | null;
+    project_id?: string | null;
+    job_type: string;
+    provider?: string | null;
+    status: string;
+    attempt_count?: number;
+    reason?: string | null;
+    error_code?: string | null;
+    metadata?: Record<string, unknown>;
+  }) => api<SoilEnrichmentJobAuditDto>("/api/v1/soil-profiles/enrichments/jobs/audit", { method: "POST", body }),
 };
 
 export const reportsApi = {

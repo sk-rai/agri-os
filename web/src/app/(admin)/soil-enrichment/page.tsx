@@ -23,6 +23,30 @@ export default function SoilEnrichmentPage() {
     }
   }
 
+  async function recordAudit(item: SoilEnrichmentQueueResponse["items"][number], jobType: string, status: "SKIPPED" | "DEFERRED" | "FAILED") {
+    const reason = window.prompt(`Reason for ${status} ${jobType}?`, status === "FAILED" ? "Manual admin failure marker" : "Manual admin queue decision");
+    if (reason === null) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await farmersApi.createSoilEnrichmentJobAudit({
+        farmer_id: item.farmer.id,
+        parcel_id: item.parcel.id,
+        project_id: item.parcel.project_id,
+        job_type: jobType,
+        status,
+        attempt_count: 1,
+        reason,
+        error_code: status === "FAILED" ? "MANUAL_ADMIN_MARKER" : undefined,
+        metadata: { source: "admin_soil_enrichment_queue" },
+      });
+      await loadQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record audit event");
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +105,9 @@ export default function SoilEnrichmentPage() {
                   <div className="font-semibold text-gray-800">{job}</div>
                   {audit ? <div className="mt-1 text-gray-600">Latest: {audit.status} · {audit.provider || "-"} · attempts {audit.attempt_count}</div> : <div className="mt-1 text-gray-400">No attempts recorded</div>}
                   {audit?.error_code ? <div className="mt-1 text-red-700">{audit.error_code}</div> : null}
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {(["SKIPPED", "DEFERRED", "FAILED"] as const).map((status) => <button key={status} type="button" onClick={() => void recordAudit(item, job, status)} className="rounded border bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-100">{status}</button>)}
+                  </div>
                 </div>;
               })}
             </div> : <span className="text-xs text-green-700">No backend jobs recommended</span>}
