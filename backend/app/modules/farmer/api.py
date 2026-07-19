@@ -3032,7 +3032,7 @@ def create_parcel(
 
     # Determine geometry source from provided data
     geometry_source = "NONE"
-    if body.centroid_lat and body.centroid_lng:
+    if body.centroid_lat is not None and body.centroid_lng is not None:
         geometry_source = "PIN_DROP"
 
     parcel = Parcel(

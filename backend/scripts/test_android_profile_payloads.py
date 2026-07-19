@@ -73,6 +73,24 @@ def main():
     finally:
         db.close()
 
+    farmer_update = client.patch(f"/api/v1/farmers/{farmer_id}", headers=headers, json={
+        "pin_code": "560099",
+        "language_preference": "hi",
+        "assistance_mode": "FIELD_AGENT_ASSISTED",
+        "enrollment_gps_lat": 0.0,
+        "enrollment_gps_lng": 77.5946,
+    })
+    check(farmer_update.status_code == 200, "Android farmer update payload patches farmer", farmer_update.text)
+    updated_farmer = farmer_update.json()
+    check(updated_farmer["pin_code"] == "560099", "Farmer update returns changed PIN code")
+    db = SessionLocal()
+    try:
+        stored_farmer = db.query(Farmer).filter(Farmer.id == uuid.UUID(farmer_id), Farmer.tenant_id == tenant_id).first()
+        check(stored_farmer.enrollment_method == "ASSISTED", "Assisted update remains backend-normalized")
+        check(float(stored_farmer.enrollment_gps_lat) == 0.0, "Farmer update stores zero latitude")
+    finally:
+        db.close()
+
     invalid_farmer = client.post("/api/v1/farmers", headers=headers, json={
         "mobile_number": f"+9197{uuid.uuid4().int % 100000000:08d}",
         "village_name_manual": "Android Profile Village",
@@ -103,6 +121,48 @@ def main():
         check(stored_parcel.sharecrop_percentage == 40, "Sharecrop percentage stored")
         check(stored_parcel.irrigation_source == "PURCHASED_WATER", "Configurable irrigation value stored")
         check((stored_parcel.crops_by_season or {}).get("KHARIF") == ["RICE"], "Seasonal crop payload stored")
+    finally:
+        db.close()
+
+    part_owner_parcel_response = client.post("/api/v1/parcels", headers=headers, json={
+        "farmer_id": farmer_id,
+        "village_name_manual": "Android Profile Village",
+        "pin_code": "560002",
+        "location_scope": {"pin_codes": ["560002"], "village_names": ["Android Profile Village", "Adjacent Village"], "notes": "FPO or cross-village plot support"},
+        "reported_area": 1.25,
+        "reported_area_unit": "ACRE",
+        "ownership_type": "PART_OWNER",
+        "share_percentage": 50,
+        "centroid_lat": 0.0,
+        "centroid_lng": 77.5946,
+    })
+    check(part_owner_parcel_response.status_code == 201, "Android parcel payload accepts part-owner multi-location PIN plot", part_owner_parcel_response.text)
+    part_owner_parcel = part_owner_parcel_response.json()
+    check(part_owner_parcel["pin_code"] == "560002", "Parcel response returns PIN code")
+    check(part_owner_parcel["location_scope"]["pin_codes"] == ["560002"], "Parcel response returns location scope")
+    check(part_owner_parcel["ownership_type"] == "PART_OWNER", "Parcel response returns part-owner ownership")
+    check(part_owner_parcel["geometry_source"] == "PIN_DROP", "Zero latitude pin-drop is treated as captured geometry")
+
+    parcel_update = client.patch(f"/api/v1/parcels/{part_owner_parcel['id']}", headers=headers, json={
+        "pin_code": "560003",
+        "location_scope": {"pin_codes": ["560003"], "village_names": ["Updated Village"], "custom_scope": True},
+        "ownership_type": "SHARED",
+        "share_percentage": 60,
+        "irrigation_source": "RAIN_FED",
+    })
+    check(parcel_update.status_code == 200, "Android parcel update payload patches parcel", parcel_update.text)
+    patched_parcel = parcel_update.json()
+    check(patched_parcel["pin_code"] == "560003", "Parcel update returns changed PIN code")
+    check(patched_parcel["location_scope"]["custom_scope"] is True, "Parcel update returns customized location scope")
+    check(patched_parcel["ownership_type"] == "SHARED", "Parcel update returns changed ownership")
+
+    db = SessionLocal()
+    try:
+        stored_part_owner_parcel = db.query(Parcel).filter(Parcel.id == uuid.UUID(part_owner_parcel["id"]), Parcel.tenant_id == tenant_id).first()
+        check(stored_part_owner_parcel is not None, "Part-owner parcel row stored")
+        check(float(stored_part_owner_parcel.centroid_lat) == 0.0, "Parcel stores zero latitude pin-drop")
+        check(stored_part_owner_parcel.geometry_source == "PIN_DROP", "Parcel stores pin-drop geometry source")
+        check((stored_part_owner_parcel.location_scope or {}).get("custom_scope") is True, "Parcel stores updated location scope")
     finally:
         db.close()
 
@@ -182,6 +242,16 @@ def main():
     soil = soil_response.json()
     check(float(soil["boron_b"]) == 0.42, "Soil response returns boron_b alias")
 
+    soil_update = client.patch(f"/api/v1/soil-profiles/{soil['id']}", headers=headers, json={
+        "boron_b": 0.55,
+        "ph": 7.3,
+        "data_source": "LAB_REPORT",
+        "lab_name": "Android Payload Lab",
+    })
+    check(soil_update.status_code == 200, "Android soil update payload patches soil profile", soil_update.text)
+    updated_soil = soil_update.json()
+    check(float(updated_soil["boron_b"]) == 0.55, "Soil update returns changed boron_b alias")
+
     invalid_soil = client.post("/api/v1/soil-profiles", headers=headers, json={
         "parcel_id": parcel_id,
         "farmer_id": farmer_id,
@@ -230,7 +300,8 @@ def main():
     try:
         stored_soil = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).first()
         check(stored_soil is not None, "Soil profile row stored")
-        check(float(stored_soil.boron_bo) == 0.42, "Android boron_b stored as backend boron_bo")
+        check(float(stored_soil.boron_bo) == 0.55, "Android boron_b update stored as backend boron_bo")
+        check(stored_soil.lab_name == "Android Payload Lab", "Soil update stores lab metadata")
 
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
