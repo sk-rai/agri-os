@@ -629,3 +629,8 @@ Design intent:
 - Make safety explicit: never silently replace regulated agronomist advice, pesticide dosage rules, insurance decisions, or emergency alerts without a configured approval policy.
 
 This future capability should plug into the existing broadcast primitives: campaign, localized content, media attachments, audience rules, delivery rows, read/ack state, and audit history.
+
+### Company/customer profile
+
+Agri-OS now keeps a backend-only tenant-scoped company profile for the organization using the product, separate from farmer, agent, project, and Android profile data. This profile stores legal/display names, organization type, registration identifiers, support contacts, head-office details, operating geography, crop focus, service model, and backend configuration. Use `GET /api/v1/tenants/{tenant_id}/company-profile` and `PUT /api/v1/tenants/{tenant_id}/company-profile`; Android MVP does not need to render or mutate it.
+

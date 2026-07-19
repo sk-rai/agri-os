@@ -483,3 +483,7 @@ Backend now has a SoilGrids adapter boundary for parcel-level baseline enrichmen
 
 Production provider strategy should prefer stable bulk/geospatial access paths where needed: WCS, WebDAV VRT/GeoTIFF, Google Earth Engine, or an internal cached tile/vector job. The normalized backend snapshot contract remains unchanged across those provider choices.
 
+### Company/customer profile
+
+Agri-OS now keeps a backend-only tenant-scoped company profile for the organization using the product, separate from farmer, agent, project, and Android profile data. This profile stores legal/display names, organization type, registration identifiers, support contacts, head-office details, operating geography, crop focus, service model, and backend configuration. Use `GET /api/v1/tenants/{tenant_id}/company-profile` and `PUT /api/v1/tenants/{tenant_id}/company-profile`; Android MVP does not need to render or mutate it.
+

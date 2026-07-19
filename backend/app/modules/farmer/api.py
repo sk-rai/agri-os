@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
+from app.modules.farmer.models import Tenant, CompanyProfile, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -51,6 +51,32 @@ class TenantResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+
+class CompanyProfileUpsert(BaseModel):
+    legal_name: Optional[str] = Field(None, max_length=200)
+    display_name: Optional[str] = Field(None, max_length=200)
+    company_type: str = Field(default="ENTERPRISE", pattern=r"^(ENTERPRISE|FPO|COOPERATIVE|NGO|GOVERNMENT|INSURER|PROCESSOR|INPUT_COMPANY|AGRI_TECH|OTHER)$")
+    registration_number: Optional[str] = Field(None, max_length=100)
+    gstin: Optional[str] = Field(None, max_length=30)
+    pan: Optional[str] = Field(None, max_length=20)
+    website_url: Optional[str] = Field(None, max_length=300)
+    support_email: Optional[str] = Field(None, max_length=200)
+    support_phone: Optional[str] = Field(None, max_length=30)
+    head_office: dict = Field(default_factory=dict)
+    operating_geography: dict = Field(default_factory=dict)
+    crop_focus: list[str] = Field(default_factory=list)
+    service_model: dict = Field(default_factory=dict)
+    config: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+
+
+class CompanyProfileResponse(BaseModel):
+    schema_version: str
+    tenant_id: str
+    profile: dict
+    updated: bool = False
+    message: Optional[str] = None
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=200)
@@ -1532,6 +1558,32 @@ def _enrollment_validation_report(rows: list[dict], file_name: str, project_id: 
     }
 
 
+
+def _company_profile_payload(profile: CompanyProfile) -> dict:
+    return {
+        "id": str(profile.id),
+        "tenant_id": profile.tenant_id,
+        "legal_name": profile.legal_name,
+        "display_name": profile.display_name,
+        "company_type": profile.company_type,
+        "registration_number": profile.registration_number,
+        "gstin": profile.gstin,
+        "pan": profile.pan,
+        "website_url": profile.website_url,
+        "support_email": profile.support_email,
+        "support_phone": profile.support_phone,
+        "head_office": profile.head_office or {},
+        "operating_geography": profile.operating_geography or {},
+        "crop_focus": profile.crop_focus or [],
+        "service_model": profile.service_model or {},
+        "config": profile.config or {},
+        "metadata": profile.metadata_ or {},
+        "is_active": profile.is_active,
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+
+
 # --- Tenant Endpoints ---
 
 @router.post("/tenants", response_model=TenantResponse, status_code=201)
@@ -1567,6 +1619,95 @@ def list_tenants(
         .all()
     )
 
+
+
+@router.get("/tenants/{tenant_id}/company-profile", response_model=CompanyProfileResponse)
+def get_company_profile(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    if tenant_id != x_tenant_id:
+        raise HTTPException(403, {
+            "error": "TENANT_ID_MISMATCH",
+            "message": "Path tenant_id must match X-Tenant-ID.",
+        })
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    profile = db.query(CompanyProfile).filter(CompanyProfile.tenant_id == tenant_id, CompanyProfile.is_active == True).first()
+    return {
+        "schema_version": "company_profile.v1",
+        "tenant_id": tenant_id,
+        "profile": _company_profile_payload(profile) if profile else {},
+        "updated": False,
+        "message": "Company profile returned." if profile else "Company profile not configured.",
+    }
+
+
+@router.put("/tenants/{tenant_id}/company-profile", response_model=CompanyProfileResponse)
+def upsert_company_profile(
+    tenant_id: str,
+    body: CompanyProfileUpsert,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+):
+    if tenant_id != x_tenant_id:
+        raise HTTPException(403, {
+            "error": "TENANT_ID_MISMATCH",
+            "message": "Path tenant_id must match X-Tenant-ID.",
+        })
+    if principal.role != "ENTERPRISE_ADMIN":
+        raise HTTPException(403, {
+            "error": "ENTERPRISE_ADMIN_REQUIRED",
+            "message": "Only enterprise admins can update company profile.",
+            "current_role": principal.role,
+        })
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+
+    profile = db.query(CompanyProfile).filter(CompanyProfile.tenant_id == tenant_id).first()
+    now = datetime.now(timezone.utc)
+    if not profile:
+        profile = CompanyProfile(tenant_id=tenant_id, created_at=now)
+
+    for field in [
+        "legal_name",
+        "display_name",
+        "company_type",
+        "registration_number",
+        "gstin",
+        "pan",
+        "website_url",
+        "support_email",
+        "support_phone",
+        "head_office",
+        "operating_geography",
+        "crop_focus",
+        "service_model",
+        "config",
+    ]:
+        setattr(profile, field, getattr(body, field))
+    profile.metadata_ = body.metadata or {}
+    profile.updated_at = now
+    profile.is_active = True
+
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "schema_version": "company_profile.v1",
+        "tenant_id": tenant_id,
+        "profile": _company_profile_payload(profile),
+        "updated": True,
+        "message": "Company profile saved.",
+    }
 
 @router.patch("/tenants/{tenant_id}/app-config", response_model=TenantAppConfigResponse)
 def update_tenant_app_config(

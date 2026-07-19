@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Project, ProjectAppConfigAuditEvent, Tenant
+from app.modules.farmer.models import CompanyProfile, Project, ProjectAppConfigAuditEvent, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -61,6 +61,40 @@ def main():
     check(payload["schema_version"] == "app_bootstrap.v1", "Bootstrap schema version is stable")
     check("profile_forms" in payload, "Bootstrap advertises profile_forms")
     check(REQUIRED_FLAGS.issubset(set(payload["feature_flags"].keys())), "Bootstrap exposes profile form feature flags")
+    company_missing = client.get("/api/v1/tenants/default/company-profile", headers={"X-Tenant-ID": "default"})
+    check(company_missing.status_code == 200, "Company profile empty read returns 200", company_missing.text[:300])
+    check(company_missing.json()["schema_version"] == "company_profile.v1", "Company profile schema is stable")
+    check(company_missing.json()["profile"] == {}, "Company profile starts unconfigured")
+
+    company_patch = client.put(
+        "/api/v1/tenants/default/company-profile",
+        headers=headers,
+        json={
+            "legal_name": "Default Agri OS Customer Pvt Ltd",
+            "display_name": "Default Customer",
+            "company_type": "FPO",
+            "registration_number": "REG-DEFAULT-001",
+            "support_email": "support@example.test",
+            "support_phone": "+910000000000",
+            "head_office": {"state": "Uttar Pradesh", "district": "Azamgarh"},
+            "operating_geography": {"states": ["UTTAR_PRADESH"], "districts": ["AZAMGARH"]},
+            "crop_focus": ["RICE", "WHEAT"],
+            "service_model": {"farmer_modes": ["SELF_SERVICE", "FIELD_AGENT_ASSISTED"]},
+            "config": {"backend_only": True, "android_visible": False},
+            "metadata": {"source": "profile-form-regression"},
+        },
+    )
+    check(company_patch.status_code == 200, "Company profile upsert returns 200", company_patch.text[:500])
+    company_payload = company_patch.json()
+    check(company_payload["updated"] is True, "Company profile upsert marks updated")
+    check(company_payload["profile"]["company_type"] == "FPO", "Company profile stores company type")
+    check(company_payload["profile"]["operating_geography"]["districts"] == ["AZAMGARH"], "Company profile stores operating geography")
+    check(company_payload["profile"]["config"]["backend_only"] is True, "Company profile stores backend-only config")
+
+    company_read = client.get("/api/v1/tenants/default/company-profile", headers={"X-Tenant-ID": "default"})
+    check(company_read.status_code == 200, "Company profile read returns 200 after save", company_read.text[:400])
+    check(company_read.json()["profile"]["display_name"] == "Default Customer", "Company profile read returns saved profile")
+
     advertised = payload["profile_forms"]
     check(REQUIRED_FORMS.issubset(set(advertised.keys())), "Bootstrap advertises required profile forms", advertised.keys())
 
@@ -262,6 +296,7 @@ def main():
     check(project_land_payload["metadata"]["source"] == "project", "Project land unit override exposes source metadata")
 
     db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
+    db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
     db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
     db.commit()
     if admin:
@@ -276,6 +311,7 @@ def main():
         delete_test_admin(db, admin.id)
     if project:
         db.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id == project.id).delete(synchronize_session=False)
+        db.query(CompanyProfile).filter(CompanyProfile.tenant_id == "default").delete(synchronize_session=False)
         db.query(Project).filter(Project.id == project.id).delete(synchronize_session=False)
         db.commit()
     db.close()

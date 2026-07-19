@@ -46,7 +46,38 @@ class Tenant(Base, AuditMixin):
 
     # Relationships
     projects = relationship("Project", back_populates="tenant")
+    company_profile = relationship("CompanyProfile", back_populates="tenant", uselist=False)
 
+
+
+class CompanyProfile(Base, UUIDPrimaryKey, AuditMixin):
+    """Backend-owned profile for the company/FPO/NGO using the product."""
+
+    __tablename__ = "company_profiles"
+
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False, unique=True)
+    legal_name = Column(String(200), nullable=True)
+    display_name = Column(String(200), nullable=True)
+    company_type = Column(String(50), nullable=False, default="ENTERPRISE")
+    registration_number = Column(String(100), nullable=True)
+    gstin = Column(String(30), nullable=True)
+    pan = Column(String(20), nullable=True)
+    website_url = Column(String(300), nullable=True)
+    support_email = Column(String(200), nullable=True)
+    support_phone = Column(String(30), nullable=True)
+    head_office = Column(JSONB, default=dict)
+    operating_geography = Column(JSONB, default=dict)
+    crop_focus = Column(JSONB, default=list)
+    service_model = Column(JSONB, default=dict)
+    config = Column(JSONB, default=dict)
+    metadata_ = Column("metadata", JSONB, default=dict)
+
+    tenant = relationship("Tenant", back_populates="company_profile")
+
+    __table_args__ = (
+        Index("idx_company_profile_tenant", "tenant_id"),
+        Index("idx_company_profile_company_type", "company_type"),
+    )
 
 class Project(Base, UUIDPrimaryKey, AuditMixin):
     """A time-bound operational project within a tenant.
