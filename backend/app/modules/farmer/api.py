@@ -639,6 +639,8 @@ def _farmer_profile_completion(
     soil_profiles: Optional[list[object]] = None,
     project_enrollments: Optional[list[FarmerProjectEnrollment]] = None,
     weather_snapshot_count: int = 0,
+    soil_baseline_snapshot_count: int = 0,
+    soil_moisture_snapshot_count: int = 0,
 ) -> dict:
     farmer_required = []
     farmer_recommended = []
@@ -688,6 +690,8 @@ def _farmer_profile_completion(
 
     has_land_location = parcel_count > 0 and (parcels is None or "parcel_location" not in land_recommended)
     has_soil_profile = soil_profile_count > 0
+    has_soil_baseline_snapshot = soil_baseline_snapshot_count > 0
+    has_soil_moisture_snapshot = soil_moisture_snapshot_count > 0
     has_weather_snapshot = weather_snapshot_count > 0
 
     missing_required = farmer_required + land_required
@@ -708,14 +712,20 @@ def _farmer_profile_completion(
     enrichment_readiness = {
         "has_land_location": has_land_location,
         "has_soil_profile": has_soil_profile,
+        "has_soil_baseline_snapshot": has_soil_baseline_snapshot,
+        "has_soil_moisture_snapshot": has_soil_moisture_snapshot,
+        "soil_baseline_snapshot_count": soil_baseline_snapshot_count,
+        "soil_moisture_snapshot_count": soil_moisture_snapshot_count,
         "has_weather_snapshot": has_weather_snapshot,
         "weather_snapshot_count": weather_snapshot_count,
         "ready_for_weather_advisory": is_complete_for_home and has_land_location and has_weather_snapshot,
-        "ready_for_soil_moisture_enrichment": is_complete_for_home and has_land_location and has_soil_profile,
+        "ready_for_soil_baseline_enrichment": is_complete_for_home and has_land_location,
+        "ready_for_soil_moisture_enrichment": is_complete_for_home and has_land_location,
         "ready_for_satellite_enrichment": has_land_location,
         "notes": [
             "Weather advisory readiness requires a land location and a non-expired backend weather snapshot.",
-            "Soil moisture enrichment is currently readiness-only; future implementation may use paid APIs or open satellite pipelines.",
+            "Soil baseline readiness can be satisfied by manual/lab soil profile or SoilGrids-style provider snapshots.",
+            "Soil moisture enrichment is backend snapshot based; Android consumes saved snapshots and does not call weather/soil providers directly.",
             "Satellite enrichment is future-compatible and starts with parcel location/boundary readiness.",
         ],
     }
@@ -723,7 +733,7 @@ def _farmer_profile_completion(
     return {
         "schema_version": "profile_completion.v1",
         "is_complete_for_home": is_complete_for_home,
-        "is_ready_for_personalized_advisories": is_complete_for_home and has_soil_profile,
+        "is_ready_for_personalized_advisories": is_complete_for_home and (has_soil_profile or has_soil_baseline_snapshot),
         "enrichment_readiness": enrichment_readiness,
         "missing_fields": missing_required,
         "recommended_missing_fields": recommended_missing,
@@ -950,6 +960,31 @@ def _matching_weather_snapshot_count(
             matches.add(snapshot.id)
             continue
     return len(matches)
+
+
+def _soil_enrichment_snapshot_counts(db: Session, *, tenant_id: str, farmer_id: uuid.UUID) -> dict[str, int]:
+    """Count provider-derived soil enrichment snapshots available for a farmer."""
+    try:
+        from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot
+    except Exception:
+        return {"baseline": 0, "moisture": 0}
+
+    counts = {"baseline": 0, "moisture": 0}
+    rows = (
+        db.query(SoilEnrichmentSnapshot.snapshot_type)
+        .filter(
+            SoilEnrichmentSnapshot.tenant_id == tenant_id,
+            SoilEnrichmentSnapshot.farmer_id == farmer_id,
+            SoilEnrichmentSnapshot.status == "AVAILABLE",
+        )
+        .all()
+    )
+    for (snapshot_type,) in rows:
+        if snapshot_type == "BASELINE":
+            counts["baseline"] += 1
+        elif snapshot_type == "MOISTURE":
+            counts["moisture"] += 1
+    return counts
 
 
 def _launch_navigation_decision(farmer: Farmer, enrollments: list[FarmerProjectEnrollment], completion: dict) -> str:
@@ -1888,6 +1923,7 @@ def list_farmer_profile_readiness(
     """Return backend-owned farmer/land/soil profile readiness for admin and agent summary screens."""
     from app.modules.farmer.soil_profile import SoilProfile
 
+    agent_profile_context = None
     query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
     if status:
         query = query.filter(Farmer.status == status)
@@ -1927,6 +1963,9 @@ def list_farmer_profile_readiness(
                     "parcel_location_recommended_count": 0,
                     "weather_snapshot_available_count": 0,
                     "weather_advisory_ready_count": 0,
+                    "soil_baseline_snapshot_available_count": 0,
+                    "soil_moisture_snapshot_available_count": 0,
+                    "soil_baseline_enrichment_ready_count": 0,
                     "soil_moisture_enrichment_ready_count": 0,
                     "satellite_enrichment_ready_count": 0,
                 },
@@ -1946,6 +1985,9 @@ def list_farmer_profile_readiness(
         "parcel_location_recommended_count": 0,
         "weather_snapshot_available_count": 0,
         "weather_advisory_ready_count": 0,
+        "soil_baseline_snapshot_available_count": 0,
+        "soil_moisture_snapshot_available_count": 0,
+        "soil_baseline_enrichment_ready_count": 0,
         "soil_moisture_enrichment_ready_count": 0,
         "satellite_enrichment_ready_count": 0,
     }
@@ -1965,6 +2007,7 @@ def list_farmer_profile_readiness(
             parcels=parcels,
             project_enrollments=enrollments,
         )
+        soil_enrichment_counts = _soil_enrichment_snapshot_counts(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
         completion = _farmer_profile_completion(
             farmer,
             len(parcels),
@@ -1973,6 +2016,8 @@ def list_farmer_profile_readiness(
             soil_profiles=soil_profiles,
             project_enrollments=enrollments,
             weather_snapshot_count=weather_snapshot_count,
+            soil_baseline_snapshot_count=soil_enrichment_counts["baseline"],
+            soil_moisture_snapshot_count=soil_enrichment_counts["moisture"],
         )
         summary["farmer_count"] += 1
         if completion["is_complete_for_home"]:
@@ -1992,6 +2037,12 @@ def list_farmer_profile_readiness(
             summary["weather_snapshot_available_count"] += 1
         if enrichment["ready_for_weather_advisory"]:
             summary["weather_advisory_ready_count"] += 1
+        if enrichment.get("has_soil_baseline_snapshot"):
+            summary["soil_baseline_snapshot_available_count"] += 1
+        if enrichment.get("has_soil_moisture_snapshot"):
+            summary["soil_moisture_snapshot_available_count"] += 1
+        if enrichment.get("ready_for_soil_baseline_enrichment"):
+            summary["soil_baseline_enrichment_ready_count"] += 1
         if enrichment["ready_for_soil_moisture_enrichment"]:
             summary["soil_moisture_enrichment_ready_count"] += 1
         if enrichment["ready_for_satellite_enrichment"]:

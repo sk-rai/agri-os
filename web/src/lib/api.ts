@@ -627,9 +627,14 @@ export interface ProfileCompletionDto {
   enrichment_readiness?: {
     has_land_location: boolean;
     has_soil_profile: boolean;
+    has_soil_baseline_snapshot?: boolean;
+    has_soil_moisture_snapshot?: boolean;
+    soil_baseline_snapshot_count?: number;
+    soil_moisture_snapshot_count?: number;
     has_weather_snapshot: boolean;
     weather_snapshot_count: number;
     ready_for_weather_advisory: boolean;
+    ready_for_soil_baseline_enrichment?: boolean;
     ready_for_soil_moisture_enrichment: boolean;
     ready_for_satellite_enrichment: boolean;
     notes?: string[];
@@ -672,6 +677,9 @@ export interface FarmerProfileReadinessResponse {
     parcel_location_recommended_count: number;
     weather_snapshot_available_count?: number;
     weather_advisory_ready_count?: number;
+    soil_baseline_snapshot_available_count?: number;
+    soil_moisture_snapshot_available_count?: number;
+    soil_baseline_enrichment_ready_count?: number;
     soil_moisture_enrichment_ready_count?: number;
     satellite_enrichment_ready_count?: number;
   };

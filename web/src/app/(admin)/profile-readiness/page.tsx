@@ -60,7 +60,8 @@ export default function ProfileReadinessPage() {
         <Mini label="Farmers" value={payload.summary.farmer_count} />
         <Mini label="Home ready" value={payload.summary.home_ready_count} tone="green" />
         <Mini label="Weather ready" value={payload.summary.weather_advisory_ready_count || 0} tone="blue" />
-        <Mini label="Soil moisture" value={payload.summary.soil_moisture_enrichment_ready_count || 0} tone="blue" />
+        <Mini label="Soil baseline" value={payload.summary.soil_baseline_snapshot_available_count || 0} tone="green" />
+        <Mini label="Soil moisture" value={payload.summary.soil_moisture_snapshot_available_count || 0} tone="blue" />
         <Mini label="Satellite ready" value={payload.summary.satellite_enrichment_ready_count || 0} tone="green" />
         <Mini label="Blocking gaps" value={payload.summary.missing_required_count} tone={payload.summary.missing_required_count ? "red" : "slate"} />
         <Mini label="Need soil" value={payload.summary.soil_profile_recommended_count} tone="amber" />
@@ -102,6 +103,9 @@ export default function ProfileReadinessPage() {
               <ReadinessFlag label="Land location" ready={selected.profile_completion.enrichment_readiness.has_land_location} />
               <ReadinessFlag label="Weather snapshot" ready={selected.profile_completion.enrichment_readiness.has_weather_snapshot} detail={`${selected.profile_completion.enrichment_readiness.weather_snapshot_count} snapshot(s)`} />
               <ReadinessFlag label="Weather advisory" ready={selected.profile_completion.enrichment_readiness.ready_for_weather_advisory} />
+              <ReadinessFlag label="Soil baseline snapshot" ready={Boolean(selected.profile_completion.enrichment_readiness.has_soil_baseline_snapshot)} detail={`${selected.profile_completion.enrichment_readiness.soil_baseline_snapshot_count || 0} snapshot(s)`} />
+              <ReadinessFlag label="Soil moisture snapshot" ready={Boolean(selected.profile_completion.enrichment_readiness.has_soil_moisture_snapshot)} detail={`${selected.profile_completion.enrichment_readiness.soil_moisture_snapshot_count || 0} snapshot(s)`} />
+              <ReadinessFlag label="Soil baseline enrichment" ready={Boolean(selected.profile_completion.enrichment_readiness.ready_for_soil_baseline_enrichment)} />
               <ReadinessFlag label="Soil moisture enrichment" ready={selected.profile_completion.enrichment_readiness.ready_for_soil_moisture_enrichment} />
               <ReadinessFlag label="Satellite enrichment" ready={selected.profile_completion.enrichment_readiness.ready_for_satellite_enrichment} />
             </Section> : null}

@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
-from app.modules.farmer.soil_profile import SoilProfile
+from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot, SoilProfile
 
 
 client = TestClient(app)
@@ -191,6 +191,41 @@ def main():
     check(invalid_soil.status_code == 400, "Invalid soil profile option is rejected", invalid_soil.text)
     check(invalid_soil.json()["detail"]["option_set"] == "soil_textures", "Invalid soil option identifies option set")
 
+    print("\n[4] Profile readiness includes backend soil enrichment snapshots")
+    db = SessionLocal()
+    try:
+        db.add_all([
+            SoilEnrichmentSnapshot(
+                id=uuid.uuid4(), tenant_id=tenant_id, parcel_id=uuid.UUID(parcel_id), farmer_id=uuid.UUID(farmer_id),
+                provider="SOILGRIDS", provider_dataset="soilgrids.v2.0", snapshot_type="BASELINE", status="AVAILABLE",
+                depth_layer="0-5cm", resolution_meters=250, confidence="MODELLED", observed_at=datetime.now(timezone.utc), fetched_at=datetime.now(timezone.utc),
+                ph=6.8, organic_carbon=1.2, nitrogen=0.18, normalized_values={"texture_class": "CLAY_LOAM"}, raw_payload={}, metadata_={},
+                created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+            ),
+            SoilEnrichmentSnapshot(
+                id=uuid.uuid4(), tenant_id=tenant_id, parcel_id=uuid.UUID(parcel_id), farmer_id=uuid.UUID(farmer_id),
+                provider="OPEN_METEO", provider_dataset="open-meteo.soil", snapshot_type="MOISTURE", status="AVAILABLE",
+                depth_layer="9-27cm", resolution_meters=10000, confidence="FORECAST_MODEL", observed_at=datetime.now(timezone.utc), fetched_at=datetime.now(timezone.utc),
+                surface_soil_moisture=0.22, root_zone_soil_moisture=0.31, normalized_values={}, raw_payload={}, metadata_={},
+                created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    readiness_response = client.get("/api/v1/farmers/profile-readiness", headers=headers)
+    check(readiness_response.status_code == 200, "Profile readiness returns 200", readiness_response.text)
+    readiness = readiness_response.json()
+    readiness_row = next(row for row in readiness["farmers"] if row["farmer"]["id"] == farmer_id)
+    enrichment = readiness_row["profile_completion"]["enrichment_readiness"]
+    check(enrichment["has_soil_baseline_snapshot"] is True, "Readiness detects SoilGrids baseline snapshot")
+    check(enrichment["has_soil_moisture_snapshot"] is True, "Readiness detects soil moisture snapshot")
+    check(enrichment["soil_baseline_snapshot_count"] == 1, "Readiness counts baseline snapshots")
+    check(enrichment["soil_moisture_snapshot_count"] == 1, "Readiness counts moisture snapshots")
+    check(readiness["summary"]["soil_baseline_snapshot_available_count"] >= 1, "Readiness summary counts baseline availability")
+    check(readiness["summary"]["soil_moisture_snapshot_available_count"] >= 1, "Readiness summary counts moisture availability")
+
     db = SessionLocal()
     try:
         stored_soil = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).first()
@@ -198,6 +233,7 @@ def main():
         check(float(stored_soil.boron_bo) == 0.42, "Android boron_b stored as backend boron_bo")
 
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
