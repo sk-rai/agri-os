@@ -653,3 +653,5 @@ Weather operations health is now implemented in backend and admin web: `GET /api
 Soil enrichment operations health is now surfaced through backend and admin web, raising Android MVP backend readiness to approximately **87%**. Remaining gaps are primarily automated provider workers, final Android integration, production permission/audit review, and final payload handoff packaging.
 
 See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.
+
+Operational recovery guidance is maintained in `docs/backend-recovery-playbook.md`, including Git rollback, migration backup/rollback, provider worker recovery, permission hardening checks, and Android handoff checkpointing.

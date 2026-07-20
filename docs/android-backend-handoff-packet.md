@@ -308,3 +308,5 @@ Completed since the 86% checkpoint:
 - Full Android backend closeout runner passes after permission hardening.
 
 Backend readiness estimate is now about 87%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
+
+Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it before risky backend changes, migrations, provider-worker changes, permission hardening, or Android handoff testing.
