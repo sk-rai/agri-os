@@ -177,3 +177,12 @@ npm run build
 - Real external provider API rollback/rate-limit handling.
 
 These remain backend readiness gaps before final Android handoff.
+
+Pre-Android backend handoff check:
+
+```bash
+cd ~/projects/farmint/backend
+../venv/bin/python scripts/pre_android_handoff_check.py
+```
+
+This read-only checker runs Git status/log, Alembic current/head, static Alembic chain validation, and the Android backend closeout runner. Web build remains a manual follow-up.

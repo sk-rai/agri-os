@@ -310,3 +310,5 @@ Completed since the 86% checkpoint:
 Backend readiness estimate is now about 87%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
 
 Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it before risky backend changes, migrations, provider-worker changes, permission hardening, or Android handoff testing.
+
+Backend-side pre-Android handoff checks are available through `backend/scripts/pre_android_handoff_check.py`; run web build separately afterward.
