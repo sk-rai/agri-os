@@ -65,7 +65,7 @@ def main():
     check(payload["schema_version"] == "app_bootstrap.v1", "Bootstrap schema version is stable")
     check("profile_forms" in payload, "Bootstrap advertises profile_forms")
     check(REQUIRED_FLAGS.issubset(set(payload["feature_flags"].keys())), "Bootstrap exposes profile form feature flags")
-    company_missing = client.get("/api/v1/tenants/default/company-profile", headers={"X-Tenant-ID": "default"})
+    company_missing = client.get("/api/v1/tenants/default/company-profile", headers=headers)
     check(company_missing.status_code == 200, "Company profile empty read returns 200", company_missing.text[:300])
     check(company_missing.json()["schema_version"] == "company_profile.v1", "Company profile schema is stable")
     check(company_missing.json()["profile"] == {}, "Company profile starts unconfigured")
@@ -101,7 +101,7 @@ def main():
     check(company_payload["profile"]["operating_geography"]["districts"] == ["AZAMGARH"], "Company profile stores operating geography")
     check(company_payload["profile"]["config"]["backend_only"] is True, "Company profile stores backend-only config")
 
-    company_read = client.get("/api/v1/tenants/default/company-profile", headers={"X-Tenant-ID": "default"})
+    company_read = client.get("/api/v1/tenants/default/company-profile", headers=headers)
     check(company_read.status_code == 200, "Company profile read returns 200 after save", company_read.text[:400])
     check(company_read.json()["profile"]["display_name"] == "Default Customer", "Company profile read returns saved profile")
 

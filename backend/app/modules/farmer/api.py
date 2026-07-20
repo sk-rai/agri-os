@@ -1895,7 +1895,7 @@ def list_tenants(
 
 
 @router.get("/company-discovery-candidates/template.csv")
-def download_company_discovery_template():
+def download_company_discovery_template(principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=COMPANY_DISCOVERY_CSV_COLUMNS)
     writer.writeheader()
@@ -2208,6 +2208,7 @@ def get_company_profile(
     tenant_id: str,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     if tenant_id != x_tenant_id:
         raise HTTPException(403, {

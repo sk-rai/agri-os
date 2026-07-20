@@ -294,3 +294,5 @@ Endpoint permission inventory is available through `backend/scripts/audit_endpoi
 Worker/ops endpoints for weather and soil enrichment now require admin permissions: VIEW for operations health/queue/history reads and EDIT for worker execution or job-audit writes.
 
 Weather provider configuration and provider execution endpoints now require admin permissions: VIEW for provider/plan reads and EDIT for provider mutation or execution.
+
+Company profile reads and company discovery CSV template download now require admin VIEW permission; Android MVP should not call these backend-only company administration endpoints.
