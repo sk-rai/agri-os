@@ -265,3 +265,5 @@ Recommended later rollout sequence:
 ## Current decision
 
 Android work should wait until backend provider-worker stubs, full regression, and permission review are complete. Until then this packet should be maintained as the backend closeout checklist and future Android contract map.
+
+- Soil enrichment worker can normalize request-body demo payloads into persisted SoilEnrichmentSnapshot rows without network calls.

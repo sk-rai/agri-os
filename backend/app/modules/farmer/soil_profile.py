@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import Base, get_db
 from app.shared.models import AuditMixin, UUIDPrimaryKey
+from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
 
 
 # --- Model ---
@@ -261,6 +262,9 @@ class ShcSlusiPointCaptureRequest(BaseModel):
     soil_code: Optional[str] = Field(None, max_length=100)
     raw_payload: dict = Field(default_factory=dict)
 
+
+class SoilEnrichmentWorkerRunRequest(BaseModel):
+    demo_payloads: dict = Field(default_factory=dict)
 
 class SoilEnrichmentWorkerRunResponse(BaseModel):
     schema_version: str = "soil_enrichment_worker_run.v1"
@@ -1173,6 +1177,7 @@ def list_soil_enrichment_job_audit(
 
 @router.post("/enrichments/worker/run-queue", response_model=SoilEnrichmentWorkerRunResponse)
 def run_soil_enrichment_queue_worker(
+    body: SoilEnrichmentWorkerRunRequest = SoilEnrichmentWorkerRunRequest(),
     dry_run: bool = Query(True),
     farmer_id: Optional[uuid.UUID] = Query(None),
     project_id: Optional[uuid.UUID] = Query(None),
@@ -1194,6 +1199,7 @@ def run_soil_enrichment_queue_worker(
         project_id=project_id,
         missing=missing,
         limit=limit,
+        demo_payloads=body.demo_payloads,
     )
 
 
@@ -1336,6 +1342,7 @@ def _run_soil_enrichment_queue_worker(
     project_id: Optional[uuid.UUID] = None,
     missing: str = "ANY",
     limit: int = 100,
+    demo_payloads: Optional[dict] = None,
 ) -> dict:
     """Preview or queue backend soil enrichment work.
 
@@ -1395,6 +1402,79 @@ def _run_soil_enrichment_queue_worker(
                     )
                     db.add(event)
                     queued_job_count += 1
+
+                    demo_payload = None
+                    provider = None
+                    if job_type == "FETCH_SOIL_BASELINE":
+                        demo_payload = (demo_payloads or {}).get("soilgrids")
+                        provider = "SOILGRIDS"
+                    elif job_type == "FETCH_SOIL_MOISTURE":
+                        demo_payload = (demo_payloads or {}).get("open_meteo_soil")
+                        provider = "OPEN_METEO"
+
+                    if isinstance(demo_payload, dict):
+                        normalized = (
+                            normalize_soilgrids_properties(
+                                demo_payload,
+                                parcel_id=uuid.UUID(parcel["id"]),
+                                farmer_id=uuid.UUID(farmer["id"]) if farmer.get("id") else None,
+                                project_id=uuid.UUID(parcel["project_id"]) if parcel.get("project_id") else None,
+                                observed_at=now,
+                            )
+                            if job_type == "FETCH_SOIL_BASELINE"
+                            else normalize_open_meteo_soil_moisture(
+                                demo_payload,
+                                parcel_id=uuid.UUID(parcel["id"]),
+                                farmer_id=uuid.UUID(farmer["id"]) if farmer.get("id") else None,
+                                project_id=uuid.UUID(parcel["project_id"]) if parcel.get("project_id") else None,
+                                fetched_at=now,
+                                refresh_interval_hours=6,
+                            )
+                        )
+                        snapshot = SoilEnrichmentSnapshot(
+                            tenant_id=tenant_id,
+                            parcel_id=normalized["parcel_id"],
+                            farmer_id=normalized.get("farmer_id"),
+                            project_id=normalized.get("project_id"),
+                            snapshot_type=normalized["snapshot_type"],
+                            provider=normalized["provider"],
+                            provider_reference=normalized.get("provider_reference"),
+                            status=normalized["status"],
+                            observed_at=normalized.get("observed_at"),
+                            fetched_at=normalized.get("fetched_at"),
+                            expires_at=normalized.get("expires_at"),
+                            soil_type_code=normalized.get("soil_type_code"),
+                            soil_texture=normalized.get("soil_texture"),
+                            soil_color=normalized.get("soil_color"),
+                            ph=normalized.get("ph"),
+                            ec=normalized.get("ec"),
+                            organic_carbon_oc=normalized.get("organic_carbon_oc"),
+                            nitrogen_n=normalized.get("nitrogen_n"),
+                            phosphorus_p=normalized.get("phosphorus_p"),
+                            potassium_k=normalized.get("potassium_k"),
+                            sulphur_s=normalized.get("sulphur_s"),
+                            zinc_zn=normalized.get("zinc_zn"),
+                            iron_fe=normalized.get("iron_fe"),
+                            copper_cu=normalized.get("copper_cu"),
+                            manganese_mn=normalized.get("manganese_mn"),
+                            boron_bo=normalized.get("boron_bo"),
+                            surface_soil_moisture=normalized.get("surface_soil_moisture"),
+                            root_zone_soil_moisture=normalized.get("root_zone_soil_moisture"),
+                            soil_temperature_c=normalized.get("soil_temperature_c"),
+                            metadata_=normalized.get("metadata") or {},
+                            source_payload=normalized.get("source_payload") or {},
+                            created_at=now,
+                            updated_at=now,
+                        )
+                        db.add(snapshot)
+                        db.flush()
+                        event.provider = provider
+                        event.status = "FETCHED"
+                        event.metadata_ = {
+                            **(event.metadata_ or {}),
+                            "demo_payload_snapshot_id": str(snapshot.id),
+                            "demo_payload_provider": provider,
+                        }
                 except Exception as exc:
                     failed_job_count += 1
                     status = "FAILED"

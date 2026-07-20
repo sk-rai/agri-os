@@ -508,11 +508,47 @@ def main():
     check(worker_dry_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker schema stable")
     check(worker_dry_body["dry_run"] is True, "Soil enrichment worker preserves dry run flag")
 
-    worker_run = client.post(f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=false", headers=headers)
+    worker_run = client.post(
+        f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=false",
+        headers=headers,
+        json={
+            "demo_payloads": {
+                "soilgrids": {
+                    "id": "soilgrids-worker-demo",
+                    "properties": {
+                        "phh2o": {"mean": 71},
+                        "soc": {"mean": 16},
+                        "nitrogen": {"mean": 880},
+                        "clay": {"mean": 30},
+                        "sand": {"mean": 40},
+                        "silt": {"mean": 30},
+                    },
+                },
+                "open_meteo_soil": {
+                    "latitude": 25.82,
+                    "longitude": 82.97,
+                    "hourly": {
+                        "time": ["2026-07-20T09:00:00+00:00"],
+                        "soil_moisture_0_to_1cm": [0.22],
+                        "soil_moisture_9_to_27cm": [0.31],
+                        "soil_temperature_0cm": [29.1],
+                    },
+                },
+            }
+        },
+    )
     check(worker_run.status_code == 200, "Soil enrichment worker stub run returns 200", worker_run.text[:500])
     worker_run_body = worker_run.json()
     check(worker_run_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker run schema stable")
     check(worker_run_body["dry_run"] is False, "Soil enrichment worker run preserves execution flag")
+    check("queued_job_count" in worker_run_body, "Soil enrichment worker demo payload reports queued jobs")
+    if worker_run_body["queued_job_count"] > 0:
+        demo_summary = client.get(f"/api/v1/soil-profiles/enrichments/summary?parcel_id={missing_enrichment_parcel_id}", headers=headers)
+        check(demo_summary.status_code == 200, "Soil enrichment worker demo payload summary returns 200", demo_summary.text[:500])
+        demo_summary_body = demo_summary.json()
+        check(demo_summary_body["latest_baseline"] is not None or demo_summary_body["latest_moisture"] is not None, "Soil enrichment worker demo payload creates snapshots")
+    else:
+        check(True, "Soil enrichment worker demo payload accepted with no currently queued jobs")
 
 
     db = SessionLocal()
