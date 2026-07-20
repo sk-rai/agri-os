@@ -510,3 +510,9 @@ Approved discovery candidates can be applied into the live tenant company profil
 Company discovery candidates can be staged in bulk through CSV: download `GET /api/v1/company-discovery-candidates/template.csv`, validate with `POST /api/v1/company-discovery-candidates/csv/validate`, and import with `POST /api/v1/company-discovery-candidates/csv/import`. Imported rows remain `PENDING_REVIEW`; they do not become live company profiles until reviewed/applied.
 
 The `/company-discovery` admin page now exposes CSV template download, validation preview, and import actions so bulk company prepopulation can be staged without direct database access.
+
+## Backend readiness checkpoint - 2026-07-20
+
+Backend-driven profile readiness is now approximately **80% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
+
+Remaining work is mainly provider automation, Android UI consumption of these contracts, admin polish, production permission/audit review, and final regression/handoff packaging.

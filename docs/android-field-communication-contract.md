@@ -996,3 +996,81 @@ Important payload fields include `parcel_id`, `state`, `district`, optional `vil
 ### Company discovery CSV
 
 Company discovery candidates can be staged in bulk through CSV: download `GET /api/v1/company-discovery-candidates/template.csv`, validate with `POST /api/v1/company-discovery-candidates/csv/validate`, and import with `POST /api/v1/company-discovery-candidates/csv/import`. Imported rows remain `PENDING_REVIEW`; they do not become live company profiles until reviewed/applied.
+
+## Backend readiness checkpoint - 2026-07-20
+
+Current backend readiness estimate for Android MVP handoff: **about 80%**.
+
+This estimate means the main backend-owned contracts are now in place for farmer communication, profile capture, advisory targeting, enrichment readiness, and company/customer administration. Remaining work is mostly provider automation, final Android consumption, admin polish, and production hardening.
+
+### Completed backend foundations
+
+- Broadcast/advisory foundation:
+  - campaign/content/rule/delivery/audit tables;
+  - localized content and media attachments;
+  - farmer feed, read, and acknowledgement endpoints;
+  - admin lifecycle controls for publish, expire, cancel, draft edit, delivery generation, audit history;
+  - retry of undelivered rows before failure;
+  - targeting support for farmer, project, crop, location, language, crop stage, and backend weather snapshots.
+- Backend-only weather foundation:
+  - weather provider config and snapshot model;
+  - configurable refresh cadence concept, defaulting to 6 hours;
+  - weather-targeted broadcasts based on stored backend snapshots;
+  - Android explicitly does not call weather providers or use phone sensors for weather targeting.
+- Backend-owned profile capture:
+  - farmer, parcel, and soil profile forms;
+  - backend-owned option sets for seasons, land units, ownership, irrigation, soil, language, and assistance modes;
+  - profile readiness, field-agent worklist, and backend-filtered missing-field/section filters;
+  - create/update paths for farmer, parcel, and soil profile maintenance.
+- Agent/farmer dual-mode:
+  - agent profile support;
+  - a person can be both a farmer and an agent;
+  - Android should switch modes based on backend bootstrap/worklist context.
+- Land/parcel readiness:
+  - parcels can be single-village or multi-location;
+  - parcels carry PIN-code/location anchors;
+  - ownership can represent owned, part-owned, leased, shared/sharecrop, family, and deployment-configurable variants.
+- Soil enrichment foundation:
+  - normalized enrichment snapshots;
+  - latest/summary endpoints;
+  - readiness source fields for SoilGrids and SHC/SLUSI;
+  - enrichment queue and job audit;
+  - admin soil-enrichment queue view with manual audit actions;
+  - SHC/SLUSI visual data is parked as backend/admin capture or future controlled adapter, not Android direct calls.
+- Company/customer profile foundation:
+  - backend-only tenant company profile;
+  - explicit company types including FPO, seed company, fertilizer company, pesticide company, machinery company, input company, buyer, trader, warehouse, financial institution, processor, insurer, NGO, government, cooperative, agri-tech, enterprise, and other;
+  - source, verification status, source references, and audit history;
+  - admin company profile UI.
+- Company prepopulation workflow:
+  - discovery candidate staging table;
+  - review queue;
+  - apply/merge candidate into live company profile;
+  - CSV template, validation, import, admin upload/preview/import flow.
+
+### Remaining before Android handoff
+
+- Implement real provider workers/adapters:
+  - scheduled weather refresh;
+  - SoilGrids fetch worker;
+  - Open-Meteo soil moisture/weather refresh;
+  - controlled SHC/SLUSI import/adapter after source permission and stability review.
+- Complete Android client consumption:
+  - use backend profile forms/options/readiness instead of hardcoded lists where feature flags are enabled;
+  - consume broadcast feed/read/ack/media;
+  - consume agent/farmer mode bootstrap;
+  - display soil enrichment summaries and readiness labels.
+- Add final admin polish:
+  - guided weather-provider operations;
+  - better soil enrichment worker controls;
+  - discovery duplicate matching UX.
+- Run production-hardening pass:
+  - tenant isolation review;
+  - permission review;
+  - audit coverage review;
+  - full regression sweep.
+- Produce final Android implementation checklist and sample payload bundle from current backend responses.
+
+### Current recommendation
+
+Do not start Android rewiring blindly. First finish provider-worker stubs and final API regression sweep, then create an Android handoff packet with exact endpoints, payload examples, feature flags, and rollout order.

@@ -641,3 +641,9 @@ Company profiles are now ready for future metadata seeding from public directori
 ### Company discovery candidates
 
 Future company prepopulation should land first in `company_discovery_candidates`, not directly in live tenant/company profiles. Use `POST /api/v1/company-discovery-candidates` for public-web, government-registry, partner-directory, or bulk-import discoveries; `GET /api/v1/company-discovery-candidates` for review queues; and `PATCH /api/v1/company-discovery-candidates/{candidate_id}/review` to mark records approved, rejected, duplicate, merged, stale, or linked to an existing tenant/profile.
+
+## Platform readiness checkpoint - 2026-07-20
+
+Agri-OS now has backend-owned foundations for farmer/agent profiles, land/parcel profiles, soil profiles, weather/broadcast advisories, soil enrichment snapshots/queues, company/customer profiles, and company discovery/prepopulation staging.
+
+Current backend readiness for Android MVP handoff is estimated at **about 80%**. The strongest remaining gaps are automated provider workers, final Android consumption, production permission/audit hardening, and final handoff payload examples.
