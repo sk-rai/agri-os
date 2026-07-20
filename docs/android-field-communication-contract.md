@@ -999,7 +999,7 @@ Company discovery candidates can be staged in bulk through CSV: download `GET /a
 
 ## Backend readiness checkpoint - 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: **about 80%**.
+Current backend readiness estimate for Android MVP handoff: **about 82%**.
 
 This estimate means the main backend-owned contracts are now in place for farmer communication, profile capture, advisory targeting, enrichment readiness, and company/customer administration. Remaining work is mostly provider automation, final Android consumption, admin polish, and production hardening.
 
@@ -1078,3 +1078,5 @@ Do not start Android rewiring blindly. First finish provider-worker stubs and fi
 ### Weather operations health
 
 Backend/admin can inspect weather provider health through `GET /api/v1/weather/operations/health`. Response `schema_version=weather_operations_health.v1` summarizes enabled, due, overdue, failed providers and fresh/stale/expired snapshots. Android should not call this endpoint for MVP; it is an operations/scheduler/admin readiness surface.
+
+Weather operations health is now implemented in backend and admin web: `GET /api/v1/weather/operations/health` and admin `/weather` show provider due/overdue/failure status plus fresh/stale/expired snapshot counts.

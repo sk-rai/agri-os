@@ -513,6 +513,8 @@ The `/company-discovery` admin page now exposes CSV template download, validatio
 
 ## Backend readiness checkpoint - 2026-07-20
 
-Backend-driven profile readiness is now approximately **80% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
+Backend-driven profile readiness is now approximately **82% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
 
 Remaining work is mainly provider automation, Android UI consumption of these contracts, admin polish, production permission/audit review, and final regression/handoff packaging.
+
+Weather operations health is now implemented in backend and admin web: `GET /api/v1/weather/operations/health` and admin `/weather` show provider due/overdue/failure status plus fresh/stale/expired snapshot counts.
