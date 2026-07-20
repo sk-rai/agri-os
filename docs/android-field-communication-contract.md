@@ -1080,3 +1080,7 @@ Do not start Android rewiring blindly. First finish provider-worker stubs and fi
 Backend/admin can inspect weather provider health through `GET /api/v1/weather/operations/health`. Response `schema_version=weather_operations_health.v1` summarizes enabled, due, overdue, failed providers and fresh/stale/expired snapshots. Android should not call this endpoint for MVP; it is an operations/scheduler/admin readiness surface.
 
 Weather operations health is now implemented in backend and admin web: `GET /api/v1/weather/operations/health` and admin `/weather` show provider due/overdue/failure status plus fresh/stale/expired snapshot counts.
+
+### Soil enrichment operations health
+
+Backend/admin can inspect enrichment queue and job health through `GET /api/v1/soil-profiles/enrichments/operations/health`. Response `schema_version=soil_enrichment_operations_health.v1` summarizes location-ready parcels, missing baseline/moisture counts, snapshot/provider counts, job audit outcomes, and recommended actions. Android MVP should not call this endpoint; it is an operations/admin readiness surface.

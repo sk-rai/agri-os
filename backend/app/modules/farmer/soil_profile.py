@@ -1159,6 +1159,137 @@ def list_soil_enrichment_job_audit(
     }
 
 
+
+@router.get("/enrichments/operations/health")
+def soil_enrichment_operations_health(
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return backend/admin operational health for soil enrichment queues/jobs."""
+    from app.modules.farmer.models import Parcel
+    from app.modules.farmer.api import _soil_enrichment_snapshot_counts
+
+    parcel_query = db.query(Parcel).filter(
+        Parcel.tenant_id == x_tenant_id,
+        Parcel.status != "ARCHIVED",
+    )
+    if project_id:
+        parcel_query = parcel_query.filter(Parcel.project_id == project_id)
+    parcels = parcel_query.all()
+
+    location_ready_count = 0
+    missing_baseline_count = 0
+    missing_moisture_count = 0
+    ready_for_baseline_fetch_count = 0
+    ready_for_moisture_fetch_count = 0
+
+    for parcel in parcels:
+        has_location = (
+            (parcel.centroid_lat is not None and parcel.centroid_lng is not None)
+            or parcel.geometry_source in {"PIN_DROP", "GPS_WALK", "SATELLITE", "MANUAL_DRAW"}
+            or bool(parcel.village_id or parcel.village_name_manual or parcel.pin_code)
+        )
+        if not has_location:
+            continue
+        location_ready_count += 1
+        counts = _soil_enrichment_snapshot_counts(db, tenant_id=x_tenant_id, farmer_id=parcel.farmer_id)
+        if counts["baseline"] == 0:
+            missing_baseline_count += 1
+            ready_for_baseline_fetch_count += 1
+        if counts["moisture"] == 0:
+            missing_moisture_count += 1
+            ready_for_moisture_fetch_count += 1
+
+    snapshot_rows = db.query(SoilEnrichmentSnapshot.provider, SoilEnrichmentSnapshot.snapshot_type, SoilEnrichmentSnapshot.status).filter(
+        SoilEnrichmentSnapshot.tenant_id == x_tenant_id,
+    ).all()
+    provider_counts = {}
+    snapshot_type_counts = {}
+    snapshot_status_counts = {}
+    for provider, snapshot_type, status in snapshot_rows:
+        provider_code = (provider or "UNKNOWN").upper()
+        snapshot_type_code = (snapshot_type or "UNKNOWN").upper()
+        status_code = (status or "UNKNOWN").upper()
+        provider_counts[provider_code] = provider_counts.get(provider_code, 0) + 1
+        snapshot_type_counts[snapshot_type_code] = snapshot_type_counts.get(snapshot_type_code, 0) + 1
+        snapshot_status_counts[status_code] = snapshot_status_counts.get(status_code, 0) + 1
+
+    audit_rows = db.query(SoilEnrichmentJobAudit.job_type, SoilEnrichmentJobAudit.status, SoilEnrichmentJobAudit.provider).filter(
+        SoilEnrichmentJobAudit.tenant_id == x_tenant_id,
+    ).all()
+    audit_status_counts = {}
+    audit_job_type_counts = {}
+    audit_provider_counts = {}
+    failed_audit_count = 0
+    deferred_audit_count = 0
+    skipped_audit_count = 0
+    queued_audit_count = 0
+    fetched_audit_count = 0
+    for job_type, status, provider in audit_rows:
+        status_code = (status or "UNKNOWN").upper()
+        job_type_code = (job_type or "UNKNOWN").upper()
+        provider_code = (provider or "UNKNOWN").upper()
+        audit_status_counts[status_code] = audit_status_counts.get(status_code, 0) + 1
+        audit_job_type_counts[job_type_code] = audit_job_type_counts.get(job_type_code, 0) + 1
+        audit_provider_counts[provider_code] = audit_provider_counts.get(provider_code, 0) + 1
+        if status_code == "FAILED":
+            failed_audit_count += 1
+        elif status_code == "DEFERRED":
+            deferred_audit_count += 1
+        elif status_code == "SKIPPED":
+            skipped_audit_count += 1
+        elif status_code == "QUEUED":
+            queued_audit_count += 1
+        elif status_code == "FETCHED":
+            fetched_audit_count += 1
+
+    status = "HEALTHY"
+    if location_ready_count == 0:
+        status = "NO_LOCATION_READY_PARCELS"
+    elif failed_audit_count > 0:
+        status = "DEGRADED"
+    elif missing_baseline_count > 0 or missing_moisture_count > 0 or deferred_audit_count > 0:
+        status = "ATTENTION_REQUIRED"
+
+    return {
+        "schema_version": "soil_enrichment_operations_health.v1",
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id) if project_id else None,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+        "summary": {
+            "parcel_count": len(parcels),
+            "location_ready_parcel_count": location_ready_count,
+            "missing_baseline_count": missing_baseline_count,
+            "missing_moisture_count": missing_moisture_count,
+            "ready_for_baseline_fetch_count": ready_for_baseline_fetch_count,
+            "ready_for_moisture_fetch_count": ready_for_moisture_fetch_count,
+            "snapshot_count": len(snapshot_rows),
+            "job_audit_count": len(audit_rows),
+            "failed_job_audit_count": failed_audit_count,
+            "deferred_job_audit_count": deferred_audit_count,
+            "skipped_job_audit_count": skipped_audit_count,
+            "queued_job_audit_count": queued_audit_count,
+            "fetched_job_audit_count": fetched_audit_count,
+        },
+        "provider_counts": provider_counts,
+        "snapshot_type_counts": snapshot_type_counts,
+        "snapshot_status_counts": snapshot_status_counts,
+        "audit_status_counts": audit_status_counts,
+        "audit_job_type_counts": audit_job_type_counts,
+        "audit_provider_counts": audit_provider_counts,
+        "recommended_actions": [
+            action for action, should_run in [
+                ("FETCH_SOIL_BASELINE", ready_for_baseline_fetch_count > 0),
+                ("FETCH_SOIL_MOISTURE", ready_for_moisture_fetch_count > 0),
+                ("REVIEW_FAILED_JOBS", failed_audit_count > 0),
+                ("REVIEW_DEFERRED_JOBS", deferred_audit_count > 0),
+            ] if should_run
+        ],
+    }
+
+
 @router.get("/enrichments/queue")
 def list_soil_enrichment_queue(
     project_id: Optional[uuid.UUID] = Query(None),

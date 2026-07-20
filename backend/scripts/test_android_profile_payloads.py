@@ -411,6 +411,15 @@ def main():
     check(missing_any_body["count"] == 1, "Soil enrichment missing ANY queue returns incomplete parcel")
     check(missing_any_body["items"][0]["parcel"]["id"] == str(missing_enrichment_parcel_id), "Soil enrichment missing ANY queue excludes complete parcel")
 
+    operations_health = client.get("/api/v1/soil-profiles/enrichments/operations/health", headers=headers)
+    check(operations_health.status_code == 200, "Soil enrichment operations health returns 200", operations_health.text[:500])
+    operations_health_body = operations_health.json()
+    check(operations_health_body["schema_version"] == "soil_enrichment_operations_health.v1", "Soil enrichment operations health schema stable")
+    check(operations_health_body["summary"]["location_ready_parcel_count"] >= 1, "Soil enrichment operations health counts location-ready parcels")
+    check(operations_health_body["summary"]["missing_baseline_count"] >= 1, "Soil enrichment operations health counts missing baseline")
+    check(operations_health_body["summary"]["missing_moisture_count"] >= 1, "Soil enrichment operations health counts missing moisture")
+    check("FETCH_SOIL_BASELINE" in operations_health_body["recommended_actions"], "Soil enrichment operations health recommends baseline fetch")
+
     invalid_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANDROID_ONLY", headers=headers)
     check(invalid_queue.status_code == 400, "Soil enrichment queue rejects invalid missing filter", invalid_queue.text)
 
