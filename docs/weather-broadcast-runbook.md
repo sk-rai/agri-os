@@ -191,3 +191,5 @@ Open-Meteo adapter normalization is now isolated in `app/modules/media/weather_p
 
 
 For no-network validation, a weather provider config can include `demo_payload`, `demo_location_scope`, and `demo_location_key`. Running `POST /api/v1/weather/refresh-worker/run-due?dry_run=false` will normalize the demo payload through the Open-Meteo adapter and persist a WeatherSnapshot.
+
+Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
