@@ -57,7 +57,7 @@ Backend still needs:
 
 - production provider adapter execution;
 - scheduled refresh worker;
-- real Open-Meteo request/response mapping;
+- real Open-Meteo request/response mapping; adapter normalization is now isolated and regression-tested without network calls;
 - weather refresh worker stub is available at `POST /api/v1/weather/refresh-worker/run-due` for backend/admin validation before scheduler wiring;
 - provider error/retry policy hardening.
 

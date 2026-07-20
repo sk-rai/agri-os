@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal, engine
 from app.main import app
+from app.modules.media.weather_provider_adapters import normalize_open_meteo_forecast
 from app.modules.farmer.models import Tenant
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
 from app.modules.media import weather_service
@@ -36,6 +37,36 @@ def now():
 def main():
     print("=" * 72)
     print("WEATHER SNAPSHOT FOUNDATION REGRESSION")
+    normalized = normalize_open_meteo_forecast(
+        {
+            "latitude": 25.82,
+            "longitude": 82.97,
+            "timezone": "Asia/Kolkata",
+            "daily": {
+                "time": ["2026-07-20"],
+                "weather_code": [61],
+                "temperature_2m_min": [24.5],
+                "temperature_2m_max": [33.8],
+                "precipitation_probability_max": [75],
+                "precipitation_sum": [18.2],
+                "wind_speed_10m_max": [21.0],
+            },
+            "hourly": {
+                "time": ["2026-07-20T09:00"],
+                "relative_humidity_2m": [86],
+            },
+        },
+        provider_id=uuid.uuid4(),
+        location_scope="VILLAGE",
+        location_key="Adapter Village",
+        fetched_at=datetime(2026, 7, 20, 3, 30, tzinfo=timezone.utc),
+        refresh_interval_hours=6,
+    )
+    check(normalized["condition_code"] == "RAIN", "Open-Meteo adapter normalizes rain forecast")
+    check(normalized["rainfall_probability_percent"] == 75, "Open-Meteo adapter maps rain probability")
+    check("FUNGAL_RISK" in normalized["risk_flags"], "Open-Meteo adapter derives fungal risk")
+    check(normalized["metadata"]["schema_version"] == "open_meteo_weather_adapter.v1", "Open-Meteo adapter metadata schema stable")
+
     print("=" * 72)
 
     WeatherProviderConfig.__table__.create(bind=engine, checkfirst=True)

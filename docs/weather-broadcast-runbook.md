@@ -185,3 +185,6 @@ Admin `/weather` now renders `weather_operations_health.v1`, including provider 
 
 
 Backend workers can preview or execute due provider refresh work through `POST /api/v1/weather/refresh-worker/run-due?dry_run=true|false`. The current implementation is a backend-only worker stub: it identifies due providers and advances provider refresh metadata when executed, while real external provider fetch adapters remain a follow-up.
+
+
+Open-Meteo adapter normalization is now isolated in `app/modules/media/weather_provider_adapters.py`. The helper maps provider JSON into the internal WeatherSnapshot field shape and derives condition/risk flags without making network calls.
