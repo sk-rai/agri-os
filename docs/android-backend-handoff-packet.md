@@ -2,7 +2,7 @@
 
 Status date: 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: about 84%.
+Current backend readiness estimate for Android MVP handoff: about 86%.
 
 This packet is not the signal to begin Android rewiring. It is the backend closeout map that will become the Android integration guide after backend testing, provider-worker stubs, permission review, and final regression are complete.
 
@@ -269,3 +269,16 @@ Android work should wait until backend provider-worker stubs, full regression, a
 - Soil enrichment worker can normalize request-body demo payloads into persisted SoilEnrichmentSnapshot rows without network calls.
 
 - Soil enrichment worker demo-target mode can force no-network snapshot persistence for adapter validation.
+
+## Provider adapter checkpoint - 2026-07-20
+
+Completed since the 84% checkpoint:
+
+- Open-Meteo weather payload normalization is isolated and regression-tested without network calls.
+- Weather refresh worker can persist demo payloads as WeatherSnapshot rows.
+- SoilGrids baseline payload normalization is isolated and regression-tested without network calls.
+- Open-Meteo soil-moisture payload normalization is isolated and regression-tested without network calls.
+- Soil enrichment worker can persist demo payloads as SoilEnrichmentSnapshot rows.
+- Full Android backend closeout regression runner passes after these changes.
+
+Backend readiness estimate is now about 86%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.

@@ -999,7 +999,7 @@ Company discovery candidates can be staged in bulk through CSV: download `GET /a
 
 ## Backend readiness checkpoint - 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: **about 84%**.
+Current backend readiness estimate for Android MVP handoff: **about 86%**.
 
 This estimate means the main backend-owned contracts are now in place for farmer communication, profile capture, advisory targeting, enrichment readiness, and company/customer administration. Remaining work is mostly provider automation, final Android consumption, admin polish, and production hardening.
 
