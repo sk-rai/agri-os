@@ -207,11 +207,23 @@ Backend still needs:
 
 ### B. Regression sweep
 
+Primary closeout command:
+
+```bash
+cd ~/projects/farmint/backend
+../venv/bin/python scripts/test_android_backend_closeout.py
+```
+
+The runner executes:
+
 - Broadcast API regression.
 - Weather snapshot regression.
 - Android profile payload regression.
 - Profile hydration regression.
 - Profile form contract regression.
+
+Still run separately where applicable:
+
 - Admin web production build.
 - Alembic upgrade from clean database.
 
