@@ -285,3 +285,5 @@ Completed since the 84% checkpoint:
 Backend readiness estimate is now about 86%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
 
 Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
+
+Static Alembic chain validation is available through `backend/scripts/check_alembic_revision_chain.py`; it checks duplicate revisions, missing down-revision targets, and single-head status without connecting to the database.
