@@ -293,6 +293,19 @@ def main():
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
     check(listed.json()["count"] == 4, "List returns active snapshots")
 
+    worker_dry_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=true", headers=headers)
+    check(worker_dry_run.status_code == 200, "Weather refresh worker dry run returns 200", worker_dry_run.text)
+    worker_dry_body = worker_dry_run.json()
+    check(worker_dry_body["schema_version"] == "weather_refresh_worker.v1", "Weather refresh worker schema stable")
+    check(worker_dry_body["dry_run"] is True, "Weather refresh worker preserves dry run flag")
+    check(worker_dry_body["provider_count"] >= 1, "Weather refresh worker sees configured provider")
+
+    worker_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=false", headers=headers)
+    check(worker_run.status_code == 200, "Weather refresh worker stub run returns 200", worker_run.text)
+    worker_run_body = worker_run.json()
+    check(worker_run_body["dry_run"] is False, "Weather refresh worker run preserves execution flag")
+    check(worker_run_body["schema_version"] == "weather_refresh_worker.v1", "Weather refresh worker run schema stable")
+
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)
     check(latest.json()["summary"] == "Manual refresh weather snapshot", "Latest returns newest non-expired snapshot")

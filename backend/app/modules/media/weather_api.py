@@ -22,6 +22,18 @@ from app.modules.media.weather_service import (
     snapshot_input_from_mapping,
 )
 
+class WeatherRefreshWorkerResult(BaseModel):
+    schema_version: str = "weather_refresh_worker.v1"
+    tenant_id: str
+    dry_run: bool = True
+    provider_count: int = 0
+    due_count: int = 0
+    refreshed_count: int = 0
+    failed_count: int = 0
+    skipped_count: int = 0
+    providers: list[dict] = Field(default_factory=list)
+    message: str = "Weather refresh worker completed."
+
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 
 PROVIDER_TYPES = {"EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"}
@@ -169,6 +181,110 @@ def _snapshot_payload(row: WeatherSnapshot) -> dict:
         "updated_at": _iso(row.updated_at),
     }
 
+
+def _weather_provider_is_due(provider, now: datetime) -> bool:
+    if not getattr(provider, "is_enabled", False):
+        return False
+    next_refresh_at = getattr(provider, "next_refresh_at", None)
+    if next_refresh_at is None:
+        return True
+    if next_refresh_at.tzinfo is None:
+        next_refresh_at = next_refresh_at.replace(tzinfo=timezone.utc)
+    return next_refresh_at <= now
+
+
+def _run_due_weather_refresh_worker(
+    db: Session,
+    *,
+    tenant_id: str,
+    dry_run: bool = True,
+    provider_code: Optional[str] = None,
+    limit: int = 50,
+) -> dict:
+    """Execute or preview due backend weather provider refresh work.
+
+    This worker intentionally does not call external weather APIs yet. In dry-run
+    "or stub mode it identifies due providers and advances provider refresh metadata, "
+    "so scheduler wiring, operations health, and audit behavior can stabilize "
+    "before production provider adapters are connected."
+    """
+    now = datetime.now(timezone.utc)
+    query = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.tenant_id == tenant_id,
+        WeatherProviderConfig.is_enabled == True,
+    )
+    if provider_code:
+        query = query.filter(WeatherProviderConfig.provider_code == provider_code.strip().lower())
+
+    providers = query.order_by(WeatherProviderConfig.provider_code.asc()).limit(limit).all()
+    rows = []
+    refreshed_count = 0
+    failed_count = 0
+    skipped_count = 0
+    due_count = 0
+
+    for provider in providers:
+        is_due = _weather_provider_is_due(provider, now)
+        if is_due:
+            due_count += 1
+        status = "DUE" if is_due else "SKIPPED_NOT_DUE"
+        error_code = None
+        message = None
+
+        if not is_due:
+            skipped_count += 1
+        elif dry_run:
+            status = "DRY_RUN_DUE"
+            skipped_count += 1
+        else:
+            try:
+                interval_hours = int(getattr(provider, "refresh_interval_hours", None) or 6)
+                provider.last_refresh_at = now
+                provider.next_refresh_at = now + timedelta(hours=interval_hours)
+                provider.updated_at = now
+                metadata = dict(getattr(provider, "metadata_", None) or {})
+                metadata.update({
+                    "last_worker_run_at": now.isoformat(),
+                    "last_worker_status": "FETCHED_STUB",
+                    "last_worker_note": "Provider adapter stub executed; external API fetch not connected yet.",
+                })
+                provider.metadata_ = metadata
+                refreshed_count += 1
+                status = "FETCHED_STUB"
+                message = "Provider metadata advanced by backend refresh worker stub."
+            except Exception as exc:
+                failed_count += 1
+                status = "FAILED"
+                error_code = exc.__class__.__name__
+                message = str(exc)
+
+        rows.append({
+            "provider_code": provider.provider_code,
+            "display_name": provider.display_name,
+            "provider_type": provider.provider_type,
+            "is_due": is_due,
+            "status": status,
+            "error_code": error_code,
+            "message": message,
+            "last_refresh_at": provider.last_refresh_at.isoformat() if provider.last_refresh_at else None,
+            "next_refresh_at": provider.next_refresh_at.isoformat() if provider.next_refresh_at else None,
+        })
+
+    if not dry_run:
+        db.commit()
+
+    return {
+        "schema_version": "weather_refresh_worker.v1",
+        "tenant_id": tenant_id,
+        "dry_run": dry_run,
+        "provider_count": len(providers),
+        "due_count": due_count,
+        "refreshed_count": refreshed_count,
+        "failed_count": failed_count,
+        "skipped_count": skipped_count,
+        "providers": rows,
+        "message": "Weather refresh worker completed." if not dry_run else "Weather refresh worker dry run completed.",
+    }
 
 @router.post("/providers", status_code=201)
 def create_weather_provider(body: WeatherProviderCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
@@ -398,6 +514,29 @@ def list_weather_snapshots(
     }
 
 
+
+
+
+@router.post("/refresh-worker/run-due", response_model=WeatherRefreshWorkerResult)
+def run_due_weather_refresh_worker(
+    dry_run: bool = Query(True),
+    provider_code: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Run or preview due weather provider refresh work.
+
+    For now this is a backend-only worker stub. It advances provider refresh
+    metadata when dry_run=false, but does not call external provider APIs yet.
+    """
+    return _run_due_weather_refresh_worker(
+        db,
+        tenant_id=x_tenant_id,
+        dry_run=dry_run,
+        provider_code=provider_code,
+        limit=limit,
+    )
 
 @router.get("/operations/health")
 def weather_operations_health(
