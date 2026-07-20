@@ -226,6 +226,7 @@ The runner executes:
 - Android profile payload regression.
 - Profile hydration regression.
 - Profile form contract regression.
+- Provider worker ops dry-run regression.
 
 Still run separately where applicable:
 
