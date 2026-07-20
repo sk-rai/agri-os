@@ -2,7 +2,7 @@
 
 Status date: 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: about 86%.
+Current backend readiness estimate for Android MVP handoff: about 87%.
 
 This packet is not the signal to begin Android rewiring. It is the backend closeout map that will become the Android integration guide after backend testing, provider-worker stubs, permission review, and final regression are complete.
 
@@ -283,7 +283,7 @@ Completed since the 84% checkpoint:
 - Soil enrichment worker can persist demo payloads as SoilEnrichmentSnapshot rows.
 - Full Android backend closeout regression runner passes after these changes.
 
-Backend readiness estimate is now about 86%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
+Backend readiness estimate is now about 87%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
 
 Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
 
@@ -296,3 +296,15 @@ Worker/ops endpoints for weather and soil enrichment now require admin permissio
 Weather provider configuration and provider execution endpoints now require admin permissions: VIEW for provider/plan reads and EDIT for provider mutation or execution.
 
 Company profile reads and company discovery CSV template download now require admin VIEW permission; Android MVP should not call these backend-only company administration endpoints.
+
+## Permission hardening checkpoint - 2026-07-20
+
+Completed since the 86% checkpoint:
+
+- Provider worker ops endpoints require admin permissions.
+- Weather provider configuration and provider execution endpoints require admin permissions.
+- Company profile read and company discovery CSV template download require admin permissions.
+- Endpoint permission inventory now shows weather provider/worker ops removed from the flagged list.
+- Full Android backend closeout runner passes after permission hardening.
+
+Backend readiness estimate is now about 87%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
