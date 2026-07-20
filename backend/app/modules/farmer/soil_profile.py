@@ -265,6 +265,7 @@ class ShcSlusiPointCaptureRequest(BaseModel):
 
 class SoilEnrichmentWorkerRunRequest(BaseModel):
     demo_payloads: dict = Field(default_factory=dict)
+    demo_target: dict = Field(default_factory=dict)
 
 class SoilEnrichmentWorkerRunResponse(BaseModel):
     schema_version: str = "soil_enrichment_worker_run.v1"
@@ -274,6 +275,7 @@ class SoilEnrichmentWorkerRunResponse(BaseModel):
     queued_job_count: int = 0
     skipped_job_count: int = 0
     failed_job_count: int = 0
+    created_snapshot_count: int = 0
     jobs: list[dict] = Field(default_factory=list)
     message: str = "Soil enrichment worker run completed."
 
@@ -667,6 +669,50 @@ def _soil_enrichment_summary_payload(snapshots: list[SoilEnrichmentSnapshot]) ->
         "latest_slusi_or_shc": latest_slusi,
     }
 
+
+def _soil_enrichment_snapshot_from_normalized(*, tenant_id: str, normalized: dict, now: datetime) -> SoilEnrichmentSnapshot:
+    """Create SoilEnrichmentSnapshot while tolerating adapter fields not yet persisted."""
+    values = {
+        "tenant_id": tenant_id,
+        "parcel_id": normalized.get("parcel_id"),
+        "farmer_id": normalized.get("farmer_id"),
+        "snapshot_type": normalized.get("snapshot_type"),
+        "provider": normalized.get("provider"),
+        "status": normalized.get("status"),
+        "observed_at": normalized.get("observed_at"),
+        "fetched_at": normalized.get("fetched_at"),
+        "expires_at": normalized.get("expires_at"),
+        "ph": normalized.get("ph"),
+        "ec": normalized.get("ec"),
+        "organic_carbon_oc": normalized.get("organic_carbon_oc"),
+        "nitrogen_n": normalized.get("nitrogen_n"),
+        "phosphorus_p": normalized.get("phosphorus_p"),
+        "potassium_k": normalized.get("potassium_k"),
+        "sulphur_s": normalized.get("sulphur_s"),
+        "zinc_zn": normalized.get("zinc_zn"),
+        "iron_fe": normalized.get("iron_fe"),
+        "copper_cu": normalized.get("copper_cu"),
+        "manganese_mn": normalized.get("manganese_mn"),
+        "boron_bo": normalized.get("boron_bo"),
+        "surface_soil_moisture": normalized.get("surface_soil_moisture"),
+        "root_zone_soil_moisture": normalized.get("root_zone_soil_moisture"),
+        "soil_temperature_c": normalized.get("soil_temperature_c"),
+        "metadata_": {
+            **(normalized.get("metadata") or {}),
+            "adapter_only": {
+                "project_id": str(normalized.get("project_id")) if normalized.get("project_id") else None,
+                "provider_reference": normalized.get("provider_reference"),
+                "soil_type_code": normalized.get("soil_type_code"),
+                "soil_texture": normalized.get("soil_texture"),
+                "soil_color": normalized.get("soil_color"),
+            },
+        },
+        "source_payload": normalized.get("source_payload") or {},
+        "created_at": now,
+        "updated_at": now,
+    }
+    columns = set(SoilEnrichmentSnapshot.__table__.columns.keys())
+    return SoilEnrichmentSnapshot(**{key: value for key, value in values.items() if key in columns})
 
 def _soil_enrichment_job_audit_payload(event: SoilEnrichmentJobAudit) -> dict:
     return {
@@ -1200,6 +1246,7 @@ def run_soil_enrichment_queue_worker(
         missing=missing,
         limit=limit,
         demo_payloads=body.demo_payloads,
+        demo_target=body.demo_target,
     )
 
 
@@ -1343,6 +1390,7 @@ def _run_soil_enrichment_queue_worker(
     missing: str = "ANY",
     limit: int = 100,
     demo_payloads: Optional[dict] = None,
+    demo_target: Optional[dict] = None,
 ) -> dict:
     """Preview or queue backend soil enrichment work.
 
@@ -1364,6 +1412,7 @@ def _run_soil_enrichment_queue_worker(
     queued_job_count = 0
     skipped_job_count = 0
     failed_job_count = 0
+    created_snapshot_count = 0
 
     for item in queue.get("items", []):
         farmer = item.get("farmer") or {}
@@ -1418,54 +1467,18 @@ def _run_soil_enrichment_queue_worker(
                                 demo_payload,
                                 parcel_id=uuid.UUID(parcel["id"]),
                                 farmer_id=uuid.UUID(farmer["id"]) if farmer.get("id") else None,
-                                project_id=uuid.UUID(parcel["project_id"]) if parcel.get("project_id") else None,
-                                observed_at=now,
+                                    observed_at=now,
                             )
                             if job_type == "FETCH_SOIL_BASELINE"
                             else normalize_open_meteo_soil_moisture(
                                 demo_payload,
                                 parcel_id=uuid.UUID(parcel["id"]),
                                 farmer_id=uuid.UUID(farmer["id"]) if farmer.get("id") else None,
-                                project_id=uuid.UUID(parcel["project_id"]) if parcel.get("project_id") else None,
-                                fetched_at=now,
+                                    fetched_at=now,
                                 refresh_interval_hours=6,
                             )
                         )
-                        snapshot = SoilEnrichmentSnapshot(
-                            tenant_id=tenant_id,
-                            parcel_id=normalized["parcel_id"],
-                            farmer_id=normalized.get("farmer_id"),
-                            project_id=normalized.get("project_id"),
-                            snapshot_type=normalized["snapshot_type"],
-                            provider=normalized["provider"],
-                            provider_reference=normalized.get("provider_reference"),
-                            status=normalized["status"],
-                            observed_at=normalized.get("observed_at"),
-                            fetched_at=normalized.get("fetched_at"),
-                            expires_at=normalized.get("expires_at"),
-                            soil_type_code=normalized.get("soil_type_code"),
-                            soil_texture=normalized.get("soil_texture"),
-                            soil_color=normalized.get("soil_color"),
-                            ph=normalized.get("ph"),
-                            ec=normalized.get("ec"),
-                            organic_carbon_oc=normalized.get("organic_carbon_oc"),
-                            nitrogen_n=normalized.get("nitrogen_n"),
-                            phosphorus_p=normalized.get("phosphorus_p"),
-                            potassium_k=normalized.get("potassium_k"),
-                            sulphur_s=normalized.get("sulphur_s"),
-                            zinc_zn=normalized.get("zinc_zn"),
-                            iron_fe=normalized.get("iron_fe"),
-                            copper_cu=normalized.get("copper_cu"),
-                            manganese_mn=normalized.get("manganese_mn"),
-                            boron_bo=normalized.get("boron_bo"),
-                            surface_soil_moisture=normalized.get("surface_soil_moisture"),
-                            root_zone_soil_moisture=normalized.get("root_zone_soil_moisture"),
-                            soil_temperature_c=normalized.get("soil_temperature_c"),
-                            metadata_=normalized.get("metadata") or {},
-                            source_payload=normalized.get("source_payload") or {},
-                            created_at=now,
-                            updated_at=now,
-                        )
+                        snapshot = _soil_enrichment_snapshot_from_normalized(tenant_id=tenant_id, normalized=normalized, now=now)
                         db.add(snapshot)
                         db.flush()
                         event.provider = provider
@@ -1475,6 +1488,7 @@ def _run_soil_enrichment_queue_worker(
                             "demo_payload_snapshot_id": str(snapshot.id),
                             "demo_payload_provider": provider,
                         }
+                        created_snapshot_count += 1
                 except Exception as exc:
                     failed_job_count += 1
                     status = "FAILED"
@@ -1490,7 +1504,70 @@ def _run_soil_enrichment_queue_worker(
                 "reason": reason,
             })
 
-    if not dry_run and queued_job_count:
+    demo_target = demo_target or {}
+    if not dry_run and demo_payloads and demo_target.get("parcel_id"):
+        target_parcel_id = uuid.UUID(str(demo_target["parcel_id"]))
+        target_farmer_id = uuid.UUID(str(demo_target["farmer_id"])) if demo_target.get("farmer_id") else None
+        target_project_id = uuid.UUID(str(demo_target["project_id"])) if demo_target.get("project_id") else None
+        for job_type, provider, payload_key in [
+            ("FETCH_SOIL_BASELINE", "SOILGRIDS", "soilgrids"),
+            ("FETCH_SOIL_MOISTURE", "OPEN_METEO", "open_meteo_soil"),
+        ]:
+            demo_payload = demo_payloads.get(payload_key)
+            if not isinstance(demo_payload, dict):
+                continue
+            normalized = (
+                normalize_soilgrids_properties(
+                    demo_payload,
+                    parcel_id=target_parcel_id,
+                    farmer_id=target_farmer_id,
+                    project_id=target_project_id,
+                    observed_at=now,
+                )
+                if job_type == "FETCH_SOIL_BASELINE"
+                else normalize_open_meteo_soil_moisture(
+                    demo_payload,
+                    parcel_id=target_parcel_id,
+                    farmer_id=target_farmer_id,
+                    project_id=target_project_id,
+                    fetched_at=now,
+                    refresh_interval_hours=6,
+                )
+            )
+            snapshot = _soil_enrichment_snapshot_from_normalized(tenant_id=tenant_id, normalized=normalized, now=now)
+            db.add(snapshot)
+            db.flush()
+            event = SoilEnrichmentJobAudit(
+                tenant_id=tenant_id,
+                farmer_id=target_farmer_id,
+                parcel_id=target_parcel_id,
+                project_id=target_project_id,
+                job_type=job_type,
+                provider=provider,
+                status="FETCHED",
+                attempt_count=1,
+                reason="Demo payload normalized into SoilEnrichmentSnapshot by worker.",
+                metadata_={
+                    "source": "soil_enrichment_worker_demo_target",
+                    "demo_payload_snapshot_id": str(snapshot.id),
+                    "demo_payload_provider": provider,
+                },
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(event)
+            created_snapshot_count += 1
+            jobs.append({
+                "farmer_id": str(target_farmer_id) if target_farmer_id else None,
+                "parcel_id": str(target_parcel_id),
+                "project_id": str(target_project_id) if target_project_id else None,
+                "job_type": job_type,
+                "status": "FETCHED_DEMO_PAYLOAD",
+                "latest_status": None,
+                "reason": "Demo payload normalized into SoilEnrichmentSnapshot by worker.",
+            })
+
+    if not dry_run and (queued_job_count or created_snapshot_count):
         db.commit()
 
     return {
@@ -1501,6 +1578,7 @@ def _run_soil_enrichment_queue_worker(
         "queued_job_count": queued_job_count,
         "skipped_job_count": skipped_job_count,
         "failed_job_count": failed_job_count,
+        "created_snapshot_count": created_snapshot_count,
         "jobs": jobs,
         "message": "Soil enrichment worker run completed." if not dry_run else "Soil enrichment worker dry run completed.",
     }

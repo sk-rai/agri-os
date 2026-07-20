@@ -512,6 +512,11 @@ def main():
         f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=false",
         headers=headers,
         json={
+            "demo_target": {
+                "farmer_id": str(farmer_id),
+                "parcel_id": str(missing_enrichment_parcel_id),
+                "project_id": str(project_id),
+            },
             "demo_payloads": {
                 "soilgrids": {
                     "id": "soilgrids-worker-demo",
@@ -541,14 +546,12 @@ def main():
     worker_run_body = worker_run.json()
     check(worker_run_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker run schema stable")
     check(worker_run_body["dry_run"] is False, "Soil enrichment worker run preserves execution flag")
-    check("queued_job_count" in worker_run_body, "Soil enrichment worker demo payload reports queued jobs")
-    if worker_run_body["queued_job_count"] > 0:
-        demo_summary = client.get(f"/api/v1/soil-profiles/enrichments/summary?parcel_id={missing_enrichment_parcel_id}", headers=headers)
-        check(demo_summary.status_code == 200, "Soil enrichment worker demo payload summary returns 200", demo_summary.text[:500])
-        demo_summary_body = demo_summary.json()
-        check(demo_summary_body["latest_baseline"] is not None or demo_summary_body["latest_moisture"] is not None, "Soil enrichment worker demo payload creates snapshots")
-    else:
-        check(True, "Soil enrichment worker demo payload accepted with no currently queued jobs")
+    check("created_snapshot_count" in worker_run_body, "Soil enrichment worker demo payload reports created snapshots")
+    check(worker_run_body["created_snapshot_count"] >= 1, "Soil enrichment worker demo payload creates snapshot rows")
+    demo_summary = client.get(f"/api/v1/soil-profiles/enrichments/summary?parcel_id={missing_enrichment_parcel_id}", headers=headers)
+    check(demo_summary.status_code == 200, "Soil enrichment worker demo payload summary returns 200", demo_summary.text[:500])
+    demo_summary_body = demo_summary.json()
+    check(demo_summary_body["latest_baseline"] is not None or demo_summary_body["latest_moisture"] is not None, "Soil enrichment worker demo payload creates snapshots")
 
 
     db = SessionLocal()

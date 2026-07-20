@@ -532,3 +532,5 @@ Backend/admin can preview or queue provider-neutral soil enrichment jobs through
 Soil provider adapter normalization is isolated in `app/modules/farmer/soil_enrichment_adapters.py`. SoilGrids-style baseline payloads and Open-Meteo soil-moisture payloads are mapped into the internal `SoilEnrichmentSnapshot` field shape without network calls.
 
 For no-network validation, backend/admin tools can call `POST /api/v1/soil-profiles/enrichments/worker/run-queue?dry_run=false` with body `demo_payloads.soilgrids` and/or `demo_payloads.open_meteo_soil`. The soil enrichment worker can normalize these demo payloads into saved snapshots while recording fetched job audit events.
+
+Worker demo persistence can be forced with `demo_target.farmer_id`, `demo_target.parcel_id`, and optional `demo_target.project_id`; this creates saved snapshots from demo payloads even when the normal queue has no pending rows.
