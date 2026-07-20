@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { farmersApi, SoilEnrichmentQueueResponse } from "@/lib/api";
+import { farmersApi, SoilEnrichmentOperationsHealthResponse, SoilEnrichmentQueueResponse } from "@/lib/api";
 
 const MISSING_FILTERS = ["", "ANY", "BASELINE", "MOISTURE"];
 
 export default function SoilEnrichmentPage() {
   const [missing, setMissing] = useState("ANY");
   const [data, setData] = useState<SoilEnrichmentQueueResponse | null>(null);
+  const [health, setHealth] = useState<SoilEnrichmentOperationsHealthResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +16,12 @@ export default function SoilEnrichmentPage() {
     setLoading(true);
     setError(null);
     try {
-      setData(await farmersApi.soilEnrichmentQueue({ missing: missing || undefined, limit: 100 }));
+      const [nextQueue, nextHealth] = await Promise.all([
+        farmersApi.soilEnrichmentQueue({ missing: missing || undefined, limit: 100 }),
+        farmersApi.soilEnrichmentOperationsHealth(),
+      ]);
+      setData(nextQueue);
+      setHealth(nextHealth);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load soil enrichment queue");
     } finally {
@@ -69,6 +75,34 @@ export default function SoilEnrichmentPage() {
 
     {error ? <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
+    {health ? <section className="mb-4 rounded border bg-white p-4">
+      <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Operations health</h2>
+          <p className="text-xs text-gray-500">Backend-wide soil enrichment readiness, snapshot, and job-audit health.</p>
+        </div>
+        <div className="text-xs text-gray-400">Generated {new Date(health.generated_at).toLocaleString()}</div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
+        <MiniStat label="Location ready" value={health.summary.location_ready_parcel_count} />
+        <MiniStat label="Missing baseline" value={health.summary.missing_baseline_count} />
+        <MiniStat label="Missing moisture" value={health.summary.missing_moisture_count} />
+        <MiniStat label="Failed jobs" value={health.summary.failed_job_audit_count} />
+        <MiniStat label="Deferred jobs" value={health.summary.deferred_job_audit_count} />
+      </div>
+      {health.recommended_actions.length ? <div className="mt-3 rounded border border-amber-100 bg-amber-50 p-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-amber-900">Recommended actions</div>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">
+          {health.recommended_actions.map((action) => <li key={action}>{action}</li>)}
+        </ul>
+      </div> : <div className="mt-3 rounded border border-green-100 bg-green-50 p-3 text-xs text-green-800">No immediate soil enrichment operations action flagged.</div>}
+      <div className="mt-3 grid gap-3 text-xs md:grid-cols-3">
+        <Breakdown title="Snapshot providers" values={health.provider_counts} />
+        <Breakdown title="Audit statuses" values={health.audit_status_counts} />
+        <Breakdown title="Audit job types" values={health.audit_job_type_counts} />
+      </div>
+    </section> : null}
+
     {data ? <div className="mb-4 grid gap-3 md:grid-cols-5">
       <MiniStat label="Queue items" value={data.count} />
       <MiniStat label="Missing baseline" value={data.reason_counts.MISSING_BASELINE || 0} />
@@ -118,6 +152,14 @@ export default function SoilEnrichmentPage() {
       </div>
     </div>
   </main>;
+}
+
+function Breakdown({ title, values }: { title: string; values: Record<string, number> }) {
+  const entries = Object.entries(values || {}).filter(([, value]) => value > 0);
+  return <div className="rounded border bg-gray-50 p-3">
+    <div className="font-semibold text-gray-700">{title}</div>
+    {entries.length ? <div className="mt-2 space-y-1">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-gray-600"><span>{key}</span><span className="font-medium text-gray-900">{value}</span></div>)}</div> : <div className="mt-2 text-gray-400">No rows</div>}
+  </div>;
 }
 
 function MiniStat({ label, value }: { label: string; value: number }) {

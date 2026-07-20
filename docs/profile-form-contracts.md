@@ -513,7 +513,7 @@ The `/company-discovery` admin page now exposes CSV template download, validatio
 
 ## Backend readiness checkpoint - 2026-07-20
 
-Backend-driven profile readiness is now approximately **82% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
+Backend-driven profile readiness is now approximately **84% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
 
 Remaining work is mainly provider automation, Android UI consumption of these contracts, admin polish, production permission/audit review, and final regression/handoff packaging.
 
@@ -522,3 +522,5 @@ Weather operations health is now implemented in backend and admin web: `GET /api
 ### Soil enrichment operations health
 
 Backend/admin can inspect enrichment queue and job health through `GET /api/v1/soil-profiles/enrichments/operations/health`. Response `schema_version=soil_enrichment_operations_health.v1` summarizes location-ready parcels, missing baseline/moisture counts, snapshot/provider counts, job audit outcomes, and recommended actions. Android MVP should not call this endpoint; it is an operations/admin readiness surface.
+
+Admin `/soil-enrichment` also renders `soil_enrichment_operations_health.v1`, giving operators a single view of location-ready parcels, missing baseline/moisture counts, failed/deferred/skipped job audits, provider counts, and recommended backend actions.

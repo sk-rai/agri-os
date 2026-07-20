@@ -565,6 +565,37 @@ export interface SoilEnrichmentQueueItemDto {
   latest_audit_by_job: Record<string, SoilEnrichmentJobAuditDto>;
 }
 
+export interface SoilEnrichmentOperationsHealthResponse {
+  schema_version: string;
+  tenant_id: string;
+  filters: {
+    project_id?: string | null;
+  };
+  generated_at: string;
+  summary: {
+    parcel_count: number;
+    location_ready_parcel_count: number;
+    missing_baseline_count: number;
+    missing_moisture_count: number;
+    ready_for_baseline_fetch_count: number;
+    ready_for_moisture_fetch_count: number;
+    snapshot_count: number;
+    job_audit_count: number;
+    failed_job_audit_count: number;
+    deferred_job_audit_count: number;
+    skipped_job_audit_count: number;
+    queued_job_audit_count: number;
+    fetched_job_audit_count: number;
+  };
+  provider_counts: Record<string, number>;
+  snapshot_type_counts: Record<string, number>;
+  snapshot_status_counts: Record<string, number>;
+  audit_status_counts: Record<string, number>;
+  audit_job_type_counts: Record<string, number>;
+  audit_provider_counts: Record<string, number>;
+  recommended_actions: string[];
+}
+
 export interface SoilEnrichmentQueueResponse {
   schema_version: string;
   tenant_id: string;
@@ -1517,6 +1548,12 @@ export const farmersApi = {
     api(`/api/v1/parcels/${parcelId}`, { method: "PATCH", body }),
   updateSoilProfile: (profileId: string, body: Record<string, unknown>) =>
     api(`/api/v1/soil-profiles/${profileId}`, { method: "PATCH", body }),
+  soilEnrichmentOperationsHealth: (params?: { projectId?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<SoilEnrichmentOperationsHealthResponse>(`/api/v1/soil-profiles/enrichments/operations/health${suffix}`);
+  },
   soilEnrichmentQueue: (params?: { projectId?: string; farmerId?: string; missing?: string; limit?: number }) => {
     const q = new URLSearchParams();
     if (params?.projectId) q.set("project_id", params.projectId);

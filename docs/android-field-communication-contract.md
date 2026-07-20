@@ -999,7 +999,7 @@ Company discovery candidates can be staged in bulk through CSV: download `GET /a
 
 ## Backend readiness checkpoint - 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: **about 82%**.
+Current backend readiness estimate for Android MVP handoff: **about 84%**.
 
 This estimate means the main backend-owned contracts are now in place for farmer communication, profile capture, advisory targeting, enrichment readiness, and company/customer administration. Remaining work is mostly provider automation, final Android consumption, admin polish, and production hardening.
 
@@ -1084,3 +1084,5 @@ Weather operations health is now implemented in backend and admin web: `GET /api
 ### Soil enrichment operations health
 
 Backend/admin can inspect enrichment queue and job health through `GET /api/v1/soil-profiles/enrichments/operations/health`. Response `schema_version=soil_enrichment_operations_health.v1` summarizes location-ready parcels, missing baseline/moisture counts, snapshot/provider counts, job audit outcomes, and recommended actions. Android MVP should not call this endpoint; it is an operations/admin readiness surface.
+
+Soil enrichment operations health is admin/backend-only: `GET /api/v1/soil-profiles/enrichments/operations/health` and admin `/soil-enrichment` summarize queue health, provider coverage, job audit status, and recommended backend actions. Android should continue consuming summaries/readiness rather than provider operations endpoints.
