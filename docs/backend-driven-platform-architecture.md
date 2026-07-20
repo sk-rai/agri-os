@@ -651,3 +651,5 @@ Current backend readiness for Android MVP handoff is estimated at **about 84%**.
 Weather operations health is now implemented in backend and admin web: `GET /api/v1/weather/operations/health` and admin `/weather` show provider due/overdue/failure status plus fresh/stale/expired snapshot counts.
 
 Soil enrichment operations health is now surfaced through backend and admin web, raising Android MVP backend readiness to approximately **84%**. Remaining gaps are primarily automated provider workers, final Android integration, production permission/audit review, and final payload handoff packaging.
+
+See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.

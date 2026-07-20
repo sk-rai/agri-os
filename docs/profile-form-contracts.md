@@ -524,3 +524,5 @@ Weather operations health is now implemented in backend and admin web: `GET /api
 Backend/admin can inspect enrichment queue and job health through `GET /api/v1/soil-profiles/enrichments/operations/health`. Response `schema_version=soil_enrichment_operations_health.v1` summarizes location-ready parcels, missing baseline/moisture counts, snapshot/provider counts, job audit outcomes, and recommended actions. Android MVP should not call this endpoint; it is an operations/admin readiness surface.
 
 Admin `/soil-enrichment` also renders `soil_enrichment_operations_health.v1`, giving operators a single view of location-ready parcels, missing baseline/moisture counts, failed/deferred/skipped job audits, provider counts, and recommended backend actions.
+
+See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.
