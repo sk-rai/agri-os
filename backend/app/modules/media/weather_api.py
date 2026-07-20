@@ -398,6 +398,98 @@ def list_weather_snapshots(
     }
 
 
+
+@router.get("/operations/health")
+def weather_operations_health(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return backend weather-provider operational health for schedulers/admin."""
+    now = datetime.now(timezone.utc)
+    providers = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.tenant_id == x_tenant_id,
+    ).all()
+    snapshots = db.query(WeatherSnapshot).filter(
+        WeatherSnapshot.tenant_id == x_tenant_id,
+    ).all()
+
+    provider_rows = []
+    enabled_count = 0
+    due_count = 0
+    overdue_count = 0
+    failed_count = 0
+
+    for provider in providers:
+        is_enabled = bool(provider.is_enabled)
+        if is_enabled:
+            enabled_count += 1
+        next_refresh_at = provider.next_refresh_at
+        due = is_enabled and (next_refresh_at is None or next_refresh_at <= now)
+        overdue = False
+        if due:
+            due_count += 1
+            if next_refresh_at is not None:
+                overdue = (now - next_refresh_at).total_seconds() > 3600
+                if overdue:
+                    overdue_count += 1
+        last_status = ((provider.metadata_ or {}).get("last_refresh_status") or "").upper()
+        failed = last_status in {"FAILED", "ERROR"}
+        if failed:
+            failed_count += 1
+        provider_rows.append({
+            "id": str(provider.id),
+            "provider_code": provider.provider_code,
+            "display_name": provider.display_name,
+            "provider_type": provider.provider_type,
+            "is_enabled": is_enabled,
+            "refresh_interval_hours": provider.refresh_interval_hours,
+            "last_refresh_at": provider.last_refresh_at.isoformat() if provider.last_refresh_at else None,
+            "next_refresh_at": next_refresh_at.isoformat() if next_refresh_at else None,
+            "due": due,
+            "overdue": overdue,
+            "last_refresh_status": last_status or None,
+            "last_refresh_message": (provider.metadata_ or {}).get("last_refresh_message"),
+        })
+
+    fresh_snapshot_count = 0
+    stale_snapshot_count = 0
+    expired_snapshot_count = 0
+    for snapshot in snapshots:
+        if snapshot.expires_at and snapshot.expires_at <= now:
+            expired_snapshot_count += 1
+        elif snapshot.observed_at and (now - snapshot.observed_at).total_seconds() > 24 * 3600:
+            stale_snapshot_count += 1
+        else:
+            fresh_snapshot_count += 1
+
+    status = "HEALTHY"
+    if enabled_count == 0:
+        status = "NO_ENABLED_PROVIDERS"
+    elif failed_count > 0:
+        status = "DEGRADED"
+    elif overdue_count > 0 or fresh_snapshot_count == 0:
+        status = "ATTENTION_REQUIRED"
+
+    return {
+        "schema_version": "weather_operations_health.v1",
+        "tenant_id": x_tenant_id,
+        "generated_at": now.isoformat(),
+        "status": status,
+        "summary": {
+            "provider_count": len(providers),
+            "enabled_provider_count": enabled_count,
+            "due_provider_count": due_count,
+            "overdue_provider_count": overdue_count,
+            "failed_provider_count": failed_count,
+            "snapshot_count": len(snapshots),
+            "fresh_snapshot_count": fresh_snapshot_count,
+            "stale_snapshot_count": stale_snapshot_count,
+            "expired_snapshot_count": expired_snapshot_count,
+        },
+        "providers": provider_rows,
+    }
+
+
 @router.get("/snapshots/latest")
 def latest_weather_snapshot(
     project_id: Optional[uuid.UUID] = Query(None),

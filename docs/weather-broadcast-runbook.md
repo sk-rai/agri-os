@@ -176,3 +176,7 @@ Android should:
 - Initial weather location expansion supports tenant, project, farmer, parcel, and manual village-name snapshots.
 - Pincode, district/state, climatic-zone, and geospatial weather-grid expansion remain future work.
 - Live Open-Meteo fetch is available, but production deployment should add scheduler supervision, provider rate-limit handling, and alerting for stale snapshots.
+
+### Weather operations health
+
+Backend/admin can inspect weather provider health through `GET /api/v1/weather/operations/health`. Response `schema_version=weather_operations_health.v1` summarizes enabled, due, overdue, failed providers and fresh/stale/expired snapshots. Android should not call this endpoint for MVP; it is an operations/scheduler/admin readiness surface.

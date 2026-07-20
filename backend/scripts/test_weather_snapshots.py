@@ -265,6 +265,13 @@ def main():
     check(due_dry_body["dry_run"] is True, "Due weather dry-run does not process providers")
     check(any(row["provider_code"] == "open_meteo_due" for row in due_dry_body["providers"]), "Due weather dry-run lists due provider")
 
+    weather_health_before = client.get("/api/v1/weather/operations/health", headers=headers)
+    check(weather_health_before.status_code == 200, "Weather operations health returns 200", weather_health_before.text)
+    weather_health_before_body = weather_health_before.json()
+    check(weather_health_before_body["schema_version"] == "weather_operations_health.v1", "Weather operations health schema stable")
+    check(weather_health_before_body["summary"]["enabled_provider_count"] >= 1, "Weather operations health counts enabled providers")
+    check(any(row["provider_code"] == "open_meteo_due" and row["due"] is True for row in weather_health_before_body["providers"]), "Weather operations health flags due provider")
+
     due_run = client.post("/api/v1/weather/providers/run-due", headers=headers)
     check(due_run.status_code == 200, "Due weather provider run returns 200", due_run.text)
     due_body = due_run.json()
@@ -274,6 +281,13 @@ def main():
     check(due_result["status"] == "SUCCESS", "Due weather run records provider success")
     check(due_result["created_snapshot_count"] == 1, "Due weather run creates snapshot")
     check(due_result["snapshots"][0]["location_key"] == "Due Weather Village", "Due weather run preserves snapshot location")
+
+    weather_health_after = client.get("/api/v1/weather/operations/health", headers=headers)
+    check(weather_health_after.status_code == 200, "Weather operations health returns 200 after due run", weather_health_after.text)
+    weather_health_after_body = weather_health_after.json()
+    check(weather_health_after_body["summary"]["fresh_snapshot_count"] >= 1, "Weather operations health counts fresh snapshots")
+    check(any(row["provider_code"] == "open_meteo_due" and row["due"] is False for row in weather_health_after_body["providers"]), "Weather operations health clears due provider after run")
+
 
     listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)

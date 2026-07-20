@@ -1074,3 +1074,7 @@ This estimate means the main backend-owned contracts are now in place for farmer
 ### Current recommendation
 
 Do not start Android rewiring blindly. First finish provider-worker stubs and final API regression sweep, then create an Android handoff packet with exact endpoints, payload examples, feature flags, and rollout order.
+
+### Weather operations health
+
+Backend/admin can inspect weather provider health through `GET /api/v1/weather/operations/health`. Response `schema_version=weather_operations_health.v1` summarizes enabled, due, overdue, failed providers and fresh/stale/expired snapshots. Android should not call this endpoint for MVP; it is an operations/scheduler/admin readiness surface.
