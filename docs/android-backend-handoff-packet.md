@@ -205,6 +205,7 @@ Backend still needs:
 - SoilGrids baseline adapter.
 - SHC/SLUSI controlled import or capture adapter.
 - Provider retry/backoff/audit policy.
+- Soil enrichment queue worker stub is available at `POST /api/v1/soil-profiles/enrichments/worker/run-queue` to create provider-neutral queued audit rows before real provider adapters are connected.
 
 ### B. Regression sweep
 

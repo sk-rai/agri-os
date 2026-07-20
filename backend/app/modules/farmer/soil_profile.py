@@ -262,6 +262,17 @@ class ShcSlusiPointCaptureRequest(BaseModel):
     raw_payload: dict = Field(default_factory=dict)
 
 
+class SoilEnrichmentWorkerRunResponse(BaseModel):
+    schema_version: str = "soil_enrichment_worker_run.v1"
+    tenant_id: str
+    dry_run: bool = True
+    queue_item_count: int = 0
+    queued_job_count: int = 0
+    skipped_job_count: int = 0
+    failed_job_count: int = 0
+    jobs: list[dict] = Field(default_factory=list)
+    message: str = "Soil enrichment worker run completed."
+
 class SoilEnrichmentJobAuditCreate(BaseModel):
     farmer_id: Optional[uuid.UUID] = None
     parcel_id: Optional[uuid.UUID] = None
@@ -1160,6 +1171,32 @@ def list_soil_enrichment_job_audit(
 
 
 
+@router.post("/enrichments/worker/run-queue", response_model=SoilEnrichmentWorkerRunResponse)
+def run_soil_enrichment_queue_worker(
+    dry_run: bool = Query(True),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    project_id: Optional[uuid.UUID] = Query(None),
+    missing: str = Query("ANY", pattern=r"^(BASELINE|MOISTURE|ANY)$"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Run or preview backend soil enrichment queue work.
+
+    Current behavior is a provider-neutral worker stub. It can create QUEUED
+    audit rows for recommended jobs but does not call external providers yet.
+    """
+    return _run_soil_enrichment_queue_worker(
+        db,
+        tenant_id=x_tenant_id,
+        dry_run=dry_run,
+        farmer_id=farmer_id,
+        project_id=project_id,
+        missing=missing,
+        limit=limit,
+    )
+
+
 @router.get("/enrichments/operations/health")
 def soil_enrichment_operations_health(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -1289,6 +1326,104 @@ def soil_enrichment_operations_health(
         ],
     }
 
+
+def _run_soil_enrichment_queue_worker(
+    db: Session,
+    *,
+    tenant_id: str,
+    dry_run: bool = True,
+    farmer_id: Optional[uuid.UUID] = None,
+    project_id: Optional[uuid.UUID] = None,
+    missing: str = "ANY",
+    limit: int = 100,
+) -> dict:
+    """Preview or queue backend soil enrichment work.
+
+    This is intentionally provider-neutral. It converts queue recommendations
+    into audit events when dry_run=false, but real provider calls remain a
+    follow-up worker responsibility.
+    """
+    queue = list_soil_enrichment_queue(
+        project_id=project_id,
+        farmer_id=farmer_id,
+        missing=missing,
+        limit=limit,
+        db=db,
+        x_tenant_id=tenant_id,
+    )
+
+    now = datetime.now(timezone.utc)
+    jobs = []
+    queued_job_count = 0
+    skipped_job_count = 0
+    failed_job_count = 0
+
+    for item in queue.get("items", []):
+        farmer = item.get("farmer") or {}
+        parcel = item.get("parcel") or {}
+        recommended_jobs = item.get("recommended_jobs") or []
+        latest_audit_by_job = item.get("latest_audit_by_job") or {}
+        for job_type in recommended_jobs:
+            latest = latest_audit_by_job.get(job_type) or {}
+            latest_status = latest.get("status")
+            status = "DRY_RUN_QUEUED" if dry_run else "QUEUED"
+            reason = "Queued by backend soil enrichment worker stub."
+            if latest_status in {"QUEUED", "FETCHED"}:
+                status = "SKIPPED_ALREADY_ACTIVE"
+                reason = f"Latest audit status is {latest_status}; worker did not enqueue duplicate job."
+                skipped_job_count += 1
+            elif dry_run:
+                skipped_job_count += 1
+            else:
+                try:
+                    event = SoilEnrichmentJobAudit(
+                        tenant_id=tenant_id,
+                        farmer_id=uuid.UUID(farmer["id"]) if farmer.get("id") else None,
+                        parcel_id=uuid.UUID(parcel["id"]) if parcel.get("id") else None,
+                        project_id=uuid.UUID(parcel["project_id"]) if parcel.get("project_id") else None,
+                        job_type=job_type,
+                        provider=None,
+                        status="QUEUED",
+                        attempt_count=1,
+                        reason=reason,
+                        metadata_={
+                            "source": "soil_enrichment_worker_stub",
+                            "missing_reasons": item.get("reasons") or [],
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    db.add(event)
+                    queued_job_count += 1
+                except Exception as exc:
+                    failed_job_count += 1
+                    status = "FAILED"
+                    reason = str(exc)
+
+            jobs.append({
+                "farmer_id": farmer.get("id"),
+                "parcel_id": parcel.get("id"),
+                "project_id": parcel.get("project_id"),
+                "job_type": job_type,
+                "status": status,
+                "latest_status": latest_status,
+                "reason": reason,
+            })
+
+    if not dry_run and queued_job_count:
+        db.commit()
+
+    return {
+        "schema_version": "soil_enrichment_worker_run.v1",
+        "tenant_id": tenant_id,
+        "dry_run": dry_run,
+        "queue_item_count": queue.get("count", 0),
+        "queued_job_count": queued_job_count,
+        "skipped_job_count": skipped_job_count,
+        "failed_job_count": failed_job_count,
+        "jobs": jobs,
+        "message": "Soil enrichment worker run completed." if not dry_run else "Soil enrichment worker dry run completed.",
+    }
 
 @router.get("/enrichments/queue")
 def list_soil_enrichment_queue(

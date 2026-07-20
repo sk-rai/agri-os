@@ -526,3 +526,5 @@ Backend/admin can inspect enrichment queue and job health through `GET /api/v1/s
 Admin `/soil-enrichment` also renders `soil_enrichment_operations_health.v1`, giving operators a single view of location-ready parcels, missing baseline/moisture counts, failed/deferred/skipped job audits, provider counts, and recommended backend actions.
 
 See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.
+
+Backend/admin can preview or queue provider-neutral soil enrichment jobs through `POST /api/v1/soil-profiles/enrichments/worker/run-queue?dry_run=true|false`. The current worker creates `QUEUED` job audit rows and leaves real SoilGrids/Open-Meteo/SHC provider fetches to follow-up adapters.

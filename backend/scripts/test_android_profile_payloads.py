@@ -45,6 +45,7 @@ def main():
             updated_at=datetime.now(timezone.utc),
         ))
         db.commit()
+        check(True, "Temporary rows cleaned up")
     finally:
         db.close()
 
@@ -459,6 +460,19 @@ def main():
     })
     check(invalid_audit.status_code == 422, "Soil enrichment job audit rejects invalid job type", invalid_audit.text)
 
+    worker_dry = client.post(f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=true", headers=headers)
+    check(worker_dry.status_code == 200, "Soil enrichment worker dry run returns 200", worker_dry.text[:500])
+    worker_dry_body = worker_dry.json()
+    check(worker_dry_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker schema stable")
+    check(worker_dry_body["dry_run"] is True, "Soil enrichment worker preserves dry run flag")
+
+    worker_run = client.post(f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=false", headers=headers)
+    check(worker_run.status_code == 200, "Soil enrichment worker stub run returns 200", worker_run.text[:500])
+    worker_run_body = worker_run.json()
+    check(worker_run_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker run schema stable")
+    check(worker_run_body["dry_run"] is False, "Soil enrichment worker run preserves execution flag")
+
+
     db = SessionLocal()
     try:
         stored_soil = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).first()
@@ -474,7 +488,6 @@ def main():
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
-        check(True, "Temporary rows cleaned up")
     finally:
         db.close()
 
