@@ -227,6 +227,7 @@ The runner executes:
 - Profile hydration regression.
 - Profile form contract regression.
 - Provider worker ops dry-run regression.
+- Alembic revision chain validation.
 
 Still run separately where applicable:
 

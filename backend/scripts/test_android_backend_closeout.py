@@ -16,6 +16,7 @@ REGRESSIONS = [
     ("Profile hydration", ["scripts/test_profile_hydration.py"]),
     ("Profile form contracts", ["scripts/test_profile_form_contracts.py"]),
     ("Provider worker ops dry run", ["scripts/run_due_provider_workers.py", "--tenant-id", "default", "--dry-run"]),
+    ("Alembic revision chain", ["scripts/check_alembic_revision_chain.py"]),
 ]
 
 
