@@ -292,3 +292,5 @@ Static Alembic chain validation is available through `backend/scripts/check_alem
 Endpoint permission inventory is available through `backend/scripts/audit_endpoint_permission_inventory.py`. It classifies endpoints as Android/shared, admin/backoffice, worker/ops, or review-needed and flags missing tenant/admin markers for manual hardening review.
 
 Worker/ops endpoints for weather and soil enrichment now require admin permissions: VIEW for operations health/queue/history reads and EDIT for worker execution or job-audit writes.
+
+Weather provider configuration and provider execution endpoints now require admin permissions: VIEW for provider/plan reads and EDIT for provider mutation or execution.

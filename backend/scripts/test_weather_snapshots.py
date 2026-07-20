@@ -87,7 +87,7 @@ def main():
         db.close()
 
     provider_id = uuid.uuid4()
-    provider = client.post("/api/v1/weather/providers", headers=headers, json={
+    provider = client.post("/api/v1/weather/providers", headers=admin_headers, json={
         "id": str(provider_id),
         "provider_code": "open-meteo-test",
         "display_name": "Open Meteo Test",
@@ -123,11 +123,11 @@ def main():
     check(provider_body["refresh_interval_hours"] == 6, "Provider stores 6 hour refresh interval")
     check(provider_body["next_refresh_at"] is not None, "Provider computes next refresh timestamp")
 
-    providers = client.get("/api/v1/weather/providers?enabled=true", headers=headers)
+    providers = client.get("/api/v1/weather/providers?enabled=true", headers=admin_headers)
     check(providers.status_code == 200, "List weather providers returns 200", providers.text)
     check(providers.json()["count"] == 1, "Enabled provider list returns seeded provider")
 
-    refresh_plan = client.get("/api/v1/weather/providers/refresh-plan", headers=headers)
+    refresh_plan = client.get("/api/v1/weather/providers/refresh-plan", headers=admin_headers)
     check(refresh_plan.status_code == 200, "Weather refresh plan returns 200", refresh_plan.text)
     refresh_plan_body = refresh_plan.json()
     check(refresh_plan_body["schema_version"] == "weather_refresh_plan.v1", "Refresh plan schema stable")
@@ -162,7 +162,7 @@ def main():
     check(snapshot_body["condition_code"] == "HEAVY_RAIN", "Snapshot normalizes condition code")
     check("HEAVY_RAIN_NEXT_24H" in snapshot_body["risk_flags"], "Snapshot normalizes risk flags")
 
-    manual_refresh = client.post(f"/api/v1/weather/providers/{provider_id}/refresh", headers=headers, json={
+    manual_refresh = client.post(f"/api/v1/weather/providers/{provider_id}/refresh", headers=admin_headers, json={
         "status": "SUCCESS",
         "message": "manual regression refresh",
         "metadata": {"trigger": "regression"},
@@ -185,7 +185,7 @@ def main():
     check(refresh_body["provider"]["refresh_status"] == "SUCCESS", "Refresh records provider status")
     check(refresh_body["provider"]["next_refresh_at"] is not None, "Refresh computes next provider due timestamp")
 
-    adapter_run = client.post(f"/api/v1/weather/providers/{provider_id}/run-adapter", headers=headers)
+    adapter_run = client.post(f"/api/v1/weather/providers/{provider_id}/run-adapter", headers=admin_headers)
     check(adapter_run.status_code == 200, "Run weather provider adapter stub returns 200", adapter_run.text)
     adapter_body = adapter_run.json()
     check(adapter_body["schema_version"] == "weather_provider_adapter_run.v1", "Adapter run schema stable")
@@ -200,7 +200,7 @@ def main():
         db_adapter.close()
 
     open_meteo_provider_id = uuid.uuid4()
-    open_meteo_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+    open_meteo_provider = client.post("/api/v1/weather/providers", headers=admin_headers, json={
         "id": str(open_meteo_provider_id),
         "provider_code": "open_meteo_sample",
         "display_name": "Open-Meteo Sample",
@@ -217,7 +217,7 @@ def main():
         },
     })
     check(open_meteo_provider.status_code == 201, "Create Open-Meteo sample provider returns 201", open_meteo_provider.text)
-    open_meteo_run = client.post(f"/api/v1/weather/providers/{open_meteo_provider_id}/run-adapter", headers=headers)
+    open_meteo_run = client.post(f"/api/v1/weather/providers/{open_meteo_provider_id}/run-adapter", headers=admin_headers)
     check(open_meteo_run.status_code == 200, "Run Open-Meteo sample adapter returns 200", open_meteo_run.text)
     open_meteo_body = open_meteo_run.json()
     check(open_meteo_body["status"] == "SUCCESS", "Open-Meteo sample adapter succeeds offline")
@@ -227,7 +227,7 @@ def main():
     check(open_meteo_body["provider"]["metadata"]["risk_thresholds"]["heavy_rain_mm"] == 20, "Open-Meteo adapter records default thresholds")
 
     strict_provider_id = uuid.uuid4()
-    strict_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+    strict_provider = client.post("/api/v1/weather/providers", headers=admin_headers, json={
         "id": str(strict_provider_id),
         "provider_code": "open_meteo_strict",
         "display_name": "Open-Meteo Strict",
@@ -245,14 +245,14 @@ def main():
         },
     })
     check(strict_provider.status_code == 201, "Create Open-Meteo strict-threshold provider returns 201", strict_provider.text)
-    strict_run = client.post(f"/api/v1/weather/providers/{strict_provider_id}/run-adapter", headers=headers)
+    strict_run = client.post(f"/api/v1/weather/providers/{strict_provider_id}/run-adapter", headers=admin_headers)
     check(strict_run.status_code == 200, "Run Open-Meteo strict-threshold adapter returns 200", strict_run.text)
     strict_body = strict_run.json()
     check(strict_body["snapshots"][0]["condition_code"] == "RAIN", "Custom heavy-rain thresholds can downgrade condition")
     check("HEAVY_RAIN_NEXT_24H" not in strict_body["snapshots"][0]["risk_flags"], "Custom thresholds can suppress heavy-rain risk")
 
     live_provider_id = uuid.uuid4()
-    live_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+    live_provider = client.post("/api/v1/weather/providers", headers=admin_headers, json={
         "id": str(live_provider_id),
         "provider_code": "open_meteo_live",
         "display_name": "Open-Meteo Live",
@@ -278,7 +278,7 @@ def main():
                 "daily": {"temperature_2m_max": [41.2], "temperature_2m_min": [27.0], "time": [fetched_at.date().isoformat()]},
             }
         weather_service._fetch_open_meteo_payload = fake_fetch
-        live_run = client.post(f"/api/v1/weather/providers/{live_provider_id}/run-adapter", headers=headers)
+        live_run = client.post(f"/api/v1/weather/providers/{live_provider_id}/run-adapter", headers=admin_headers)
     finally:
         weather_service._fetch_open_meteo_payload = original_fetch
     check(live_run.status_code == 200, "Run Open-Meteo live adapter returns 200", live_run.text)
@@ -289,7 +289,7 @@ def main():
     check("HEAT_STRESS_NEXT_48H" in live_body["snapshots"][0]["risk_flags"], "Open-Meteo live adapter derives heat risk")
 
     due_provider_id = uuid.uuid4()
-    due_provider = client.post("/api/v1/weather/providers", headers=headers, json={
+    due_provider = client.post("/api/v1/weather/providers", headers=admin_headers, json={
         "id": str(due_provider_id),
         "provider_code": "open_meteo_due",
         "display_name": "Open-Meteo Due",
@@ -314,7 +314,7 @@ def main():
     finally:
         db_due.close()
 
-    due_dry_run = client.post("/api/v1/weather/providers/run-due?dry_run=true", headers=headers)
+    due_dry_run = client.post("/api/v1/weather/providers/run-due?dry_run=true", headers=admin_headers)
     check(due_dry_run.status_code == 200, "Due weather provider dry-run returns 200", due_dry_run.text)
     due_dry_body = due_dry_run.json()
     check(due_dry_body["schema_version"] == "weather_provider_due_run.v1", "Due weather run schema stable")
@@ -328,7 +328,7 @@ def main():
     check(weather_health_before_body["summary"]["enabled_provider_count"] >= 1, "Weather operations health counts enabled providers")
     check(any(row["provider_code"] == "open_meteo_due" and row["due"] is True for row in weather_health_before_body["providers"]), "Weather operations health flags due provider")
 
-    due_run = client.post("/api/v1/weather/providers/run-due", headers=headers)
+    due_run = client.post("/api/v1/weather/providers/run-due", headers=admin_headers)
     check(due_run.status_code == 200, "Due weather provider run returns 200", due_run.text)
     due_body = due_run.json()
     check(due_body["dry_run"] is False, "Due weather run processes providers")

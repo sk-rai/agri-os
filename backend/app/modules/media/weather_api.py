@@ -337,7 +337,7 @@ def _run_due_weather_refresh_worker(
     }
 
 @router.post("/providers", status_code=201)
-def create_weather_provider(body: WeatherProviderCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+def create_weather_provider(body: WeatherProviderCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
     now_ts = _now()
     existing = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == x_tenant_id, WeatherProviderConfig.provider_code == body.provider_code).first()
     row = existing or WeatherProviderConfig(id=body.id or uuid.uuid4(), tenant_id=x_tenant_id, provider_code=body.provider_code, created_at=now_ts)
@@ -356,7 +356,7 @@ def create_weather_provider(body: WeatherProviderCreate, db: Session = Depends(g
 
 
 @router.get("/providers")
-def list_weather_providers(enabled: Optional[bool] = Query(None), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+def list_weather_providers(enabled: Optional[bool] = Query(None), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     query = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == x_tenant_id)
     if enabled is not None:
         query = query.filter(WeatherProviderConfig.is_enabled == enabled)
@@ -365,7 +365,7 @@ def list_weather_providers(enabled: Optional[bool] = Query(None), db: Session = 
 
 
 @router.get("/providers/refresh-plan")
-def weather_provider_refresh_plan(enabled: Optional[bool] = Query(True), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+def weather_provider_refresh_plan(enabled: Optional[bool] = Query(True), db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     now_ts = _now()
     query = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == x_tenant_id)
     if enabled is not None:
@@ -389,6 +389,7 @@ def run_due_weather_provider_adapters(
     dry_run: bool = Query(False),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Run adapters for enabled providers whose next_refresh_at is due.
 
@@ -454,7 +455,7 @@ def run_due_weather_provider_adapters(
 
 
 @router.post("/providers/{provider_id}/refresh")
-def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProviderRefreshRequest, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProviderRefreshRequest, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
     now_ts = _now()
     provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
     if not provider:
@@ -482,7 +483,7 @@ def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProvide
 
 
 @router.post("/providers/{provider_id}/run-adapter")
-def run_weather_provider_adapter_endpoint(provider_id: uuid.UUID, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+def run_weather_provider_adapter_endpoint(provider_id: uuid.UUID, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
     now_ts = _now()
     provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
     if not provider:
