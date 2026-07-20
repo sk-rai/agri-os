@@ -290,3 +290,5 @@ Manual provider worker invocation is available through `backend/scripts/run_due_
 Static Alembic chain validation is available through `backend/scripts/check_alembic_revision_chain.py`; it checks duplicate revisions, missing down-revision targets, and single-head status without connecting to the database.
 
 Endpoint permission inventory is available through `backend/scripts/audit_endpoint_permission_inventory.py`. It classifies endpoints as Android/shared, admin/backoffice, worker/ops, or review-needed and flags missing tenant/admin markers for manual hardening review.
+
+Worker/ops endpoints for weather and soil enrichment now require admin permissions: VIEW for operations health/queue/history reads and EDIT for worker execution or job-audit writes.

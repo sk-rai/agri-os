@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import Base, get_db
 from app.shared.models import AuditMixin, UUIDPrimaryKey
 from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
@@ -1157,6 +1158,7 @@ def record_soil_enrichment_job_audit(
     body: SoilEnrichmentJobAuditCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Record a backend soil enrichment job attempt."""
     event = SoilEnrichmentJobAudit(
@@ -1190,6 +1192,7 @@ def list_soil_enrichment_job_audit(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     query = db.query(SoilEnrichmentJobAudit).filter(SoilEnrichmentJobAudit.tenant_id == x_tenant_id)
     if farmer_id:
@@ -1231,6 +1234,7 @@ def run_soil_enrichment_queue_worker(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Run or preview backend soil enrichment queue work.
 
@@ -1255,6 +1259,7 @@ def soil_enrichment_operations_health(
     project_id: Optional[uuid.UUID] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     """Return backend/admin operational health for soil enrichment queues/jobs."""
     from app.modules.farmer.models import Parcel
@@ -1591,6 +1596,7 @@ def list_soil_enrichment_queue(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     """Return backend operational queue for soil enrichment fetch jobs.
 

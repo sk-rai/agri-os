@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal, engine
 from app.main import app
 from app.modules.media.weather_provider_adapters import normalize_open_meteo_forecast
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Tenant
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
 from app.modules.media import weather_service
@@ -77,9 +78,11 @@ def main():
     client = TestClient(app)
 
     db = SessionLocal()
+    admin = None
     try:
         db.add(Tenant(id=tenant_id, name="Weather Test Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
         db.commit()
+        admin, admin_headers = create_test_admin(db, tenant_id=tenant_id)
     finally:
         db.close()
 
@@ -318,7 +321,7 @@ def main():
     check(due_dry_body["dry_run"] is True, "Due weather dry-run does not process providers")
     check(any(row["provider_code"] == "open_meteo_due" for row in due_dry_body["providers"]), "Due weather dry-run lists due provider")
 
-    weather_health_before = client.get("/api/v1/weather/operations/health", headers=headers)
+    weather_health_before = client.get("/api/v1/weather/operations/health", headers=admin_headers)
     check(weather_health_before.status_code == 200, "Weather operations health returns 200", weather_health_before.text)
     weather_health_before_body = weather_health_before.json()
     check(weather_health_before_body["schema_version"] == "weather_operations_health.v1", "Weather operations health schema stable")
@@ -335,7 +338,7 @@ def main():
     check(due_result["created_snapshot_count"] == 1, "Due weather run creates snapshot")
     check(due_result["snapshots"][0]["location_key"] == "Due Weather Village", "Due weather run preserves snapshot location")
 
-    weather_health_after = client.get("/api/v1/weather/operations/health", headers=headers)
+    weather_health_after = client.get("/api/v1/weather/operations/health", headers=admin_headers)
     check(weather_health_after.status_code == 200, "Weather operations health returns 200 after due run", weather_health_after.text)
     weather_health_after_body = weather_health_after.json()
     check(weather_health_after_body["summary"]["fresh_snapshot_count"] >= 1, "Weather operations health counts fresh snapshots")
@@ -354,14 +357,14 @@ def main():
         check(True, "Forced provider due for worker demo payload")
     finally:
         db_due.close()
-    worker_dry_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=true", headers=headers)
+    worker_dry_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=true", headers=admin_headers)
     check(worker_dry_run.status_code == 200, "Weather refresh worker dry run returns 200", worker_dry_run.text)
     worker_dry_body = worker_dry_run.json()
     check(worker_dry_body["schema_version"] == "weather_refresh_worker.v1", "Weather refresh worker schema stable")
     check(worker_dry_body["dry_run"] is True, "Weather refresh worker preserves dry run flag")
     check(worker_dry_body["provider_count"] >= 1, "Weather refresh worker sees configured provider")
 
-    worker_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=false", headers=headers)
+    worker_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=false", headers=admin_headers)
     check(worker_run.status_code == 200, "Weather refresh worker stub run returns 200", worker_run.text)
     worker_run_body = worker_run.json()
     check(worker_run_body["dry_run"] is False, "Weather refresh worker run preserves execution flag")
@@ -380,6 +383,8 @@ def main():
     try:
         db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == tenant_id).delete(synchronize_session=False)
+        if admin:
+            delete_test_admin(db, admin.id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

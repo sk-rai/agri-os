@@ -14,6 +14,7 @@ from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilEnrichmentJobAudit, SoilEnrichmentSnapshot, SoilProfile
 from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 client = TestClient(app)
@@ -37,6 +38,7 @@ def main():
     headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
 
     db = SessionLocal()
+    admin = None
     try:
         db.add(Tenant(
             id=tenant_id,
@@ -46,6 +48,7 @@ def main():
             updated_at=datetime.now(timezone.utc),
         ))
         db.commit()
+        admin, admin_headers = create_test_admin(db, tenant_id=tenant_id)
         check(True, "Temporary rows cleaned up")
     finally:
         db.close()
@@ -143,7 +146,7 @@ def main():
     check(invalid_farmer.json()["detail"]["error"] == "INVALID_PROFILE_OPTION_VALUE", "Invalid farmer option returns structured error")
 
     print("\n[2] Parcel seasonal crop payload")
-    parcel_response = client.post("/api/v1/parcels", headers=headers, json={
+    parcel_response = client.post("/api/v1/parcels", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "village_name_manual": "Android Profile Village",
         "reported_area": 2.5,
@@ -167,7 +170,7 @@ def main():
     finally:
         db.close()
 
-    part_owner_parcel_response = client.post("/api/v1/parcels", headers=headers, json={
+    part_owner_parcel_response = client.post("/api/v1/parcels", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "village_name_manual": "Android Profile Village",
         "pin_code": "560002",
@@ -209,7 +212,7 @@ def main():
     finally:
         db.close()
 
-    invalid_parcel = client.post("/api/v1/parcels", headers=headers, json={
+    invalid_parcel = client.post("/api/v1/parcels", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "village_name_manual": "Android Profile Village",
         "reported_area": 1,
@@ -244,7 +247,7 @@ def main():
     finally:
         db.close()
 
-    project_invalid_parcel = client.post("/api/v1/parcels", headers=headers, json={
+    project_invalid_parcel = client.post("/api/v1/parcels", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "village_name_manual": "Android Profile Village",
         "reported_area": 1,
@@ -254,7 +257,7 @@ def main():
     check(project_invalid_parcel.status_code == 400, "Project ownership override rejects default option", project_invalid_parcel.text)
     check(project_invalid_parcel.json()["detail"]["allowed_values"] == ["OWNED"], "Project option validation uses override values")
 
-    project_valid_parcel = client.post("/api/v1/parcels", headers=headers, json={
+    project_valid_parcel = client.post("/api/v1/parcels", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "village_name_manual": "Android Profile Village",
         "reported_area": 1,
@@ -428,7 +431,7 @@ def main():
         db.close()
 
     print("\n[4c] Soil enrichment queue endpoint")
-    queue_response = client.get("/api/v1/soil-profiles/enrichments/queue", headers=headers)
+    queue_response = client.get("/api/v1/soil-profiles/enrichments/queue", headers=admin_headers)
     check(queue_response.status_code == 200, "Soil enrichment queue returns 200", queue_response.text)
     queue = queue_response.json()
     check(queue["schema_version"] == "soil_enrichment_queue.v1", "Soil enrichment queue schema stable")
@@ -448,13 +451,13 @@ def main():
     check("LOCATION_READY" in queue_item["reasons"], "Soil enrichment queue marks location-ready parcel")
     check(queue_item["recommended_jobs"] == [], "Soil enrichment queue has no jobs when snapshots exist")
 
-    missing_any_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={missing_enrichment_farmer_id}&missing=ANY", headers=headers)
+    missing_any_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={missing_enrichment_farmer_id}&missing=ANY", headers=admin_headers)
     check(missing_any_queue.status_code == 200, "Soil enrichment missing ANY queue returns 200", missing_any_queue.text)
     missing_any_body = missing_any_queue.json()
     check(missing_any_body["count"] == 1, "Soil enrichment missing ANY queue returns incomplete parcel")
     check(missing_any_body["items"][0]["parcel"]["id"] == str(missing_enrichment_parcel_id), "Soil enrichment missing ANY queue excludes complete parcel")
 
-    operations_health = client.get("/api/v1/soil-profiles/enrichments/operations/health", headers=headers)
+    operations_health = client.get("/api/v1/soil-profiles/enrichments/operations/health", headers=admin_headers)
     check(operations_health.status_code == 200, "Soil enrichment operations health returns 200", operations_health.text[:500])
     operations_health_body = operations_health.json()
     check(operations_health_body["schema_version"] == "soil_enrichment_operations_health.v1", "Soil enrichment operations health schema stable")
@@ -463,11 +466,11 @@ def main():
     check(operations_health_body["summary"]["missing_moisture_count"] >= 1, "Soil enrichment operations health counts missing moisture")
     check("FETCH_SOIL_BASELINE" in operations_health_body["recommended_actions"], "Soil enrichment operations health recommends baseline fetch")
 
-    invalid_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANDROID_ONLY", headers=headers)
+    invalid_queue = client.get(f"/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}&missing=ANDROID_ONLY", headers=admin_headers)
     check(invalid_queue.status_code == 400, "Soil enrichment queue rejects invalid missing filter", invalid_queue.text)
 
     print("\n[4d] Soil enrichment job audit endpoint")
-    audit_create = client.post("/api/v1/soil-profiles/enrichments/jobs/audit", headers=headers, json={
+    audit_create = client.post("/api/v1/soil-profiles/enrichments/jobs/audit", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "parcel_id": parcel_id,
         "job_type": "FETCH_SOIL_BASELINE",
@@ -486,7 +489,7 @@ def main():
     check(audit_event["attempt_count"] == 2, "Soil enrichment job audit stores attempt count")
     check(audit_event["metadata"]["queue_reason"] == "MISSING_BASELINE", "Soil enrichment job audit stores metadata")
 
-    audit_list = client.get(f"/api/v1/soil-profiles/enrichments/jobs/audit?farmer_id={farmer_id}&status=FAILED", headers=headers)
+    audit_list = client.get(f"/api/v1/soil-profiles/enrichments/jobs/audit?farmer_id={farmer_id}&status=FAILED", headers=admin_headers)
     check(audit_list.status_code == 200, "Soil enrichment job audit list returns 200", audit_list.text)
     audit_body = audit_list.json()
     check(audit_body["schema_version"] == "soil_enrichment_job_audit.v1", "Soil enrichment job audit list schema stable")
@@ -494,7 +497,7 @@ def main():
     check(audit_body["count"] == 1, "Soil enrichment job audit list filters failed event")
     check(audit_body["events"][0]["id"] == audit_event["id"], "Soil enrichment job audit list returns created event")
 
-    invalid_audit = client.post("/api/v1/soil-profiles/enrichments/jobs/audit", headers=headers, json={
+    invalid_audit = client.post("/api/v1/soil-profiles/enrichments/jobs/audit", headers=admin_headers, json={
         "farmer_id": farmer_id,
         "parcel_id": parcel_id,
         "job_type": "ANDROID_ONLY_JOB",
@@ -502,7 +505,7 @@ def main():
     })
     check(invalid_audit.status_code == 422, "Soil enrichment job audit rejects invalid job type", invalid_audit.text)
 
-    worker_dry = client.post(f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=true", headers=headers)
+    worker_dry = client.post(f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=true", headers=admin_headers)
     check(worker_dry.status_code == 200, "Soil enrichment worker dry run returns 200", worker_dry.text[:500])
     worker_dry_body = worker_dry.json()
     check(worker_dry_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker schema stable")
@@ -510,7 +513,7 @@ def main():
 
     worker_run = client.post(
         f"/api/v1/soil-profiles/enrichments/worker/run-queue?farmer_id={farmer_id}&missing=ANY&dry_run=false",
-        headers=headers,
+        headers=admin_headers,
         json={
             "demo_target": {
                 "farmer_id": str(farmer_id),
@@ -567,6 +570,8 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        if admin:
+            delete_test_admin(db, admin.id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
     finally:

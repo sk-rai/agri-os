@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.media.api import _iso
 from app.modules.media.weather_provider_adapters import normalize_open_meteo_forecast
@@ -573,6 +574,7 @@ def run_due_weather_refresh_worker(
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Run or preview due weather provider refresh work.
 
@@ -591,6 +593,7 @@ def run_due_weather_refresh_worker(
 def weather_operations_health(
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     """Return backend weather-provider operational health for schedulers/admin."""
     now = datetime.now(timezone.utc)
