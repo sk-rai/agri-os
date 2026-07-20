@@ -180,3 +180,5 @@ Android should:
 ### Weather operations health
 
 Backend/admin can inspect weather provider health through `GET /api/v1/weather/operations/health`. Response `schema_version=weather_operations_health.v1` summarizes enabled, due, overdue, failed providers and fresh/stale/expired snapshots. Android should not call this endpoint for MVP; it is an operations/scheduler/admin readiness surface.
+
+Admin `/weather` now renders `weather_operations_health.v1`, including provider due/overdue/failure state and fresh/stale/expired snapshot counts.

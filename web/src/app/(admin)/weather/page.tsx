@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { broadcastsApi, weatherApi, type WeatherProviderDto, type WeatherProviderDueRunResponse, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotDto, type WeatherSnapshotsResponse } from "@/lib/api";
+import { broadcastsApi, weatherApi, type WeatherOperationsHealthResponse, type WeatherProviderDto, type WeatherProviderDueRunResponse, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotDto, type WeatherSnapshotsResponse } from "@/lib/api";
 
 const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
 const LOCATION_SCOPES = ["TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"];
@@ -40,6 +40,7 @@ const OPEN_METEO_SAMPLE_CONFIG = {
 export default function WeatherPage() {
   const [providers, setProviders] = useState<WeatherProvidersResponse | null>(null);
   const [refreshPlan, setRefreshPlan] = useState<WeatherRefreshPlanResponse | null>(null);
+  const [operationsHealth, setOperationsHealth] = useState<WeatherOperationsHealthResponse | null>(null);
   const [snapshots, setSnapshots] = useState<WeatherSnapshotsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshingProviderId, setRefreshingProviderId] = useState<string | null>(null);
@@ -77,9 +78,10 @@ export default function WeatherPage() {
     setLoading(true);
     setError(null);
     try {
-      const [nextProviders, nextPlan, nextSnapshots] = await Promise.all([
+      const [nextProviders, nextPlan, nextHealth, nextSnapshots] = await Promise.all([
         weatherApi.providers({ enabled: true }),
         weatherApi.refreshPlan({ enabled: true }),
+        weatherApi.operationsHealth(),
         weatherApi.snapshots({
           providerId: filterProviderId || undefined,
           locationScope: filterScope || undefined,
@@ -90,6 +92,7 @@ export default function WeatherPage() {
       ]);
       setProviders(nextProviders);
       setRefreshPlan(nextPlan);
+      setOperationsHealth(nextHealth);
       setSnapshots(nextSnapshots);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load weather data");
@@ -315,7 +318,46 @@ export default function WeatherPage() {
     {error ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
     {createdBroadcastId ? <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">Weather broadcast draft created. <a className="font-semibold underline" href="/broadcasts">Open Broadcasts</a> to preview audience, publish, and generate deliveries.</div> : null}
 
-    <section className="grid gap-3 md:grid-cols-4">
+    {operationsHealth ? <section className="rounded bg-white p-5 shadow">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Weather operations health</p>
+          <h2 className="mt-1 text-lg font-semibold text-gray-900">{operationsHealth.status}</h2>
+          <p className="mt-1 text-xs text-gray-500">Generated: {operationsHealth.generated_at}</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading} className="rounded border px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">Refresh health</button>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-4 lg:grid-cols-8">
+        <HealthStat label="Providers" value={operationsHealth.summary.provider_count} />
+        <HealthStat label="Enabled" value={operationsHealth.summary.enabled_provider_count} />
+        <HealthStat label="Due" value={operationsHealth.summary.due_provider_count} />
+        <HealthStat label="Overdue" value={operationsHealth.summary.overdue_provider_count} tone={operationsHealth.summary.overdue_provider_count ? "warn" : "ok"} />
+        <HealthStat label="Failed" value={operationsHealth.summary.failed_provider_count} tone={operationsHealth.summary.failed_provider_count ? "bad" : "ok"} />
+        <HealthStat label="Fresh" value={operationsHealth.summary.fresh_snapshot_count} tone={operationsHealth.summary.fresh_snapshot_count ? "ok" : "warn"} />
+        <HealthStat label="Stale" value={operationsHealth.summary.stale_snapshot_count} tone={operationsHealth.summary.stale_snapshot_count ? "warn" : "ok"} />
+        <HealthStat label="Expired" value={operationsHealth.summary.expired_snapshot_count} tone={operationsHealth.summary.expired_snapshot_count ? "warn" : "ok"} />
+      </div>
+      <div className="mt-4 overflow-x-auto rounded border">
+        <table className="min-w-full text-left text-xs">
+          <thead className="bg-gray-50 text-gray-500"><tr><th className="p-2">Provider</th><th className="p-2">Enabled</th><th className="p-2">Due</th><th className="p-2">Overdue</th><th className="p-2">Last status</th><th className="p-2">Last refresh</th><th className="p-2">Next refresh</th><th className="p-2">Message</th></tr></thead>
+          <tbody className="divide-y">
+            {operationsHealth.providers.map((provider) => <tr key={provider.id}>
+              <td className="p-2 font-medium text-gray-900">{provider.provider_code}<div className="text-gray-400">{provider.display_name}</div></td>
+              <td className="p-2">{provider.is_enabled ? "Yes" : "No"}</td>
+              <td className="p-2">{provider.due ? "Yes" : "No"}</td>
+              <td className="p-2">{provider.overdue ? "Yes" : "No"}</td>
+              <td className="p-2">{provider.last_refresh_status || "-"}</td>
+              <td className="p-2">{provider.last_refresh_at || "-"}</td>
+              <td className="p-2">{provider.next_refresh_at || "-"}</td>
+              <td className="p-2">{provider.last_refresh_message || "-"}</td>
+            </tr>)}
+            {operationsHealth.providers.length === 0 ? <tr><td colSpan={8} className="p-4 text-center text-gray-400">No weather providers configured.</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
+    </section> : null}
+
+        <section className="grid gap-3 md:grid-cols-4">
       <MiniStat label="Enabled providers" value={providers?.count ?? 0} tone="blue" />
       <MiniStat label="Due now" value={refreshPlan?.due_count ?? 0} tone={(refreshPlan?.due_count || 0) > 0 ? "amber" : "green"} />
       <MiniStat label="Fresh snapshots" value={freshCount} tone={freshCount > 0 ? "green" : "amber"} />
@@ -446,6 +488,11 @@ export default function WeatherPage() {
       </div>
     </section>
   </main>;
+}
+
+function HealthStat({ label, value, tone = "neutral" }: { label: string; value: number; tone?: "neutral" | "ok" | "warn" | "bad" }) {
+  const toneClass = tone === "ok" ? "border-green-200 bg-green-50 text-green-800" : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-800" : tone === "bad" ? "border-red-200 bg-red-50 text-red-800" : "border-gray-200 bg-gray-50 text-gray-800";
+  return <div className={`rounded border p-3 ${toneClass}`}><div className="text-[10px] uppercase tracking-wide opacity-70">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div></div>;
 }
 
 function MiniStat({ label, value, tone }: { label: string; value: string | number; tone: "blue" | "green" | "amber" | "slate" }) {

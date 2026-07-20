@@ -3588,6 +3588,40 @@ export const broadcastsApi = {
 
 };
 
+export interface WeatherOperationsHealthProviderDto {
+  id: string;
+  provider_code: string;
+  display_name: string;
+  provider_type: string;
+  is_enabled: boolean;
+  refresh_interval_hours: number;
+  last_refresh_at?: string | null;
+  next_refresh_at?: string | null;
+  due: boolean;
+  overdue: boolean;
+  last_refresh_status?: string | null;
+  last_refresh_message?: string | null;
+}
+
+export interface WeatherOperationsHealthResponse {
+  schema_version: string;
+  tenant_id: string;
+  generated_at: string;
+  status: string;
+  summary: {
+    provider_count: number;
+    enabled_provider_count: number;
+    due_provider_count: number;
+    overdue_provider_count: number;
+    failed_provider_count: number;
+    snapshot_count: number;
+    fresh_snapshot_count: number;
+    stale_snapshot_count: number;
+    expired_snapshot_count: number;
+  };
+  providers: WeatherOperationsHealthProviderDto[];
+}
+
 export interface WeatherProviderDto {
   id: string;
   tenant_id: string;
@@ -3703,6 +3737,7 @@ export interface WeatherProviderDueRunResponse {
 }
 
 export const weatherApi = {
+  operationsHealth: () => api<WeatherOperationsHealthResponse>("/api/v1/weather/operations/health"),
   createProvider: (body: { provider_code: string; display_name: string; provider_type?: string; refresh_interval_hours?: number; is_enabled?: boolean; config?: Record<string, unknown>; metadata?: Record<string, unknown> }) =>
     api<WeatherProviderDto>("/api/v1/weather/providers", { method: "POST", body: JSON.stringify(body) }),
   providers: (params?: { enabled?: boolean }) => {
