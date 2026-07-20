@@ -528,3 +528,5 @@ Admin `/soil-enrichment` also renders `soil_enrichment_operations_health.v1`, gi
 See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.
 
 Backend/admin can preview or queue provider-neutral soil enrichment jobs through `POST /api/v1/soil-profiles/enrichments/worker/run-queue?dry_run=true|false`. The current worker creates `QUEUED` job audit rows and leaves real SoilGrids/Open-Meteo/SHC provider fetches to follow-up adapters.
+
+Soil provider adapter normalization is isolated in `app/modules/farmer/soil_enrichment_adapters.py`. SoilGrids-style baseline payloads and Open-Meteo soil-moisture payloads are mapped into the internal `SoilEnrichmentSnapshot` field shape without network calls.

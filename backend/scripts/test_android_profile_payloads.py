@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilEnrichmentJobAudit, SoilEnrichmentSnapshot, SoilProfile
+from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
 
 
 client = TestClient(app)
@@ -49,6 +50,47 @@ def main():
     finally:
         db.close()
 
+    adapter_parcel_id = uuid.uuid4()
+    soilgrids = normalize_soilgrids_properties(
+        {
+            "id": "soilgrids-test-cell",
+            "properties": {
+                "phh2o": {"mean": 72},
+                "soc": {"mean": 18},
+                "nitrogen": {"mean": 920},
+                "clay": {"mean": 32},
+                "sand": {"mean": 38},
+                "silt": {"mean": 30},
+            },
+        },
+        parcel_id=adapter_parcel_id,
+        observed_at=datetime(2026, 7, 20, tzinfo=timezone.utc),
+    )
+    check(soilgrids["snapshot_type"] == "BASELINE", "SoilGrids adapter normalizes baseline snapshot")
+    check(soilgrids["provider"] == "SOILGRIDS", "SoilGrids adapter records provider")
+    check(soilgrids["ph"] == 7.2, "SoilGrids adapter rescales pH")
+    check(soilgrids["soil_texture"] == "LOAMY", "SoilGrids adapter infers coarse texture")
+
+    moisture = normalize_open_meteo_soil_moisture(
+        {
+            "latitude": 25.82,
+            "longitude": 82.97,
+            "hourly": {
+                "time": ["2026-07-20T09:00:00+00:00"],
+                "soil_moisture_0_to_1cm": [0.21],
+                "soil_moisture_3_to_9cm": [0.24],
+                "soil_moisture_9_to_27cm": [0.29],
+                "soil_temperature_0cm": [28.4],
+            },
+        },
+        parcel_id=adapter_parcel_id,
+        fetched_at=datetime(2026, 7, 20, 3, 30, tzinfo=timezone.utc),
+        refresh_interval_hours=6,
+    )
+    check(moisture["snapshot_type"] == "MOISTURE", "Open-Meteo soil adapter normalizes moisture snapshot")
+    check(moisture["surface_soil_moisture"] == 0.21, "Open-Meteo soil adapter maps surface moisture")
+    check(moisture["root_zone_soil_moisture"] == 0.29, "Open-Meteo soil adapter maps root-zone moisture")
+    check(moisture["metadata"]["schema_version"] == "open_meteo_soil_adapter.v1", "Open-Meteo soil adapter metadata schema stable")
     print("\n[1] Farmer payload aliases")
     farmer_response = client.post("/api/v1/farmers", headers=headers, json={
         "mobile_number": f"+9198{uuid.uuid4().int % 100000000:08d}",
