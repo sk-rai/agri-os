@@ -59,6 +59,7 @@ Backend still needs:
 - scheduled refresh worker;
 - real Open-Meteo request/response mapping; adapter normalization is now isolated and regression-tested without network calls;
 - weather refresh worker stub is available at `POST /api/v1/weather/refresh-worker/run-due` for backend/admin validation before scheduler wiring;
+- Weather refresh worker can now normalize provider `demo_payload` config into a persisted WeatherSnapshot without network calls.
 - provider error/retry policy hardening.
 
 Android should not use phone sensors for weather targeting. Weather is backend-only and snapshot-based.

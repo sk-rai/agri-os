@@ -188,3 +188,6 @@ Backend workers can preview or execute due provider refresh work through `POST /
 
 
 Open-Meteo adapter normalization is now isolated in `app/modules/media/weather_provider_adapters.py`. The helper maps provider JSON into the internal WeatherSnapshot field shape and derives condition/risk flags without making network calls.
+
+
+For no-network validation, a weather provider config can include `demo_payload`, `demo_location_scope`, and `demo_location_key`. Running `POST /api/v1/weather/refresh-worker/run-due?dry_run=false` will normalize the demo payload through the Open-Meteo adapter and persist a WeatherSnapshot.

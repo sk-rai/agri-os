@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.media.api import _iso
+from app.modules.media.weather_provider_adapters import normalize_open_meteo_forecast
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
 from app.modules.media.weather_service import (
     WeatherAdapterResult,
@@ -239,19 +240,66 @@ def _run_due_weather_refresh_worker(
         else:
             try:
                 interval_hours = int(getattr(provider, "refresh_interval_hours", None) or 6)
+                config = dict(getattr(provider, "config", None) or {})
+                demo_payload = config.get("demo_payload") if isinstance(config.get("demo_payload"), dict) else None
+                created_snapshot_id = None
+
+                if demo_payload:
+                    normalized = normalize_open_meteo_forecast(
+                        demo_payload,
+                        provider_id=provider.id,
+                        location_scope=str(config.get("demo_location_scope") or "TENANT"),
+                        location_key=str(config.get("demo_location_key") or tenant_id),
+                        fetched_at=now,
+                        refresh_interval_hours=interval_hours,
+                    )
+                    snapshot = WeatherSnapshot(
+                        tenant_id=tenant_id,
+                        provider_id=normalized["provider_id"],
+                        project_id=normalized.get("project_id"),
+                        farmer_id=normalized.get("farmer_id"),
+                        parcel_id=normalized.get("parcel_id"),
+                        location_scope=normalized["location_scope"],
+                        location_key=normalized["location_key"],
+                        lat=normalized.get("lat"),
+                        lng=normalized.get("lng"),
+                        fetched_at=normalized["fetched_at"],
+                        observed_at=normalized.get("observed_at"),
+                        forecast_valid_from=normalized.get("forecast_valid_from"),
+                        forecast_valid_to=normalized.get("forecast_valid_to"),
+                        expires_at=normalized.get("expires_at"),
+                        summary=normalized.get("summary"),
+                        condition_code=normalized.get("condition_code"),
+                        rainfall_probability_percent=normalized.get("rainfall_probability_percent"),
+                        rainfall_mm=normalized.get("rainfall_mm"),
+                        temperature_min_c=normalized.get("temperature_min_c"),
+                        temperature_max_c=normalized.get("temperature_max_c"),
+                        humidity_percent=normalized.get("humidity_percent"),
+                        wind_speed_kmph=normalized.get("wind_speed_kmph"),
+                        risk_flags=normalized.get("risk_flags") or [],
+                        source_payload=normalized.get("source_payload") or {},
+                        metadata_=normalized.get("metadata") or {},
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    db.add(snapshot)
+                    db.flush()
+                    created_snapshot_id = str(snapshot.id)
+
                 provider.last_refresh_at = now
                 provider.next_refresh_at = now + timedelta(hours=interval_hours)
                 provider.updated_at = now
                 metadata = dict(getattr(provider, "metadata_", None) or {})
                 metadata.update({
                     "last_worker_run_at": now.isoformat(),
-                    "last_worker_status": "FETCHED_STUB",
-                    "last_worker_note": "Provider adapter stub executed; external API fetch not connected yet.",
+                    "last_worker_status": "FETCHED_DEMO_PAYLOAD" if demo_payload else "FETCHED_STUB",
+                    "last_worker_note": "Demo payload normalized into WeatherSnapshot." if demo_payload else "Provider adapter stub executed; external API fetch not connected yet.",
+                    "last_worker_created_snapshot_id": created_snapshot_id,
                 })
                 provider.metadata_ = metadata
                 refreshed_count += 1
-                status = "FETCHED_STUB"
-                message = "Provider metadata advanced by backend refresh worker stub."
+                status = "FETCHED_DEMO_PAYLOAD" if demo_payload else "FETCHED_STUB"
+                message = "Demo payload normalized into WeatherSnapshot." if demo_payload else "Provider metadata advanced by backend refresh worker stub."
             except Exception as exc:
                 failed_count += 1
                 status = "FAILED"
@@ -268,6 +316,7 @@ def _run_due_weather_refresh_worker(
             "message": message,
             "last_refresh_at": provider.last_refresh_at.isoformat() if provider.last_refresh_at else None,
             "next_refresh_at": provider.next_refresh_at.isoformat() if provider.next_refresh_at else None,
+            "created_snapshot_id": created_snapshot_id if "created_snapshot_id" in locals() else None,
         })
 
     if not dry_run:

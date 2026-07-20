@@ -90,7 +90,29 @@ def main():
         "display_name": "Open Meteo Test",
         "provider_type": "EXTERNAL_API",
         "refresh_interval_hours": 6,
-        "config": {"base_url": "https://api.open-meteo.example"},
+        "config": {
+            "base_url": "https://api.open-meteo.example",
+            "demo_location_scope": "VILLAGE",
+            "demo_location_key": "Adapter Worker Village",
+            "demo_payload": {
+                "latitude": 25.82,
+                "longitude": 82.97,
+                "timezone": "Asia/Kolkata",
+                "daily": {
+                    "time": ["2026-07-20"],
+                    "weather_code": [61],
+                    "temperature_2m_min": [24.5],
+                    "temperature_2m_max": [33.8],
+                    "precipitation_probability_max": [75],
+                    "precipitation_sum": [18.2],
+                    "wind_speed_10m_max": [21.0]
+                },
+                "hourly": {
+                    "time": ["2026-07-20T09:00"],
+                    "relative_humidity_2m": [86]
+                }
+            }
+        },
         "metadata": {"purpose": "regression"},
     })
     check(provider.status_code == 201, "Create weather provider returns 201", provider.text)
@@ -324,6 +346,14 @@ def main():
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
     check(listed.json()["count"] == 4, "List returns active snapshots")
 
+    db_due = SessionLocal()
+    try:
+        provider_row = db_due.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id).first()
+        provider_row.next_refresh_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db_due.commit()
+        check(True, "Forced provider due for worker demo payload")
+    finally:
+        db_due.close()
     worker_dry_run = client.post("/api/v1/weather/refresh-worker/run-due?dry_run=true", headers=headers)
     check(worker_dry_run.status_code == 200, "Weather refresh worker dry run returns 200", worker_dry_run.text)
     worker_dry_body = worker_dry_run.json()
@@ -336,6 +366,8 @@ def main():
     worker_run_body = worker_run.json()
     check(worker_run_body["dry_run"] is False, "Weather refresh worker run preserves execution flag")
     check(worker_run_body["schema_version"] == "weather_refresh_worker.v1", "Weather refresh worker run schema stable")
+    check(worker_run_body["refreshed_count"] >= 1, "Weather refresh worker demo payload refreshes provider")
+    check(any(row.get("created_snapshot_id") for row in worker_run_body["providers"]), "Weather refresh worker demo payload creates snapshot")
 
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)
