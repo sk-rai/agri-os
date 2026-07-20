@@ -508,3 +508,5 @@ Approved discovery candidates can be applied into the live tenant company profil
 ### Company discovery CSV
 
 Company discovery candidates can be staged in bulk through CSV: download `GET /api/v1/company-discovery-candidates/template.csv`, validate with `POST /api/v1/company-discovery-candidates/csv/validate`, and import with `POST /api/v1/company-discovery-candidates/csv/import`. Imported rows remain `PENDING_REVIEW`; they do not become live company profiles until reviewed/applied.
+
+The `/company-discovery` admin page now exposes CSV template download, validation preview, and import actions so bulk company prepopulation can be staged without direct database access.

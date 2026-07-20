@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, companyApi, type CompanyDiscoveryCandidateDto } from "@/lib/api";
+import { ApiError, companyApi, type CompanyDiscoveryCandidateDto, type CompanyDiscoveryCsvValidationResponse } from "@/lib/api";
 
 const SOURCES = ["", "PUBLIC_WEB", "BULK_IMPORT", "GOVERNMENT_REGISTRY", "PARTNER_DIRECTORY", "CLIENT_PROVIDED", "OTHER"];
 const STATUSES = ["", "PENDING_REVIEW", "APPROVED", "REJECTED", "DUPLICATE", "MERGED", "STALE"];
@@ -32,6 +32,9 @@ export default function CompanyDiscoveryPage() {
   const [items, setItems] = useState<CompanyDiscoveryCandidateDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvValidation, setCsvValidation] = useState<CompanyDiscoveryCsvValidationResponse | null>(null);
+  const [csvLoading, setCsvLoading] = useState(false);
 
   const [candidateName, setCandidateName] = useState("");
   const [companyType, setCompanyType] = useState("FPO");
@@ -61,6 +64,43 @@ export default function CompanyDiscoveryPage() {
       setLoading(false);
     }
   }, [reviewStatus, source, search]);
+
+  async function validateCsv() {
+    if (!csvFile) {
+      setMessage("Choose a CSV file first.");
+      return;
+    }
+    setCsvLoading(true);
+    setMessage("");
+    try {
+      const response = await companyApi.validateCompanyDiscoveryCsv(csvFile);
+      setCsvValidation(response);
+      setMessage(response.message || "CSV validation completed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to validate CSV.");
+    } finally {
+      setCsvLoading(false);
+    }
+  }
+
+  async function importCsv() {
+    if (!csvFile) {
+      setMessage("Choose a CSV file first.");
+      return;
+    }
+    setCsvLoading(true);
+    setMessage("");
+    try {
+      const response = await companyApi.importCompanyDiscoveryCsv(csvFile);
+      setCsvValidation(null);
+      setMessage(response.message || `${response.imported_count} candidate(s) imported.`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to import CSV.");
+    } finally {
+      setCsvLoading(false);
+    }
+  }
 
   async function createCandidate() {
     setLoading(true);
@@ -153,6 +193,41 @@ export default function CompanyDiscoveryPage() {
         <div className="flex items-end">
           <div className="w-full rounded border bg-gray-50 p-2 text-sm text-gray-700">{items.length} shown</div>
         </div>
+      </section>
+
+      <section className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">CSV bulk staging</h2>
+            <p className="mt-1 text-xs text-gray-500">Validate CSVs before importing. Imported rows stay pending review until an admin applies or rejects them.</p>
+          </div>
+          <button type="button" onClick={() => companyApi.downloadCompanyDiscoveryTemplate()} className="rounded border px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            Download template
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="file" accept=".csv,text/csv" onChange={(event) => {
+            setCsvFile(event.target.files?.[0] || null);
+            setCsvValidation(null);
+          }} className="rounded border p-2 text-sm text-gray-700" />
+          <button type="button" onClick={() => void validateCsv()} disabled={csvLoading || !csvFile} className="rounded bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+            {csvLoading ? "Working..." : "Validate CSV"}
+          </button>
+          <button type="button" onClick={() => void importCsv()} disabled={csvLoading || !csvFile || csvValidation?.valid === false} className="rounded bg-green-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            Import valid CSV
+          </button>
+        </div>
+        {csvValidation ? <div className="rounded border bg-gray-50 p-3 text-xs text-gray-700">
+          <div className="font-semibold text-gray-900">{csvValidation.message}</div>
+          <div className="mt-1">Rows: {csvValidation.row_count} · Valid: {csvValidation.valid_count} · Errors: {csvValidation.error_count}</div>
+          <div className="mt-2 max-h-56 overflow-auto rounded border bg-white">
+            {csvValidation.rows.map((row) => <div key={row.line_number} className={`border-b p-2 ${row.valid ? "text-green-700" : "text-red-700"}`}>
+              <div className="font-medium">Line {row.line_number}: {row.valid ? "valid" : row.errors.join("; ")}</div>
+              <div className="mt-1 text-gray-500">{String(row.candidate.candidate_name || "-")} · {String(row.candidate.company_type || "-")} · {String(row.candidate.source || "-")}</div>
+            </div>)}
+            {csvValidation.rows.length === 0 ? <div className="p-2 text-gray-400">No rows parsed.</div> : null}
+          </div>
+        </div> : null}
       </section>
 
       <section className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
