@@ -31,6 +31,7 @@ def main() -> int:
     run('Alembic heads', ['../venv/bin/alembic', 'heads'])
     run('Alembic current', ['../venv/bin/alembic', 'current'])
     run('Static Alembic revision chain', [sys.executable, 'scripts/check_alembic_revision_chain.py'])
+    run('Clean DB bootstrap preflight', [sys.executable, 'scripts/check_clean_db_bootstrap_preflight.py'])
     run('Android backend closeout regression sweep', [sys.executable, 'scripts/test_android_backend_closeout.py'])
 
     print('\n' + '=' * 72)
