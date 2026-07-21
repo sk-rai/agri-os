@@ -2,7 +2,7 @@
 
 Status date: 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: about 87%.
+Current backend readiness estimate for Android MVP handoff: about 88%.
 
 This packet is not the signal to begin Android rewiring. It is the backend closeout map that will become the Android integration guide after backend testing, provider-worker stubs, permission review, and final regression are complete.
 
@@ -283,7 +283,7 @@ Completed since the 84% checkpoint:
 - Soil enrichment worker can persist demo payloads as SoilEnrichmentSnapshot rows.
 - Full Android backend closeout regression runner passes after these changes.
 
-Backend readiness estimate is now about 87%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
+Backend readiness estimate is now about 88%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
 
 Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
 
@@ -307,7 +307,7 @@ Completed since the 86% checkpoint:
 - Endpoint permission inventory now shows weather provider/worker ops removed from the flagged list.
 - Full Android backend closeout runner passes after permission hardening.
 
-Backend readiness estimate is now about 87%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 88%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
 
 Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it before risky backend changes, migrations, provider-worker changes, permission hardening, or Android handoff testing.
 
@@ -320,3 +320,16 @@ Tenant and project administration endpoints now require admin permissions: MANAG
 Project-scoped input assignment and workflow configuration read endpoints now require admin VIEW permission.
 
 Permission inventory review is documented in `docs/backend-permission-inventory-review.md`; remaining scanner flags are mostly accepted public/reference or generic template/export review items, not current Android MVP blockers.
+
+## Permission review checkpoint - 2026-07-21
+
+Completed since the 87% checkpoint:
+
+- Morning pre-Android backend handoff checker passed.
+- Web production build passed.
+- Tenant/project admin endpoints require admin permissions.
+- Project-scoped input assignment and workflow configuration read endpoints require admin VIEW permission.
+- Permission inventory review artifact was created and remaining scanner noise was categorized.
+- Full Android backend closeout runner passes after this hardening.
+
+Backend readiness estimate is now about 88%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.

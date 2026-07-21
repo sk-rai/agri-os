@@ -646,11 +646,11 @@ Future company prepopulation should land first in `company_discovery_candidates`
 
 Agri-OS now has backend-owned foundations for farmer/agent profiles, land/parcel profiles, soil profiles, weather/broadcast advisories, soil enrichment snapshots/queues, company/customer profiles, and company discovery/prepopulation staging.
 
-Current backend readiness for Android MVP handoff is estimated at **about 87%**. The strongest remaining gaps are automated provider workers, final Android consumption, production permission/audit hardening, and final handoff payload examples.
+Current backend readiness for Android MVP handoff is estimated at **about 88%**. The strongest remaining gaps are automated provider workers, final Android consumption, production permission/audit hardening, and final handoff payload examples.
 
 Weather operations health is now implemented in backend and admin web: `GET /api/v1/weather/operations/health` and admin `/weather` show provider due/overdue/failure status plus fresh/stale/expired snapshot counts.
 
-Soil enrichment operations health is now surfaced through backend and admin web, raising Android MVP backend readiness to approximately **87%**. Remaining gaps are primarily automated provider workers, final Android integration, production permission/audit review, and final payload handoff packaging.
+Soil enrichment operations health is now surfaced through backend and admin web, raising Android MVP backend readiness to approximately **88%**. Remaining gaps are primarily automated provider workers, final Android integration, production permission/audit review, and final payload handoff packaging.
 
 See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.
 
