@@ -186,3 +186,5 @@ cd ~/projects/farmint/backend
 ```
 
 This read-only checker runs Git status/log, Alembic current/head, static Alembic chain validation, and the Android backend closeout runner. Web build remains a manual follow-up.
+
+For permission hardening recovery and review context, see `docs/backend-permission-inventory-review.md`.

@@ -318,3 +318,5 @@ Representative Android payload shapes are documented in `docs/android-sample-pay
 Tenant and project administration endpoints now require admin permissions: MANAGE_USERS for tenant creation, EDIT for project creation, and VIEW for tenant/project reads and project enrollment/edit-policy inspection.
 
 Project-scoped input assignment and workflow configuration read endpoints now require admin VIEW permission.
+
+Permission inventory review is documented in `docs/backend-permission-inventory-review.md`; remaining scanner flags are mostly accepted public/reference or generic template/export review items, not current Android MVP blockers.
