@@ -69,6 +69,7 @@ def main():
         "farmer_id",
         "village_id",
         "village_name_manual",
+        "same_as_home_location",
         "reported_area",
         "reported_area_unit",
         "ownership_type",
@@ -94,6 +95,7 @@ def main():
     check(parcel_fields["parcel_point"]["type"] == "GPS_POINT", "parcel point uses GPS_POINT")
     check(parcel_fields["parcel_boundary"]["type"] == "GPS_POLYGON", "parcel boundary uses GPS_POLYGON")
     check(parcel_fields["parcel_boundary"]["output_format"] == "geojson_polygon", "parcel boundary outputs polygon GeoJSON")
+    check(parcel_fields["same_as_home_location"]["android_hint"]["copy_from_farmer_fields"] == ["pin_code", "village_id", "village_name_manual"], "parcel same-as-home hint copies farmer location")
 
     soil = get_form("soil_profile")
     soil_fields = by_id(soil)

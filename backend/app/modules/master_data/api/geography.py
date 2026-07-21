@@ -86,6 +86,22 @@ class VillageSearchResult(BaseModel):
         from_attributes = True
 
 
+class PinCodeVillageResponse(BaseModel):
+    id: UUID
+    lgd_code: str
+    canonical_name: str
+    block_id: UUID
+    block_name: str
+    district_id: UUID
+    district_name: str
+    state_id: UUID
+    state_name: str
+    pin_codes: Optional[list[str]] = None
+
+    class Config:
+        from_attributes = True
+
+
 class PaginatedResponse(BaseModel):
     items: list
     total: int
@@ -181,6 +197,66 @@ def list_villages(
         .limit(limit)
         .all()
     )
+
+
+@router.get("/villages/by-pin-code", response_model=list[PinCodeVillageResponse])
+def villages_by_pin_code(
+    pin_code: str = Query(..., min_length=6, max_length=6, pattern=r"^[0-9]{6}$", description="Indian 6-digit PIN code"),
+    district_id: Optional[UUID] = Query(None, description="Optionally narrow candidates to a selected district"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Return candidate villages associated with a PIN code.
+
+    A PIN code can cover multiple villages, so Android should display these
+    candidates and let the farmer/agent confirm the correct village. This is
+    intended for parcel land-location capture, not as a substitute for optional
+    GPS point/polygon capture.
+    """
+    query = (
+        db.query(
+            GeographyVillage,
+            GeographyBlock.canonical_name.label("block_name"),
+            GeographyDistrict.canonical_name.label("district_name"),
+            GeographyState.id.label("state_id"),
+            GeographyState.canonical_name.label("state_name"),
+        )
+        .join(GeographyBlock, GeographyBlock.id == GeographyVillage.block_id)
+        .join(GeographyDistrict, GeographyDistrict.id == GeographyVillage.district_id)
+        .join(GeographyState, GeographyState.id == GeographyDistrict.state_id)
+        .filter(
+            GeographyVillage.is_active == True,
+            GeographyBlock.is_active == True,
+            GeographyDistrict.is_active == True,
+            GeographyState.is_active == True,
+            GeographyVillage.pin_codes.any(pin_code),
+        )
+    )
+    if district_id:
+        query = query.filter(GeographyVillage.district_id == district_id)
+
+    rows = (
+        query
+        .order_by(GeographyDistrict.canonical_name, GeographyBlock.canonical_name, GeographyVillage.canonical_name)
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        PinCodeVillageResponse(
+            id=row.GeographyVillage.id,
+            lgd_code=row.GeographyVillage.lgd_code,
+            canonical_name=row.GeographyVillage.canonical_name,
+            block_id=row.GeographyVillage.block_id,
+            block_name=row.block_name,
+            district_id=row.GeographyVillage.district_id,
+            district_name=row.district_name,
+            state_id=row.state_id,
+            state_name=row.state_name,
+            pin_codes=row.GeographyVillage.pin_codes,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/villages/search", response_model=list[VillageSearchResult])

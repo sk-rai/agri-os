@@ -373,3 +373,7 @@ Backend readiness estimate is now about 89%. Remaining backend-heavy work is tru
 Enrollment should distinguish farmer home GPS from land/parcel location. Farmer home should capture precise GPS plus admin hierarchy/manual village fallback. Land enrollment should ask for parcel PIN code, then show backend-provided candidate villages for that PIN code because one PIN can map to multiple villages. Parcel GPS centroid/polygon remains recommended for precision, with override support for parcels spanning multiple villages or PIN codes.
 
 Clean temporary database bootstrap execution script is available at `backend/scripts/check_clean_db_bootstrap.py --execute`; run it only with a safe local/staging PostgreSQL `DATABASE_URL`.
+
+### Farmer home and parcel land location flow
+
+Android should treat farmer home location and parcel land location as separate concepts. During farmer registration, capture home PIN/village and optionally a precise home GPS point. During parcel registration, first ask whether all parcels are in the same PIN code/village as the farmer home. If yes, Android can copy farmer `pin_code`, `village_id`, and `village_name_manual` into parcel defaults while storing the confirmation in `location_scope`. If no, Android should ask parcel PIN code and call `GET /api/v1/geography/villages/by-pin-code?pin_code={pin_code}` to display candidate villages because one PIN code can map to multiple villages. GPS point/polygon remains optional precision capture and does not replace PIN/village selection.
