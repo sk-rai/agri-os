@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal, engine
 from app.main import app
-from app.modules.media.weather_provider_adapters import normalize_open_meteo_forecast
+from app.modules.media.weather_provider_adapters import normalize_provider_http_error, normalize_open_meteo_forecast
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Tenant
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
@@ -36,6 +36,11 @@ def now():
 
 
 def main():
+    retryable_error = normalize_provider_http_error(provider="OPEN_METEO", status_code=429, message="rate limited")
+    check(retryable_error.retryable is True, "Provider HTTP 429 is retryable")
+    check(retryable_error.error_code == "PROVIDER_RETRYABLE_HTTP_ERROR", "Provider retryable error code stable")
+    non_retryable_error = normalize_provider_http_error(provider="OPEN_METEO", status_code=401, message="unauthorized")
+    check(non_retryable_error.retryable is False, "Provider HTTP 401 is non-retryable")
     print("=" * 72)
     print("WEATHER SNAPSHOT FOUNDATION REGRESSION")
     normalized = normalize_open_meteo_forecast(

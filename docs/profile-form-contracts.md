@@ -568,3 +568,7 @@ Android should treat farmer home location and parcel land location as separate c
 ## Parcel location validation guardrails
 
 Backend validates parcel location semantics without requiring GPS. If a parcel is marked same_as_home_location=true, supplied parcel PIN/village fields must not conflict with the farmer home PIN/village. If same_as_home_location=false, parcel PIN and village are required. GPS point/polygon remains optional precision data and is not used as a replacement for PIN/village selection.
+
+## Provider retry/error policy
+
+Weather and soil provider adapters normalize HTTP failures into retryable and non-retryable classes. Retryable statuses are 408, 425, 429, 500, 502, 503, and 504. Non-retryable statuses are 400, 401, 403, 404, and 422. Workers should record retryable failures as audit/job events suitable for later retry, while non-retryable failures should be surfaced for configuration or source-data review.

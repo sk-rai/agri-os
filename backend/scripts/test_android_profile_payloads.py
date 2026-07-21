@@ -13,7 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilEnrichmentJobAudit, SoilEnrichmentSnapshot, SoilProfile
-from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
+from app.modules.farmer.soil_enrichment_adapters import normalize_soil_provider_http_error, normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -94,6 +94,11 @@ def main():
     check(moisture["surface_soil_moisture"] == 0.21, "Open-Meteo soil adapter maps surface moisture")
     check(moisture["root_zone_soil_moisture"] == 0.29, "Open-Meteo soil adapter maps root-zone moisture")
     check(moisture["metadata"]["schema_version"] == "open_meteo_soil_adapter.v1", "Open-Meteo soil adapter metadata schema stable")
+    soil_retryable_error = normalize_soil_provider_http_error(provider="SOILGRIDS", status_code=429, message="rate limited")
+    check(soil_retryable_error.retryable is True, "Soil provider HTTP 429 is retryable")
+    check(soil_retryable_error.error_code == "PROVIDER_RETRYABLE_HTTP_ERROR", "Soil provider retryable error code stable")
+    soil_non_retryable_error = normalize_soil_provider_http_error(provider="SOILGRIDS", status_code=401, message="unauthorized")
+    check(soil_non_retryable_error.retryable is False, "Soil provider HTTP 401 is non-retryable")
     print("\n[1] Farmer payload aliases")
     farmer_response = client.post("/api/v1/farmers", headers=headers, json={
         "mobile_number": f"+9198{uuid.uuid4().int % 100000000:08d}",

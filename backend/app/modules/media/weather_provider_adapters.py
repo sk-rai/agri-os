@@ -7,6 +7,35 @@ API integration can be tested separately from HTTP and scheduler concerns.
 
 from __future__ import annotations
 
+class ProviderAdapterError(Exception):
+    """Normalized provider adapter failure for worker retry/audit policy."""
+
+    def __init__(self, *, provider: str, error_code: str, message: str, retryable: bool = True, status_code: int | None = None):
+        super().__init__(message)
+        self.provider = provider
+        self.error_code = error_code
+        self.message = message
+        self.retryable = retryable
+        self.status_code = status_code
+
+    def to_dict(self) -> dict:
+        return {
+            "provider": self.provider,
+            "error_code": self.error_code,
+            "message": self.message,
+            "retryable": self.retryable,
+            "status_code": self.status_code,
+        }
+
+
+def normalize_provider_http_error(*, provider: str, status_code: int | None = None, message: str = "") -> ProviderAdapterError:
+    if status_code in {408, 425, 429, 500, 502, 503, 504}:
+        return ProviderAdapterError(provider=provider, error_code="PROVIDER_RETRYABLE_HTTP_ERROR", message=message or "Provider returned a retryable HTTP error.", retryable=True, status_code=status_code)
+    if status_code in {400, 401, 403, 404, 422}:
+        return ProviderAdapterError(provider=provider, error_code="PROVIDER_NON_RETRYABLE_HTTP_ERROR", message=message or "Provider returned a non-retryable HTTP error.", retryable=False, status_code=status_code)
+    return ProviderAdapterError(provider=provider, error_code="PROVIDER_UNKNOWN_HTTP_ERROR", message=message or "Provider returned an unknown HTTP error.", retryable=True, status_code=status_code)
+
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 import uuid
