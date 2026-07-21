@@ -316,3 +316,5 @@ Backend-side pre-Android handoff checks are available through `backend/scripts/p
 Representative Android payload shapes are documented in `docs/android-sample-payloads.md`; replace examples with captured fixture responses before final Android implementation.
 
 Tenant and project administration endpoints now require admin permissions: MANAGE_USERS for tenant creation, EDIT for project creation, and VIEW for tenant/project reads and project enrollment/edit-policy inspection.
+
+Project-scoped input assignment and workflow configuration read endpoints now require admin VIEW permission.

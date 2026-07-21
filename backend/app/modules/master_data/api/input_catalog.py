@@ -608,6 +608,7 @@ def get_project_input_assignments(
     q: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     project_scope = project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
     assignments = project_input_assignments(db, tenant_id=x_tenant_id, project_id=project_id)
@@ -669,6 +670,7 @@ def get_project_input_assignment_audit(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     project_crop_scope(db, project_id=project_id, tenant_id=x_tenant_id)
     query = db.query(ProjectInputAssignmentAuditEvent).filter(

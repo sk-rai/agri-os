@@ -3300,6 +3300,7 @@ def list_project_workflow_overrides(
     include_inactive: bool = Query(True),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     """Return project workflow override history, including archived rows by default."""
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
@@ -3340,6 +3341,7 @@ def get_project_workflow_enablements(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     """Return read-only workflow visibility status for a project."""
     return _project_workflow_enablement_summary(db, project_id, x_tenant_id)
@@ -3353,6 +3355,7 @@ def list_project_workflow_enablement_audit(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
     """Return project workflow assignment audit events for admin traceability."""
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
