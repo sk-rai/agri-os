@@ -314,3 +314,5 @@ Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it b
 Backend-side pre-Android handoff checks are available through `backend/scripts/pre_android_handoff_check.py`; run web build separately afterward.
 
 Representative Android payload shapes are documented in `docs/android-sample-payloads.md`; replace examples with captured fixture responses before final Android implementation.
+
+Tenant and project administration endpoints now require admin permissions: MANAGE_USERS for tenant creation, EDIT for project creation, and VIEW for tenant/project reads and project enrollment/edit-policy inspection.

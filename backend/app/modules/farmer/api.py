@@ -1858,7 +1858,7 @@ def _company_profile_audit_payload(event: CompanyProfileAuditEvent) -> dict:
 # --- Tenant Endpoints ---
 
 @router.post("/tenants", response_model=TenantResponse, status_code=201)
-def create_tenant(body: TenantCreate, db: Session = Depends(get_db)):
+def create_tenant(body: TenantCreate, db: Session = Depends(get_db), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS))):
     """Register a new tenant (enterprise, FPO, insurer)."""
     existing = db.query(Tenant).filter(Tenant.id == body.id).first()
     if existing:
@@ -1881,7 +1881,7 @@ def create_tenant(body: TenantCreate, db: Session = Depends(get_db)):
 @router.get("/tenants", response_model=list[TenantResponse])
 def list_tenants(
     db: Session = Depends(get_db),
-):
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     """List all active tenants. Used by super-admin for platform management."""
     return (
         db.query(Tenant)
@@ -2485,7 +2485,7 @@ def create_project(
     body: ProjectCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-):
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
     """Create a project within a tenant."""
     tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id).first()
     if not tenant:
@@ -2514,7 +2514,7 @@ def list_projects(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-):
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     """List projects for a tenant."""
     query = db.query(Project).filter(Project.tenant_id == x_tenant_id)
     if status:
@@ -2527,7 +2527,7 @@ def get_project_edit_policy(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-):
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     """Return whether core project configuration can still be edited safely."""
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
     if not project:
@@ -3764,7 +3764,7 @@ def list_project_farmer_enrollments(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-):
+    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW))):
     """List farmer memberships for a project."""
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
     if not project:
