@@ -1,0 +1,562 @@
+{
+  "description": {
+    "en": "Create or update a farmer profile",
+    "hi": "Create or update a farmer profile"
+  },
+  "fields": [
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.display_name",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "display_name",
+      "label": {
+        "en": "Farmer Name",
+        "hi": "Farmer Name"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": {
+        "en": "Full name",
+        "hi": "Full name"
+      },
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "default_country_code": "+91",
+        "keyboard": "phone"
+      },
+      "canonical_field": "farmer.mobile_number",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "mobile_number",
+      "label": {
+        "en": "Mobile Number",
+        "hi": "Mobile Number"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": {
+        "en": "+919900000001 or 9900000001",
+        "hi": "+919900000001 or 9900000001"
+      },
+      "required": true,
+      "source": null,
+      "type": "phone",
+      "validation": {
+        "min_length": 10,
+        "pattern": "^\\+?[0-9]{10,15}$"
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "manual_fallback_field": "village_name_manual"
+      },
+      "canonical_field": "farmer.village_id",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "village_id",
+      "label": {
+        "en": "Village ID",
+        "hi": "Village ID"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "/api/v1/geography/villages",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.village_name_manual",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "village_name_manual",
+      "label": {
+        "en": "Village",
+        "hi": "Village"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": {
+        "en": "Village name",
+        "hi": "Village name"
+      },
+      "required": true,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "payload_field": "pin_code"
+      },
+      "canonical_field": "farmer.pin_code",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "pin_code",
+      "label": {
+        "en": "PIN Code",
+        "hi": "PIN Code"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": {
+        "en": "6-digit PIN code",
+        "hi": "6-digit PIN code"
+      },
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": {
+        "pattern": "^[0-9]{6}$"
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.primary_crop_code",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "primary_crop_code",
+      "label": {
+        "en": "Primary Crop",
+        "hi": "Primary Crop"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": {
+        "en": "Select primary crop",
+        "hi": "Select primary crop"
+      },
+      "required": false,
+      "source": "/api/v1/master-data/crops",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.father_name",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "father_name",
+      "label": {
+        "en": "Father/Guardian Name",
+        "hi": "Father/Guardian Name"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.age",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "age",
+      "label": {
+        "en": "Age",
+        "hi": "Age"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "max": 120,
+        "min": 1
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.gender",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "gender",
+      "label": {
+        "en": "Gender",
+        "hi": "Gender"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Male",
+            "hi": "Male"
+          },
+          "value": "MALE"
+        },
+        {
+          "label": {
+            "en": "Female",
+            "hi": "Female"
+          },
+          "value": "FEMALE"
+        },
+        {
+          "label": {
+            "en": "Other",
+            "hi": "Other"
+          },
+          "value": "OTHER"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "mask_in_logs": true,
+        "sensitive": true
+      },
+      "canonical_field": "farmer.aadhaar_number",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "aadhaar_number",
+      "label": {
+        "en": "Aadhaar Number",
+        "hi": "Aadhaar Number"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": {
+        "pattern": "^[0-9]{12}$"
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.total_land_area",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "total_land_area",
+      "label": {
+        "en": "Total Land Area",
+        "hi": "Total Land Area"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.total_land_unit",
+      "capture_modes": null,
+      "default_value": "BIGHA",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "total_land_unit",
+      "label": {
+        "en": "Land Unit",
+        "hi": "Land Unit"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Acre",
+            "hi": "Acre"
+          },
+          "value": "ACRE"
+        },
+        {
+          "label": {
+            "en": "Hectare",
+            "hi": "Hectare"
+          },
+          "value": "HECTARE"
+        },
+        {
+          "label": {
+            "en": "Bigha",
+            "hi": "Bigha"
+          },
+          "value": "BIGHA"
+        },
+        {
+          "label": {
+            "en": "Biswa",
+            "hi": "Biswa"
+          },
+          "value": "BISWA"
+        },
+        {
+          "label": {
+            "en": "Katha",
+            "hi": "Katha"
+          },
+          "value": "KATHA"
+        },
+        {
+          "label": {
+            "en": "Guntha",
+            "hi": "Guntha"
+          },
+          "value": "GUNTHA"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.land_units",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.language_preference",
+      "capture_modes": null,
+      "default_value": "hi",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "language_preference",
+      "label": {
+        "en": "Preferred Language",
+        "hi": "Preferred Language"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "English",
+            "hi": "English"
+          },
+          "value": "en"
+        },
+        {
+          "label": {
+            "en": "Hindi",
+            "hi": "Hindi"
+          },
+          "value": "hi"
+        },
+        {
+          "label": {
+            "en": "Kannada",
+            "hi": "Kannada"
+          },
+          "value": "kn"
+        },
+        {
+          "label": {
+            "en": "Tamil",
+            "hi": "Tamil"
+          },
+          "value": "ta"
+        },
+        {
+          "label": {
+            "en": "Telugu",
+            "hi": "Telugu"
+          },
+          "value": "te"
+        },
+        {
+          "label": {
+            "en": "Marathi",
+            "hi": "Marathi"
+          },
+          "value": "mr"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.languages",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "payload_field": "assistance_mode"
+      },
+      "canonical_field": "farmer.enrollment_method",
+      "capture_modes": null,
+      "default_value": "DEALER_ASSISTED",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "assistance_mode",
+      "label": {
+        "en": "Assistance Mode",
+        "hi": "Assistance Mode"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Self service",
+            "hi": "Self service"
+          },
+          "value": "SELF_SERVICE"
+        },
+        {
+          "label": {
+            "en": "Dealer assisted",
+            "hi": "Dealer assisted"
+          },
+          "value": "DEALER_ASSISTED"
+        },
+        {
+          "label": {
+            "en": "Field-agent assisted",
+            "hi": "Field-agent assisted"
+          },
+          "value": "FIELD_AGENT_ASSISTED"
+        },
+        {
+          "label": {
+            "en": "Agronomist assisted",
+            "hi": "Agronomist assisted"
+          },
+          "value": "AGRONOMIST_ASSISTED"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.assistance_modes",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": 50.0,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "farmer.enrollment_gps",
+      "capture_modes": [
+        "PIN_DROP",
+        "CURRENT_LOCATION"
+      ],
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": {
+        "en": "Optional location captured during enrollment",
+        "hi": "Optional location captured during enrollment"
+      },
+      "id": "enrollment_location",
+      "label": {
+        "en": "Enrollment Location",
+        "hi": "Enrollment Location"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": "centroid_lat_lng",
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "GPS_POINT",
+      "validation": null
+    }
+  ],
+  "form_id": "farmer_registration",
+  "submit_endpoint": "/api/v1/farmers",
+  "submit_label": {
+    "en": "Save Farmer",
+    "hi": "Save Farmer"
+  },
+  "submit_method": "POST",
+  "title": {
+    "en": "Farmer Registration",
+    "hi": "Farmer Registration"
+  },
+  "version": "1.0.0"
+}

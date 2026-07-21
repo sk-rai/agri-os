@@ -354,3 +354,5 @@ Remaining release gate:
 - Confirm `alembic upgrade head` succeeds from empty database.
 
 Android endpoint boundaries are documented in `docs/android-endpoint-allowlist.md`; Android MVP should call only allowlisted endpoints and avoid backend/admin-only operations surfaces.
+
+Repeatable Android sample payload capture is available through `backend/scripts/capture_android_sample_payloads.py`; generated files live under `docs/samples/android/`.

@@ -320,3 +320,5 @@ npm run build
 ```
 
 Then capture real sample responses from a known tenant/project/farmer fixture and update this document with concrete IDs redacted.
+
+Captured redacted sample JSON files can be regenerated with `backend/scripts/capture_android_sample_payloads.py` and are stored under `docs/samples/android/`.

@@ -1,0 +1,10 @@
+{
+  "display_name": "Android Sample Farmer",
+  "id": "4d5a410f-00f3-4e2f-9a79-e06a392500e0",
+  "mobile_number": "+91XXXXXXXXXX",
+  "pin_code": "560001",
+  "primary_crop_code": null,
+  "status": "ACTIVE",
+  "tenant_id": "android-sample-db2888eb",
+  "village_id": null
+}

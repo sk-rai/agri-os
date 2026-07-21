@@ -1,0 +1,118 @@
+{
+  "count": 11,
+  "option_sets": [
+    {
+      "option_count": 4,
+      "option_set": "assistance_modes",
+      "source": "default",
+      "title": {
+        "en": "Assistance Modes",
+        "hi": "Assistance Modes"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 4,
+      "option_set": "geometry_sources",
+      "source": "default",
+      "title": {
+        "en": "GPS Capture Modes",
+        "hi": "GPS Capture Modes"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 7,
+      "option_set": "irrigation_sources",
+      "source": "default",
+      "title": {
+        "en": "Irrigation Sources",
+        "hi": "Irrigation Sources"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 6,
+      "option_set": "land_units",
+      "source": "default",
+      "title": {
+        "en": "Land Units",
+        "hi": "Land Units"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 6,
+      "option_set": "languages",
+      "source": "default",
+      "title": {
+        "en": "Languages",
+        "hi": "Languages"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 6,
+      "option_set": "ownership_types",
+      "source": "default",
+      "title": {
+        "en": "Ownership Types",
+        "hi": "Ownership Types"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 3,
+      "option_set": "seasons",
+      "source": "default",
+      "title": {
+        "en": "Seasons",
+        "hi": "Seasons"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 6,
+      "option_set": "soil_colors",
+      "source": "default",
+      "title": {
+        "en": "Soil Colors",
+        "hi": "Soil Colors"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 4,
+      "option_set": "soil_data_sources",
+      "source": "default",
+      "title": {
+        "en": "Soil Data Sources",
+        "hi": "Soil Data Sources"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 6,
+      "option_set": "soil_textures",
+      "source": "default",
+      "title": {
+        "en": "Soil Textures",
+        "hi": "Soil Textures"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "option_count": 7,
+      "option_set": "soil_types",
+      "source": "default",
+      "title": {
+        "en": "Soil Types",
+        "hi": "Soil Types"
+      },
+      "version": "1.0.0"
+    }
+  ],
+  "project_id": null,
+  "schema_version": "profile_option_sets.v1",
+  "tenant_id": "android-sample-db2888eb"
+}

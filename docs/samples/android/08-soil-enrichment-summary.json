@@ -1,0 +1,22 @@
+{
+  "filters": {
+    "farmer_id": null,
+    "limit": 50,
+    "parcel_id": "0931936b-dc01-4de3-b3da-00a161d8e0a6",
+    "provider": null,
+    "snapshot_type": null
+  },
+  "has_baseline": false,
+  "has_moisture": false,
+  "has_slusi_or_shc": false,
+  "latest_baseline": null,
+  "latest_by_type": {},
+  "latest_moisture": null,
+  "latest_slusi_or_shc": null,
+  "provider_counts": {},
+  "schema_version": "soil_enrichment_summary.v1",
+  "snapshot_count": 0,
+  "snapshot_type_counts": {},
+  "status_counts": {},
+  "tenant_id": "android-sample-db2888eb"
+}

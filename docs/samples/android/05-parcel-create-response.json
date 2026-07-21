@@ -1,0 +1,25 @@
+{
+  "annual_rent": null,
+  "annual_rent_currency": "INR",
+  "crops_by_season": {},
+  "current_crop_code": null,
+  "farmer_id": "4d5a410f-00f3-4e2f-9a79-e06a392500e0",
+  "geometry_source": "PIN_DROP",
+  "id": "0931936b-dc01-4de3-b3da-00a161d8e0a6",
+  "irrigation_source": null,
+  "local_name": null,
+  "location_scope": {
+    "type": "SINGLE_VILLAGE"
+  },
+  "ownership_type": "OWNED",
+  "pin_code": "560001",
+  "reported_area": 1.25,
+  "reported_area_unit": "BIGHA",
+  "share_percentage": null,
+  "sharecrop_percentage": null,
+  "soil_type_code": null,
+  "status": "ACTIVE",
+  "survey_number": null,
+  "village_id": null,
+  "village_name_manual": "Android Sample Village"
+}
