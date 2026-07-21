@@ -69,6 +69,9 @@ def main() -> int:
         db.add(Tenant(id=tenant_id, name='Android Sample Tenant', type='ENTERPRISE', created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)))
         db.commit()
 
+        pin_villages = assert_ok('PIN code village candidates', client.get('/api/v1/master-data/geography/villages/by-pin-code?pin_code=560001', headers=headers))
+        write_json('01-pin-code-villages.json', redact(pin_villages))
+
         form = assert_ok('farmer form', client.get('/api/v1/forms/farmer_registration', headers=headers))
         write_json('02-form-farmer-registration.json', redact(form))
 
@@ -96,7 +99,7 @@ def main() -> int:
             'ownership_type': 'OWNED',
             'pin_code': '560001',
             'village_name_manual': 'Android Sample Village',
-            'location_scope': {'type': 'SINGLE_VILLAGE'},
+            'location_scope': {'type': 'SAME_AS_HOME', 'same_as_home_location': True, 'source': 'farmer_confirmation'},
             'geometry_source': 'PIN_DROP',
             'centroid_lat': 25.82,
             'centroid_lng': 82.97,

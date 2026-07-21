@@ -322,3 +322,11 @@ npm run build
 Then capture real sample responses from a known tenant/project/farmer fixture and update this document with concrete IDs redacted.
 
 Captured redacted sample JSON files can be regenerated with `backend/scripts/capture_android_sample_payloads.py` and are stored under `docs/samples/android/`.
+
+## PIN-code village candidate sample
+
+The generated sample bundle now includes docs/samples/android/01-pin-code-villages.json.
+
+Captured from: GET /api/v1/master-data/geography/villages/by-pin-code?pin_code=560001
+
+Android should use this endpoint after a parcel PIN code is entered when the parcel is not in the same village/PIN as the farmer home. If the farmer confirms all parcels are in the same village/PIN as home, Android can copy farmer pin_code, village_id, and village_name_manual into parcel defaults and store location_scope.type=SAME_AS_HOME.

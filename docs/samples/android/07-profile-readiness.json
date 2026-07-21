@@ -4,22 +4,22 @@
     {
       "farmer": {
         "age": null,
-        "created_at": "2026-07-21T13:03:15.499200+05:30",
+        "created_at": "2026-07-21T17:30:17.814721+05:30",
         "crops_by_season": {},
         "display_name": "Android Sample Farmer",
         "father_name": null,
         "gender": null,
-        "id": "4d5a410f-00f3-4e2f-9a79-e06a392500e0",
+        "id": "f4c2be80-9da0-41f6-a70d-3a2b0c61f4a9",
         "language_preference": "hi",
         "mobile_number": "+91XXXXXXXXXX",
         "pin_code": "560001",
         "primary_crop_code": null,
         "project_id": null,
         "status": "ACTIVE",
-        "tenant_id": "android-sample-db2888eb",
+        "tenant_id": "android-sample-d13e1229",
         "total_land_area": null,
         "total_land_unit": "BIGHA",
-        "updated_at": "2026-07-21T13:03:15.499204+05:30",
+        "updated_at": "2026-07-21T17:30:17.814726+05:30",
         "user_id": null,
         "village_id": null,
         "village_name_manual": "Android Sample Village"
@@ -136,5 +136,5 @@
     "weather_advisory_ready_count": 0,
     "weather_snapshot_available_count": 0
   },
-  "tenant_id": "android-sample-db2888eb"
+  "tenant_id": "android-sample-d13e1229"
 }

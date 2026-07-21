@@ -3,13 +3,15 @@
   "annual_rent_currency": "INR",
   "crops_by_season": {},
   "current_crop_code": null,
-  "farmer_id": "4d5a410f-00f3-4e2f-9a79-e06a392500e0",
+  "farmer_id": "f4c2be80-9da0-41f6-a70d-3a2b0c61f4a9",
   "geometry_source": "PIN_DROP",
-  "id": "0931936b-dc01-4de3-b3da-00a161d8e0a6",
+  "id": "9af54633-303f-488b-98f1-b033588a7e6e",
   "irrigation_source": null,
   "local_name": null,
   "location_scope": {
-    "type": "SINGLE_VILLAGE"
+    "same_as_home_location": true,
+    "source": "farmer_confirmation",
+    "type": "SAME_AS_HOME"
   },
   "ownership_type": "OWNED",
   "pin_code": "560001",
