@@ -367,3 +367,7 @@ Completed since the 88% checkpoint:
 - Pre-Android backend handoff checker remains read-only; sample capture remains manual because it writes documentation artifacts.
 
 Backend readiness estimate is now about 89%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
+
+## Farmer and parcel location checkpoint - 2026-07-21
+
+Enrollment should distinguish farmer home GPS from land/parcel location. Farmer home should capture precise GPS plus admin hierarchy/manual village fallback. Land enrollment should ask for parcel PIN code, then show backend-provided candidate villages for that PIN code because one PIN can map to multiple villages. Parcel GPS centroid/polygon remains recommended for precision, with override support for parcels spanning multiple villages or PIN codes.

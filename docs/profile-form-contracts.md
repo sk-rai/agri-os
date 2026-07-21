@@ -534,3 +534,29 @@ Soil provider adapter normalization is isolated in `app/modules/farmer/soil_enri
 For no-network validation, backend/admin tools can call `POST /api/v1/soil-profiles/enrichments/worker/run-queue?dry_run=false` with body `demo_payloads.soilgrids` and/or `demo_payloads.open_meteo_soil`. The soil enrichment worker can normalize these demo payloads into saved snapshots while recording fetched job audit events.
 
 Worker demo persistence can be forced with `demo_target.farmer_id`, `demo_target.parcel_id`, and optional `demo_target.project_id`; this creates saved snapshots from demo payloads even when the normal queue has no pending rows.
+
+## Farmer enrollment location policy
+
+Farmer enrollment should separate farmer residence location from land/parcel location.
+
+For farmer residence/home:
+
+- capture state, district, block/tehsil, and village where available;
+- capture precise home GPS coordinates because many Indian village homes do not have reliable street addresses;
+- keep manual village text as fallback when master geography is incomplete;
+- do not use farmer home location as a substitute for land parcel location.
+
+For land/parcel enrollment:
+
+- ask for the PIN code where the land parcel is located;
+- backend should return candidate villages for that PIN code;
+- Android should display all villages mapped to that PIN code for user confirmation because one PIN code can cover multiple villages;
+- selected village should be saved on the parcel;
+- parcel GPS centroid or polygon should be captured when available;
+- support override fields for the minority case where plots span multiple villages or PIN codes.
+
+Backend ownership rule:
+
+- Android should not maintain its own PIN-to-village mapping;
+- PIN code, village, season, land unit, ownership, soil, and related options should remain backend-configurable;
+- Android should request backend options/search results and persist selected IDs/codes.

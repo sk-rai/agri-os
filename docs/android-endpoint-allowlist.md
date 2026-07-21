@@ -110,3 +110,15 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - Run web build.
 - Confirm this allowlist against Android API client interfaces.
 - Capture final sample payloads from allowed endpoints.
+
+## Location lookup requirement
+
+Android may call backend-safe geography/PIN lookup endpoints for enrollment. The intended flow is:
+
+1. Farmer home: capture GPS plus state/district/block/village fields.
+2. Parcel land: enter PIN code.
+3. Backend returns villages associated with that PIN code.
+4. Android shows the village list for confirmation.
+5. Android saves selected village/PIN/GPS fields on the parcel.
+
+Android should not ship or maintain its own PIN-to-village database.
