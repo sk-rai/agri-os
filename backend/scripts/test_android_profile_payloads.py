@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilEnrichmentJobAudit, SoilEnrichmentSnapshot, SoilProfile
+from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_runtime_policy_from_config
 from app.modules.farmer.soil_enrichment_adapters import normalize_soil_provider_http_error, normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
@@ -94,6 +95,13 @@ def main():
     check(moisture["surface_soil_moisture"] == 0.21, "Open-Meteo soil adapter maps surface moisture")
     check(moisture["root_zone_soil_moisture"] == 0.29, "Open-Meteo soil adapter maps root-zone moisture")
     check(moisture["metadata"]["schema_version"] == "open_meteo_soil_adapter.v1", "Open-Meteo soil adapter metadata schema stable")
+    soil_runtime_policy = provider_runtime_policy_from_config({"timeout_seconds": 999, "max_retries": 4, "demo_payload": {"ok": True}})
+    check(soil_runtime_policy.timeout_seconds == 120, "Soil provider runtime policy clamps timeout")
+    check(soil_runtime_policy.max_retries == 4, "Soil provider runtime policy preserves retry count")
+    check(soil_runtime_policy.demo_mode is True, "Soil provider runtime policy detects demo mode")
+    soil_failure_meta = provider_failure_metadata(error=normalize_soil_provider_http_error(provider="SOILGRIDS", status_code=429), policy=soil_runtime_policy)
+    check(soil_failure_meta["retryable"] is True, "Soil provider failure metadata preserves retryable flag")
+    check(soil_failure_meta["runtime_policy"]["timeout_seconds"] == 120, "Soil provider failure metadata includes runtime policy")
     soil_retryable_error = normalize_soil_provider_http_error(provider="SOILGRIDS", status_code=429, message="rate limited")
     check(soil_retryable_error.retryable is True, "Soil provider HTTP 429 is retryable")
     check(soil_retryable_error.error_code == "PROVIDER_RETRYABLE_HTTP_ERROR", "Soil provider retryable error code stable")

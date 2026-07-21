@@ -572,3 +572,7 @@ Backend validates parcel location semantics without requiring GPS. If a parcel i
 ## Provider retry/error policy
 
 Weather and soil provider adapters normalize HTTP failures into retryable and non-retryable classes. Retryable statuses are 408, 425, 429, 500, 502, 503, and 504. Non-retryable statuses are 400, 401, 403, 404, and 422. Workers should record retryable failures as audit/job events suitable for later retry, while non-retryable failures should be surfaced for configuration or source-data review.
+
+## Provider runtime policy
+
+Provider workers now have a shared runtime policy contract covering timeout_seconds, max_retries, backoff_seconds, rate_limit_window_seconds, max_requests_per_window, and demo_mode. Runtime policy is serialized into provider failure metadata so retries and production incidents can be audited without guessing which operational limits were active.

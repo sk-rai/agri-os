@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal, engine
 from app.main import app
+from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_runtime_policy_from_config
 from app.modules.media.weather_provider_adapters import normalize_provider_http_error, normalize_open_meteo_forecast
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Tenant
@@ -36,6 +37,13 @@ def now():
 
 
 def main():
+    runtime_policy = provider_runtime_policy_from_config({"timeout_seconds": 999, "max_retries": 3, "demo_payload": {"ok": True}})
+    check(runtime_policy.timeout_seconds == 120, "Provider runtime policy clamps timeout")
+    check(runtime_policy.max_retries == 3, "Provider runtime policy preserves retry count")
+    check(runtime_policy.demo_mode is True, "Provider runtime policy detects demo mode")
+    failure_meta = provider_failure_metadata(error=normalize_provider_http_error(provider="OPEN_METEO", status_code=429), policy=runtime_policy)
+    check(failure_meta["retryable"] is True, "Provider failure metadata preserves retryable flag")
+    check(failure_meta["runtime_policy"]["timeout_seconds"] == 120, "Provider failure metadata includes runtime policy")
     retryable_error = normalize_provider_http_error(provider="OPEN_METEO", status_code=429, message="rate limited")
     check(retryable_error.retryable is True, "Provider HTTP 429 is retryable")
     check(retryable_error.error_code == "PROVIDER_RETRYABLE_HTTP_ERROR", "Provider retryable error code stable")

@@ -403,3 +403,7 @@ Completed since the previous checkpoint:
 - full backend closeout gate and web build continue to pass.
 
 Remaining backend-heavy work is now concentrated on real external HTTP adapters and scheduling/deployment operations: live provider credentials, rate-limit budgets, production scheduler wiring, final permission-inventory cleanup, and final Android implementation review.
+
+## Provider runtime policy
+
+Provider workers now have a shared runtime policy contract covering timeout_seconds, max_retries, backoff_seconds, rate_limit_window_seconds, max_requests_per_window, and demo_mode. Runtime policy is serialized into provider failure metadata so retries and production incidents can be audited without guessing which operational limits were active.
