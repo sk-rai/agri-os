@@ -337,3 +337,18 @@ Backend readiness estimate is now about 88%. Remaining backend-heavy work is cle
 Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`; true temp database bootstrap execution remains gated behind a separate reviewed script/command.
 
 The pre-Android handoff checker now includes clean database bootstrap preflight; a NOT_READY result is acceptable when `DATABASE_URL` is not configured in the shell, but true clean-bootstrap execution remains a release gate.
+
+## Clean database bootstrap checkpoint - 2026-07-21
+
+Completed:
+
+- Alembic current/head check passes.
+- Static Alembic revision chain validation passes.
+- Clean database bootstrap preflight script exists and is included in the pre-Android handoff checker.
+- Preflight currently reports `DATABASE_URL_present=False` in the local shell, so true temporary database bootstrap execution is not attempted.
+
+Remaining release gate:
+
+- Provide a safe PostgreSQL `DATABASE_URL` or temp database credentials.
+- Add/run the execute-mode clean bootstrap script against an isolated temporary database.
+- Confirm `alembic upgrade head` succeeds from empty database.
