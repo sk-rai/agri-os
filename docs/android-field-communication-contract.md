@@ -1092,3 +1092,7 @@ See `docs/android-backend-handoff-packet.md` for the living Android/backend hand
 ### Farmer home and parcel land location flow
 
 Android should treat farmer home location and parcel land location as separate concepts. During farmer registration, capture home PIN/village and optionally a precise home GPS point. During parcel registration, first ask whether all parcels are in the same PIN code/village as the farmer home. If yes, Android can copy farmer `pin_code`, `village_id`, and `village_name_manual` into parcel defaults while storing the confirmation in `location_scope`. If no, Android should ask parcel PIN code and call `GET /api/v1/master-data/geography/villages/by-pin-code?pin_code={pin_code}` to display candidate villages because one PIN code can map to multiple villages. GPS point/polygon remains optional precision capture and does not replace PIN/village selection.
+
+## Parcel location validation guardrails
+
+Backend validates parcel location semantics without requiring GPS. If a parcel is marked same_as_home_location=true, supplied parcel PIN/village fields must not conflict with the farmer home PIN/village. If same_as_home_location=false, parcel PIN and village are required. GPS point/polygon remains optional precision data and is not used as a replacement for PIN/village selection.

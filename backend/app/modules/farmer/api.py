@@ -1855,6 +1855,48 @@ def _company_profile_audit_payload(event: CompanyProfileAuditEvent) -> dict:
     }
 
 
+def _validate_parcel_location_scope(body: ParcelCreate | ParcelUpdate, farmer: Farmer) -> None:
+    """Validate Android parcel location semantics without making GPS mandatory."""
+    location_scope = body.location_scope or {}
+    if not isinstance(location_scope, dict):
+        raise HTTPException(400, {
+            "error": "INVALID_LOCATION_SCOPE",
+            "message": "location_scope must be an object.",
+        })
+
+    explicit_same_as_home = "same_as_home_location" in location_scope
+    same_as_home = location_scope.get("same_as_home_location")
+    if same_as_home is None and location_scope.get("type") == "SAME_AS_HOME":
+        same_as_home = True
+
+    if same_as_home is True:
+        mismatches = []
+        if body.pin_code and farmer.pin_code and body.pin_code != farmer.pin_code:
+            mismatches.append("pin_code")
+        if body.village_id and farmer.village_id and body.village_id != farmer.village_id:
+            mismatches.append("village_id")
+        if body.village_name_manual and farmer.village_name_manual and body.village_name_manual.strip().lower() != farmer.village_name_manual.strip().lower():
+            mismatches.append("village_name_manual")
+        if mismatches:
+            raise HTTPException(400, {
+                "error": "PARCEL_LOCATION_CONFLICTS_WITH_HOME",
+                "message": "Parcel is marked same-as-home but location fields differ from farmer home.",
+                "fields": mismatches,
+            })
+
+    if explicit_same_as_home and same_as_home is False:
+        if not body.pin_code:
+            raise HTTPException(400, {
+                "error": "PARCEL_PIN_CODE_REQUIRED",
+                "message": "Parcel PIN code is required when land parcel is not in the same location as farmer home.",
+            })
+        if not body.village_id and not body.village_name_manual:
+            raise HTTPException(400, {
+                "error": "PARCEL_VILLAGE_REQUIRED",
+                "message": "Parcel village is required when land parcel is not in the same location as farmer home.",
+            })
+
+
 # --- Tenant Endpoints ---
 
 @router.post("/tenants", response_model=TenantResponse, status_code=201)
@@ -3872,6 +3914,11 @@ def create_parcel(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Register a parcel. GPS is optional — reported area is sufficient."""
+    farmer = db.query(Farmer).filter(Farmer.id == body.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+    _validate_parcel_location_scope(body, farmer)
+
     # Validate: at least one of village_id or village_name_manual
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
@@ -3955,6 +4002,11 @@ def update_parcel_profile(
     parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == x_tenant_id).first()
     if not parcel:
         raise HTTPException(404, "Parcel not found")
+
+    farmer = db.query(Farmer).filter(Farmer.id == parcel.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
+    _validate_parcel_location_scope(body, farmer)
 
     values = _model_patch_values(body)
     if not values:

@@ -381,3 +381,7 @@ Android should treat farmer home location and parcel land location as separate c
 ## Parcel location sample checkpoint
 
 The Android sample bundle includes a PIN-code village candidate response plus parcel create payloads that demonstrate location_scope.type=SAME_AS_HOME. This confirms the intended Android flow: home GPS/PIN/village is captured separately, parcel land location can default from home only after farmer confirmation, and GPS point/polygon remains optional precision capture.
+
+## Parcel location validation guardrails
+
+Backend validates parcel location semantics without requiring GPS. If a parcel is marked same_as_home_location=true, supplied parcel PIN/village fields must not conflict with the farmer home PIN/village. If same_as_home_location=false, parcel PIN and village are required. GPS point/polygon remains optional precision data and is not used as a replacement for PIN/village selection.

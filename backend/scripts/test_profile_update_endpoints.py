@@ -133,6 +133,17 @@ def main():
     farmer_bad = client.patch(f"/api/v1/farmers/{farmer_id}", headers=headers, json={"total_land_unit": "BIGHA"})
     check(farmer_bad.status_code == 400, "Farmer update rejects invalid land unit", farmer_bad.text)
 
+
+    conflict = client.patch(f"/api/v1/parcels/{parcel_id}", headers=headers, json={
+        "pin_code": "999999",
+        "village_name_manual": "Different Village",
+        "location_scope": {"type": "SAME_AS_HOME", "same_as_home_location": True},
+    })
+    check(conflict.status_code == 400, "same-as-home parcel rejects conflicting PIN", conflict.text)
+    missing_land_location = client.patch(f"/api/v1/parcels/{parcel_id}", headers=headers, json={
+        "location_scope": {"same_as_home_location": False},
+    })
+    check(missing_land_location.status_code == 400, "different-location parcel requires PIN/village", missing_land_location.text)
     parcel_update = client.patch(f"/api/v1/parcels/{parcel_id}", headers=headers, json={
         "reported_area": 2.5,
         "reported_area_unit": "ACRE",
