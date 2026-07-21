@@ -333,3 +333,5 @@ Completed since the 87% checkpoint:
 - Full Android backend closeout runner passes after this hardening.
 
 Backend readiness estimate is now about 88%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
+
+Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`; true temp database bootstrap execution remains gated behind a separate reviewed script/command.

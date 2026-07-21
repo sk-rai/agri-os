@@ -188,3 +188,5 @@ cd ~/projects/farmint/backend
 This read-only checker runs Git status/log, Alembic current/head, static Alembic chain validation, and the Android backend closeout runner. Web build remains a manual follow-up.
 
 For permission hardening recovery and review context, see `docs/backend-permission-inventory-review.md`.
+
+Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`. It is read-only and reports whether the environment appears ready for a temporary PostgreSQL bootstrap validation.
