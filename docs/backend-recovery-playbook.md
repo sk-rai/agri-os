@@ -192,3 +192,5 @@ For permission hardening recovery and review context, see `docs/backend-permissi
 Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`. It is read-only and reports whether the environment appears ready for a temporary PostgreSQL bootstrap validation.
 
 Clean DB bootstrap status: preflight is wired into `scripts/pre_android_handoff_check.py`; true execute-mode validation is pending a safe PostgreSQL `DATABASE_URL` or temporary database credentials.
+
+Clean temporary database bootstrap execution is available through `backend/scripts/check_clean_db_bootstrap.py --execute` when a safe PostgreSQL `DATABASE_URL` is present. It creates a random temp DB, runs `alembic upgrade head`, checks current revision, and drops the temp DB.

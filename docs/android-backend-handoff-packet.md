@@ -371,3 +371,5 @@ Backend readiness estimate is now about 89%. Remaining backend-heavy work is tru
 ## Farmer and parcel location checkpoint - 2026-07-21
 
 Enrollment should distinguish farmer home GPS from land/parcel location. Farmer home should capture precise GPS plus admin hierarchy/manual village fallback. Land enrollment should ask for parcel PIN code, then show backend-provided candidate villages for that PIN code because one PIN can map to multiple villages. Parcel GPS centroid/polygon remains recommended for precision, with override support for parcels spanning multiple villages or PIN codes.
+
+Clean temporary database bootstrap execution script is available at `backend/scripts/check_clean_db_bootstrap.py --execute`; run it only with a safe local/staging PostgreSQL `DATABASE_URL`.
