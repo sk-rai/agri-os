@@ -71,3 +71,5 @@ Before Android rewiring starts, produce a final allowlist of endpoints Android m
 ## Current conclusion
 
 The high-risk backend-owned operations surfaces created during weather, soil enrichment, company profile, and provider-worker work are now permission hardened. Remaining scanner flags are mostly reference-read or template/export classification items and should be handled as a production hardening pass rather than Android MVP blockers.
+
+Android endpoint allowlist is maintained in `docs/android-endpoint-allowlist.md`; use it to separate Android-safe endpoints from admin/backend-only operations surfaces.

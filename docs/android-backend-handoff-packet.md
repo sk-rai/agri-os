@@ -352,3 +352,5 @@ Remaining release gate:
 - Provide a safe PostgreSQL `DATABASE_URL` or temp database credentials.
 - Add/run the execute-mode clean bootstrap script against an isolated temporary database.
 - Confirm `alembic upgrade head` succeeds from empty database.
+
+Android endpoint boundaries are documented in `docs/android-endpoint-allowlist.md`; Android MVP should call only allowlisted endpoints and avoid backend/admin-only operations surfaces.
