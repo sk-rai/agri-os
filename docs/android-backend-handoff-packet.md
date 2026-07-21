@@ -2,7 +2,7 @@
 
 Status date: 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: about 89%.
+Current backend readiness estimate for Android MVP handoff: about 91%.
 
 This packet is not the signal to begin Android rewiring. It is the backend closeout map that will become the Android integration guide after backend testing, provider-worker stubs, permission review, and final regression are complete.
 
@@ -283,7 +283,7 @@ Completed since the 84% checkpoint:
 - Soil enrichment worker can persist demo payloads as SoilEnrichmentSnapshot rows.
 - Full Android backend closeout regression runner passes after these changes.
 
-Backend readiness estimate is now about 89%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
+Backend readiness estimate is now about 91%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
 
 Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
 
@@ -307,7 +307,7 @@ Completed since the 86% checkpoint:
 - Endpoint permission inventory now shows weather provider/worker ops removed from the flagged list.
 - Full Android backend closeout runner passes after permission hardening.
 
-Backend readiness estimate is now about 89%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 91%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
 
 Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it before risky backend changes, migrations, provider-worker changes, permission hardening, or Android handoff testing.
 
@@ -332,7 +332,7 @@ Completed since the 87% checkpoint:
 - Permission inventory review artifact was created and remaining scanner noise was categorized.
 - Full Android backend closeout runner passes after this hardening.
 
-Backend readiness estimate is now about 89%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 91%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
 
 Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`; true temp database bootstrap execution remains gated behind a separate reviewed script/command.
 
@@ -366,7 +366,7 @@ Completed since the 88% checkpoint:
 - Redacted generated sample payloads committed under `docs/samples/android/`.
 - Pre-Android backend handoff checker remains read-only; sample capture remains manual because it writes documentation artifacts.
 
-Backend readiness estimate is now about 89%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
+Backend readiness estimate is now about 91%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
 
 ## Farmer and parcel location checkpoint - 2026-07-21
 
@@ -389,3 +389,17 @@ Backend validates parcel location semantics without requiring GPS. If a parcel i
 ## Provider retry/error policy
 
 Weather and soil provider adapters normalize HTTP failures into retryable and non-retryable classes. Retryable statuses are 408, 425, 429, 500, 502, 503, and 504. Non-retryable statuses are 400, 401, 403, 404, and 422. Workers should record retryable failures as audit/job events suitable for later retry, while non-retryable failures should be surfaced for configuration or source-data review.
+
+## Backend hardening checkpoint - 2026-07-21
+
+Backend readiness estimate is now about 91% for Android MVP handoff.
+
+Completed since the previous checkpoint:
+
+- clean temporary database bootstrap validation now runs end-to-end against a fresh PostgreSQL database and reaches Alembic head;
+- farmer home vs parcel land location is now a backend contract with PIN-code village candidate lookup, Android form hints, sample payloads, and validation guardrails;
+- Android samples include PIN-code village candidates and same-as-home parcel location examples;
+- provider adapter HTTP error policy is normalized for weather and soil enrichment adapters with retryable/non-retryable classification and regression coverage;
+- full backend closeout gate and web build continue to pass.
+
+Remaining backend-heavy work is now concentrated on real external HTTP adapters and scheduling/deployment operations: live provider credentials, rate-limit budgets, production scheduler wiring, final permission-inventory cleanup, and final Android implementation review.
