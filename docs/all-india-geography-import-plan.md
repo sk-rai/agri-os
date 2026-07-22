@@ -71,3 +71,6 @@ No geography import should physically delete rows in normal operation. Missing r
 3. Add an audit script that reports all-India coverage readiness without applying DB changes.
 4. Only after review, add admin-approved apply mode.
 
+## Raw snapshot fetcher
+
+`backend/scripts/fetch_ogd_geography_snapshots.py` is the first implementation slice for Phase 1. It requires `DATA_GOV_IN_API_KEY` unless `--dry-run` is passed, writes timestamped raw JSON pages and a manifest, and does not touch database rows.
