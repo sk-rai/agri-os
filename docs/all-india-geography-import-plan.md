@@ -112,3 +112,7 @@ The current parsed UP CSV files can be mapper-ready when the loader supplies an 
 ## Staging diff audit
 
 `backend/scripts/diff_lgd_staged_geography_against_db.py` compares staged LGD JSONL artifacts with current active DB geography rows by LGD code. It is read-only and is intended to prove that current single-state staging matches the existing DB before any all-India apply mode is designed.
+
+## Current green baseline
+
+Before all-India expansion, the current single-state local-file pipeline is green: local source inventory, parsed CSV readiness, parsed CSV staging, staged-vs-DB diff, full backend handoff check, and web build have all passed. This baseline should remain the regression guard while adding new all-India source-file adapters.

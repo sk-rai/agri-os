@@ -91,3 +91,7 @@ An all-India geography import plan now defines the phased flow: source probe, ra
 ## OGD geography acquisition utilities
 
 No-DB-write OGD utilities are now available for the all-India geography expansion: `probe_ogd_geography_sources.py`, `fetch_ogd_geography_snapshots.py`, and `validate_ogd_geography_snapshot.py`. They intentionally stop short of DB staging/apply until the API key is generated and source schemas are inspected.
+
+## Local geography staging green state
+
+The current UP LGD parsed CSV staging path is validated end-to-end without database writes and matches active DB geography rows exactly: 75 districts, 350 blocks, and 110,274 villages. The full pre-Android backend handoff checker and web build both passed after these gates were added.

@@ -565,3 +565,6 @@ All-India geography expansion will proceed with local CSV/XML source files while
 
 Local geography staging gate checkpoint
 The pre-Android handoff checker now includes local geography source inventory, parsed LGD CSV staging readiness, parsed LGD JSONL staging, and staged-vs-DB diff. Current UP staging matches active DB rows exactly by LGD code: 75 districts, 350 blocks, and 110,274 villages.
+
+Backend/web green checkpoint after local geography staging
+The latest pre-Android backend handoff checker passed with local geography staging gates enabled, including staged-vs-DB diff for 75 districts, 350 blocks, and 110,274 villages. The separate Next.js web production build also passed with exit code 0. Backend and web are green after geography hardening; remaining geography expansion work is now source-file acquisition/mapping for all-India coverage and later OGD API refresh once Data.gov.in key authorization is available.
