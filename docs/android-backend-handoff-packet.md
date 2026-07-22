@@ -535,3 +535,6 @@ Added `docs/global-geography-model-roadmap.md`. Geography should evolve from Ind
 
 Geography hierarchy profile checkpoint
 Android can now call `GET /api/v1/master-data/geography/hierarchy-profile` to discover country/geography level metadata. For MVP it describes India compatibility mode; future country profiles can expose different administrative structures without hardcoding client changes.
+
+Global geography readiness audit checkpoint
+Added `backend/scripts/audit_global_geography_readiness.py` to verify the geography hierarchy profile endpoint, current India compatibility counts, and explicit remaining gaps before all-India/global rollout.

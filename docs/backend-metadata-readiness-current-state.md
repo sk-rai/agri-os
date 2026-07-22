@@ -75,3 +75,6 @@ Added `docs/global-geography-model-roadmap.md`. Geography should evolve from Ind
 ## Geography hierarchy profile endpoint
 
 The backend now exposes `GET /api/v1/master-data/geography/hierarchy-profile`, making the current India cascade explicit while preserving a path toward a generic global geography model.
+
+Global geography readiness audit checkpoint
+Added `backend/scripts/audit_global_geography_readiness.py` to verify the geography hierarchy profile endpoint, current India compatibility counts, and explicit remaining gaps before all-India/global rollout.

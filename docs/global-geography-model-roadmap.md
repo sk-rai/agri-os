@@ -57,3 +57,6 @@ Android should consume backend geography metadata and not assume that every coun
 ## Current metadata endpoint
 
 `GET /api/v1/master-data/geography/hierarchy-profile` exposes the current India compatibility cascade plus the global target model and governance rules. This lets Android consume geography levels from backend metadata before the generic `geo_entity` migration is introduced.
+
+Global geography readiness audit checkpoint
+Added `backend/scripts/audit_global_geography_readiness.py` to verify the geography hierarchy profile endpoint, current India compatibility counts, and explicit remaining gaps before all-India/global rollout.
