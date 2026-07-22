@@ -96,3 +96,7 @@ The existing UP scripts already provide useful patterns for SpreadsheetML parsin
 ## Local source inventory
 
 `backend/scripts/audit_local_geography_source_files.py` inventories local CSV/XML/XLS/XLSX geography source files without database writes. It is intended to classify existing UP LGD files and future all-India source files before staging/import logic is written.
+
+## Parsed LGD CSV staging readiness
+
+`backend/scripts/audit_lgd_parsed_csv_staging_readiness.py` checks the existing parsed UP CSVs for staged-import mapper readiness. It validates headers, parent hints, LGD/code hints, PIN samples, and row counts without touching database rows.
