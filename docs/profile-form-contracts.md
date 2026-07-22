@@ -591,3 +591,7 @@ External provider HTTP calls must go through `app.modules.media.provider_http_cl
 
 Season and land-unit Android exposure checkpoint
 The profile forms/options API now exposes backend-configured season and land-unit registry metadata. Android can keep displaying familiar values such as BIGHA/BISWA/KATHA/GUNTHA, while backend metadata marks variable local units as requiring geography-scoped conversion before normalized acre/hectare calculations and P&L summaries.
+
+## Season and land-unit metadata endpoint
+
+`GET /api/v1/forms/metadata/season-land-units` exposes Kharif/Rabi/Zaid/Perennial season metadata and land-unit conversion guidance. Android should use this endpoint when rendering area-unit warnings and should not hardcode local-unit conversion values.

@@ -61,3 +61,7 @@ The profile forms/options API now exposes backend-configured season and land-uni
 
 Area normalization contract checkpoint
 The season/land-unit registry now includes an area normalization result contract. Safe units convert to acres/hectares, while unsupported or geography-variable local units return explicit statuses instead of silently producing unsafe financial/P&L calculations.
+
+## Season and land-unit metadata endpoint
+
+The backend now exposes `GET /api/v1/forms/metadata/season-land-units` so Android can retrieve season definitions, land-unit registry rows, and conversion warnings from the server rather than hardcoding them.

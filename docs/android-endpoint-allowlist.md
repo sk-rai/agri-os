@@ -122,3 +122,7 @@ Android may call backend-safe geography/PIN lookup endpoints for enrollment. The
 5. Android saves selected village/PIN/GPS fields on the parcel.
 
 Android should not ship or maintain its own PIN-to-village database.
+
+## Season and land-unit metadata
+
+- `GET /api/v1/forms/metadata/season-land-units` — returns backend-configured seasons, land units, conversion metadata, and Android warning guidance for local units that require geography-scoped conversion before financial/P&L calculations.
