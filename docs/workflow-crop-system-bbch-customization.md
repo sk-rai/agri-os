@@ -37,3 +37,6 @@ Added `backend/scripts/audit_workflow_bbch_crop_system_readiness.py` to measure 
 
 Workflow crop-system metadata backfill checkpoint
 Added `backend/scripts/backfill_workflow_crop_system_metadata.py` to backfill crop-system, BBCH baseline, allowed start stages, warning rules, and decision-node metadata on existing Rice/Sugarcane workflow templates and versions without changing stage rows.
+
+Pre-Android metadata audit checkpoint
+`backend/scripts/pre_android_handoff_check.py` now runs metadata, product catalog, season/land-unit, and workflow BBCH/crop-system readiness audits as part of the backend handoff gate.

@@ -32,6 +32,10 @@ def main() -> int:
     run('Alembic current', ['../venv/bin/alembic', 'current'])
     run('Static Alembic revision chain', [sys.executable, 'scripts/check_alembic_revision_chain.py'])
     run('Clean DB bootstrap preflight', [sys.executable, 'scripts/check_clean_db_bootstrap_preflight.py'])
+    run('Metadata readiness audit', [sys.executable, 'scripts/audit_metadata_readiness.py'])
+    run('Product catalog readiness audit', [sys.executable, 'scripts/audit_product_catalog_readiness.py'])
+    run('Season land-unit readiness audit', [sys.executable, 'scripts/audit_season_land_unit_readiness.py'])
+    run('Workflow BBCH crop-system readiness audit', [sys.executable, 'scripts/audit_workflow_bbch_crop_system_readiness.py'])
     run('Android backend closeout regression sweep', [sys.executable, 'scripts/test_android_backend_closeout.py'])
 
     print('\n' + '=' * 72)

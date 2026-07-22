@@ -65,3 +65,6 @@ The season/land-unit registry now includes an area normalization result contract
 ## Season and land-unit metadata endpoint
 
 The backend now exposes `GET /api/v1/forms/metadata/season-land-units` so Android can retrieve season definitions, land-unit registry rows, and conversion warnings from the server rather than hardcoding them.
+
+Pre-Android metadata audit checkpoint
+`backend/scripts/pre_android_handoff_check.py` now runs metadata, product catalog, season/land-unit, and workflow BBCH/crop-system readiness audits as part of the backend handoff gate.
