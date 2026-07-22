@@ -68,3 +68,6 @@ The backend now exposes `GET /api/v1/forms/metadata/season-land-units` so Androi
 
 Pre-Android metadata audit checkpoint
 `backend/scripts/pre_android_handoff_check.py` now runs metadata, product catalog, season/land-unit, and workflow BBCH/crop-system readiness audits as part of the backend handoff gate.
+
+Global geography model checkpoint
+Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.

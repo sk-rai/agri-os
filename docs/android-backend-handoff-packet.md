@@ -529,3 +529,6 @@ Pre-Android metadata audit checkpoint
 
 Metadata hardening readiness checkpoint
 Backend readiness is now approximately 95% for Android MVP handoff. The pre-Android handoff checker now includes metadata, product catalog, season/land-unit, and workflow BBCH/crop-system audits. The latest backend handoff checker and separate web build both passed. Remaining backend-heavy work is now concentrated around all-India geography import expansion, richer product/advisory seed packs, formal admin UI surfacing for crop-system/decision-node metadata, and final Android/web exploratory UI test sweep with screenshots.
+
+Global geography model checkpoint
+Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.

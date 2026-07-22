@@ -292,3 +292,6 @@ Added `backend/scripts/audit_workflow_bbch_crop_system_readiness.py` to measure 
 
 Workflow crop-system metadata backfill checkpoint
 Added `backend/scripts/backfill_workflow_crop_system_metadata.py` to backfill crop-system, BBCH baseline, allowed start stages, warning rules, and decision-node metadata on existing Rice/Sugarcane workflow templates and versions without changing stage rows.
+
+Global geography model checkpoint
+Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.
