@@ -488,3 +488,6 @@ Added `backend/scripts/audit_product_catalog_readiness.py` as a read-only audit 
 
 Product catalog Android scenario checkpoint
 Added `backend/scripts/seed_android_product_catalog.py` and verified the product catalog audit now reports 9 seeded agricultural products/packages for Android metadata testing.
+
+Season and land-unit readiness audit checkpoint
+Added `backend/scripts/audit_season_land_unit_readiness.py` to measure backend season metadata, parcel unit usage, and readiness for normalized acre/hectare calculations with local-unit display.

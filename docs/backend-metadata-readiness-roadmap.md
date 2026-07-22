@@ -260,3 +260,6 @@ The repository now includes `docs/backend-metadata-readiness-current-state.md`, 
 
 Product catalog scenario seed checkpoint
 The first Android product scenario seed pack is in place. Next product metadata work should add remaining manufacturer coverage, organic inputs, seed products, and explicit pricing/effective-date metadata.
+
+Season and land-unit readiness audit checkpoint
+Added `backend/scripts/audit_season_land_unit_readiness.py` to measure backend season metadata, parcel unit usage, and readiness for normalized acre/hectare calculations with local-unit display.
