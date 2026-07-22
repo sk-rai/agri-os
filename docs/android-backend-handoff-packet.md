@@ -517,3 +517,6 @@ Added a backend policy contract for annual crops, perennial orchards, plantation
 
 Workflow BBCH and crop-system customization checkpoint
 Added `docs/workflow-crop-system-bbch-customization.md`. BBCH remains the baseline crop-stage classification spine, while client/project workflow customizations layer labels, stage durations, decision nodes, recommendations, costs, and crop-system onboarding metadata on top through workflow templates/versions/overrides.
+
+Workflow BBCH/crop-system audit checkpoint
+Added `backend/scripts/audit_workflow_bbch_crop_system_readiness.py` to measure BBCH range coverage, propagation-step stages, recommendation cost coverage, decision-like recommendations, and missing crop-system metadata on workflow templates.

@@ -32,3 +32,5 @@ Recommended template/version/stage metadata keys:
 
 Android should render backend stages and labels from the published workflow preview. When a farmer/agent starts an existing orchard, plantation, floriculture, spice, or agroforestry crop, Android should use backend metadata to offer current-stage choices and show confirmation warnings before proceeding with unusual crop/season/geography/stage combinations.
 
+Workflow BBCH/crop-system audit checkpoint
+Added `backend/scripts/audit_workflow_bbch_crop_system_readiness.py` to measure BBCH range coverage, propagation-step stages, recommendation cost coverage, decision-like recommendations, and missing crop-system metadata on workflow templates.
