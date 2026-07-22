@@ -49,12 +49,12 @@ def _detect_role(path: Path, headers: list[str]) -> str:
     text = _norm(path.name + " " + " ".join(headers))
     if "villagegrampanchayat" in text or "grampanchayat" in text:
         return "VILLAGE_GRAM_PANCHAYAT_MAPPING"
-    if "village" in text:
-        return "VILLAGES"
     if "block" in text:
         return "BLOCKS_OR_SUB_DISTRICTS"
     if "subdistrict" in text:
         return "SUB_DISTRICTS"
+    if "village" in text:
+        return "VILLAGES"
     if "district" in text:
         return "DISTRICTS"
     if "pincode" in text or "pin" in text:
