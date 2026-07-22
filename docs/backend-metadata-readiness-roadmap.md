@@ -280,3 +280,6 @@ The profile forms/options API now exposes backend-configured season and land-uni
 
 Area normalization contract checkpoint
 The season/land-unit registry now includes an area normalization result contract. Safe units convert to acres/hectares, while unsupported or geography-variable local units return explicit statuses instead of silently producing unsafe financial/P&L calculations.
+
+Perennial and long-duration crop onboarding checkpoint
+Added a backend policy contract for annual crops, perennial orchards, plantation crops, perennial spices, and agroforestry/timber systems. Android should allow existing orchards/plantations/agroforestry parcels to start at their current stage, while showing backend-configured warnings for missing establishment year, unusual stage, season/calendar mismatch, or geography mismatch.

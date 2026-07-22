@@ -595,3 +595,6 @@ The profile forms/options API now exposes backend-configured season and land-uni
 ## Season and land-unit metadata endpoint
 
 `GET /api/v1/forms/metadata/season-land-units` exposes Kharif/Rabi/Zaid/Perennial season metadata and land-unit conversion guidance. Android should use this endpoint when rendering area-unit warnings and should not hardcode local-unit conversion values.
+
+Perennial and long-duration crop onboarding checkpoint
+Added a backend policy contract for annual crops, perennial orchards, plantation crops, perennial spices, and agroforestry/timber systems. Android should allow existing orchards/plantations/agroforestry parcels to start at their current stage, while showing backend-configured warnings for missing establishment year, unusual stage, season/calendar mismatch, or geography mismatch.

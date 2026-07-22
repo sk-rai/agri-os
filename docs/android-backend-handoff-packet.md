@@ -511,3 +511,6 @@ The season/land-unit registry now includes an area normalization result contract
 
 Season and land-unit metadata endpoint checkpoint
 Android can now call `GET /api/v1/forms/metadata/season-land-units` to retrieve backend-owned seasons, land-unit registry rows, and warnings for variable local units such as Bigha/Biswa/Katha/Guntha before P&L calculations.
+
+Perennial and long-duration crop onboarding checkpoint
+Added a backend policy contract for annual crops, perennial orchards, plantation crops, perennial spices, and agroforestry/timber systems. Android should allow existing orchards/plantations/agroforestry parcels to start at their current stage, while showing backend-configured warnings for missing establishment year, unusual stage, season/calendar mismatch, or geography mismatch.
