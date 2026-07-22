@@ -81,3 +81,6 @@ Added `backend/scripts/audit_global_geography_readiness.py` to verify the geogra
 
 Geography data source contract checkpoint
 Added `docs/geography-data-source-contract.md`, documenting LGD as canonical India geography, India Post/OGD PIN datasets as postal reference, Census as enrichment/reference data, and the decision to replicate validated source snapshots locally rather than relying on live external APIs at runtime.
+
+OGD geography probe checkpoint
+A read-only OGD geography source probe is now defined in `backend/scripts/probe_ogd_geography_sources.py`. It supports the LGD villages-with-PIN resource and the All India PIN-code directory resource, redacts API keys, performs no database writes, and is intended to inspect schemas before the all-India staged import/diff pipeline is built.

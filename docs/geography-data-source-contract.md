@@ -130,3 +130,5 @@ Next-phase India/global model should add generic entities:
 4. Add validation summaries before any local DB mutation.
 5. Decide final local schema for PIN/post office many-to-many mapping.
 
+OGD geography probe checkpoint
+A read-only OGD geography source probe is now defined in `backend/scripts/probe_ogd_geography_sources.py`. It supports the LGD villages-with-PIN resource and the All India PIN-code directory resource, redacts API keys, performs no database writes, and is intended to inspect schemas before the all-India staged import/diff pipeline is built.
