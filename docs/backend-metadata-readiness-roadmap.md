@@ -277,3 +277,6 @@ Added a config-backed season and land-unit registry with Kharif/Rabi/Zaid/Perenn
 
 Season and land-unit Android exposure checkpoint
 The profile forms/options API now exposes backend-configured season and land-unit registry metadata. Android can keep displaying familiar values such as BIGHA/BISWA/KATHA/GUNTHA, while backend metadata marks variable local units as requiring geography-scoped conversion before normalized acre/hectare calculations and P&L summaries.
+
+Area normalization contract checkpoint
+The season/land-unit registry now includes an area normalization result contract. Safe units convert to acres/hectares, while unsupported or geography-variable local units return explicit statuses instead of silently producing unsafe financial/P&L calculations.

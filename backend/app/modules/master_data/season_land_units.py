@@ -30,6 +30,31 @@ class LandUnitDefinition:
     is_active: bool = True
 
 
+
+
+@dataclass(frozen=True)
+class AreaNormalizationResult:
+    original_value: Decimal
+    original_unit: str
+    normalized_acres: Optional[Decimal]
+    normalized_hectares: Optional[Decimal]
+    conversion_status: str
+    conversion_source: str
+    geography_scope: Optional[str] = None
+    warning: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            'original_value': str(self.original_value),
+            'original_unit': self.original_unit,
+            'normalized_acres': str(self.normalized_acres) if self.normalized_acres is not None else None,
+            'normalized_hectares': str(self.normalized_hectares) if self.normalized_hectares is not None else None,
+            'conversion_status': self.conversion_status,
+            'conversion_source': self.conversion_source,
+            'geography_scope': self.geography_scope,
+            'warning': self.warning,
+        }
+
 SEASON_REGISTRY: tuple[SeasonDefinition, ...] = (
     SeasonDefinition(code='KHARIF', label_en='Kharif', label_hi='खरीफ', typical_months=[6, 7, 8, 9, 10], sort_order=10),
     SeasonDefinition(code='RABI', label_en='Rabi', label_hi='रबी', typical_months=[11, 12, 1, 2, 3, 4], sort_order=20),
@@ -78,4 +103,57 @@ def normalize_area_to_acres(value: Decimal, unit_code: str) -> Optional[Decimal]
         if unit.code == code and unit.acres_per_unit is not None:
             return value * unit.acres_per_unit
     return None
+
+def find_land_unit(unit_code: str, *, geography_scope: Optional[str] = None) -> Optional[LandUnitDefinition]:
+    code = unit_code.upper()
+    candidates = [unit for unit in LAND_UNIT_REGISTRY if unit.code == code and unit.is_active]
+    if geography_scope:
+        scoped = [unit for unit in candidates if unit.geography_scope == geography_scope]
+        if scoped:
+            return scoped[0]
+    if candidates:
+        return candidates[0]
+
+    if geography_scope:
+        scoped_code = f"{code}_{geography_scope.replace('-', '_')}"
+        for unit in LAND_UNIT_REGISTRY:
+            if unit.code == scoped_code and unit.is_active:
+                return unit
+    return None
+
+
+def normalize_area(value: Decimal, unit_code: str, *, geography_scope: Optional[str] = None) -> AreaNormalizationResult:
+    unit = find_land_unit(unit_code, geography_scope=geography_scope)
+    original_unit = unit_code.upper()
+    if not unit:
+        return AreaNormalizationResult(
+            original_value=value,
+            original_unit=original_unit,
+            normalized_acres=None,
+            normalized_hectares=None,
+            conversion_status='UNSUPPORTED_UNIT',
+            conversion_source='none',
+            geography_scope=geography_scope,
+            warning='No backend conversion is configured for this unit.',
+        )
+    if unit.acres_per_unit is None or unit.hectares_per_unit is None:
+        return AreaNormalizationResult(
+            original_value=value,
+            original_unit=original_unit,
+            normalized_acres=None,
+            normalized_hectares=None,
+            conversion_status='REQUIRES_GEOGRAPHY_SCOPED_CONVERSION',
+            conversion_source=unit.source,
+            geography_scope=unit.geography_scope,
+            warning='Local land unit requires a geography-scoped conversion before backend financial calculations.',
+        )
+    return AreaNormalizationResult(
+        original_value=value,
+        original_unit=original_unit,
+        normalized_acres=value * unit.acres_per_unit,
+        normalized_hectares=value * unit.hectares_per_unit,
+        conversion_status='CONVERTED',
+        conversion_source=unit.source,
+        geography_scope=unit.geography_scope,
+    )
 

@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.modules.master_data.season_land_units import list_land_units, list_seasons, normalize_area_to_acres
+from app.modules.master_data.season_land_units import list_land_units, list_seasons, normalize_area, normalize_area_to_acres
 
 
 def check(condition, label, payload=None):
@@ -37,6 +37,11 @@ def main() -> int:
     check(normalize_area_to_acres(Decimal('2'), 'ACRE') == Decimal('2'), 'Acre normalization is identity')
     check(normalize_area_to_acres(Decimal('1'), 'HECTARE') == Decimal('2.4710538147'), 'Hectare converts to acres')
     check(normalize_area_to_acres(Decimal('1'), 'BIGHA_UNSPECIFIED') is None, 'Unscoped local unit refuses unsafe conversion')
+    acre_result = normalize_area(Decimal('2'), 'ACRE')
+    check(acre_result.conversion_status == 'CONVERTED', 'Area normalization returns converted status')
+    check(acre_result.normalized_acres == Decimal('2'), 'Area normalization preserves acre value')
+    bigha_result = normalize_area(Decimal('2'), 'BIGHA')
+    check(bigha_result.conversion_status in {'REQUIRES_GEOGRAPHY_SCOPED_CONVERSION', 'UNSUPPORTED_UNIT'}, 'Area normalization blocks unsafe bigha conversion', bigha_result.to_dict())
     print('=' * 72)
     print('Season and land-unit registry validated')
     print('=' * 72)
