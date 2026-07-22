@@ -295,3 +295,6 @@ Added `backend/scripts/backfill_workflow_crop_system_metadata.py` to backfill cr
 
 Global geography model checkpoint
 Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.
+
+Geography data source contract checkpoint
+Added `docs/geography-data-source-contract.md`, documenting LGD as canonical India geography, India Post/OGD PIN datasets as postal reference, Census as enrichment/reference data, and the decision to replicate validated source snapshots locally rather than relying on live external APIs at runtime.

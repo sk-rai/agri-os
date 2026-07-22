@@ -63,3 +63,6 @@ Added `backend/scripts/audit_global_geography_readiness.py` to verify the geogra
 
 Pre-Android global geography audit checkpoint
 `backend/scripts/pre_android_handoff_check.py` now includes the global geography readiness audit, ensuring the hierarchy-profile endpoint and India/global geography gaps stay visible during handoff validation.
+
+Geography data source contract checkpoint
+Added `docs/geography-data-source-contract.md`, documenting LGD as canonical India geography, India Post/OGD PIN datasets as postal reference, Census as enrichment/reference data, and the decision to replicate validated source snapshots locally rather than relying on live external APIs at runtime.

@@ -78,3 +78,6 @@ The backend now exposes `GET /api/v1/master-data/geography/hierarchy-profile`, m
 
 Global geography readiness audit checkpoint
 Added `backend/scripts/audit_global_geography_readiness.py` to verify the geography hierarchy profile endpoint, current India compatibility counts, and explicit remaining gaps before all-India/global rollout.
+
+Geography data source contract checkpoint
+Added `docs/geography-data-source-contract.md`, documenting LGD as canonical India geography, India Post/OGD PIN datasets as postal reference, Census as enrichment/reference data, and the decision to replicate validated source snapshots locally rather than relying on live external APIs at runtime.

@@ -544,3 +544,6 @@ Pre-Android global geography audit checkpoint
 
 Global geography readiness checkpoint
 Backend contract readiness is now approximately 96% for Android MVP handoff. The backend now exposes a geography hierarchy profile endpoint so Android can render geography levels from backend metadata instead of hardcoding India-only assumptions. The pre-Android handoff checker includes the global geography readiness audit. Remaining geography-heavy work is all-India LGD/Census data expansion and, later, generic geo_entity migration for true multi-country rollout.
+
+Geography data source contract checkpoint
+Added `docs/geography-data-source-contract.md`, documenting LGD as canonical India geography, India Post/OGD PIN datasets as postal reference, Census as enrichment/reference data, and the decision to replicate validated source snapshots locally rather than relying on live external APIs at runtime.
