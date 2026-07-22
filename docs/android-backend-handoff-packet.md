@@ -428,3 +428,7 @@ Remaining backend-heavy work is now mostly production operations wiring: schedul
 ## Provider worker scheduler runbook
 
 See `docs/provider-worker-scheduler-runbook.md` for dry-run-first provider worker scheduling guidance, cron/systemd examples, execution-mode gates, failure review, and recovery links.
+
+## Permission inventory checkpoint
+
+Endpoint permission inventory is currently at flagged_count=38. Remaining flags are mostly Android/shared-read tenant-scope review items and template/export tenant-scope checks. Mutation/provider-worker/admin surfaces have already been hardened more aggressively; do not lock down Android-required master-data reads without revising the endpoint allowlist and handoff contract.

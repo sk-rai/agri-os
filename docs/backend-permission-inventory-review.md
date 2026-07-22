@@ -73,3 +73,19 @@ Before Android rewiring starts, produce a final allowlist of endpoints Android m
 The high-risk backend-owned operations surfaces created during weather, soil enrichment, company profile, and provider-worker work are now permission hardened. Remaining scanner flags are mostly reference-read or template/export classification items and should be handled as a production hardening pass rather than Android MVP blockers.
 
 Android endpoint allowlist is maintained in `docs/android-endpoint-allowlist.md`; use it to separate Android-safe endpoints from admin/backend-only operations surfaces.
+
+## Permission inventory checkpoint - flagged_count=38
+
+Current inventory flags are mostly expected shared-read or tenant-scope review items, not newly discovered high-risk mutations.
+
+Intentional Android/shared-read surfaces:
+
+- health/OTP bootstrap style endpoints remain shared review items;
+- geography cascade and village search endpoints are Android-allowed master-data reads;
+- `GET /api/v1/master-data/geography/villages/by-pin-code` is Android-allowed for parcel PIN-code candidate village selection;
+- crop catalog and input catalog reference reads remain Android/admin shared-read surfaces where tenant-specific behavior is controlled by backend filters/options;
+- soil enrichment source-contract and district inference are read-only contract/helper endpoints.
+
+Remaining admin/backoffice template/export endpoints are flagged for tenant-scope review because the scanner cannot infer whether templates are global or tenant-filtered. These should be reviewed endpoint-by-endpoint before production, but they are lower priority than mutation/provider-worker hardening already completed.
+
+Do not reduce flagged_count by adding auth to Android-required geography/catalog reads without updating `docs/android-endpoint-allowlist.md` and Android handoff docs.
