@@ -111,6 +111,52 @@ class PaginatedResponse(BaseModel):
 
 # --- Endpoints ---
 
+@router.get("/hierarchy-profile")
+def geography_hierarchy_profile():
+    return {
+        'schema_version': 'geography_hierarchy_profile.v1',
+        'mode': 'INDIA_COMPATIBILITY_CURRENT_TABLES',
+        'default_country_code': 'IN',
+        'canonical_source': {
+            'source_system': 'LGD',
+            'name': 'Local Government Directory',
+            'role': 'canonical_government_hierarchy_for_india',
+        },
+        'supporting_sources': [
+            {'source_system': 'CENSUS', 'role': 'reference_names_codes_aliases'},
+            {'source_system': 'PIN_CODE', 'role': 'postal_code_to_locality_candidates'},
+        ],
+        'levels': [
+            {'level_code': 'COUNTRY', 'label': {'en': 'Country'}, 'source_field': 'country_code', 'required': True, 'endpoint': None},
+            {'level_code': 'STATE', 'label': {'en': 'State / Union Territory'}, 'source_field': 'state_id', 'required': True, 'endpoint': '/api/v1/master-data/geography/states'},
+            {'level_code': 'DISTRICT', 'label': {'en': 'District'}, 'source_field': 'district_id', 'required': True, 'endpoint': '/api/v1/master-data/geography/districts?state_id={state_id}'},
+            {'level_code': 'SUB_DISTRICT', 'label': {'en': 'Block / Tehsil / Taluk'}, 'source_field': 'block_id', 'required': False, 'endpoint': '/api/v1/master-data/geography/blocks?district_id={district_id}'},
+            {'level_code': 'LOCALITY', 'label': {'en': 'Village / Town / Locality'}, 'source_field': 'village_id', 'required': True, 'endpoint': '/api/v1/master-data/geography/villages?block_id={block_id}'},
+            {'level_code': 'POSTAL_CODE', 'label': {'en': 'PIN / Postal code'}, 'source_field': 'pin_code', 'required': False, 'endpoint': '/api/v1/master-data/geography/villages/by-pin-code?pin_code={pin_code}'},
+        ],
+        'global_model_target': {
+            'entity_table': 'geo_entity',
+            'alias_table': 'geo_entity_alias',
+            'postal_code_table': 'geo_entity_postal_code',
+            'admin_level_profile_table': 'geo_admin_level_profile',
+            'import_batch_table': 'geo_import_batch',
+            'status': 'ROADMAP_NOT_MIGRATED',
+        },
+        'governance': {
+            'canonical_government_fields_editable': False,
+            'admin_editable_fields': ['aliases', 'translations', 'display_labels', 'postal_code_associations', 'operational_groupings', 'expires_at', 'is_active'],
+            'canonical_corrections_require_verified_import': True,
+            'physical_delete_allowed': False,
+        },
+        'android_guidance': {
+            'do_not_hardcode_fixed_level_count': True,
+            'render_levels_from_backend_profile': True,
+            'india_current_flow_supported': True,
+            'offline_cache_key': 'country_code:IN/geography_profile:v1',
+        },
+    }
+
+
 @router.get("/states", response_model=list[StateResponse])
 def list_states(
     db: Session = Depends(get_db),
