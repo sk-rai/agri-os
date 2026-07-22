@@ -29,6 +29,7 @@ def main() -> int:
     check('PLANTATION_CROP' in codes, 'Plantation crop system is available', codes)
     check('PERENNIAL_SPICE' in codes, 'Perennial spice crop system is available', codes)
     check('AGROFORESTRY_TIMBER' in codes, 'Agroforestry timber crop system is available', codes)
+    check('FLORICULTURE' in codes, 'Floriculture crop system is available', codes)
 
     mango = current_stage_onboarding_policy(crop_system='PERENNIAL_ORCHARD', requested_stage='FRUITING')
     check(mango['valid'] is True, 'Mango/orchard can start at fruiting stage', mango)
@@ -37,6 +38,9 @@ def main() -> int:
     tea = current_stage_onboarding_policy(crop_system='PLANTATION_CROP', requested_stage='FLUSH_OR_PICKING', establishment_year=2018)
     check(tea['valid'] is True, 'Tea/coffee style plantation can start at picking stage', tea)
     check(tea['requires_confirmation'] is False, 'Plantation with establishment year avoids unnecessary warning', tea)
+
+    flower = current_stage_onboarding_policy(crop_system='FLORICULTURE', requested_stage='FLOWERING')
+    check(flower['valid'] is True and flower['requires_confirmation'] is False, 'Floriculture can start at flowering without orchard-age warning', flower)
 
     teak = current_stage_onboarding_policy(crop_system='AGROFORESTRY_TIMBER', requested_stage='FLOWERING', establishment_year=2020)
     check(teak['requires_confirmation'] is True, 'Agroforestry unusual stage asks confirmation', teak)

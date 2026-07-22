@@ -53,6 +53,15 @@ CROP_SYSTEM_REGISTRY: tuple[CropSystemDefinition, ...] = (
         supports_multi_year_cycle=True,
     ),
     CropSystemDefinition(
+        code='FLORICULTURE',
+        label_en='Floriculture crop',
+        examples=['MARIGOLD', 'ROSE', 'JASMINE', 'GLADIOLUS', 'CHRYSANTHEMUM'],
+        allowed_start_stages=['NURSERY', 'TRANSPLANTING', 'VEGETATIVE', 'BUD_INITIATION', 'FLOWERING', 'PICKING_OR_HARVEST'],
+        warning_rules=['crop_system_mismatch', 'stage_calendar_mismatch', 'geography_mismatch', 'market_window_mismatch'],
+        requires_establishment_year=False,
+        supports_multi_year_cycle=False,
+    ),
+    CropSystemDefinition(
         code='AGROFORESTRY_TIMBER',
         label_en='Agroforestry / timber crop',
         examples=['EUCALYPTUS', 'TEAK', 'POPLAR', 'MELIA_DUBIA'],

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.master_data.season_land_units import list_land_units, list_seasons
+from app.modules.workflow.perennial_onboarding import current_stage_onboarding_policy, list_crop_systems
 from app.modules.farmer.models import Project, Tenant
 
 router = APIRouter(prefix="/api/v1/forms", tags=["forms"])
@@ -697,6 +698,43 @@ def get_profile_contract_summary(
 
 
 
+
+
+@router.get("/metadata/crop-systems")
+def get_crop_system_metadata(
+    crop_system: Optional[str] = Query(None),
+    requested_stage: Optional[str] = Query(None),
+    establishment_year: Optional[int] = Query(None),
+):
+    policy = None
+    if crop_system:
+        policy = current_stage_onboarding_policy(
+            crop_system=crop_system,
+            requested_stage=requested_stage,
+            establishment_year=establishment_year,
+        )
+    return {
+        'schema_version': 'crop_system_metadata.v1',
+        'crop_systems': list_crop_systems(),
+        'current_stage_onboarding': {
+            'supports_existing_crop_current_stage': True,
+            'supports_multi_year_crop_systems': True,
+            'requires_confirmation_for_warnings': True,
+            'warning_codes': [
+                'ESTABLISHMENT_YEAR_RECOMMENDED',
+                'STAGE_NOT_TYPICAL_FOR_CROP_SYSTEM',
+                'SEASON_MISMATCH',
+                'GEOGRAPHY_MISMATCH',
+                'STAGE_CALENDAR_MISMATCH',
+            ],
+        },
+        'decision_node_contract': {
+            'status': 'PLANNED',
+            'examples': ['RATOON_OR_NEW_CROP', 'NURSERY_OR_DIRECT_SEEDED', 'KEEP_OR_REPLANT_ORCHARD'],
+            'android_behavior': 'Render backend decision nodes as explicit farmer/agent choices when present in workflow metadata.',
+        },
+        'policy_evaluation': policy,
+    }
 @router.get("/metadata/season-land-units")
 def get_season_land_unit_metadata():
     return {
