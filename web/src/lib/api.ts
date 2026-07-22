@@ -1919,9 +1919,9 @@ export const agentProfilesApi = {
 
 // Tenants
 export const tenantsApi = {
-  list: () => api<Tenant[]>("/api/v1/tenants", { noAuth: true }),
+  list: () => api<Tenant[]>("/api/v1/tenants"),
   create: (data: { id: string; name: string; type: string }) =>
-    api<Tenant>("/api/v1/tenants", { method: "POST", body: data, noAuth: true }),
+    api<Tenant>("/api/v1/tenants", { method: "POST", body: data }),
 };
 
 // Projects
