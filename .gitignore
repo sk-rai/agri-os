@@ -14,3 +14,6 @@ data/raw/ogd_geography/
 
 # Generated geography staging artifacts.
 data/staged/geography_lgd/
+
+# Web exploratory test artifacts: screenshots, logs, reports.
+web/test-artifacts/
