@@ -86,3 +86,9 @@ Generated OGD raw snapshots under `data/raw/ogd_geography/` are intentionally gi
 ## API-key pending status
 
 The acquisition tooling is ready, but the first live source inspection is blocked until `DATA_GOV_IN_API_KEY` is available. This is expected; missing-key runs produce manifests/status output and do not fail the local development workflow.
+
+## CSV/XML initial load path
+
+Because OGD API key activation can be delayed, the initial all-India geography load should support local CSV/XML source files. The local-file path should follow the same staged flow as API acquisition: raw snapshot registration, validation, diff, admin-approved apply, and logical expiry rather than physical deletion.
+
+The existing UP scripts already provide useful patterns for SpreadsheetML parsing and flexible column detection. Refactor them into reusable local-file ingestion helpers before loading all-India source files.

@@ -46,3 +46,13 @@ Live API calls should be limited to acquisition jobs, admin preview/diff screens
 
 Use the field names and sample records to design a staged all-India import: detect, validate, stage, diff, apply, and logically expire missing records rather than physically deleting geography rows.
 
+## Current API-key status
+
+Data.gov.in registration/key activation may be delayed by email OTP delivery or endpoint authorization. Until the key is verified and authorized, OGD API probes may return `403` / `Key not authorised`. This does not block initial geography loading because CSV/XML source files can be used for the first import path.
+
+On Windows PowerShell, `curl` is usually an alias for `Invoke-WebRequest`, so Unix flags such as `-sS` fail. Use `curl.exe` explicitly or PowerShell-native `Invoke-RestMethod`:
+
+```powershell
+curl.exe -sS "https://api.data.gov.in/resource/f17a1608-5f10-4610-bb50-a63c80d83974?api-key=YOUR_KEY&format=json&offset=0&limit=1"
+Invoke-RestMethod -Uri "https://api.data.gov.in/resource/f17a1608-5f10-4610-bb50-a63c80d83974?api-key=YOUR_KEY&format=json&offset=0&limit=1"
+```
