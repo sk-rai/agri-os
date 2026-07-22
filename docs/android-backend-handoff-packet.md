@@ -562,3 +562,6 @@ The all-India geography expansion path now has three no-DB-write acquisition uti
 
 Geography local-file import checkpoint
 All-India geography expansion will proceed with local CSV/XML source files while Data.gov.in OTP/API-key authorization is pending. OGD API tooling remains useful for later refresh/probe jobs, but the first import path should reuse/refactor the existing UP CSV/XML import approach into a staged all-India loader.
+
+Local geography staging gate checkpoint
+The pre-Android handoff checker now includes local geography source inventory, parsed LGD CSV staging readiness, parsed LGD JSONL staging, and staged-vs-DB diff. Current UP staging matches active DB rows exactly by LGD code: 75 districts, 350 blocks, and 110,274 villages.

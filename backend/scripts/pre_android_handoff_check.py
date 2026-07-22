@@ -37,6 +37,10 @@ def main() -> int:
     run('Season land-unit readiness audit', [sys.executable, 'scripts/audit_season_land_unit_readiness.py'])
     run('Workflow BBCH crop-system readiness audit', [sys.executable, 'scripts/audit_workflow_bbch_crop_system_readiness.py'])
     run('Global geography readiness audit', [sys.executable, 'scripts/audit_global_geography_readiness.py'])
+    run('Local geography source inventory', [sys.executable, 'scripts/audit_local_geography_source_files.py'])
+    run('LGD parsed CSV staging readiness', [sys.executable, 'scripts/audit_lgd_parsed_csv_staging_readiness.py'])
+    run('Stage parsed LGD geography', [sys.executable, 'scripts/stage_lgd_parsed_csv_geography.py'])
+    run('Diff staged LGD geography against DB', [sys.executable, 'scripts/diff_lgd_staged_geography_against_db.py'])
     run('Android backend closeout regression sweep', [sys.executable, 'scripts/test_android_backend_closeout.py'])
 
     print('\n' + '=' * 72)
