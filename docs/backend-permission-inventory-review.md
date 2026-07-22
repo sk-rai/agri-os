@@ -89,3 +89,7 @@ Intentional Android/shared-read surfaces:
 Remaining admin/backoffice template/export endpoints are flagged for tenant-scope review because the scanner cannot infer whether templates are global or tenant-filtered. These should be reviewed endpoint-by-endpoint before production, but they are lower priority than mutation/provider-worker hardening already completed.
 
 Do not reduce flagged_count by adding auth to Android-required geography/catalog reads without updating `docs/android-endpoint-allowlist.md` and Android handoff docs.
+
+## Metadata governance rule
+
+All metadata mutations must be admin/backoffice controlled and audit logged. This applies to geography aliases/imports, crop taxonomy, crop seasons, local unit conversions, input/product catalog rows, workflow templates, advisory seed content, and broadcast templates. The preferred mutation model is append/update/expire rather than physical delete: rows should keep `created_at`, `updated_at`, actor metadata, reason, and where relevant `effective_from`, `expires_at`, `status`, or `is_active`. Runtime consumers should decide visibility/validity from status plus effective/expiry windows. Physical deletion should be reserved for failed imports, temporary staging rows, or explicit maintenance tasks with audit trail.
