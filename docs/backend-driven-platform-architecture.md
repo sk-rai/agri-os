@@ -655,3 +655,7 @@ Soil enrichment operations health is now surfaced through backend and admin web,
 See `docs/android-backend-handoff-packet.md` for the living Android/backend handoff packet and backend closeout checklist.
 
 Operational recovery guidance is maintained in `docs/backend-recovery-playbook.md`, including Git rollback, migration backup/rollback, provider worker recovery, permission hardening checks, and Android handoff checkpointing.
+
+## Backend metadata readiness roadmap
+
+See `docs/backend-metadata-readiness-roadmap.md` for the pre-Android metadata and scenario-readiness plan covering all-India geography, crop scenario packs, configurable seasons/local units, input/provider prepopulation, branching crop workflows, perennial/orchard onboarding, stage cost/P&L summaries, advisory seed content, multimedia broadcasts, and web UI screenshot testing.

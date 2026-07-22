@@ -255,3 +255,7 @@ npm run build
 6. Add crop-stage input rule CSV validation and apply.
 7. Add import audit/search screen across all batch types.
 8. Add downloadable validation reports for failed imports.
+
+## Backend metadata readiness roadmap
+
+See `docs/backend-metadata-readiness-roadmap.md` for the pre-Android metadata and scenario-readiness plan covering all-India geography, crop scenario packs, configurable seasons/local units, input/provider prepopulation, branching crop workflows, perennial/orchard onboarding, stage cost/P&L summaries, advisory seed content, multimedia broadcasts, and web UI screenshot testing.

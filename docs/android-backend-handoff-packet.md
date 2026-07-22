@@ -471,3 +471,7 @@ Remaining backend-heavy work is now mostly final live-provider implementation an
 ## Provider credentials contract
 
 See `docs/provider-credentials-contract.md` for provider credential environment variables, live-execution gates, non-secret provider config fields, and Android/provider boundary rules.
+
+## Backend metadata readiness roadmap
+
+See `docs/backend-metadata-readiness-roadmap.md` for the pre-Android metadata and scenario-readiness plan covering all-India geography, crop scenario packs, configurable seasons/local units, input/provider prepopulation, branching crop workflows, perennial/orchard onboarding, stage cost/P&L summaries, advisory seed content, multimedia broadcasts, and web UI screenshot testing.
