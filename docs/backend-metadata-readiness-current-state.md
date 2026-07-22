@@ -35,3 +35,5 @@ The backend has enough crop/workflow richness to test Android MVP flows across m
 6. Add stage cost rollup and harvest profit/loss summary contract.
 7. Add trusted-source advisory and multimedia broadcast seed packs.
 
+Product catalog readiness audit checkpoint
+Added `backend/scripts/audit_product_catalog_readiness.py` as a read-only audit for manufacturer/input/product coverage before seeding Android product scenarios.
