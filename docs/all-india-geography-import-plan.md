@@ -100,3 +100,7 @@ The existing UP scripts already provide useful patterns for SpreadsheetML parsin
 ## Parsed LGD CSV staging readiness
 
 `backend/scripts/audit_lgd_parsed_csv_staging_readiness.py` checks the existing parsed UP CSVs for staged-import mapper readiness. It validates headers, parent hints, LGD/code hints, PIN samples, and row counts without touching database rows.
+
+## Single-state parsed CSV context
+
+The current parsed UP CSV files can be mapper-ready when the loader supplies an explicit default state context such as UP LGD/state code `09`. For all-India files, district rows must carry their own state context rather than relying on a default.

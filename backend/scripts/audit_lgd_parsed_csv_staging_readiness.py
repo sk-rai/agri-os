@@ -52,7 +52,7 @@ def _validate_pin_samples(samples: list[dict[str, str]], pin_headers: list[str])
     return bad
 
 
-def _role_readiness(role: str, info: dict[str, Any]) -> dict[str, Any]:
+def _role_readiness(role: str, info: dict[str, Any], *, default_state_code: str | None = None) -> dict[str, Any]:
     headers = info["headers"]
     samples = info["samples"]
 
@@ -65,7 +65,7 @@ def _role_readiness(role: str, info: dict[str, Any]) -> dict[str, Any]:
         "DISTRICTS": {
             "has_name": bool(name_headers),
             "has_lgd_or_code": bool(lgd_headers),
-            "has_parent_state_hint": bool(parent_headers),
+            "has_parent_state_context": bool(parent_headers) or bool(default_state_code),
         },
         "BLOCKS": {
             "has_name": bool(name_headers),
@@ -91,6 +91,7 @@ def _role_readiness(role: str, info: dict[str, Any]) -> dict[str, Any]:
             "pin": pin_headers,
         },
         "requirements": requirements,
+        "default_state_code": default_state_code,
         "ready_for_mapper_design": bool(info["row_count"]) and all(requirements.values()) if requirements else False,
         "invalid_pin_examples": _validate_pin_samples(samples, pin_headers),
         "sample_rows": samples,
@@ -101,6 +102,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Audit parsed LGD CSV staging readiness.")
     parser.add_argument("--root", default="../data/raw/lgd")
     parser.add_argument("--sample-limit", type=int, default=2)
+    parser.add_argument("--default-state-code", default="09", help="State LGD/code context for single-state parsed CSVs; pass empty string for all-India strict mode.")
     args = parser.parse_args()
 
     root = (Path(__file__).resolve().parent.parent / args.root).resolve()
@@ -121,7 +123,8 @@ def main() -> int:
             })
             continue
         info = _read_csv(path, args.sample_limit)
-        resource = _role_readiness(role, info)
+        default_state_code = args.default_state_code or None
+        resource = _role_readiness(role, info, default_state_code=default_state_code)
         resource["path"] = str(path)
         resource["status"] = "PRESENT"
         resources.append(resource)
@@ -130,6 +133,7 @@ def main() -> int:
         "schema_version": "lgd_parsed_csv_staging_readiness.v1",
         "root": str(root),
         "resources": resources,
+        "default_state_code": args.default_state_code or None,
         "ready_for_staging_mapper": all(item.get("ready_for_mapper_design") for item in resources),
         "next_actions": [
             "Use these parsed CSV headers to define normalized staging records.",
