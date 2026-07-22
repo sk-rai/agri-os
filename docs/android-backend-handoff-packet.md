@@ -499,3 +499,6 @@ All metadata mutations must be admin/backoffice controlled and audit logged. Thi
 ## Geography canonical-data guardrail
 
 Geography records sourced from Local Government Directory, Census, or other government reference datasets must be treated as canonical reference data. Admin UI/API edits must not allow changing LGD codes, government names, hierarchy parentage, or other canonical fields in a way that contradicts the source dataset. Allowed admin actions should be limited to adding local aliases, display labels, translations, PIN-code associations, operational grouping, temporary deactivation/expiry, or import-batch corrections with source evidence. Corrections to canonical geography should flow through a verified import/versioning process with source URL/file, import batch ID, actor, timestamp, and reason. Runtime Android search should use canonical records plus approved aliases, while preserving the government-backed identifiers for audit and interoperability.
+
+Season and land-unit registry checkpoint
+Added a config-backed season and land-unit registry with Kharif/Rabi/Zaid/Perennial support, canonical acre/hectare conversion, and explicit unsafe placeholders for variable local units such as Bigha/Biswa until geography-scoped conversion is known.
