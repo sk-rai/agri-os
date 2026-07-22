@@ -78,3 +78,7 @@ No geography import should physically delete rows in normal operation. Missing r
 ## Local raw snapshot storage
 
 Generated OGD raw snapshots under `data/raw/ogd_geography/` are intentionally gitignored because they may be large and are source-acquisition artifacts. Commit manifests or summarized audit outputs only when they are explicitly curated for review.
+
+## Raw snapshot validator
+
+`backend/scripts/validate_ogd_geography_snapshot.py` validates saved raw snapshot manifests/pages without database writes. It reports field names, likely PIN/LGD/name fields, invalid PIN examples, and whether the fetched data is safe enough to design staging transforms.
