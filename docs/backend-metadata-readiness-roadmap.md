@@ -304,3 +304,6 @@ A read-only OGD geography source probe is now defined in `backend/scripts/probe_
 
 All-India geography import checkpoint
 An all-India geography import plan now defines the phased flow: source probe, raw snapshot acquisition, staging validation, diff, admin-approved apply, and local runtime serving. LGD remains canonical; PIN/post-office associations are separate postal references; Census is reserved for aliases, demographics, and business-opportunity enrichment without overriding LGD identity.
+
+OGD acquisition next step
+Generate the Data.gov.in API key, run the OGD source probe with `--include-sample`, fetch one raw page from each resource, and validate the manifest before implementing the staging mapper. Runtime Android/web APIs should continue using local replicated data, not live OGD calls.

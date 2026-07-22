@@ -82,3 +82,7 @@ Generated OGD raw snapshots under `data/raw/ogd_geography/` are intentionally gi
 ## Raw snapshot validator
 
 `backend/scripts/validate_ogd_geography_snapshot.py` validates saved raw snapshot manifests/pages without database writes. It reports field names, likely PIN/LGD/name fields, invalid PIN examples, and whether the fetched data is safe enough to design staging transforms.
+
+## API-key pending status
+
+The acquisition tooling is ready, but the first live source inspection is blocked until `DATA_GOV_IN_API_KEY` is available. This is expected; missing-key runs produce manifests/status output and do not fail the local development workflow.

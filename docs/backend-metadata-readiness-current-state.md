@@ -87,3 +87,7 @@ A read-only OGD geography source probe is now defined in `backend/scripts/probe_
 
 All-India geography import checkpoint
 An all-India geography import plan now defines the phased flow: source probe, raw snapshot acquisition, staging validation, diff, admin-approved apply, and local runtime serving. LGD remains canonical; PIN/post-office associations are separate postal references; Census is reserved for aliases, demographics, and business-opportunity enrichment without overriding LGD identity.
+
+## OGD geography acquisition utilities
+
+No-DB-write OGD utilities are now available for the all-India geography expansion: `probe_ogd_geography_sources.py`, `fetch_ogd_geography_snapshots.py`, and `validate_ogd_geography_snapshot.py`. They intentionally stop short of DB staging/apply until the API key is generated and source schemas are inspected.

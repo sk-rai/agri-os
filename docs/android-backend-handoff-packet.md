@@ -556,3 +556,6 @@ An all-India geography import plan now defines the phased flow: source probe, ra
 
 OGD raw snapshot fetcher checkpoint
 The all-India geography pipeline now has a raw snapshot fetcher for OGD LGD/PIN resources. It is acquisition-only, no-DB-write, API-key gated, and manifest-backed for later validation/diff/apply review.
+
+OGD geography acquisition readiness checkpoint
+The all-India geography expansion path now has three no-DB-write acquisition utilities: source probe, raw snapshot fetcher, and raw snapshot validator. Current status remains API-key pending; once `DATA_GOV_IN_API_KEY` is generated, fetch one page per resource, validate detected fields, and only then design staging/diff/apply transforms.
