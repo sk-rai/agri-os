@@ -424,3 +424,7 @@ Completed since the previous checkpoint:
 - targeted provider runtime regressions, full backend closeout gate, and web build passed.
 
 Remaining backend-heavy work is now mostly production operations wiring: scheduler invocation, live provider credentials, real external HTTP calls, rate-limit budget enforcement, final permission-inventory cleanup, and final Android implementation review.
+
+## Provider worker scheduler runbook
+
+See `docs/provider-worker-scheduler-runbook.md` for dry-run-first provider worker scheduling guidance, cron/systemd examples, execution-mode gates, failure review, and recovery links.

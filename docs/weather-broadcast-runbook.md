@@ -205,3 +205,7 @@ Provider workers now have a shared runtime policy contract covering timeout_seco
 ## Provider runtime policy in worker output
 
 Weather and soil enrichment worker outputs now expose the runtime policy used for provider processing. This makes dry-run and execution responses auditable: operators can see timeout, retry, backoff, rate-limit, and demo-mode settings alongside worker results.
+
+## Provider worker scheduler runbook
+
+See `docs/provider-worker-scheduler-runbook.md` for dry-run-first provider worker scheduling guidance, cron/systemd examples, execution-mode gates, failure review, and recovery links.
