@@ -283,3 +283,6 @@ The season/land-unit registry now includes an area normalization result contract
 
 Perennial and long-duration crop onboarding checkpoint
 Added a backend policy contract for annual crops, perennial orchards, plantation crops, perennial spices, and agroforestry/timber systems. Android should allow existing orchards/plantations/agroforestry parcels to start at their current stage, while showing backend-configured warnings for missing establishment year, unusual stage, season/calendar mismatch, or geography mismatch.
+
+Workflow BBCH and crop-system customization checkpoint
+Added `docs/workflow-crop-system-bbch-customization.md`. BBCH remains the baseline crop-stage classification spine, while client/project workflow customizations layer labels, stage durations, decision nodes, recommendations, costs, and crop-system onboarding metadata on top through workflow templates/versions/overrides.
