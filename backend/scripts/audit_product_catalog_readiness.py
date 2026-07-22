@@ -40,7 +40,7 @@ def main() -> int:
 
         for product in products:
             manufacturer_id = str(getattr(product, 'manufacturer_id', '') or '')
-            input_id = str(getattr(product, 'input_id', '') or getattr(product, 'agricultural_input_id', '') or '')
+            input_id = str(getattr(product, 'canonical_input_id', '') or getattr(product, 'input_id', '') or getattr(product, 'agricultural_input_id', '') or '')
             category_id = str(getattr(product, 'category_id', '') or '')
             if manufacturer_id:
                 products_by_manufacturer[manufacturer_id] += 1
@@ -51,7 +51,7 @@ def main() -> int:
             if len(sample_products) < 20:
                 sample_products.append({
                     'id': str(getattr(product, 'id', '')),
-                    'name': getattr(product, 'trade_name', None) or getattr(product, 'display_name', None) or getattr(product, 'name', None),
+                    'name': getattr(product, 'brand_name', None) or getattr(product, 'trade_name', None) or getattr(product, 'display_name', None) or getattr(product, 'name', None),
                     'manufacturer_id': manufacturer_id or None,
                     'manufacturer': manufacturer_names.get(manufacturer_id),
                     'input_id': input_id or None,
