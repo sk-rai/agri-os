@@ -584,3 +584,7 @@ Weather and soil enrichment worker outputs now expose the runtime policy used fo
 ## Provider live execution safety policy
 
 Live external provider execution is blocked by default. Provider config must explicitly set `live_execution_enabled=true` before live HTTP calls are allowed. Worker output exposes `live_execution.live_execution_status` so operators can distinguish demo/stub runs from approved live-provider runs.
+
+## Provider HTTP client boundary
+
+External provider HTTP calls must go through `app.modules.media.provider_http_client`. The boundary blocks live execution unless provider config explicitly enables it, and it is the future insertion point for timeout, retry, rate-limit, and response/error normalization. Raw HTTP calls should not be scattered across weather or soil modules.

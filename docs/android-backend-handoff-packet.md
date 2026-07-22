@@ -450,3 +450,7 @@ Completed since the previous checkpoint:
 - full backend closeout gate and web build passed.
 
 Remaining backend-heavy work is now mostly live provider implementation and final release review: real external HTTP adapters, production credentials/secrets, rate-limit budget enforcement, monitoring/alerts, final Android implementation review, and final production permission/audit signoff.
+
+## Provider HTTP client boundary
+
+External provider HTTP calls must go through `app.modules.media.provider_http_client`. The boundary blocks live execution unless provider config explicitly enables it, and it is the future insertion point for timeout, retry, rate-limit, and response/error normalization. Raw HTTP calls should not be scattered across weather or soil modules.

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal, engine
 from app.main import app
+from app.modules.media.provider_http_client import ProviderHttpRequest, ProviderLiveExecutionBlocked, execute_provider_http_request
 from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_live_execution_status, provider_runtime_policy_from_config
 from app.modules.media.weather_provider_adapters import normalize_provider_http_error, normalize_open_meteo_forecast
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
@@ -42,6 +43,15 @@ def main():
     check(runtime_policy.max_retries == 3, "Provider runtime policy preserves retry count")
     check(runtime_policy.demo_mode is True, "Provider runtime policy detects demo mode")
     check(provider_live_execution_status({})["live_execution_enabled"] is False, "Provider live execution defaults blocked")
+    blocked_request = ProviderHttpRequest(provider="OPEN_METEO", method="GET", url="https://api.open-meteo.example/test")
+    try:
+        execute_provider_http_request(blocked_request, config={})
+    except ProviderLiveExecutionBlocked as exc:
+        blocked_payload = exc.to_dict()
+    else:
+        raise AssertionError("Provider HTTP boundary should block live execution by default")
+    check(blocked_payload["error_code"] == "PROVIDER_LIVE_EXECUTION_BLOCKED", "Provider HTTP boundary blocks live execution by default")
+    check(blocked_payload["live_execution"]["live_execution_enabled"] is False, "Provider HTTP boundary exposes live execution block")
     check(provider_live_execution_status({"live_execution_enabled": True})["live_execution_status"] == "ENABLED", "Provider live execution can be explicitly enabled")
     failure_meta = provider_failure_metadata(error=normalize_provider_http_error(provider="OPEN_METEO", status_code=429), policy=runtime_policy)
     check(failure_meta["retryable"] is True, "Provider failure metadata preserves retryable flag")
