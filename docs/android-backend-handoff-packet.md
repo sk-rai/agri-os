@@ -2,7 +2,7 @@
 
 Status date: 2026-07-20
 
-Current backend readiness estimate for Android MVP handoff: about 92%.
+Current backend readiness estimate for Android MVP handoff: about 93%.
 
 This packet is not the signal to begin Android rewiring. It is the backend closeout map that will become the Android integration guide after backend testing, provider-worker stubs, permission review, and final regression are complete.
 
@@ -283,7 +283,7 @@ Completed since the 84% checkpoint:
 - Soil enrichment worker can persist demo payloads as SoilEnrichmentSnapshot rows.
 - Full Android backend closeout regression runner passes after these changes.
 
-Backend readiness estimate is now about 92%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
+Backend readiness estimate is now about 93%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
 
 Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
 
@@ -307,7 +307,7 @@ Completed since the 86% checkpoint:
 - Endpoint permission inventory now shows weather provider/worker ops removed from the flagged list.
 - Full Android backend closeout runner passes after permission hardening.
 
-Backend readiness estimate is now about 92%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 93%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
 
 Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it before risky backend changes, migrations, provider-worker changes, permission hardening, or Android handoff testing.
 
@@ -332,7 +332,7 @@ Completed since the 87% checkpoint:
 - Permission inventory review artifact was created and remaining scanner noise was categorized.
 - Full Android backend closeout runner passes after this hardening.
 
-Backend readiness estimate is now about 92%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 93%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
 
 Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`; true temp database bootstrap execution remains gated behind a separate reviewed script/command.
 
@@ -366,7 +366,7 @@ Completed since the 88% checkpoint:
 - Redacted generated sample payloads committed under `docs/samples/android/`.
 - Pre-Android backend handoff checker remains read-only; sample capture remains manual because it writes documentation artifacts.
 
-Backend readiness estimate is now about 92%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
+Backend readiness estimate is now about 93%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
 
 ## Farmer and parcel location checkpoint - 2026-07-21
 
@@ -392,7 +392,7 @@ Weather and soil provider adapters normalize HTTP failures into retryable and no
 
 ## Backend hardening checkpoint - 2026-07-21
 
-Backend readiness estimate is now about 92% for Android MVP handoff.
+Backend readiness estimate is now about 93% for Android MVP handoff.
 
 Completed since the previous checkpoint:
 
@@ -414,7 +414,7 @@ Weather and soil enrichment worker outputs now expose the runtime policy used fo
 
 ## Provider worker auditability checkpoint - 2026-07-22
 
-Backend readiness estimate is now about 92% for Android MVP handoff.
+Backend readiness estimate is now about 93% for Android MVP handoff.
 
 Completed since the previous checkpoint:
 
@@ -436,3 +436,17 @@ Endpoint permission inventory is currently at flagged_count=38. Remaining flags 
 ## Provider live execution safety policy
 
 Live external provider execution is blocked by default. Provider config must explicitly set `live_execution_enabled=true` before live HTTP calls are allowed. Worker output exposes `live_execution.live_execution_status` so operators can distinguish demo/stub runs from approved live-provider runs.
+
+## Provider live-execution safety checkpoint - 2026-07-22
+
+Backend readiness estimate is now about 93% for Android MVP handoff.
+
+Completed since the previous checkpoint:
+
+- provider live execution is explicitly blocked by default;
+- provider config must set `live_execution_enabled=true` before live external HTTP provider execution is allowed;
+- weather and soil enrichment worker outputs expose live execution status;
+- provider scheduler/runbook, runtime policy, retry/error policy, and worker auditability are now documented and regression-covered;
+- full backend closeout gate and web build passed.
+
+Remaining backend-heavy work is now mostly live provider implementation and final release review: real external HTTP adapters, production credentials/secrets, rate-limit budget enforcement, monitoring/alerts, final Android implementation review, and final production permission/audit signoff.
