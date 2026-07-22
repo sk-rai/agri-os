@@ -49,3 +49,7 @@ Smoke screenshots are generated under `web/test-artifacts/admin-smoke/` and are 
 ## Smoke run analyzer
 
 `web/scripts/analyze_admin_smoke_sweep.mjs` reads the latest or selected smoke sweep `summary.json` and prints status counts, top console/page errors, failed requests, HTTP error responses, and a per-route summary. It exits non-zero only when the sweep has actionable issues.
+
+## Authenticated smoke readiness
+
+`backend/scripts/audit_web_ui_auth_readiness.py` is a read-only DB audit for determining whether a safe existing admin/backoffice identity is available for authenticated web UI smoke testing. It intentionally prints no secrets or tokens.
