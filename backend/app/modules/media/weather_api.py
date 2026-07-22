@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
 from app.modules.media.api import _iso
+from app.modules.media.provider_runtime_policy import provider_runtime_policy_from_config
 from app.modules.media.weather_provider_adapters import normalize_open_meteo_forecast
 from app.modules.media.models import WeatherProviderConfig, WeatherSnapshot
 from app.modules.media.weather_service import (
@@ -232,6 +233,8 @@ def _run_due_weather_refresh_worker(
         status = "DUE" if is_due else "SKIPPED_NOT_DUE"
         error_code = None
         message = None
+        config = dict(getattr(provider, "config", None) or {})
+        runtime_policy = provider_runtime_policy_from_config(config)
 
         if not is_due:
             skipped_count += 1
@@ -315,6 +318,7 @@ def _run_due_weather_refresh_worker(
             "status": status,
             "error_code": error_code,
             "message": message,
+              "runtime_policy": runtime_policy.to_dict(),
             "last_refresh_at": provider.last_refresh_at.isoformat() if provider.last_refresh_at else None,
             "next_refresh_at": provider.next_refresh_at.isoformat() if provider.next_refresh_at else None,
             "created_snapshot_id": created_snapshot_id if "created_snapshot_id" in locals() else None,

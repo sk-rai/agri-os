@@ -383,6 +383,7 @@ def main():
     check(worker_run_body["dry_run"] is False, "Weather refresh worker run preserves execution flag")
     check(worker_run_body["schema_version"] == "weather_refresh_worker.v1", "Weather refresh worker run schema stable")
     check(worker_run_body["refreshed_count"] >= 1, "Weather refresh worker demo payload refreshes provider")
+    check("runtime_policy" in worker_run_body["providers"][0], "Weather refresh worker exposes runtime policy")
     check(any(row.get("created_snapshot_id") for row in worker_run_body["providers"]), "Weather refresh worker demo payload creates snapshot")
 
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)

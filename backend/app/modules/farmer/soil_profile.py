@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import Base, get_db
 from app.shared.models import AuditMixin, UUIDPrimaryKey
+from app.modules.media.provider_runtime_policy import provider_runtime_policy_from_config
 from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
 
 
@@ -1507,6 +1508,7 @@ def _run_soil_enrichment_queue_worker(
                 "status": status,
                 "latest_status": latest_status,
                 "reason": reason,
+                "runtime_policy": provider_runtime_policy_from_config({}).to_dict(),
             })
 
     demo_target = demo_target or {}
@@ -1570,6 +1572,7 @@ def _run_soil_enrichment_queue_worker(
                 "status": "FETCHED_DEMO_PAYLOAD",
                 "latest_status": None,
                 "reason": "Demo payload normalized into SoilEnrichmentSnapshot by worker.",
+                  "runtime_policy": provider_runtime_policy_from_config({}).to_dict(),
             })
 
     if not dry_run and (queued_job_count or created_snapshot_count):

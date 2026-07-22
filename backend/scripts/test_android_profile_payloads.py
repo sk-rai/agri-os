@@ -562,6 +562,7 @@ def main():
     worker_run_body = worker_run.json()
     check(worker_run_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker run schema stable")
     check(worker_run_body["dry_run"] is False, "Soil enrichment worker run preserves execution flag")
+    check((not worker_run_body["jobs"]) or ("runtime_policy" in worker_run_body["jobs"][0]), "Soil enrichment worker exposes runtime policy")
     check("created_snapshot_count" in worker_run_body, "Soil enrichment worker demo payload reports created snapshots")
     check(worker_run_body["created_snapshot_count"] >= 1, "Soil enrichment worker demo payload creates snapshot rows")
     demo_summary = client.get(f"/api/v1/soil-profiles/enrichments/summary?parcel_id={missing_enrichment_parcel_id}", headers=headers)
