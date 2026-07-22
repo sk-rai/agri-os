@@ -254,3 +254,6 @@ The sweep should:
 ## Metadata readiness audit script
 
 Run `backend/scripts/audit_metadata_readiness.py` to inspect current geography, crop, input/provider, and workflow metadata coverage before expanding Android scenario testing.
+
+Metadata readiness current-state checkpoint
+The repository now includes `docs/backend-metadata-readiness-current-state.md`, summarizing the first metadata audit baseline: crops/workflows are already rich enough for Android MVP testing, while all-India geography expansion and agricultural product seeding remain the next backend metadata priorities.

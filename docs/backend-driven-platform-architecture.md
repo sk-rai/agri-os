@@ -659,3 +659,6 @@ Operational recovery guidance is maintained in `docs/backend-recovery-playbook.m
 ## Backend metadata readiness roadmap
 
 See `docs/backend-metadata-readiness-roadmap.md` for the pre-Android metadata and scenario-readiness plan covering all-India geography, crop scenario packs, configurable seasons/local units, input/provider prepopulation, branching crop workflows, perennial/orchard onboarding, stage cost/P&L summaries, advisory seed content, multimedia broadcasts, and web UI screenshot testing.
+
+Metadata readiness current-state checkpoint
+The repository now includes `docs/backend-metadata-readiness-current-state.md`, summarizing the first metadata audit baseline: crops/workflows are already rich enough for Android MVP testing, while all-India geography expansion and agricultural product seeding remain the next backend metadata priorities.
