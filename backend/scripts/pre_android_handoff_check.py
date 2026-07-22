@@ -36,6 +36,7 @@ def main() -> int:
     run('Product catalog readiness audit', [sys.executable, 'scripts/audit_product_catalog_readiness.py'])
     run('Season land-unit readiness audit', [sys.executable, 'scripts/audit_season_land_unit_readiness.py'])
     run('Workflow BBCH crop-system readiness audit', [sys.executable, 'scripts/audit_workflow_bbch_crop_system_readiness.py'])
+    run('Global geography readiness audit', [sys.executable, 'scripts/audit_global_geography_readiness.py'])
     run('Android backend closeout regression sweep', [sys.executable, 'scripts/test_android_backend_closeout.py'])
 
     print('\n' + '=' * 72)

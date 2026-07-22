@@ -60,3 +60,6 @@ Android should consume backend geography metadata and not assume that every coun
 
 Global geography readiness audit checkpoint
 Added `backend/scripts/audit_global_geography_readiness.py` to verify the geography hierarchy profile endpoint, current India compatibility counts, and explicit remaining gaps before all-India/global rollout.
+
+Pre-Android global geography audit checkpoint
+`backend/scripts/pre_android_handoff_check.py` now includes the global geography readiness audit, ensuring the hierarchy-profile endpoint and India/global geography gaps stay visible during handoff validation.
