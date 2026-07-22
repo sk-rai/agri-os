@@ -54,3 +54,6 @@ Android should consume backend geography metadata and not assume that every coun
 5. Add generic `geo_entity` model/migration only when ready to support non-India geography or multi-country imports.
 6. Maintain compatibility endpoints until Android can render generic country profiles.
 
+## Current metadata endpoint
+
+`GET /api/v1/master-data/geography/hierarchy-profile` exposes the current India compatibility cascade plus the global target model and governance rules. This lets Android consume geography levels from backend metadata before the generic `geo_entity` migration is introduced.

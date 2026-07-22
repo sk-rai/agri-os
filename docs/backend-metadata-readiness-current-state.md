@@ -71,3 +71,7 @@ Pre-Android metadata audit checkpoint
 
 Global geography model checkpoint
 Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.
+
+## Geography hierarchy profile endpoint
+
+The backend now exposes `GET /api/v1/master-data/geography/hierarchy-profile`, making the current India cascade explicit while preserving a path toward a generic global geography model.

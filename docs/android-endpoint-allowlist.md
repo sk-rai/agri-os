@@ -126,3 +126,7 @@ Android should not ship or maintain its own PIN-to-village database.
 ## Season and land-unit metadata
 
 - `GET /api/v1/forms/metadata/season-land-units` — returns backend-configured seasons, land units, conversion metadata, and Android warning guidance for local units that require geography-scoped conversion before financial/P&L calculations.
+
+## Geography hierarchy profile
+
+- `GET /api/v1/master-data/geography/hierarchy-profile` — returns backend-owned geography cascade metadata. Android should render levels from this profile instead of hardcoding a fixed state/district/block/village structure, while India compatibility endpoints remain stable for MVP.

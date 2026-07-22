@@ -532,3 +532,6 @@ Backend readiness is now approximately 95% for Android MVP handoff. The pre-Andr
 
 Global geography model checkpoint
 Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.
+
+Geography hierarchy profile checkpoint
+Android can now call `GET /api/v1/master-data/geography/hierarchy-profile` to discover country/geography level metadata. For MVP it describes India compatibility mode; future country profiles can expose different administrative structures without hardcoding client changes.
