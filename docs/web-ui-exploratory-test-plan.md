@@ -53,3 +53,7 @@ Smoke screenshots are generated under `web/test-artifacts/admin-smoke/` and are 
 ## Authenticated smoke readiness
 
 `backend/scripts/audit_web_ui_auth_readiness.py` is a read-only DB audit for determining whether a safe existing admin/backoffice identity is available for authenticated web UI smoke testing. It intentionally prints no secrets or tokens.
+
+## Local authenticated smoke session
+
+`backend/scripts/create_web_ui_smoke_session.py` creates a local JWT from an existing admin user for Playwright smoke tests. It prints the token only to the terminal and performs no DB writes. Use the `exports` format to populate `WEB_SWEEP_TOKEN`, `WEB_SWEEP_TENANT_ID`, and `WEB_SWEEP_ACTOR_ID` for authenticated smoke sweeps.
