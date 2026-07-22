@@ -74,3 +74,7 @@ No geography import should physically delete rows in normal operation. Missing r
 ## Raw snapshot fetcher
 
 `backend/scripts/fetch_ogd_geography_snapshots.py` is the first implementation slice for Phase 1. It requires `DATA_GOV_IN_API_KEY` unless `--dry-run` is passed, writes timestamped raw JSON pages and a manifest, and does not touch database rows.
+
+## Local raw snapshot storage
+
+Generated OGD raw snapshots under `data/raw/ogd_geography/` are intentionally gitignored because they may be large and are source-acquisition artifacts. Commit manifests or summarized audit outputs only when they are explicitly curated for review.

@@ -8,3 +8,6 @@ data/processed/
 .pytest_cache/
 node_modules/
 .next/
+
+# OGD geography raw source snapshots are generated locally and can be large.
+data/raw/ogd_geography/
