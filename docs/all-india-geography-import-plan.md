@@ -108,3 +108,7 @@ The current parsed UP CSV files can be mapper-ready when the loader supplies an 
 ## Parsed CSV staging mapper
 
 `backend/scripts/stage_lgd_parsed_csv_geography.py` maps existing parsed LGD CSV rows into normalized district/block/village JSONL staging artifacts with validation summaries and no database writes. Generated staging artifacts under `data/staged/geography_lgd/` are gitignored.
+
+## Staging diff audit
+
+`backend/scripts/diff_lgd_staged_geography_against_db.py` compares staged LGD JSONL artifacts with current active DB geography rows by LGD code. It is read-only and is intended to prove that current single-state staging matches the existing DB before any all-India apply mode is designed.
