@@ -568,3 +568,6 @@ The pre-Android handoff checker now includes local geography source inventory, p
 
 Backend/web green checkpoint after local geography staging
 The latest pre-Android backend handoff checker passed with local geography staging gates enabled, including staged-vs-DB diff for 75 districts, 350 blocks, and 110,274 villages. The separate Next.js web production build also passed with exit code 0. Backend and web are green after geography hardening; remaining geography expansion work is now source-file acquisition/mapping for all-India coverage and later OGD API refresh once Data.gov.in key authorization is available.
+
+Authenticated web UI smoke checkpoint
+The web/admin UI now has an authenticated Playwright smoke sweep covering 29 routes. With an existing `default` tenant `ENTERPRISE_ADMIN` JWT, all routes returned HTTP 200 with zero console errors, failed requests, or HTTP error responses. The tenant admin page auth wiring was corrected so `/api/v1/tenants` uses standard auth headers.
