@@ -528,7 +528,7 @@ Pre-Android metadata audit checkpoint
 `backend/scripts/pre_android_handoff_check.py` now runs metadata, product catalog, season/land-unit, and workflow BBCH/crop-system readiness audits as part of the backend handoff gate.
 
 Metadata hardening readiness checkpoint
-Backend readiness is now approximately 95% for Android MVP handoff. The pre-Android handoff checker now includes metadata, product catalog, season/land-unit, and workflow BBCH/crop-system audits. The latest backend handoff checker and separate web build both passed. Remaining backend-heavy work is now concentrated around all-India geography import expansion, richer product/advisory seed packs, formal admin UI surfacing for crop-system/decision-node metadata, and final Android/web exploratory UI test sweep with screenshots.
+Backend readiness is now approximately 96% for Android MVP handoff. The pre-Android handoff checker now includes metadata, product catalog, season/land-unit, and workflow BBCH/crop-system audits. The latest backend handoff checker and separate web build both passed. Remaining backend-heavy work is now concentrated around all-India geography import expansion, richer product/advisory seed packs, formal admin UI surfacing for crop-system/decision-node metadata, and final Android/web exploratory UI test sweep with screenshots.
 
 Global geography model checkpoint
 Added `docs/global-geography-model-roadmap.md`. Geography should evolve from India-specific state/district/block/village tables toward a generic country/profile/entity model that supports each country's administrative hierarchy, while preserving stable India APIs for Android MVP.
@@ -541,3 +541,6 @@ Added `backend/scripts/audit_global_geography_readiness.py` to verify the geogra
 
 Pre-Android global geography audit checkpoint
 `backend/scripts/pre_android_handoff_check.py` now includes the global geography readiness audit, ensuring the hierarchy-profile endpoint and India/global geography gaps stay visible during handoff validation.
+
+Global geography readiness checkpoint
+Backend contract readiness is now approximately 96% for Android MVP handoff. The backend now exposes a geography hierarchy profile endpoint so Android can render geography levels from backend metadata instead of hardcoding India-only assumptions. The pre-Android handoff checker includes the global geography readiness audit. Remaining geography-heavy work is all-India LGD/Census data expansion and, later, generic geo_entity migration for true multi-country rollout.
