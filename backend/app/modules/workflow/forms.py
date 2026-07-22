@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.modules.master_data.season_land_units import list_land_units, list_seasons
 from app.modules.farmer.models import Project, Tenant
 
 router = APIRouter(prefix="/api/v1/forms", tags=["forms"])
@@ -75,9 +76,51 @@ class ProfileOptionSet(BaseModel):
     metadata: dict = {}
 
 
+
+
+def _registry_season_options() -> list[FormFieldOption]:
+    return [
+        FormFieldOption(value=season['code'], label={'en': season['label_en'], 'hi': season['label_hi']})
+        for season in list_seasons()
+    ]
+
+
+def _registry_land_unit_options() -> list[FormFieldOption]:
+    options: list[FormFieldOption] = []
+    seen: set[str] = set()
+    for unit in list_land_units():
+        value = unit['code']
+        if value.endswith('_UNSPECIFIED'):
+            value = value.replace('_UNSPECIFIED', '')
+        if '_' in value and value.startswith(('BIGHA_', 'BISWA_')):
+            continue
+        if value in seen:
+            continue
+        seen.add(value)
+        options.append(FormFieldOption(value=value, label={'en': unit['label_en'].split(' (')[0], 'hi': unit['label_hi'].split(' (')[0]}))
+    for value, label in [('KATHA', 'Katha'), ('GUNTHA', 'Guntha')]:
+        if value not in seen:
+            options.append(FormFieldOption(value=value, label={'en': label, 'hi': label}))
+    return options
+
+
+REGISTRY_SEASON_OPTIONS = _registry_season_options()
+REGISTRY_LAND_UNIT_OPTIONS = _registry_land_unit_options()
+REGISTRY_SEASON_METADATA = {'registry': list_seasons(), 'source': 'backend_config'}
+REGISTRY_LAND_UNIT_METADATA = {
+    'registry': list_land_units(),
+    'source': 'backend_config',
+    'calculation_contract': {
+        'safe_canonical_units': ['ACRE', 'HECTARE'],
+        'variable_local_units_require_geography_scope': ['BIGHA', 'BISWA', 'KATHA', 'GUNTHA'],
+        'store_original_farmer_unit': True,
+        'normalize_backend_calculations_to_acres_hectares': True,
+    },
+}
+
 PROFILE_OPTION_REGISTRY = {
-    "seasons": ProfileOptionSet(option_set="seasons", title={"en": "Seasons", "hi": "Seasons"}, options=[FormFieldOption(value="KHARIF", label={"en": "Kharif", "hi": "Kharif"}), FormFieldOption(value="RABI", label={"en": "Rabi", "hi": "Rabi"}), FormFieldOption(value="ZAID", label={"en": "Zaid", "hi": "Zaid"})]),
-    "land_units": ProfileOptionSet(option_set="land_units", title={"en": "Land Units", "hi": "Land Units"}, options=[FormFieldOption(value="ACRE", label={"en": "Acre", "hi": "Acre"}), FormFieldOption(value="HECTARE", label={"en": "Hectare", "hi": "Hectare"}), FormFieldOption(value="BIGHA", label={"en": "Bigha", "hi": "Bigha"}), FormFieldOption(value="BISWA", label={"en": "Biswa", "hi": "Biswa"}), FormFieldOption(value="KATHA", label={"en": "Katha", "hi": "Katha"}), FormFieldOption(value="GUNTHA", label={"en": "Guntha", "hi": "Guntha"})]),
+    "seasons": ProfileOptionSet(option_set="seasons", title={"en": "Seasons", "hi": "Seasons"}, options=REGISTRY_SEASON_OPTIONS, metadata=REGISTRY_SEASON_METADATA),
+    "land_units": ProfileOptionSet(option_set="land_units", title={"en": "Land Units", "hi": "Land Units"}, options=REGISTRY_LAND_UNIT_OPTIONS, metadata=REGISTRY_LAND_UNIT_METADATA),
     "ownership_types": ProfileOptionSet(option_set="ownership_types", title={"en": "Ownership Types", "hi": "Ownership Types"}, options=[FormFieldOption(value="OWNED", label={"en": "Owned", "hi": "Owned"}), FormFieldOption(value="PART_OWNER", label={"en": "Part owner", "hi": "Part owner"}), FormFieldOption(value="LEASED", label={"en": "Leased", "hi": "Leased"}), FormFieldOption(value="SHARED", label={"en": "Shared", "hi": "Shared"}), FormFieldOption(value="SHARECROP", label={"en": "Sharecrop", "hi": "Sharecrop"}), FormFieldOption(value="FAMILY", label={"en": "Family", "hi": "Family"})]),
     "irrigation_sources": ProfileOptionSet(option_set="irrigation_sources", title={"en": "Irrigation Sources", "hi": "Irrigation Sources"}, options=[FormFieldOption(value="TUBEWELL_DIESEL", label={"en": "Tubewell (Diesel)", "hi": "Tubewell (Diesel)"}), FormFieldOption(value="TUBEWELL_ELECTRIC", label={"en": "Tubewell (Electric)", "hi": "Tubewell (Electric)"}), FormFieldOption(value="CANAL", label={"en": "Canal", "hi": "Canal"}), FormFieldOption(value="PURCHASED_WATER", label={"en": "Purchased Water", "hi": "Purchased Water"}), FormFieldOption(value="RAIN_FED", label={"en": "Rain-fed", "hi": "Rain-fed"}), FormFieldOption(value="POND_TANK", label={"en": "Pond/Tank", "hi": "Pond/Tank"}), FormFieldOption(value="RIVER_STREAM", label={"en": "River/Stream", "hi": "River/Stream"})]),
     "geometry_sources": ProfileOptionSet(option_set="geometry_sources", title={"en": "GPS Capture Modes", "hi": "GPS Capture Modes"}, options=[FormFieldOption(value="NONE", label={"en": "No GPS", "hi": "No GPS"}), FormFieldOption(value="PIN_DROP", label={"en": "Pin drop", "hi": "Pin drop"}), FormFieldOption(value="PIN_CORNERS", label={"en": "Pin corners", "hi": "Pin corners"}), FormFieldOption(value="GPS_WALK", label={"en": "GPS walk", "hi": "GPS walk"})]),
