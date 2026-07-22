@@ -11,3 +11,6 @@ node_modules/
 
 # OGD geography raw source snapshots are generated locally and can be large.
 data/raw/ogd_geography/
+
+# Generated geography staging artifacts.
+data/staged/geography_lgd/

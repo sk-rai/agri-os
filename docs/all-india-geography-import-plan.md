@@ -104,3 +104,7 @@ The existing UP scripts already provide useful patterns for SpreadsheetML parsin
 ## Single-state parsed CSV context
 
 The current parsed UP CSV files can be mapper-ready when the loader supplies an explicit default state context such as UP LGD/state code `09`. For all-India files, district rows must carry their own state context rather than relying on a default.
+
+## Parsed CSV staging mapper
+
+`backend/scripts/stage_lgd_parsed_csv_geography.py` maps existing parsed LGD CSV rows into normalized district/block/village JSONL staging artifacts with validation summaries and no database writes. Generated staging artifacts under `data/staged/geography_lgd/` are gitignored.
