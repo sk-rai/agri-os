@@ -485,3 +485,6 @@ The repository now includes `docs/backend-metadata-readiness-current-state.md`, 
 
 Product catalog readiness audit checkpoint
 Added `backend/scripts/audit_product_catalog_readiness.py` as a read-only audit for manufacturer/input/product coverage before seeding Android product scenarios.
+
+Product catalog Android scenario checkpoint
+Added `backend/scripts/seed_android_product_catalog.py` and verified the product catalog audit now reports 9 seeded agricultural products/packages for Android metadata testing.

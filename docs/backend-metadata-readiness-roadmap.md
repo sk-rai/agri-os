@@ -257,3 +257,6 @@ Run `backend/scripts/audit_metadata_readiness.py` to inspect current geography, 
 
 Metadata readiness current-state checkpoint
 The repository now includes `docs/backend-metadata-readiness-current-state.md`, summarizing the first metadata audit baseline: crops/workflows are already rich enough for Android MVP testing, while all-India geography expansion and agricultural product seeding remain the next backend metadata priorities.
+
+Product catalog scenario seed checkpoint
+The first Android product scenario seed pack is in place. Next product metadata work should add remaining manufacturer coverage, organic inputs, seed products, and explicit pricing/effective-date metadata.

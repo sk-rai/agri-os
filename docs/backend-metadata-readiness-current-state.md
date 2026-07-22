@@ -37,3 +37,7 @@ The backend has enough crop/workflow richness to test Android MVP flows across m
 
 Product catalog readiness audit checkpoint
 Added `backend/scripts/audit_product_catalog_readiness.py` as a read-only audit for manufacturer/input/product coverage before seeding Android product scenarios.
+
+## Product catalog seed checkpoint
+
+The Android product catalog scenario seed script now creates 9 representative products and packages across 8 manufacturers. The seeded scenarios cover Urea, DAP, MOP/Potash, Zinc Sulphate, Tricyclazole, Chlorpyrifos, and Sett Treatment. Remaining manufacturer gaps are Syngenta, Tata Rallis, and PI Industries. Remaining input gaps are mostly service/activity pseudo-inputs plus additional product-worthy crop protection and organic input rows.
