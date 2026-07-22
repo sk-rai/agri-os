@@ -283,7 +283,7 @@ Completed since the 84% checkpoint:
 - Soil enrichment worker can persist demo payloads as SoilEnrichmentSnapshot rows.
 - Full Android backend closeout regression runner passes after these changes.
 
-Backend readiness estimate is now about 94%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
+Backend readiness estimate is now about 95%. Remaining backend-heavy work is scheduler/worker invocation strategy, real provider HTTP adapters, rate-limit/error policy, clean Alembic-from-empty validation, permission review, and final Android sample-payload bundle.
 
 Manual provider worker invocation is available through `backend/scripts/run_due_provider_workers.py --tenant-id {tenant_id} --dry-run`. This runs weather and soil enrichment worker stubs from one ops command before scheduler wiring.
 
@@ -307,7 +307,7 @@ Completed since the 86% checkpoint:
 - Endpoint permission inventory now shows weather provider/worker ops removed from the flagged list.
 - Full Android backend closeout runner passes after permission hardening.
 
-Backend readiness estimate is now about 94%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 95%. Remaining backend-heavy work is focused on clean database bootstrap validation, remaining admin/backoffice endpoint review, real provider HTTP adapters/rate-limit policy, final sample payload bundle, and final Android handoff review.
 
 Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it before risky backend changes, migrations, provider-worker changes, permission hardening, or Android handoff testing.
 
@@ -332,7 +332,7 @@ Completed since the 87% checkpoint:
 - Permission inventory review artifact was created and remaining scanner noise was categorized.
 - Full Android backend closeout runner passes after this hardening.
 
-Backend readiness estimate is now about 94%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
+Backend readiness estimate is now about 95%. Remaining backend-heavy work is clean database bootstrap validation, real provider HTTP adapters/rate-limit policy, final captured sample payload bundle, and final Android handoff review.
 
 Clean database bootstrap preflight is available through `backend/scripts/check_clean_db_bootstrap_preflight.py`; true temp database bootstrap execution remains gated behind a separate reviewed script/command.
 
@@ -366,7 +366,7 @@ Completed since the 88% checkpoint:
 - Redacted generated sample payloads committed under `docs/samples/android/`.
 - Pre-Android backend handoff checker remains read-only; sample capture remains manual because it writes documentation artifacts.
 
-Backend readiness estimate is now about 94%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
+Backend readiness estimate is now about 95%. Remaining backend-heavy work is true clean temporary database bootstrap execution, real provider HTTP adapters/rate-limit policy, and final Android handoff review.
 
 ## Farmer and parcel location checkpoint - 2026-07-21
 
@@ -526,3 +526,6 @@ Added `backend/scripts/backfill_workflow_crop_system_metadata.py` to backfill cr
 
 Pre-Android metadata audit checkpoint
 `backend/scripts/pre_android_handoff_check.py` now runs metadata, product catalog, season/land-unit, and workflow BBCH/crop-system readiness audits as part of the backend handoff gate.
+
+Metadata hardening readiness checkpoint
+Backend readiness is now approximately 95% for Android MVP handoff. The pre-Android handoff checker now includes metadata, product catalog, season/land-unit, and workflow BBCH/crop-system audits. The latest backend handoff checker and separate web build both passed. Remaining backend-heavy work is now concentrated around all-India geography import expansion, richer product/advisory seed packs, formal admin UI surfacing for crop-system/decision-node metadata, and final Android/web exploratory UI test sweep with screenshots.
