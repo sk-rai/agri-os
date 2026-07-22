@@ -475,3 +475,7 @@ See `docs/provider-credentials-contract.md` for provider credential environment 
 ## Backend metadata readiness roadmap
 
 See `docs/backend-metadata-readiness-roadmap.md` for the pre-Android metadata and scenario-readiness plan covering all-India geography, crop scenario packs, configurable seasons/local units, input/provider prepopulation, branching crop workflows, perennial/orchard onboarding, stage cost/P&L summaries, advisory seed content, multimedia broadcasts, and web UI screenshot testing.
+
+## Metadata readiness audit script
+
+Run `backend/scripts/audit_metadata_readiness.py` to inspect current geography, crop, input/provider, and workflow metadata coverage before expanding Android scenario testing.

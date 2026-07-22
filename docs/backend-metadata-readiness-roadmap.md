@@ -250,3 +250,7 @@ The sweep should:
 8. Build cost/P&L backend summary contract.
 9. Build advisory/broadcast seed content import plan.
 10. Build web UI screenshot/functional sweep runner.
+
+## Metadata readiness audit script
+
+Run `backend/scripts/audit_metadata_readiness.py` to inspect current geography, crop, input/provider, and workflow metadata coverage before expanding Android scenario testing.
