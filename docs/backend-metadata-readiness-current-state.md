@@ -84,3 +84,6 @@ Added `docs/geography-data-source-contract.md`, documenting LGD as canonical Ind
 
 OGD geography probe checkpoint
 A read-only OGD geography source probe is now defined in `backend/scripts/probe_ogd_geography_sources.py`. It supports the LGD villages-with-PIN resource and the All India PIN-code directory resource, redacts API keys, performs no database writes, and is intended to inspect schemas before the all-India staged import/diff pipeline is built.
+
+All-India geography import checkpoint
+An all-India geography import plan now defines the phased flow: source probe, raw snapshot acquisition, staging validation, diff, admin-approved apply, and local runtime serving. LGD remains canonical; PIN/post-office associations are separate postal references; Census is reserved for aliases, demographics, and business-opportunity enrichment without overriding LGD identity.
