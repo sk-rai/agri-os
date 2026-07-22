@@ -695,6 +695,27 @@ def get_profile_contract_summary(
     }
 
 
+
+
+@router.get("/metadata/season-land-units")
+def get_season_land_unit_metadata():
+    return {
+        'schema_version': 'season_land_unit_metadata.v1',
+        'seasons': list_seasons(),
+        'land_units': list_land_units(),
+        'calculation_contract': {
+            'safe_canonical_units': ['ACRE', 'HECTARE'],
+            'variable_local_units_require_geography_scope': ['BIGHA', 'BISWA', 'KATHA', 'GUNTHA'],
+            'store_original_farmer_unit': True,
+            'normalize_backend_calculations_to_acres_hectares': True,
+            'block_financial_calculation_when_conversion_status_not_converted': True,
+        },
+        'android_guidance': {
+            'show_warning_for_variable_local_units': True,
+            'warning_message': 'This local unit needs village/district-specific conversion before profit/loss calculations.',
+            'allow_capture_original_unit': True,
+        },
+    }
 @router.get("/options")
 def list_profile_option_sets(
     project_id: Optional[uuid.UUID] = Query(None),
