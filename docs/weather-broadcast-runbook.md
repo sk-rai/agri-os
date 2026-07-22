@@ -209,3 +209,7 @@ Weather and soil enrichment worker outputs now expose the runtime policy used fo
 ## Provider worker scheduler runbook
 
 See `docs/provider-worker-scheduler-runbook.md` for dry-run-first provider worker scheduling guidance, cron/systemd examples, execution-mode gates, failure review, and recovery links.
+
+## Provider live execution safety policy
+
+Live external provider execution is blocked by default. Provider config must explicitly set `live_execution_enabled=true` before live HTTP calls are allowed. Worker output exposes `live_execution.live_execution_status` so operators can distinguish demo/stub runs from approved live-provider runs.

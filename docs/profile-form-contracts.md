@@ -580,3 +580,7 @@ Provider workers now have a shared runtime policy contract covering timeout_seco
 ## Provider runtime policy in worker output
 
 Weather and soil enrichment worker outputs now expose the runtime policy used for provider processing. This makes dry-run and execution responses auditable: operators can see timeout, retry, backoff, rate-limit, and demo-mode settings alongside worker results.
+
+## Provider live execution safety policy
+
+Live external provider execution is blocked by default. Provider config must explicitly set `live_execution_enabled=true` before live HTTP calls are allowed. Worker output exposes `live_execution.live_execution_status` so operators can distinguish demo/stub runs from approved live-provider runs.

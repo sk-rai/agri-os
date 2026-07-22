@@ -82,3 +82,7 @@ If worker output is unexpected:
 ## Android handoff note
 
 Android can consume backend snapshots/readiness once provider workers are operational, but Android should not be responsible for provider scheduling, provider credentials, rate-limit handling, or external API retries.
+
+## Provider live execution safety policy
+
+Live external provider execution is blocked by default. Provider config must explicitly set `live_execution_enabled=true` before live HTTP calls are allowed. Worker output exposes `live_execution.live_execution_status` so operators can distinguish demo/stub runs from approved live-provider runs.

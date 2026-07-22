@@ -56,3 +56,17 @@ def provider_failure_metadata(*, error: Any, policy: ProviderRuntimePolicy) -> d
         }
     payload["runtime_policy"] = policy.to_dict()
     return payload
+
+
+def provider_live_execution_enabled(config: dict[str, Any] | None) -> bool:
+    source = config or {}
+    return source.get("live_execution_enabled") is True
+
+
+def provider_live_execution_status(config: dict[str, Any] | None) -> dict:
+    enabled = provider_live_execution_enabled(config)
+    return {
+        "live_execution_enabled": enabled,
+        "live_execution_status": "ENABLED" if enabled else "BLOCKED_UNTIL_APPROVED",
+        "message": "Live provider execution is enabled." if enabled else "Live provider execution is blocked until explicitly approved in provider config.",
+    }

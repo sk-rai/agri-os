@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal, engine
 from app.main import app
-from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_runtime_policy_from_config
+from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_live_execution_status, provider_runtime_policy_from_config
 from app.modules.media.weather_provider_adapters import normalize_provider_http_error, normalize_open_meteo_forecast
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Tenant
@@ -41,6 +41,8 @@ def main():
     check(runtime_policy.timeout_seconds == 120, "Provider runtime policy clamps timeout")
     check(runtime_policy.max_retries == 3, "Provider runtime policy preserves retry count")
     check(runtime_policy.demo_mode is True, "Provider runtime policy detects demo mode")
+    check(provider_live_execution_status({})["live_execution_enabled"] is False, "Provider live execution defaults blocked")
+    check(provider_live_execution_status({"live_execution_enabled": True})["live_execution_status"] == "ENABLED", "Provider live execution can be explicitly enabled")
     failure_meta = provider_failure_metadata(error=normalize_provider_http_error(provider="OPEN_METEO", status_code=429), policy=runtime_policy)
     check(failure_meta["retryable"] is True, "Provider failure metadata preserves retryable flag")
     check(failure_meta["runtime_policy"]["timeout_seconds"] == 120, "Provider failure metadata includes runtime policy")
@@ -384,6 +386,7 @@ def main():
     check(worker_run_body["schema_version"] == "weather_refresh_worker.v1", "Weather refresh worker run schema stable")
     check(worker_run_body["refreshed_count"] >= 1, "Weather refresh worker demo payload refreshes provider")
     check("runtime_policy" in worker_run_body["providers"][0], "Weather refresh worker exposes runtime policy")
+    check("live_execution" in worker_run_body["providers"][0], "Weather refresh worker exposes live execution status")
     check(any(row.get("created_snapshot_id") for row in worker_run_body["providers"]), "Weather refresh worker demo payload creates snapshot")
 
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)

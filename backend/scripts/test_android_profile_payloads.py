@@ -13,7 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilEnrichmentJobAudit, SoilEnrichmentSnapshot, SoilProfile
-from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_runtime_policy_from_config
+from app.modules.media.provider_runtime_policy import provider_failure_metadata, provider_live_execution_status, provider_runtime_policy_from_config
 from app.modules.farmer.soil_enrichment_adapters import normalize_soil_provider_http_error, normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
@@ -99,6 +99,8 @@ def main():
     check(soil_runtime_policy.timeout_seconds == 120, "Soil provider runtime policy clamps timeout")
     check(soil_runtime_policy.max_retries == 4, "Soil provider runtime policy preserves retry count")
     check(soil_runtime_policy.demo_mode is True, "Soil provider runtime policy detects demo mode")
+    check(provider_live_execution_status({})["live_execution_enabled"] is False, "Soil provider live execution defaults blocked")
+    check(provider_live_execution_status({"live_execution_enabled": True})["live_execution_status"] == "ENABLED", "Soil provider live execution can be explicitly enabled")
     soil_failure_meta = provider_failure_metadata(error=normalize_soil_provider_http_error(provider="SOILGRIDS", status_code=429), policy=soil_runtime_policy)
     check(soil_failure_meta["retryable"] is True, "Soil provider failure metadata preserves retryable flag")
     check(soil_failure_meta["runtime_policy"]["timeout_seconds"] == 120, "Soil provider failure metadata includes runtime policy")
@@ -563,6 +565,7 @@ def main():
     check(worker_run_body["schema_version"] == "soil_enrichment_worker_run.v1", "Soil enrichment worker run schema stable")
     check(worker_run_body["dry_run"] is False, "Soil enrichment worker run preserves execution flag")
     check((not worker_run_body["jobs"]) or ("runtime_policy" in worker_run_body["jobs"][0]), "Soil enrichment worker exposes runtime policy")
+    check((not worker_run_body["jobs"]) or ("live_execution" in worker_run_body["jobs"][0]), "Soil enrichment worker exposes live execution status")
     check("created_snapshot_count" in worker_run_body, "Soil enrichment worker demo payload reports created snapshots")
     check(worker_run_body["created_snapshot_count"] >= 1, "Soil enrichment worker demo payload creates snapshot rows")
     demo_summary = client.get(f"/api/v1/soil-profiles/enrichments/summary?parcel_id={missing_enrichment_parcel_id}", headers=headers)

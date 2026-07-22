@@ -432,3 +432,7 @@ See `docs/provider-worker-scheduler-runbook.md` for dry-run-first provider worke
 ## Permission inventory checkpoint
 
 Endpoint permission inventory is currently at flagged_count=38. Remaining flags are mostly Android/shared-read tenant-scope review items and template/export tenant-scope checks. Mutation/provider-worker/admin surfaces have already been hardened more aggressively; do not lock down Android-required master-data reads without revising the endpoint allowlist and handoff contract.
+
+## Provider live execution safety policy
+
+Live external provider execution is blocked by default. Provider config must explicitly set `live_execution_enabled=true` before live HTTP calls are allowed. Worker output exposes `live_execution.live_execution_status` so operators can distinguish demo/stub runs from approved live-provider runs.
