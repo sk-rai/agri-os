@@ -198,3 +198,7 @@ Clean temporary database bootstrap execution is available through `backend/scrip
 ## Provider worker scheduler runbook
 
 See `docs/provider-worker-scheduler-runbook.md` for dry-run-first provider worker scheduling guidance, cron/systemd examples, execution-mode gates, failure review, and recovery links.
+
+## Provider credentials contract
+
+See `docs/provider-credentials-contract.md` for provider credential environment variables, live-execution gates, non-secret provider config fields, and Android/provider boundary rules.

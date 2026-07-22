@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     SOILGRIDS_BASE_URL: str = "https://rest.isric.org/soilgrids/v2.0/properties/query"
     SOILGRIDS_TIMEOUT_SECONDS: int = 20
 
+    # External provider credentials and safety controls
+    WEATHER_PROVIDER_API_KEY: str | None = None
+    WEATHER_PROVIDER_API_SECRET: str | None = None
+    WEATHER_PROVIDER_LIVE_EXECUTION_ENABLED: bool = False
+    SOIL_PROVIDER_API_KEY: str | None = None
+    SOIL_PROVIDER_API_SECRET: str | None = None
+    SOIL_PROVIDER_LIVE_EXECUTION_ENABLED: bool = False
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

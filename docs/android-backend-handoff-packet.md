@@ -467,3 +467,7 @@ Completed since the previous checkpoint:
 - full backend closeout gate and web build passed.
 
 Remaining backend-heavy work is now mostly final live-provider implementation and production operations: actual external HTTP clients inside the approved boundary, credentials/secrets, rate-limit budget enforcement, monitoring/alerts, final Android implementation review, and production permission/audit signoff.
+
+## Provider credentials contract
+
+See `docs/provider-credentials-contract.md` for provider credential environment variables, live-execution gates, non-secret provider config fields, and Android/provider boundary rules.

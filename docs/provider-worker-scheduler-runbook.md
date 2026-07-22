@@ -90,3 +90,7 @@ Live external provider execution is blocked by default. Provider config must exp
 ## Provider HTTP client boundary
 
 External provider HTTP calls must go through `app.modules.media.provider_http_client`. The boundary blocks live execution unless provider config explicitly enables it, and it is the future insertion point for timeout, retry, rate-limit, and response/error normalization. Raw HTTP calls should not be scattered across weather or soil modules.
+
+## Provider credentials contract
+
+See `docs/provider-credentials-contract.md` for provider credential environment variables, live-execution gates, non-secret provider config fields, and Android/provider boundary rules.
