@@ -513,7 +513,7 @@ The `/company-discovery` admin page now exposes CSV template download, validatio
 
 ## Backend readiness checkpoint - 2026-07-20
 
-Backend-driven profile readiness is now approximately **93% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
+Backend-driven profile readiness is now approximately **94% ready** for Android MVP handoff. Farmer, land/parcel, soil profile, agent mode, soil enrichment readiness, company profile, and company discovery/prepopulation contracts are backend-owned and documented.
 
 Remaining work is mainly provider automation, Android UI consumption of these contracts, admin polish, production permission/audit review, and final regression/handoff packaging.
 
