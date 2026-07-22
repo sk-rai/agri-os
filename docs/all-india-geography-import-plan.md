@@ -92,3 +92,7 @@ The acquisition tooling is ready, but the first live source inspection is blocke
 Because OGD API key activation can be delayed, the initial all-India geography load should support local CSV/XML source files. The local-file path should follow the same staged flow as API acquisition: raw snapshot registration, validation, diff, admin-approved apply, and logical expiry rather than physical deletion.
 
 The existing UP scripts already provide useful patterns for SpreadsheetML parsing and flexible column detection. Refactor them into reusable local-file ingestion helpers before loading all-India source files.
+
+## Local source inventory
+
+`backend/scripts/audit_local_geography_source_files.py` inventories local CSV/XML/XLS/XLSX geography source files without database writes. It is intended to classify existing UP LGD files and future all-India source files before staging/import logic is written.
