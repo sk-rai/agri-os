@@ -66,7 +66,16 @@ function isExpectedAuthOrPermissionResponse(response) {
 }
 
 function isIgnorableNavigationAbort(request) {
-  return request.failure === "net::ERR_ABORTED" && request.method === "GET" && request.url.endsWith("/login");
+  if (request.failure !== "net::ERR_ABORTED" || request.method !== "GET") return false;
+  try {
+    const url = new URL(request.url);
+    if (url.pathname === "/login") return true;
+    if (url.hostname === "localhost" && url.port === "8000" && url.pathname.startsWith("/api/")) return true;
+    if (url.hostname === "127.0.0.1" && url.port === "8000" && url.pathname.startsWith("/api/")) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function isGenericResourceConsoleError(error) {
@@ -89,6 +98,32 @@ function slug(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
 }
 
+
+async function cleanupOldRuns(outRoot, keepRuns, activeOutDir) {
+  if (!Number.isFinite(keepRuns) || keepRuns < 0) return;
+  let entries = [];
+  try {
+    entries = await fs.readdir(outRoot, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const dirs = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.resolve(outRoot, entry.name))
+    .sort()
+    .reverse();
+
+  const active = path.resolve(activeOutDir);
+  const retained = new Set(dirs.slice(0, keepRuns));
+  retained.add(active);
+
+  for (const dir of dirs) {
+    if (retained.has(dir)) continue;
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+
 async function main() {
   const baseUrl = (argValue("--base-url", process.env.WEB_BASE_URL || "http://127.0.0.1:3000") || "").replace(/\/$/, "");
   const outRoot = argValue("--out", process.env.WEB_SWEEP_OUT || "test-artifacts/admin-smoke");
@@ -96,6 +131,7 @@ async function main() {
   const headed = hasArg("--headed");
   const routeFilter = argValue("--route", "");
   const waitMs = Number(argValue("--settle-ms", "1200"));
+  const keepRuns = Number(argValue("--keep-runs", process.env.WEB_SWEEP_KEEP_RUNS || "3"));
   const tenantId = argValue("--tenant-id", process.env.WEB_SWEEP_TENANT_ID || "default");
   const actorId = argValue("--actor-id", process.env.WEB_SWEEP_ACTOR_ID || "");
   const token = argValue("--token", process.env.WEB_SWEEP_TOKEN || "");
@@ -117,6 +153,7 @@ async function main() {
   const outDir = path.resolve(outRoot, stamp);
   const screenshotDir = path.join(outDir, "screenshots");
   await fs.mkdir(screenshotDir, { recursive: true });
+  await cleanupOldRuns(path.resolve(outRoot), keepRuns, outDir);
 
   let browser;
   try {
@@ -269,6 +306,7 @@ async function main() {
     expected_auth_or_permission_count: results.filter((item) => item.status === "EXPECTED_AUTH_OR_PERMISSION").length,
     issue_count: results.filter((item) => !["OK", "EXPECTED_AUTH_OR_PERMISSION"].includes(item.status)).length,
     fail_on_error: failOnError,
+    keep_runs: keepRuns,
     results,
   };
 
@@ -283,6 +321,7 @@ async function main() {
     `- OK: ${summary.ok_count}`,
     `- Expected auth/permission: ${summary.expected_auth_or_permission_count}`,
     `- Issues: ${summary.issue_count}`,
+    `- Retention: latest ${keepRuns} run(s) kept`,
     "",
     "| Status | Route | HTTP | Console errors | Failed requests | Screenshot |",
     "|---|---:|---:|---:|---:|---|",

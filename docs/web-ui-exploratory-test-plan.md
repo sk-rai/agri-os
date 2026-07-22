@@ -42,3 +42,6 @@ cd ~/projects/farmint/web
 node scripts/admin_smoke_screenshot_sweep.mjs --base-url=http://127.0.0.1:3000
 ```
 
+## Artifact retention
+
+Smoke screenshots are generated under `web/test-artifacts/admin-smoke/` and are gitignored. The sweep keeps the latest 3 runs by default and deletes older runs. Use `--keep-runs=1` during rapid iteration or a higher value when comparing screenshots manually.
