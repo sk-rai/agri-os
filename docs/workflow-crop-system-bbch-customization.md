@@ -34,3 +34,6 @@ Android should render backend stages and labels from the published workflow prev
 
 Workflow BBCH/crop-system audit checkpoint
 Added `backend/scripts/audit_workflow_bbch_crop_system_readiness.py` to measure BBCH range coverage, propagation-step stages, recommendation cost coverage, decision-like recommendations, and missing crop-system metadata on workflow templates.
+
+Workflow crop-system metadata backfill checkpoint
+Added `backend/scripts/backfill_workflow_crop_system_metadata.py` to backfill crop-system, BBCH baseline, allowed start stages, warning rules, and decision-node metadata on existing Rice/Sugarcane workflow templates and versions without changing stage rows.
