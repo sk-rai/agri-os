@@ -73,3 +73,7 @@ The authenticated admin smoke sweep is now green for all 29 web routes using an 
 ## Route-level read-only assertions
 
 `web/scripts/assert_admin_smoke_routes.mjs` uses `web/scripts/admin_smoke_assertions.json` to re-visit smoke-tested routes and check expected visible text plus forbidden runtime/error text. The one-command runner now executes this assertion layer before building the PDF report.
+
+## Token logging hygiene
+
+The one-command smoke review runner captures the generated local JWT internally and does not print it to terminal output. Avoid pasting or committing raw smoke-session tokens from direct helper runs.

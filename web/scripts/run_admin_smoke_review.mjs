@@ -36,9 +36,11 @@ function run(label, command, args, options = {}) {
     encoding: "utf8",
   });
 
-  if (options.capture) {
+  if (options.capture && !options.suppressOutput) {
     if (result.stdout) process.stdout.write(result.stdout);
     if (result.stderr) process.stderr.write(result.stderr);
+  } else if (!options.capture && !options.suppressOutput) {
+    // output already inherited
   }
 
   if (result.status !== 0) {
@@ -72,7 +74,7 @@ async function main() {
     "Create web UI smoke session",
     "../venv/bin/python",
     ["scripts/create_web_ui_smoke_session.py", "--tenant-id", tenantId, "--role", role, "--format", "json"],
-    { cwd: backendRoot, capture: true }
+    { cwd: backendRoot, capture: true, suppressOutput: true }
   );
 
   const sessionPayload = JSON.parse(session.stdout);
