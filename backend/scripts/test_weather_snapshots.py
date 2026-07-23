@@ -160,7 +160,7 @@ def main():
     check("is_due" in refresh_plan_body["providers"][0], "Refresh plan reports due state")
 
     fetched_at = now()
-    snapshot = client.post("/api/v1/weather/snapshots", headers=headers, json={
+    snapshot = client.post("/api/v1/weather/snapshots", headers=admin_headers, json={
         "provider_id": str(provider_id),
         "location_scope": "VILLAGE",
         "location_key": "Broadcast Village",
