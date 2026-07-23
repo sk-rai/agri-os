@@ -103,7 +103,7 @@ async function main() {
   run("Assert admin smoke role permissions", "node", ["scripts/assert_admin_smoke_role_permissions.mjs", `--base-url=${baseUrl}`], { cwd: webRoot, env });
   run("Assert admin viewer negative interactions", "node", ["scripts/assert_admin_viewer_negative_interactions.mjs", `--base-url=${baseUrl}`], { cwd: webRoot, env });
   run("Inventory admin smoke buttons", "node", ["scripts/inventory_admin_smoke_buttons.mjs", `--base-url=${baseUrl}`, `--role=${sessionPayload.role}`], { cwd: webRoot, env });
-  run("Assert admin viewer enabled actions", "node", ["scripts/assert_admin_viewer_enabled_actions.mjs"], { cwd: webRoot, env });
+  run("Assert admin viewer enabled actions", "node", ["scripts/assert_admin_viewer_enabled_actions.mjs", "--fail-on-error"], { cwd: webRoot, env });
   run("Build admin smoke PDF report", "node", ["scripts/build_admin_smoke_report.mjs"], { cwd: webRoot, env });
 
   const runDir = await latestRun(path.join(webRoot, "test-artifacts/admin-smoke"));

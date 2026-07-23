@@ -9,6 +9,10 @@
     { "route": "/inputs", "text": "CSV import / export", "reason": "Opens import/export panel; mutation controls inside remain permission-gated." },
     { "route": "/products", "text": "Apply filters", "reason": "Read-only list filter." },
     { "route": "/project-enrollments", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/project-workflows", "text": "Enabled", "reason": "Read-only visibility filter." },
+    { "route": "/project-workflows", "text": "Disabled", "reason": "Read-only visibility filter." },
+    { "route": "/query-threads", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/sync-health", "text": "Apply", "reason": "Read-only sync health filter." },
     { "route": "/weather", "text": "Apply filters", "reason": "Read-only snapshot filter." }
   ]
 }
