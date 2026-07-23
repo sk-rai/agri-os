@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { appConfigApi, farmersApi, type FieldAgentCaptureActionDto, type FieldAgentWorklistResponse, type FieldAgentWorklistRowDto, type FormFieldOptionContract } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 const STATUSES = ["ACTIVE", "PENDING", "INACTIVE", "ARCHIVED", ""];
 const PROFILE_OPTION_SETS = ["languages", "land_units", "soil_types", "soil_textures", "soil_colors"] as const;
@@ -30,6 +31,8 @@ export default function FieldAgentWorklistPage() {
   const [soilTexture, setSoilTexture] = useState("");
   const [soilColor, setSoilColor] = useState("");
   const [profileOptions, setProfileOptions] = useState<Partial<Record<ProfileOptionSetKey, FormFieldOptionContract[]>>>({});
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canEditAssistedProfiles = hasAdminPermission(adminProfile, "EDIT");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,6 +96,10 @@ export default function FieldAgentWorklistPage() {
   }
 
   async function saveSelectedProfileEdits() {
+    if (!canEditAssistedProfiles) {
+      setEditMessage("Your current role can view the field-agent worklist but cannot save assisted profile edits.");
+      return;
+    }
     if (!selected) return;
     setEditBusy(true);
     setError(null);
@@ -171,6 +178,13 @@ export default function FieldAgentWorklistPage() {
       </div>
       <p className="mt-3 text-xs text-gray-500">When assigned-only is enabled, backend filters through farmer project enrollment assignments. If Actor ID is blank, the API uses the logged-in user header when available.</p>
     </form>
+
+    {!adminProfileLoading && !canEditAssistedProfiles ? (
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">Assisted profile edits are read-only for your role</p>
+        <p className="mt-1">Role {adminRoleLabel(adminProfile)} can review worklist context, but cannot save farmer, parcel, or soil profile edits.</p>
+      </div>
+    ) : null}
 
     {error ? <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
     {loading ? <p className="rounded bg-white p-5 text-sm text-gray-500 shadow">Loading worklist...</p> : null}
@@ -256,7 +270,7 @@ export default function FieldAgentWorklistPage() {
                   </div>
                   {!selected.soil_profiles?.[0] ? <p className="mt-1 text-gray-500">Soil type, texture, or color will create a manual soil profile once a parcel exists.</p> : null}
                 </div>
-                <button type="button" onClick={() => void saveSelectedProfileEdits()} disabled={editBusy} className="rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{editBusy ? "Saving..." : "Save profile edits"}</button>
+                <button type="button" onClick={() => void saveSelectedProfileEdits()} disabled={editBusy || !canEditAssistedProfiles} title={canEditAssistedProfiles ? undefined : "Your role cannot save assisted profile edits."} className="rounded bg-green-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{editBusy ? "Saving..." : "Save profile edits"}</button>
                 {editMessage ? <p className="text-green-700">{editMessage}</p> : null}
               </div>
             </Section>

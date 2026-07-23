@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, companyApi, type CompanyProfileAuditEventDto, type CompanyProfileDto } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 const COMPANY_TYPES = ["ENTERPRISE", "FPO", "COOPERATIVE", "NGO", "GOVERNMENT", "INSURER", "PROCESSOR", "INPUT_COMPANY", "SEED_COMPANY", "FERTILIZER_COMPANY", "PESTICIDE_COMPANY", "MACHINERY_COMPANY", "BUYER", "TRADER", "WAREHOUSE", "FINANCIAL_INSTITUTION", "AGRI_TECH", "OTHER"];
 const PROFILE_SOURCES = ["MANUAL", "PUBLIC_WEB", "BULK_IMPORT", "CLIENT_PROVIDED", "GOVERNMENT_REGISTRY", "PARTNER_DIRECTORY", "OTHER"];
@@ -66,6 +67,8 @@ export default function CompanyProfilePage() {
   const [message, setMessage] = useState("");
   const [auditEvents, setAuditEvents] = useState<CompanyProfileAuditEventDto[]>([]);
 
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canManageCompanyProfile = hasAdminPermission(adminProfile, "MANAGE_USERS");
   const configured = useMemo(() => Boolean(profile.id), [profile.id]);
 
   function loadIntoForm(next: CompanyProfileDto) {
@@ -109,6 +112,10 @@ export default function CompanyProfilePage() {
   }, []);
 
   async function saveProfile() {
+    if (!canManageCompanyProfile) {
+      setMessage("Your current role can view company profile metadata but cannot save company profile changes.");
+      return;
+    }
     setSaving(true);
     setMessage("");
     try {
@@ -171,6 +178,13 @@ export default function CompanyProfilePage() {
         {message ? <div className="mt-4 rounded border bg-gray-50 p-3 text-sm text-gray-700">{message}</div> : null}
       </div>
 
+      {!adminProfileLoading && !canManageCompanyProfile ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Company profile is read-only for your role</p>
+          <p className="mt-1">Role {adminRoleLabel(adminProfile)} can review company profile and audit history, but cannot save company profile changes.</p>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Identity">
           <Input label="Legal name" value={legalName} onChange={setLegalName} />
@@ -217,7 +231,7 @@ export default function CompanyProfilePage() {
       </div>
 
       <div className="flex justify-end">
-        <button type="button" onClick={() => void saveProfile()} disabled={saving} className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        <button type="button" onClick={() => void saveProfile()} disabled={saving || !canManageCompanyProfile} title={canManageCompanyProfile ? undefined : "Your role cannot save company profile changes."} className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {saving ? "Saving..." : "Save company profile"}
         </button>
       </div>

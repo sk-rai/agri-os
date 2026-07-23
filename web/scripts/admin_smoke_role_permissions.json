@@ -10,6 +10,18 @@
             { "name": "+ New Tenant", "mode": "exact", "presence": "required" }
           ]
         },
+        "/company-profile": {
+          "expected_text": ["Company profile is read-only for your role"],
+          "disabled_buttons": [
+            { "name": "Save company profile", "mode": "exact", "presence": "required" }
+          ]
+        },
+        "/field-agent-worklist": {
+          "expected_text": ["Assisted profile edits are read-only for your role"],
+          "disabled_buttons": [
+            { "name": "Save profile edits", "mode": "exact", "presence": "optional" }
+          ]
+        },
         "/workflows": {
           "expected_text": ["Workflow catalog is read-only for your role"],
           "disabled_buttons": [

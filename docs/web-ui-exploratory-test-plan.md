@@ -97,3 +97,7 @@ The one-command smoke review runner captures the generated local JWT internally 
 ## Button inventory probe
 
 `web/scripts/inventory_admin_smoke_buttons.mjs` is a read-only probe that records visible buttons and disabled state across smoke-tested routes. It helps choose the next negative/positive interaction assertions from actual UI behavior instead of guessing from source text.
+
+## Viewer mutation-control hardening
+
+The button inventory surfaced two viewer-visible save controls. The company-profile and field-agent worklist pages now expose explicit read-only banners and disable save buttons for `ADMIN_VIEWER`; the role-permission assertion config checks these controls.
