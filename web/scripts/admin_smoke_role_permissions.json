@@ -22,6 +22,18 @@
             { "name": "Save profile edits", "mode": "exact", "presence": "optional" }
           ]
         },
+        "/weather": {
+          "expected_text": ["Weather operations are read-only for your role"],
+          "disabled_buttons": [
+            { "name": "Save provider", "mode": "exact", "presence": "required" },
+            { "name": "Save snapshot", "mode": "exact", "presence": "required" },
+            { "name": "Preview due", "mode": "exact", "presence": "required" },
+            { "name": "Run due providers", "mode": "exact", "presence": "required" },
+            { "name": "Run adapter", "mode": "exact", "presence": "optional" },
+            { "name": "Record refresh", "mode": "exact", "presence": "optional" },
+            { "name": "Create broadcast draft", "mode": "exact", "presence": "optional" }
+          ]
+        },
         "/workflows": {
           "expected_text": ["Workflow catalog is read-only for your role"],
           "disabled_buttons": [

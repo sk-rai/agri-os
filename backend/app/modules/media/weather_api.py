@@ -511,7 +511,7 @@ def run_weather_provider_adapter_endpoint(provider_id: uuid.UUID, db: Session = 
 
 
 @router.post("/snapshots", status_code=201)
-def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID")):
+def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
     now_ts = _now()
     if body.provider_id:
         provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == body.provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()

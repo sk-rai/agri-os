@@ -101,3 +101,7 @@ The one-command smoke review runner captures the generated local JWT internally 
 ## Viewer mutation-control hardening
 
 The button inventory surfaced two viewer-visible save controls. The company-profile and field-agent worklist pages now expose explicit read-only banners and disable save buttons for `ADMIN_VIEWER`; the role-permission assertion config checks these controls.
+
+## Weather viewer hardening
+
+Manual weather snapshot creation now requires backend `EDIT` permission and the weather operations UI disables provider, snapshot, refresh, adapter, due-run, and broadcast-draft actions for `ADMIN_VIEWER`.

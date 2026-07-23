@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { broadcastsApi, weatherApi, type WeatherOperationsHealthResponse, type WeatherProviderDto, type WeatherProviderDueRunResponse, type WeatherProvidersResponse, type WeatherRefreshPlanResponse, type WeatherSnapshotDto, type WeatherSnapshotsResponse } from "@/lib/api";
+import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 const PROVIDER_TYPES = ["EXTERNAL_API", "MANUAL", "INTERNAL_MODEL", "SATELLITE", "IOT_STATION"];
 const LOCATION_SCOPES = ["TENANT", "PROJECT", "FARMER", "PARCEL", "GEOPOINT", "PINCODE", "VILLAGE", "DISTRICT", "STATE", "WEATHER_GRID"];
@@ -73,6 +74,8 @@ export default function WeatherPage() {
   const [includeExpired, setIncludeExpired] = useState(false);
   const [snapshotLimit, setSnapshotLimit] = useState("100");
   const [error, setError] = useState<string | null>(null);
+  const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
+  const canEditWeatherOperations = hasAdminPermission(adminProfile, "EDIT");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,6 +141,7 @@ export default function WeatherPage() {
   }
 
   async function saveProvider(event: FormEvent) {
+    if (!canEditWeatherOperations) { setError("Your current role can view weather operations but cannot save provider configuration."); return; }
     event.preventDefault();
     if (!providerCode.trim() || !providerName.trim()) return;
     setSavingProvider(true);
@@ -177,6 +181,7 @@ export default function WeatherPage() {
   }
 
   async function saveSnapshot(event: FormEvent) {
+    if (!canEditWeatherOperations) { setError("Your current role can view weather snapshots but cannot save manual snapshots."); return; }
     event.preventDefault();
     setSavingSnapshot(true);
     setError(null);
@@ -213,6 +218,7 @@ export default function WeatherPage() {
   }
 
   async function recordRefresh(provider: WeatherProviderDto) {
+    if (!canEditWeatherOperations) { setError("Your current role can view weather provider refresh state but cannot record refreshes."); return; }
     setRefreshingProviderId(provider.id);
     setError(null);
     try {
@@ -231,6 +237,7 @@ export default function WeatherPage() {
   }
 
   async function runAdapter(provider: WeatherProviderDto) {
+    if (!canEditWeatherOperations) { setError("Your current role can view weather providers but cannot run adapters."); return; }
     setRunningAdapterProviderId(provider.id);
     setError(null);
     try {
@@ -244,6 +251,7 @@ export default function WeatherPage() {
   }
 
   async function createBroadcastFromSnapshot(snapshot: WeatherSnapshotDto) {
+    if (!canEditWeatherOperations) { setError("Your current role can view weather snapshots but cannot create broadcast drafts from them."); return; }
     const riskValues = (snapshot.risk_flags && snapshot.risk_flags.length > 0)
       ? snapshot.risk_flags
       : [snapshot.condition_code].filter(Boolean) as string[];
@@ -290,6 +298,7 @@ export default function WeatherPage() {
   }
 
   async function runDueProviders(dryRun: boolean) {
+    if (!canEditWeatherOperations) { setError("Your current role can view weather refresh plans but cannot run providers."); return; }
     setRunningDueProviders(true);
     setError(null);
     try {
@@ -314,6 +323,13 @@ export default function WeatherPage() {
       </div>
       <button type="button" onClick={() => void load()} disabled={loading} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{loading ? "Refreshing..." : "Refresh"}</button>
     </div>
+
+    {!adminProfileLoading && !canEditWeatherOperations ? (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">Weather operations are read-only for your role</p>
+        <p className="mt-1">Role {adminRoleLabel(adminProfile)} can review providers, refresh plans, and snapshots, but cannot save providers, create snapshots, run adapters, or create weather broadcast drafts.</p>
+      </div>
+    ) : null}
 
     {error ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
     {createdBroadcastId ? <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">Weather broadcast draft created. <a className="font-semibold underline" href="/broadcasts">Open Broadcasts</a> to preview audience, publish, and generate deliveries.</div> : null}
@@ -377,8 +393,8 @@ export default function WeatherPage() {
           <div className="font-semibold">Config helpers</div>
           <p className="mt-1">Use these to avoid hand-writing weather adapter JSON. Thresholds stay editable after insertion.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={useOpenMeteoTemplate} className="rounded bg-blue-700 px-3 py-1.5 font-medium text-white">Use Open-Meteo sample config</button>
-            <button type="button" onClick={mergeDefaultRiskThresholds} className="rounded border border-blue-200 bg-white px-3 py-1.5 font-medium text-blue-800">Merge default risk thresholds</button>
+            <button type="button" onClick={useOpenMeteoTemplate} disabled={!canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot edit weather provider config."} className="rounded bg-blue-700 px-3 py-1.5 font-medium text-white disabled:opacity-50">Use Open-Meteo sample config</button>
+            <button type="button" onClick={mergeDefaultRiskThresholds} disabled={!canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot edit weather provider config."} className="rounded border border-blue-200 bg-white px-3 py-1.5 font-medium text-blue-800 disabled:opacity-50">Merge default risk thresholds</button>
           </div>
         </div>
         <label className="text-xs text-gray-500 md:col-span-6">Config JSON<textarea value={providerConfig} onChange={(event) => setProviderConfig(event.target.value)} rows={10} className="mt-1 w-full rounded border p-2 font-mono text-xs text-gray-900" /></label>
@@ -388,7 +404,7 @@ export default function WeatherPage() {
           <div className="rounded bg-gray-50 p-2">Heat/wind: {DEFAULT_RISK_THRESHOLDS.heat_stress_temperature_max_c} C / {DEFAULT_RISK_THRESHOLDS.high_wind_kmph} kmph</div>
         </div>
         <div className="flex items-end gap-2 md:col-span-6">
-          <button type="submit" disabled={savingProvider || !providerCode.trim() || !providerName.trim()} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingProvider ? "Saving..." : "Save provider"}</button>
+          <button type="submit" disabled={savingProvider || !providerCode.trim() || !providerName.trim() || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot save weather providers."} className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingProvider ? "Saving..." : "Save provider"}</button>
           <button type="button" onClick={() => { setProviderCode(""); setProviderName(""); setProviderType("EXTERNAL_API"); setRefreshInterval("6"); setProviderEnabled(true); setProviderConfig("{}"); }} className="rounded border px-4 py-2 text-sm text-gray-700">Clear</button>
         </div>
       </form>
@@ -408,7 +424,7 @@ export default function WeatherPage() {
         <label className="text-xs text-gray-500">Rain mm<input value={snapshotRainfallMm} onChange={(event) => setSnapshotRainfallMm(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
         <label className="text-xs text-gray-500">Humidity %<input type="number" min={0} max={100} value={snapshotHumidity} onChange={(event) => setSnapshotHumidity(event.target.value)} className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
         <label className="text-xs text-gray-500 md:col-span-4">Summary<input value={snapshotSummary} onChange={(event) => setSnapshotSummary(event.target.value)} placeholder="Heavy rainfall likely in next 24 hours" className="mt-1 w-full rounded border p-2 text-sm text-gray-900" /></label>
-        <div className="flex items-end md:col-span-2"><button type="submit" disabled={savingSnapshot} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingSnapshot ? "Saving..." : "Save snapshot"}</button></div>
+        <div className="flex items-end md:col-span-2"><button type="submit" disabled={savingSnapshot || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot save weather snapshots."} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{savingSnapshot ? "Saving..." : "Save snapshot"}</button></div>
       </form>
     </section>
 
@@ -419,8 +435,8 @@ export default function WeatherPage() {
           <p className="text-xs text-gray-500">Generated at {refreshPlan?.generated_at || "-"}. Cron or workers can call the due-run endpoint; admin can preview and trigger it here.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void runDueProviders(true)} disabled={runningDueProviders} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 disabled:opacity-50">Preview due</button>
-          <button type="button" onClick={() => void runDueProviders(false)} disabled={runningDueProviders} className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{runningDueProviders ? "Running..." : "Run due providers"}</button>
+          <button type="button" onClick={() => void runDueProviders(true)} disabled={runningDueProviders || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot run weather providers."} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 disabled:opacity-50">Preview due</button>
+          <button type="button" onClick={() => void runDueProviders(false)} disabled={runningDueProviders || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot run weather providers."} className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{runningDueProviders ? "Running..." : "Run due providers"}</button>
         </div>
       </div>
       {dueRunResult ? <div className="mb-4 rounded border border-amber-100 bg-amber-50 p-3 text-xs text-amber-950">
@@ -445,7 +461,7 @@ export default function WeatherPage() {
               <td className="p-3 text-gray-700">{provider.last_refresh_at || "Never"}</td>
               <td className="p-3 text-gray-700">{provider.next_refresh_at || "Due now"}</td>
               <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${provider.is_due ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}>{provider.is_due ? "Due" : "Scheduled"}</span>{provider.refresh_status ? <div className="mt-1 text-xs text-gray-500">{provider.refresh_status}: {provider.refresh_message || "-"}</div> : null}</td>
-              <td className="p-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => editProvider(provider)} className="rounded border px-3 py-1.5 text-xs font-medium text-gray-700">Edit</button><button type="button" onClick={() => void runAdapter(provider)} disabled={runningAdapterProviderId === provider.id} className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{runningAdapterProviderId === provider.id ? "Running..." : "Run adapter"}</button><button type="button" onClick={() => void recordRefresh(provider)} disabled={refreshingProviderId === provider.id} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{refreshingProviderId === provider.id ? "Recording..." : "Record refresh"}</button></div></td>
+              <td className="p-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => editProvider(provider)} disabled={!canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot edit weather providers."} className="rounded border px-3 py-1.5 text-xs font-medium text-gray-700 disabled:opacity-50">Edit</button><button type="button" onClick={() => void runAdapter(provider)} disabled={runningAdapterProviderId === provider.id || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot run weather adapters."} className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{runningAdapterProviderId === provider.id ? "Running..." : "Run adapter"}</button><button type="button" onClick={() => void recordRefresh(provider)} disabled={refreshingProviderId === provider.id || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot record weather refreshes."} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{refreshingProviderId === provider.id ? "Recording..." : "Record refresh"}</button></div></td>
             </tr>)}
             {(!loading && planProviders.length === 0) ? <tr><td colSpan={7} className="p-6 text-center text-gray-400">No enabled weather providers configured.</td></tr> : null}
           </tbody>
@@ -482,7 +498,7 @@ export default function WeatherPage() {
             <div>Humidity: {snapshot.humidity_percent ?? "-"}%</div>
           </div>
           {snapshot.risk_flags?.length ? <div className="mt-3 flex flex-wrap gap-1">{snapshot.risk_flags.map((flag) => <span key={flag} className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">{flag}</span>)}</div> : null}
-          <button type="button" onClick={() => void createBroadcastFromSnapshot(snapshot)} disabled={creatingBroadcastSnapshotId === snapshot.id} className="mt-3 rounded bg-green-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{creatingBroadcastSnapshotId === snapshot.id ? "Creating draft..." : "Create broadcast draft"}</button>
+          <button type="button" onClick={() => void createBroadcastFromSnapshot(snapshot)} disabled={creatingBroadcastSnapshotId === snapshot.id || !canEditWeatherOperations} title={canEditWeatherOperations ? undefined : "Your role cannot create weather broadcast drafts."} className="mt-3 rounded bg-green-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{creatingBroadcastSnapshotId === snapshot.id ? "Creating draft..." : "Create broadcast draft"}</button>
         </article>)}
         {(!loading && (!snapshots || snapshots.snapshots.length === 0)) ? <p className="rounded border border-dashed p-6 text-center text-sm text-gray-400">No fresh snapshots yet.</p> : null}
       </div>
