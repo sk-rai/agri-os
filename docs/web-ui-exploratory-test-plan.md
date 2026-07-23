@@ -65,3 +65,7 @@ The authenticated admin smoke sweep is now green for all 29 web routes using an 
 ## PDF review packet
 
 `web/scripts/build_admin_smoke_report.mjs` converts the latest smoke sweep screenshots and `summary.json` into a single PDF review packet with a cover summary and one page per route. Generated report artifacts stay inside `web/test-artifacts/admin-smoke/<run>/` and are gitignored.
+
+## One-command smoke review runner
+
+`web/scripts/run_admin_smoke_review.mjs` creates an authenticated local admin session, runs the screenshot sweep, analyzes the latest run, builds the PDF packet, and prints the final PDF path. It assumes backend and web dev servers are already running.
