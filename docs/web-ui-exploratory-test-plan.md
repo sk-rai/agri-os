@@ -89,3 +89,7 @@ The one-command smoke review runner captures the generated local JWT internally 
 ## Canonical smoke roles
 
 `TENANT_ADMIN` exists in older/local seed data but is not currently granted backend admin permissions. Web UI smoke runs should use canonical permission-map roles: `ENTERPRISE_ADMIN`, `ADMIN_VIEWER`, `ADMIN_EDITOR`, `ADMIN_PUBLISHER`, `MANAGER`, or `AGRONOMIST`.
+
+## Non-mutating negative interactions
+
+`web/scripts/assert_admin_viewer_negative_interactions.mjs` safely checks that `ADMIN_VIEWER` cannot open tenant creation UI and cannot activate workflow mutation controls. It does not submit forms or call mutation APIs.
