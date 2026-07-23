@@ -20,7 +20,8 @@ from app.core.database import SessionLocal
 from app.modules.auth.models import User
 from app.modules.auth.service import create_jwt
 
-ADMIN_ROLES = ["ENTERPRISE_ADMIN", "TENANT_ADMIN", "ADMIN_VIEWER"]
+ADMIN_ROLES = ["ENTERPRISE_ADMIN", "ADMIN_VIEWER", "ADMIN_EDITOR", "ADMIN_PUBLISHER", "MANAGER", "AGRONOMIST"]
+LEGACY_UNSUPPORTED_ROLES = {"TENANT_ADMIN"}
 
 
 def main() -> int:

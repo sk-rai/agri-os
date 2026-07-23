@@ -85,3 +85,7 @@ The one-command smoke review runner captures the generated local JWT internally 
 ## Role matrix runner
 
 `web/scripts/run_admin_smoke_role_matrix.mjs` runs the one-command smoke review for multiple roles, keeps separate per-role screenshot/PDF artifacts, and writes a consolidated JSON/Markdown matrix under `web/test-artifacts/admin-smoke-matrix/`.
+
+## Canonical smoke roles
+
+`TENANT_ADMIN` exists in older/local seed data but is not currently granted backend admin permissions. Web UI smoke runs should use canonical permission-map roles: `ENTERPRISE_ADMIN`, `ADMIN_VIEWER`, `ADMIN_EDITOR`, `ADMIN_PUBLISHER`, `MANAGER`, or `AGRONOMIST`.
