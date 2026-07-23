@@ -96,6 +96,7 @@ async function main() {
 
   run("Run admin smoke screenshot sweep", "node", sweepArgs, { cwd: webRoot, env });
   run("Analyze admin smoke sweep", "node", ["scripts/analyze_admin_smoke_sweep.mjs"], { cwd: webRoot, env });
+  run("Assert admin smoke routes", "node", ["scripts/assert_admin_smoke_routes.mjs", `--base-url=${baseUrl}`], { cwd: webRoot, env });
   run("Build admin smoke PDF report", "node", ["scripts/build_admin_smoke_report.mjs"], { cwd: webRoot, env });
 
   const runDir = await latestRun(path.join(webRoot, "test-artifacts/admin-smoke"));

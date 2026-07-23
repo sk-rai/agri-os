@@ -1,0 +1,159 @@
+{
+  "schema_version": "admin_smoke_assertions.v1",
+  "defaults": {
+    "forbidden_visible_text": [
+      "Unhandled Runtime Error",
+      "Application error",
+      "Failed to fetch",
+      "Network Error"
+    ]
+  },
+  "routes": {
+    "/": {
+      "expected_text": [
+        "Agri-OS"
+      ]
+    },
+    "/login": {
+      "expected_text": [
+        "Agri-OS",
+        "Login"
+      ]
+    },
+    "/dashboard": {
+      "expected_text": [
+        "Dashboard"
+      ]
+    },
+    "/activity-usage": {
+      "expected_text": [
+        "Activity Usage"
+      ]
+    },
+    "/agent-profiles": {
+      "expected_text": [
+        "Agent"
+      ]
+    },
+    "/broadcasts": {
+      "expected_text": [
+        "Broadcast"
+      ]
+    },
+    "/company-discovery": {
+      "expected_text": [
+        "Company"
+      ]
+    },
+    "/company-profile": {
+      "expected_text": [
+        "Company"
+      ]
+    },
+    "/conflicts": {
+      "expected_text": [
+        "Conflict"
+      ]
+    },
+    "/crop-taxonomy": {
+      "expected_text": [
+        "Crop"
+      ]
+    },
+    "/field-agent-worklist": {
+      "expected_text": [
+        "Field Agent"
+      ]
+    },
+    "/field-events": {
+      "expected_text": [
+        "Field"
+      ]
+    },
+    "/inputs": {
+      "expected_text": [
+        "Input"
+      ]
+    },
+    "/lookup": {
+      "expected_text": [
+        "Lookup"
+      ]
+    },
+    "/my-access": {
+      "expected_text": [
+        "Access"
+      ]
+    },
+    "/products": {
+      "expected_text": [
+        "Product"
+      ]
+    },
+    "/profile-forms": {
+      "expected_text": [
+        "Profile"
+      ]
+    },
+    "/profile-readiness": {
+      "expected_text": [
+        "Profile"
+      ]
+    },
+    "/project-enrollments": {
+      "expected_text": [
+        "Project"
+      ]
+    },
+    "/project-inputs": {
+      "expected_text": [
+        "Project"
+      ]
+    },
+    "/project-workflows": {
+      "expected_text": [
+        "Project"
+      ]
+    },
+    "/projects": {
+      "expected_text": [
+        "Projects"
+      ]
+    },
+    "/query-threads": {
+      "expected_text": [
+        "Query"
+      ]
+    },
+    "/soil-enrichment": {
+      "expected_text": [
+        "Soil"
+      ]
+    },
+    "/sync-health": {
+      "expected_text": [
+        "Sync"
+      ]
+    },
+    "/tenants": {
+      "expected_text": [
+        "Tenants"
+      ]
+    },
+    "/users": {
+      "expected_text": [
+        "Users"
+      ]
+    },
+    "/weather": {
+      "expected_text": [
+        "Weather"
+      ]
+    },
+    "/workflows": {
+      "expected_text": [
+        "Workflows"
+      ]
+    }
+  }
+}

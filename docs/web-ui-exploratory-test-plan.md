@@ -69,3 +69,7 @@ The authenticated admin smoke sweep is now green for all 29 web routes using an 
 ## One-command smoke review runner
 
 `web/scripts/run_admin_smoke_review.mjs` creates an authenticated local admin session, runs the screenshot sweep, analyzes the latest run, builds the PDF packet, and prints the final PDF path. It assumes backend and web dev servers are already running.
+
+## Route-level read-only assertions
+
+`web/scripts/assert_admin_smoke_routes.mjs` uses `web/scripts/admin_smoke_assertions.json` to re-visit smoke-tested routes and check expected visible text plus forbidden runtime/error text. The one-command runner now executes this assertion layer before building the PDF report.
