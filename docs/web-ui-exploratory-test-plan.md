@@ -77,3 +77,7 @@ The authenticated admin smoke sweep is now green for all 29 web routes using an 
 ## Token logging hygiene
 
 The one-command smoke review runner captures the generated local JWT internally and does not print it to terminal output. Avoid pasting or committing raw smoke-session tokens from direct helper runs.
+
+## Role-specific permission assertions
+
+`web/scripts/assert_admin_smoke_role_permissions.mjs` adds a non-mutating role layer on top of the screenshot sweep. The first rules cover `ADMIN_VIEWER` read-only behavior for tenant creation and workflow catalog mutation controls, with results written to `role-permissions.json` in the smoke run artifact directory.

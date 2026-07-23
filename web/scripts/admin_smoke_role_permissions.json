@@ -1,0 +1,24 @@
+{
+  "schema_version": "admin_smoke_role_permissions.v1",
+  "roles": {
+    "ADMIN_VIEWER": {
+      "routes": {
+        "/tenants": {
+          "expected_text": ["Tenant management is read-only for your role"],
+          "forbidden_visible_text": ["Register New Tenant"],
+          "disabled_buttons": [
+            { "name": "+ New Tenant", "mode": "exact", "presence": "required" }
+          ]
+        },
+        "/workflows": {
+          "expected_text": ["Workflow catalog is read-only for your role"],
+          "disabled_buttons": [
+            { "name": "Restore as draft", "mode": "exact", "presence": "optional" },
+            { "name": "Dry run", "mode": "exact", "presence": "optional" },
+            { "name": "Backfill eligible pins", "mode": "exact", "presence": "optional" }
+          ]
+        }
+      }
+    }
+  }
+}

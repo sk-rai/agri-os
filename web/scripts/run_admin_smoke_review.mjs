@@ -87,6 +87,7 @@ async function main() {
     WEB_SWEEP_TOKEN: sessionPayload.token,
     WEB_SWEEP_TENANT_ID: sessionPayload.tenant_id,
     WEB_SWEEP_ACTOR_ID: sessionPayload.actor_id,
+    WEB_SWEEP_ROLE: sessionPayload.role,
   };
 
   const sweepArgs = [
@@ -99,6 +100,7 @@ async function main() {
   run("Run admin smoke screenshot sweep", "node", sweepArgs, { cwd: webRoot, env });
   run("Analyze admin smoke sweep", "node", ["scripts/analyze_admin_smoke_sweep.mjs"], { cwd: webRoot, env });
   run("Assert admin smoke routes", "node", ["scripts/assert_admin_smoke_routes.mjs", `--base-url=${baseUrl}`], { cwd: webRoot, env });
+  run("Assert admin smoke role permissions", "node", ["scripts/assert_admin_smoke_role_permissions.mjs", `--base-url=${baseUrl}`], { cwd: webRoot, env });
   run("Build admin smoke PDF report", "node", ["scripts/build_admin_smoke_report.mjs"], { cwd: webRoot, env });
 
   const runDir = await latestRun(path.join(webRoot, "test-artifacts/admin-smoke"));
