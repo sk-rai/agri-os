@@ -93,3 +93,7 @@ The one-command smoke review runner captures the generated local JWT internally 
 ## Non-mutating negative interactions
 
 `web/scripts/assert_admin_viewer_negative_interactions.mjs` safely checks that `ADMIN_VIEWER` cannot open tenant creation UI and cannot activate workflow mutation controls. It does not submit forms or call mutation APIs.
+
+## Button inventory probe
+
+`web/scripts/inventory_admin_smoke_buttons.mjs` is a read-only probe that records visible buttons and disabled state across smoke-tested routes. It helps choose the next negative/positive interaction assertions from actual UI behavior instead of guessing from source text.
