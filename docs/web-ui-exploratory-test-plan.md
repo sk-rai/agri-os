@@ -105,3 +105,7 @@ The button inventory surfaced two viewer-visible save controls. The company-prof
 ## Weather viewer hardening
 
 Manual weather snapshot creation now requires backend `EDIT` permission and the weather operations UI disables provider, snapshot, refresh, adapter, due-run, and broadcast-draft actions for `ADMIN_VIEWER`.
+
+## Viewer enabled-action guardrail
+
+`web/scripts/assert_admin_viewer_enabled_actions.mjs` consumes the button inventory and fails if `ADMIN_VIEWER` sees a new enabled action-looking button that is not explicitly allowlisted as a safe filter/export action.

@@ -1,0 +1,14 @@
+{
+  "schema_version": "admin_viewer_enabled_action_allowlist.v1",
+  "role": "ADMIN_VIEWER",
+  "allowed_enabled_action_buttons": [
+    { "route": "/dashboard", "text": "Apply", "reason": "Read-only dashboard filter." },
+    { "route": "/broadcasts", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/company-discovery", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/field-events", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/inputs", "text": "CSV import / export", "reason": "Opens import/export panel; mutation controls inside remain permission-gated." },
+    { "route": "/products", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/project-enrollments", "text": "Apply filters", "reason": "Read-only list filter." },
+    { "route": "/weather", "text": "Apply filters", "reason": "Read-only snapshot filter." }
+  ]
+}
