@@ -81,3 +81,7 @@ The one-command smoke review runner captures the generated local JWT internally 
 ## Role-specific permission assertions
 
 `web/scripts/assert_admin_smoke_role_permissions.mjs` adds a non-mutating role layer on top of the screenshot sweep. The first rules cover `ADMIN_VIEWER` read-only behavior for tenant creation and workflow catalog mutation controls, with results written to `role-permissions.json` in the smoke run artifact directory.
+
+## Role matrix runner
+
+`web/scripts/run_admin_smoke_role_matrix.mjs` runs the one-command smoke review for multiple roles, keeps separate per-role screenshot/PDF artifacts, and writes a consolidated JSON/Markdown matrix under `web/test-artifacts/admin-smoke-matrix/`.

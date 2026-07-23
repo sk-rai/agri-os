@@ -17,3 +17,4 @@ data/staged/geography_lgd/
 
 # Web exploratory test artifacts: screenshots, logs, reports.
 web/test-artifacts/
+web/test-artifacts/admin-smoke-matrix/
