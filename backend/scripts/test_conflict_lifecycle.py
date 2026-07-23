@@ -23,13 +23,17 @@ client = TestClient(app)
 PASS = "\033[92m✅\033[0m"
 FAIL = "\033[91m❌\033[0m"
 
-TENANT = "lifecycle-test-tenant"
+TENANT = "default"
 ACTOR_A = str(uuid.uuid4())
 ACTOR_B = str(uuid.uuid4())
 OPERATOR = str(uuid.uuid4())
 HEADERS_A = {"X-Tenant-ID": TENANT, "X-Actor-ID": ACTOR_A}
 HEADERS_B = {"X-Tenant-ID": TENANT, "X-Actor-ID": ACTOR_B}
 HEADERS_OP = {"X-Tenant-ID": TENANT, "X-Actor-ID": OPERATOR}
+
+
+def unique_mobile() -> str:
+    return "+91" + str(uuid.uuid4().int)[-10:]
 
 
 def test(name, passed, detail=""):
@@ -55,7 +59,7 @@ r = client.post("/api/v1/sync/events", headers=HEADERS_A, json={
         "entity_type": "farmer",
         "entity_id": entity_id,
         "operation": "CREATE",
-        "payload": {"display_name": "Ram Kumar", "village": "Ayodhya"},
+        "payload": {"display_name": "Ram Kumar", "village": "Ayodhya", "mobile_number": unique_mobile()},
         "version": 3,
         "metadata": {"device_id": "device-A", "gps": {"lat": 26.79, "lng": 82.19}},
     }]
@@ -87,7 +91,9 @@ print("\n[3] Dashboard shows pending conflict")
 r = client.get("/api/v1/dashboard/operational", headers={"X-Tenant-ID": TENANT})
 test("Dashboard returns 200", r.status_code == 200)
 dashboard = r.json()
-test("Conflicts pending = 1", dashboard["sync_health"]["conflicts_pending"] == 1)
+pending_before_resolution = dashboard["sync_health"]["conflicts_pending"]
+resolved_before_resolution = dashboard["sync_health"]["conflicts_resolved"]
+test("Conflicts pending >= 1", pending_before_resolution >= 1, f"Pending: {pending_before_resolution}")
 test("Committed events > 0", dashboard["sync_health"]["committed"] > 0)
 test("Audit chain has entries", dashboard["sync_health"]["audit_chain_length"] > 0)
 
@@ -96,7 +102,10 @@ print("\n[4] Operator lists pending conflicts")
 r = client.get("/api/v1/sync/conflicts", headers=HEADERS_OP)
 test("List conflicts returns 200", r.status_code == 200)
 conflicts = r.json()
-test("One conflict in list", len(conflicts) == 1)
+test("Conflict list includes pending items", len(conflicts) >= 1, f"Count: {len(conflicts)}")
+matching_conflicts = [item for item in conflicts if item["event_id"] == conflict_event_id]
+test("Conflict event_id present", len(matching_conflicts) == 1)
+conflict = matching_conflicts[0]
 conflict_id = conflicts[0]["id"]
 test("Conflict entity_type is farmer", conflicts[0]["entity_type"] == "farmer")
 test("Status is PENDING_REVIEW", conflicts[0]["status"] == "PENDING_REVIEW")
@@ -125,18 +134,24 @@ test("Strategy is ACCEPT_CLIENT", resolution["strategy"] == "ACCEPT_CLIENT")
 # --- Step 7: Verify conflict is no longer pending ---
 print("\n[7] Verify conflict resolved")
 r = client.get("/api/v1/sync/conflicts", headers=HEADERS_OP)
-test("No more pending conflicts", len(r.json()) == 0)
+remaining_conflicts = r.json()
+remaining_matching = [item for item in remaining_conflicts if item["event_id"] == conflict_event_id]
+test("Resolved conflict no longer pending", len(remaining_matching) == 0, f"Remaining matching: {remaining_matching}")
 
 # Check with status filter for resolved
 r = client.get("/api/v1/sync/conflicts?status=RESOLVED_CLIENT", headers=HEADERS_OP)
-test("Resolved conflict visible with filter", len(r.json()) == 1)
+resolved_conflicts = r.json()
+resolved_matching = [item for item in resolved_conflicts if item["event_id"] == conflict_event_id]
+test("Resolved conflict visible with filter", len(resolved_matching) == 1, f"Resolved matching: {resolved_matching}")
 
 # --- Step 8: Dashboard updated ---
 print("\n[8] Dashboard reflects resolution")
 r = client.get("/api/v1/dashboard/operational", headers={"X-Tenant-ID": TENANT})
 dashboard = r.json()
-test("Conflicts pending = 0", dashboard["sync_health"]["conflicts_pending"] == 0)
-test("Conflicts resolved = 1", dashboard["sync_health"]["conflicts_resolved"] == 1)
+pending_after_resolution = dashboard["sync_health"]["conflicts_pending"]
+test("Conflicts pending decremented", pending_after_resolution == pending_before_resolution - 1, f"Before: {pending_before_resolution}, after: {pending_after_resolution}")
+resolved_after_resolution = dashboard["sync_health"]["conflicts_resolved"]
+test("Conflicts resolved incremented", resolved_after_resolution == resolved_before_resolution + 1, f"Before: {resolved_before_resolution}, after: {resolved_after_resolution}")
 
 # --- Step 9: Audit chain records resolution ---
 print("\n[9] Audit chain integrity after resolution")

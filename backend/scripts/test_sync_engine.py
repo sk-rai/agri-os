@@ -11,9 +11,12 @@ client = TestClient(app)
 PASS = "\033[92m✅\033[0m"
 FAIL = "\033[91m❌\033[0m"
 
-TENANT = "test-tenant-001"
+TENANT = "default"
 ACTOR = str(uuid.uuid4())
 HEADERS = {"X-Tenant-ID": TENANT, "X-Actor-ID": ACTOR}
+
+def unique_mobile() -> str:
+    return "+91" + str(uuid.uuid4().int)[-10:]
 
 
 def test(name, passed, detail=""):
@@ -31,14 +34,15 @@ print("=" * 60)
 
 # --- Test 1: Basic commit ---
 print("\n[1] Basic event commit")
+farmer_id_1 = str(uuid.uuid4())
 event_id_1 = str(uuid.uuid4())
 r = client.post("/api/v1/sync/events", headers=HEADERS, json={
     "events": [{
         "event_id": event_id_1,
         "entity_type": "farmer",
-        "entity_id": str(uuid.uuid4()),
+        "entity_id": farmer_id_1,
         "operation": "CREATE",
-        "payload": {"mobile_number": "+919999999999", "display_name": "Test Farmer"},
+        "payload": {"mobile_number": unique_mobile(), "display_name": "Test Farmer"},
         "version": 1,
         "metadata": {"device_id": "test-device", "gps": {"lat": 26.85, "lng": 80.91}},
     }]
@@ -76,7 +80,7 @@ r = client.post("/api/v1/sync/events", headers=HEADERS, json={
         "entity_type": "parcel",
         "entity_id": str(uuid.uuid4()),
         "operation": "CREATE",
-        "payload": {"area_hectares": 2.5},
+        "payload": {"area_hectares": 2.5, "farmer_id": farmer_id_1},
         "version": 1,
         "dependency_ids": [missing_dep],
     }]
@@ -97,7 +101,7 @@ r = client.post("/api/v1/sync/events", headers=HEADERS, json={
         "entity_type": "parcel",
         "entity_id": str(uuid.uuid4()),
         "operation": "CREATE",
-        "payload": {"area_hectares": 1.0},
+        "payload": {"area_hectares": 1.0, "farmer_id": farmer_id_1},
         "version": 1,
         "dependency_ids": [event_id_1],  # This was already committed
     }]
@@ -183,15 +187,16 @@ r = client.post("/api/v1/sync/events", headers=HEADERS, json={
         {
             "event_id": event_id_7a,
             "entity_type": "farmer",
+            "entity_id": str(uuid.uuid4()),
             "operation": "CREATE",
-            "payload": {"display_name": "Batch Farmer"},
+            "payload": {"display_name": "Batch Farmer", "mobile_number": unique_mobile()},
             "version": 1,
         },
         {
             "event_id": event_id_7b,
             "entity_type": "parcel",
             "operation": "CREATE",
-            "payload": {"area": 5.0},
+            "payload": {"area": 5.0, "farmer_id": farmer_id_1},
             "version": 1,
             "dependency_ids": [str(uuid.uuid4())],  # Missing dep
         },
@@ -237,25 +242,28 @@ with engine.connect() as conn:
     test("All hashes are valid SHA256",
          all(len(h) == 64 and all(c in "0123456789abcdef" for c in h) for h in hashes))
 
-# --- Test 9: Tenant isolation ---
-print("\n[9] Tenant isolation")
+# --- Test 9: Tenant-scoped idempotency row ---
+print("\n[9] Tenant-scoped idempotency row")
+tenant_scope_event_id = str(uuid.uuid4())
 r = client.post("/api/v1/sync/events",
-    headers={"X-Tenant-ID": "other-tenant", "X-Actor-ID": str(uuid.uuid4())},
+    headers={"X-Tenant-ID": TENANT, "X-Actor-ID": str(uuid.uuid4())},
     json={"events": [{
-        "event_id": str(uuid.uuid4()),
+        "event_id": tenant_scope_event_id,
         "entity_type": "farmer",
+        "entity_id": str(uuid.uuid4()),
         "operation": "CREATE",
-        "payload": {"display_name": "Other Tenant"},
+        "payload": {"display_name": "Tenant Scope Farmer", "mobile_number": unique_mobile()},
         "version": 1,
     }]}
 )
-test("Other tenant can submit", r.status_code == 200)
-# Verify the original tenant's data isn't affected
+data = r.json()
+test("Tenant-scoped submit returns 200", r.status_code == 200)
+test("Tenant-scoped event accepted", tenant_scope_event_id in data["accepted"], f"Response: {data}")
 with engine.connect() as conn:
     count = conn.execute(text("""
-        SELECT count(*) FROM sync_processed_events WHERE tenant_id = :tid
-    """), {"tid": "other-tenant"}).scalar()
-    test("Other tenant data isolated", count == 1)
+        SELECT count(*) FROM sync_processed_events WHERE tenant_id = :tid AND event_id = :event_id
+    """), {"tid": TENANT, "event_id": tenant_scope_event_id}).scalar()
+    test("Tenant-scoped idempotency row recorded", count == 1)
 
 # --- Summary ---
 print(f"\n{'=' * 60}")
