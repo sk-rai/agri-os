@@ -246,6 +246,7 @@ async function main() {
     let httpStatus = null;
     let title = "";
     let screenshot = null;
+    let fullPageScreenshot = null;
     let finalUrl = null;
 
     try {
@@ -256,16 +257,21 @@ async function main() {
       title = await page.title().catch(() => "");
       finalUrl = page.url();
       screenshot = path.join(screenshotDir, `${String(results.length + 1).padStart(2, "0")}_${slug(route.label)}.png`);
-      await page.screenshot({ path: screenshot, fullPage: true });
+      fullPageScreenshot = path.join(screenshotDir, `${String(results.length + 1).padStart(2, "0")}_${slug(route.label)}_full.png`);
+      await page.screenshot({ path: screenshot, fullPage: false });
+      await page.screenshot({ path: fullPageScreenshot, fullPage: true });
       status = classifyRouteStatus({ httpStatus, errors, failedRequests, responses });
     } catch (error) {
       status = "EXCEPTION";
       errors.push({ type: "exception", message: String(error?.message || error).slice(0, 1000) });
       try {
         screenshot = path.join(screenshotDir, `${String(results.length + 1).padStart(2, "0")}_${slug(route.label)}_exception.png`);
-        await page.screenshot({ path: screenshot, fullPage: true });
+        fullPageScreenshot = path.join(screenshotDir, `${String(results.length + 1).padStart(2, "0")}_${slug(route.label)}_exception_full.png`);
+        await page.screenshot({ path: screenshot, fullPage: false });
+        await page.screenshot({ path: fullPageScreenshot, fullPage: true });
       } catch {
         screenshot = null;
+        fullPageScreenshot = null;
       }
     } finally {
       await page.close().catch(() => {});
@@ -280,6 +286,7 @@ async function main() {
       http_status: httpStatus,
       title,
       screenshot,
+      full_page_screenshot: fullPageScreenshot,
       duration_ms: Date.now() - startedAt,
       console_error_count: errors.length,
       warning_count: warnings.length,

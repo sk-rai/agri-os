@@ -90,6 +90,7 @@ function routePage(item, index, runDir) {
   <div class="screenshot-frame">
     ${img ? `<img src="${img}" alt="${escapeHtml(item.route)} screenshot" />` : `<div class="missing">No screenshot captured</div>`}
   </div>
+  ${item.full_page_screenshot ? `<div class="screenshot-note">PDF shows the first viewport for readability. Full-page capture: ${escapeHtml(path.relative(runDir, item.full_page_screenshot).replaceAll("\\", "/"))}</div>` : ""}
 </section>`;
 }
 
@@ -260,6 +261,11 @@ async function main() {
     object-fit: contain;
     border: 1px solid #e2e8f0;
     background: white;
+  }
+  .screenshot-note {
+    margin-top: 6px;
+    color: #64748b;
+    font-size: 9px;
   }
   .missing {
     color: #64748b;
