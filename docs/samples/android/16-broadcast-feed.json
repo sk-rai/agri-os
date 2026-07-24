@@ -6,61 +6,61 @@
         "audience_rule_count": 1,
         "category": "WEATHER",
         "content_count": 1,
-        "created_at": "2026-07-24T17:44:10.973518+05:30",
+        "created_at": "2026-07-24T20:53:49.001671+05:30",
         "created_by": null,
         "delivery_count": 1,
-        "expires_at": "2026-07-26T17:44:10.973518+05:30",
-        "id": "fe511e23-5f60-41a6-9095-414e1ea9eea0",
+        "expires_at": "2026-07-26T20:53:49.001671+05:30",
+        "id": "ac3a64b7-f055-4eff-87c3-6d8d38fadab9",
         "is_active": true,
         "metadata": {
           "targeting_mode": "SAMPLE"
         },
         "priority": "HIGH",
-        "project_id": "92cb64b5-42fa-4998-a2c4-aa3d097983c0",
-        "starts_at": "2026-07-24T17:44:10.973518+05:30",
+        "project_id": "b5360512-73cd-4d6d-b54a-632b46adcd70",
+        "starts_at": "2026-07-24T20:53:49.001671+05:30",
         "status": "PUBLISHED",
-        "tenant_id": "android-sample-2bd89e03",
+        "tenant_id": "android-sample-ca2a213b",
         "title": "Android Sample Rain Advisory",
-        "updated_at": "2026-07-24T17:44:10.973518+05:30"
+        "updated_at": "2026-07-24T20:53:49.001671+05:30"
       },
       "content": {
         "body_text": "Light rain is expected. Review irrigation plans before applying inputs.",
-        "campaign_id": "fe511e23-5f60-41a6-9095-414e1ea9eea0",
-        "created_at": "2026-07-24T17:44:10.973518+05:30",
+        "campaign_id": "ac3a64b7-f055-4eff-87c3-6d8d38fadab9",
+        "created_at": "2026-07-24T20:53:49.001671+05:30",
         "cta_label": "View details",
         "deeplink_url": "agrios://broadcasts/rain-advisory",
-        "id": "fc20d5da-acbc-4063-82f7-dcd824e877cc",
+        "id": "371effae-0dfa-4cf0-b24b-b8a0dda27d14",
         "language_code": "hi",
         "media_attachments": [],
         "metadata": {},
-        "tenant_id": "android-sample-2bd89e03",
+        "tenant_id": "android-sample-ca2a213b",
         "title": "Rain advisory",
-        "updated_at": "2026-07-24T17:44:10.973518+05:30"
+        "updated_at": "2026-07-24T20:53:49.001671+05:30"
       },
       "delivery": {
         "acknowledged_at": null,
-        "campaign_id": "fe511e23-5f60-41a6-9095-414e1ea9eea0",
-        "created_at": "2026-07-24T17:44:10.973518+05:30",
+        "campaign_id": "ac3a64b7-f055-4eff-87c3-6d8d38fadab9",
+        "created_at": "2026-07-24T20:53:49.001671+05:30",
         "delivered_at": null,
         "delivery_status": "PENDING",
         "failure_reason": null,
-        "farmer_id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
-        "id": "05e8fb99-2e91-4042-ac6a-50ff78e62f85",
+        "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
+        "id": "63fb16a1-1684-4e78-8c1e-107037e880f8",
         "metadata": {},
         "read_at": null,
-        "tenant_id": "android-sample-2bd89e03",
-        "updated_at": "2026-07-24T17:44:10.973518+05:30",
-        "user_id": "ccb5cc90-eb0a-474a-b8c2-fd984334966e"
+        "tenant_id": "android-sample-ca2a213b",
+        "updated_at": "2026-07-24T20:53:49.001671+05:30",
+        "user_id": "a8f50cef-4b0a-40a9-ac52-42e7ffc51549"
       }
     }
   ],
   "count": 1,
-  "farmer_id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
+  "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
   "filters": {
     "include_read": true,
     "language_code": null,
     "limit": 100
   },
   "schema_version": "farmer_broadcasts.v1",
-  "tenant_id": "android-sample-2bd89e03"
+  "tenant_id": "android-sample-ca2a213b"
 }

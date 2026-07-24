@@ -4,8 +4,8 @@
   "failed": [
     {
       "error_code": "DEPENDENCY_MISSING",
-      "event_id": "d4bdd55a-2612-4ef0-935d-5f1f7b116187",
-      "message": "Missing dependencies: ['7bfc64f2-c1ca-411c-ab31-e040f6b11285']"
+      "event_id": "9f997f5d-260a-4fae-b41d-a9da5e245469",
+      "message": "Missing dependencies: ['2899afd9-cecc-45de-9cee-c6b732d279cd']"
     }
   ],
   "total_processed": 1

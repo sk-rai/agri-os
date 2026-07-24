@@ -1,7 +1,7 @@
 {
   "crop_code": "RICE",
   "currency": "INR",
-  "cycle_id": "7f285fe8-eea6-4521-8fc9-2386b52089af",
+  "cycle_id": "b9047b32-f5a9-4e58-bcde-dc1c7ebd1ecc",
   "expense_breakup": [
     {
       "amount": "750.00",
@@ -12,7 +12,7 @@
       "expense_category": "SEED"
     }
   ],
-  "farmer_id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
+  "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
   "fixed_formula": "profit_or_loss = total_income - total_expenses",
   "income_breakup": [
     {
@@ -21,7 +21,7 @@
       "source": "crop_cycles.total_revenue"
     }
   ],
-  "parcel_id": "a61e36b3-0df2-4b74-a408-1563e31a3039",
+  "parcel_id": "3f0f9176-2f70-43d1-bd05-59d843e6361f",
   "per_acre": null,
   "report_config": {
     "display": {
@@ -77,7 +77,7 @@
   },
   "schema_version": "crop_cycle_profit_loss_summary.v1",
   "season_code": "KHARIF",
-  "tenant_id": "android-sample-2bd89e03",
+  "tenant_id": "android-sample-ca2a213b",
   "totals": {
     "expense_variance_amount": "2550.00",
     "planned_expense": "0.00",

@@ -1,10 +1,13 @@
 {
   "display_name": "Android Sample Farmer",
-  "id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
+  "home_digipin": "2J55C64LFL",
+  "home_digipin_algorithm_version": "INDIAPOST_DIGIPIN_2026_05_04",
+  "home_digipin_generated_at": "2026-07-24T20:53:49.999543+05:30",
+  "id": "f16d4424-4b13-4569-91dd-21cf644870e1",
   "mobile_number": "+91XXXXXXXXXX",
   "pin_code": "560001",
   "primary_crop_code": null,
   "status": "ACTIVE",
-  "tenant_id": "android-sample-2bd89e03",
+  "tenant_id": "android-sample-ca2a213b",
   "village_id": null
 }

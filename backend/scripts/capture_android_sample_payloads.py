@@ -150,6 +150,8 @@ def main() -> int:
             'village_name_manual': 'Android Sample Village',
             'preferred_language': 'hi',
             'assistance_mode': 'FIELD_AGENT_ASSISTED',
+            'enrollment_gps_lat': 25.82,
+            'enrollment_gps_lng': 82.97,
         }))
         write_json('09-farmer-create-response.json', redact(farmer))
 

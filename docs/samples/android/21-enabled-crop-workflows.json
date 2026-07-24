@@ -1,8 +1,8 @@
 {
   "count": 1,
-  "project_id": "92cb64b5-42fa-4998-a2c4-aa3d097983c0",
+  "project_id": "b5360512-73cd-4d6d-b54a-632b46adcd70",
   "schema_version": "1.0.0",
-  "tenant_id": "android-sample-2bd89e03",
+  "tenant_id": "android-sample-ca2a213b",
   "workflows": [
     {
       "catalog_selection_key": "RICE:KHARIF",

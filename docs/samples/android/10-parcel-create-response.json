@@ -1,11 +1,14 @@
 {
   "annual_rent": null,
   "annual_rent_currency": "INR",
+  "centroid_digipin": "2J55C64LFL",
+  "centroid_digipin_algorithm_version": "INDIAPOST_DIGIPIN_2026_05_04",
+  "centroid_digipin_generated_at": "2026-07-24T20:53:50.049694+05:30",
   "crops_by_season": {},
   "current_crop_code": null,
-  "farmer_id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
+  "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
   "geometry_source": "PIN_DROP",
-  "id": "a61e36b3-0df2-4b74-a408-1563e31a3039",
+  "id": "3f0f9176-2f70-43d1-bd05-59d843e6361f",
   "irrigation_source": null,
   "local_name": null,
   "location_scope": {

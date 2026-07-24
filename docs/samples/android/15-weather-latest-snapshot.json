@@ -1,13 +1,13 @@
 {
   "condition_code": "RAIN",
-  "created_at": "2026-07-24T17:44:10.973518+05:30",
-  "expires_at": "2026-07-24T23:44:10.973518+05:30",
+  "created_at": "2026-07-24T20:53:49.001671+05:30",
+  "expires_at": "2026-07-25T02:53:49.001671+05:30",
   "farmer_id": null,
-  "fetched_at": "2026-07-24T17:44:10.973518+05:30",
-  "forecast_valid_from": "2026-07-24T17:44:10.973518+05:30",
-  "forecast_valid_to": "2026-07-25T17:44:10.973518+05:30",
+  "fetched_at": "2026-07-24T20:53:49.001671+05:30",
+  "forecast_valid_from": "2026-07-24T20:53:49.001671+05:30",
+  "forecast_valid_to": "2026-07-25T20:53:49.001671+05:30",
   "humidity_percent": 82,
-  "id": "bf60f901-be4a-41a7-80cc-f7062eb6255f",
+  "id": "d4d9b1d9-c0e7-4d8b-a247-8cb5c1efb2b3",
   "lat": null,
   "lng": null,
   "location_key": "Android Sample Village",
@@ -16,9 +16,9 @@
     "capture": "android_sample_payloads"
   },
   "observed_at": null,
-  "parcel_id": "a61e36b3-0df2-4b74-a408-1563e31a3039",
+  "parcel_id": "3f0f9176-2f70-43d1-bd05-59d843e6361f",
   "project_id": null,
-  "provider_id": "d11d2c28-e7ed-4e35-b813-d706239fc391",
+  "provider_id": "d89c3f58-f9ad-4f66-a36f-c00cb6e3e09e",
   "rainfall_mm": "6.5",
   "rainfall_probability_percent": 70,
   "risk_flags": [
@@ -30,7 +30,7 @@
   "summary": "Light rain expected",
   "temperature_max_c": "31",
   "temperature_min_c": "23",
-  "tenant_id": "android-sample-2bd89e03",
-  "updated_at": "2026-07-24T17:44:10.973518+05:30",
+  "tenant_id": "android-sample-ca2a213b",
+  "updated_at": "2026-07-24T20:53:49.001671+05:30",
   "wind_speed_kmph": "12"
 }

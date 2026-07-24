@@ -21,8 +21,8 @@ cd ~/projects/farmint/backend
 6. `06-form-soil-profile.json` - backend-driven soil profile form schema.
 7. `07-form-options.json` - backend-owned option sets.
 8. `08-profile-contract.json` - Android profile contract summary.
-9. `09-farmer-create-response.json` - farmer create response.
-10. `10-parcel-create-response.json` - parcel create response.
+9. `09-farmer-create-response.json` - farmer create response with backend-computed home DigiPin when GPS is present.
+10. `10-parcel-create-response.json` - parcel create response with backend-computed centroid DigiPin when centroid GPS is present.
 11. `11-soil-profile-create-response.json` - soil profile create response.
 12. `12-profile-readiness.json` - profile readiness response.
 13. `13-soil-enrichment-summary.json` - soil enrichment summary.
@@ -34,6 +34,6 @@ cd ~/projects/farmint/backend
 19. `19-broadcast-ack-response.json` - broadcast delivery acknowledgement action.
 20. `20-crop-template-rice.json` - rice crop-cycle template.
 21. `21-enabled-crop-workflows.json` - enabled workflow catalog for project context.
-22. `22-stage-cost-summary.json` - backend-computed stage expense/activity/context-event summary.
-23. `23-profit-loss-summary.json` - fixed-formula income minus expenses P&L summary.
+22. `22-stage-cost-summary.json` - stage-wise planned/actual cost and context-event summary.
+23. `23-profit-loss-summary.json` - fixed-formula crop-cycle P&L summary.
 24. `24-sync-dependency-error.json` - offline sync dependency failure example.

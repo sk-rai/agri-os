@@ -1,9 +1,9 @@
 {
   "crop_code": "RICE",
   "currency": "INR",
-  "cycle_id": "7f285fe8-eea6-4521-8fc9-2386b52089af",
-  "farmer_id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
-  "parcel_id": "a61e36b3-0df2-4b74-a408-1563e31a3039",
+  "cycle_id": "b9047b32-f5a9-4e58-bcde-dc1c7ebd1ecc",
+  "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
+  "parcel_id": "3f0f9176-2f70-43d1-bd05-59d843e6361f",
   "report_config": {
     "display": {
       "show_activity_breakup": true,
@@ -63,7 +63,7 @@
       "activities": [
         {
           "activity_date": "2026-07-24",
-          "activity_id": "785ec493-331a-4b2a-9c36-9e0cd57321f3",
+          "activity_id": "7cfc0576-aee9-4854-90bf-554741c1eb1c",
           "activity_type": "SEED",
           "area_applied": null,
           "area_unit": null,
@@ -101,7 +101,7 @@
       "planned_expense": "0.00",
       "planned_recommendations": [],
       "stage_code": "SOWING",
-      "stage_id": "889db4a0-7062-49db-b7b9-a24ccacd49f2",
+      "stage_id": "15c2a305-f613-486d-bd0c-0a13c1e7b03f",
       "stage_name": "Sowing",
       "stage_order": 1,
       "status": "COMPLETED",
@@ -111,7 +111,7 @@
       "activities": [
         {
           "activity_date": "2026-07-24",
-          "activity_id": "9e25b71c-95a3-432b-9077-695a7d00f272",
+          "activity_id": "85766445-8b9d-4a88-8a68-929656635080",
           "activity_type": "FERTILIZER",
           "area_applied": null,
           "area_unit": null,
@@ -132,8 +132,8 @@
           "description": "Useful rainfall captured during vegetative stage.",
           "estimated_area_affected": null,
           "estimated_loss_percent": null,
-          "event_date": "2026-07-24T17:44:10.973518+05:30",
-          "event_id": "6af1dbcc-0149-4596-8d6f-a28e7ed5844b",
+          "event_date": "2026-07-24T20:53:49.001671+05:30",
+          "event_id": "8de0530c-d16a-4ae6-a51b-01ac9c538c7d",
           "event_type": "RAIN",
           "severity": "MEDIUM",
           "source": "FIELD_AGENT_ANDROID",
@@ -162,14 +162,14 @@
       "planned_expense": "0.00",
       "planned_recommendations": [],
       "stage_code": "VEGETATIVE",
-      "stage_id": "b584e4d2-def9-49a3-a133-6b0bd2f6d44f",
+      "stage_id": "b655d730-c493-4a4f-ba46-6b5d19033f3f",
       "stage_name": "Vegetative growth",
       "stage_order": 2,
       "status": "ACTIVE",
       "variance_amount": "750.00"
     }
   ],
-  "tenant_id": "android-sample-2bd89e03",
+  "tenant_id": "android-sample-ca2a213b",
   "totals": {
     "activity_count": 2,
     "actual_expense": "2550.00",
