@@ -1,0 +1,878 @@
+{
+  "description": {
+    "en": "Register a land parcel with optional GPS",
+    "hi": "Register a land parcel with optional GPS"
+  },
+  "fields": [
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.farmer_id",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "farmer_id",
+      "label": {
+        "en": "Farmer",
+        "hi": "Farmer"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": "local_farmers",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "manual_fallback_field": "village_name_manual"
+      },
+      "canonical_field": "parcel.village_id",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "village_id",
+      "label": {
+        "en": "Village ID",
+        "hi": "Village ID"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "/api/v1/geography/villages",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "copy_from_farmer_fields": [
+          "pin_code",
+          "village_id",
+          "village_name_manual"
+        ],
+        "if_false_require": [
+          "pin_code",
+          "village_name_manual"
+        ],
+        "village_lookup_endpoint": "/api/v1/geography/villages/by-pin-code?pin_code={pin_code}"
+      },
+      "canonical_field": "parcel.location_scope.same_as_home_location",
+      "capture_modes": null,
+      "default_value": "true",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "same_as_home_location",
+      "label": {
+        "en": "Are all land parcels in the same PIN code/village as the farmer home?",
+        "hi": "Are all land parcels in the same PIN code/village as the farmer home?"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "boolean",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.local_name",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "local_name",
+      "label": {
+        "en": "Parcel Name",
+        "hi": "Parcel Name"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": {
+        "en": "e.g., North field",
+        "hi": "e.g., North field"
+      },
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.village_name_manual",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "village_name_manual",
+      "label": {
+        "en": "Village",
+        "hi": "Village"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.survey_number",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "survey_number",
+      "label": {
+        "en": "Survey/Khasra Number",
+        "hi": "Survey/Khasra Number"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.reported_area",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "reported_area",
+      "label": {
+        "en": "Reported Area",
+        "hi": "Reported Area"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0.01
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.reported_area_unit",
+      "capture_modes": null,
+      "default_value": "BIGHA",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "reported_area_unit",
+      "label": {
+        "en": "Area Unit",
+        "hi": "Area Unit"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Acre",
+            "hi": "Acre"
+          },
+          "value": "ACRE"
+        },
+        {
+          "label": {
+            "en": "Hectare",
+            "hi": "Hectare"
+          },
+          "value": "HECTARE"
+        },
+        {
+          "label": {
+            "en": "Bigha",
+            "hi": "Bigha"
+          },
+          "value": "BIGHA"
+        },
+        {
+          "label": {
+            "en": "Biswa",
+            "hi": "Biswa"
+          },
+          "value": "BISWA"
+        },
+        {
+          "label": {
+            "en": "Katha",
+            "hi": "Katha"
+          },
+          "value": "KATHA"
+        },
+        {
+          "label": {
+            "en": "Guntha",
+            "hi": "Guntha"
+          },
+          "value": "GUNTHA"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": "profile_options.land_units",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.ownership_type",
+      "capture_modes": null,
+      "default_value": "OWNED",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "ownership_type",
+      "label": {
+        "en": "Ownership",
+        "hi": "Ownership"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Owned",
+            "hi": "Owned"
+          },
+          "value": "OWNED"
+        },
+        {
+          "label": {
+            "en": "Part owner",
+            "hi": "Part owner"
+          },
+          "value": "PART_OWNER"
+        },
+        {
+          "label": {
+            "en": "Leased",
+            "hi": "Leased"
+          },
+          "value": "LEASED"
+        },
+        {
+          "label": {
+            "en": "Shared",
+            "hi": "Shared"
+          },
+          "value": "SHARED"
+        },
+        {
+          "label": {
+            "en": "Sharecrop",
+            "hi": "Sharecrop"
+          },
+          "value": "SHARECROP"
+        },
+        {
+          "label": {
+            "en": "Family",
+            "hi": "Family"
+          },
+          "value": "FAMILY"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.ownership_types",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.share_percentage",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "ownership_type",
+      "depends_on_value": "SHARED",
+      "hint": null,
+      "id": "share_percentage",
+      "label": {
+        "en": "Shared Ownership %",
+        "hi": "Shared Ownership %"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "max": 100,
+        "min": 1
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.sharecrop_percentage",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "ownership_type",
+      "depends_on_value": "SHARECROP",
+      "hint": null,
+      "id": "sharecrop_percentage",
+      "label": {
+        "en": "Sharecrop Harvest %",
+        "hi": "Sharecrop Harvest %"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "max": 100,
+        "min": 1
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.annual_rent",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "ownership_type",
+      "depends_on_value": "LEASED",
+      "hint": null,
+      "id": "annual_rent",
+      "label": {
+        "en": "Annual Rent",
+        "hi": "Annual Rent"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0,
+        "required_when": {
+          "field": "ownership_type",
+          "value": "LEASED"
+        }
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.irrigation_source",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "irrigation_source",
+      "label": {
+        "en": "Irrigation Source",
+        "hi": "Irrigation Source"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Tubewell (Diesel)",
+            "hi": "Tubewell (Diesel)"
+          },
+          "value": "TUBEWELL_DIESEL"
+        },
+        {
+          "label": {
+            "en": "Tubewell (Electric)",
+            "hi": "Tubewell (Electric)"
+          },
+          "value": "TUBEWELL_ELECTRIC"
+        },
+        {
+          "label": {
+            "en": "Canal",
+            "hi": "Canal"
+          },
+          "value": "CANAL"
+        },
+        {
+          "label": {
+            "en": "Purchased Water",
+            "hi": "Purchased Water"
+          },
+          "value": "PURCHASED_WATER"
+        },
+        {
+          "label": {
+            "en": "Rain-fed",
+            "hi": "Rain-fed"
+          },
+          "value": "RAIN_FED"
+        },
+        {
+          "label": {
+            "en": "Pond/Tank",
+            "hi": "Pond/Tank"
+          },
+          "value": "POND_TANK"
+        },
+        {
+          "label": {
+            "en": "River/Stream",
+            "hi": "River/Stream"
+          },
+          "value": "RIVER_STREAM"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.irrigation_sources",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.current_crop_code",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "current_crop_code",
+      "label": {
+        "en": "Current Crop",
+        "hi": "Current Crop"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "/api/v1/master-data/crops",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "payload_container": "crops_by_season",
+        "season_code": "KHARIF"
+      },
+      "canonical_field": "parcel.crops_by_season.KHARIF",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "kharif_crops",
+      "label": {
+        "en": "Kharif Crops",
+        "hi": "Kharif Crops"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "/api/v1/master-data/crops?season=KHARIF",
+      "type": "multi_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "payload_container": "crops_by_season",
+        "season_code": "RABI"
+      },
+      "canonical_field": "parcel.crops_by_season.RABI",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "rabi_crops",
+      "label": {
+        "en": "Rabi Crops",
+        "hi": "Rabi Crops"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "/api/v1/master-data/crops?season=RABI",
+      "type": "multi_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "payload_container": "crops_by_season",
+        "season_code": "ZAID"
+      },
+      "canonical_field": "parcel.crops_by_season.ZAID",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "zaid_crops",
+      "label": {
+        "en": "Zaid Crops",
+        "hi": "Zaid Crops"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "/api/v1/master-data/crops?season=ZAID",
+      "type": "multi_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.soil_type_code",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "soil_type_code",
+      "label": {
+        "en": "Soil Type",
+        "hi": "Soil Type"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.soil_types",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "parcel_enrollment_hint": true
+      },
+      "canonical_field": "soil_profile.soil_texture",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "soil_texture",
+      "label": {
+        "en": "Observed Soil Texture",
+        "hi": "Observed Soil Texture"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Sandy",
+            "hi": "Sandy"
+          },
+          "value": "SANDY"
+        },
+        {
+          "label": {
+            "en": "Loam",
+            "hi": "Loam"
+          },
+          "value": "LOAM"
+        },
+        {
+          "label": {
+            "en": "Loamy",
+            "hi": "Loamy"
+          },
+          "value": "LOAMY"
+        },
+        {
+          "label": {
+            "en": "Clay",
+            "hi": "Clay"
+          },
+          "value": "CLAY"
+        },
+        {
+          "label": {
+            "en": "Sandy Loam",
+            "hi": "Sandy Loam"
+          },
+          "value": "SANDY_LOAM"
+        },
+        {
+          "label": {
+            "en": "Clay Loam",
+            "hi": "Clay Loam"
+          },
+          "value": "CLAY_LOAM"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.soil_textures",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "parcel_enrollment_hint": true
+      },
+      "canonical_field": "soil_profile.soil_color",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "soil_color",
+      "label": {
+        "en": "Observed Soil Color",
+        "hi": "Observed Soil Color"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Brown",
+            "hi": "Brown"
+          },
+          "value": "BROWN"
+        },
+        {
+          "label": {
+            "en": "Dark brown",
+            "hi": "Dark brown"
+          },
+          "value": "DARK_BROWN"
+        },
+        {
+          "label": {
+            "en": "Light brown",
+            "hi": "Light brown"
+          },
+          "value": "LIGHT_BROWN"
+        },
+        {
+          "label": {
+            "en": "Reddish",
+            "hi": "Reddish"
+          },
+          "value": "REDDISH"
+        },
+        {
+          "label": {
+            "en": "Black",
+            "hi": "Black"
+          },
+          "value": "BLACK"
+        },
+        {
+          "label": {
+            "en": "Grey",
+            "hi": "Grey"
+          },
+          "value": "GREY"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.soil_colors",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.geometry_source",
+      "capture_modes": null,
+      "default_value": "NONE",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "geometry_source",
+      "label": {
+        "en": "GPS Capture Mode",
+        "hi": "GPS Capture Mode"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "No GPS",
+            "hi": "No GPS"
+          },
+          "value": "NONE"
+        },
+        {
+          "label": {
+            "en": "Pin drop",
+            "hi": "Pin drop"
+          },
+          "value": "PIN_DROP"
+        },
+        {
+          "label": {
+            "en": "Pin corners",
+            "hi": "Pin corners"
+          },
+          "value": "PIN_CORNERS"
+        },
+        {
+          "label": {
+            "en": "GPS walk",
+            "hi": "GPS walk"
+          },
+          "value": "GPS_WALK"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.geometry_sources",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": 50.0,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.centroid",
+      "capture_modes": [
+        "PIN_DROP",
+        "CURRENT_LOCATION"
+      ],
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": {
+        "en": "Optional single GPS point",
+        "hi": "Optional single GPS point"
+      },
+      "id": "parcel_point",
+      "label": {
+        "en": "Pin Location",
+        "hi": "Pin Location"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": "centroid_lat_lng",
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "GPS_POINT",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": 10.0,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "parcel.geojson",
+      "capture_modes": [
+        "GPS_WALK",
+        "MANUAL_DRAW"
+      ],
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": {
+        "en": "Optional full boundary; can be captured later",
+        "hi": "Optional full boundary; can be captured later"
+      },
+      "id": "parcel_boundary",
+      "label": {
+        "en": "Walk Boundary",
+        "hi": "Walk Boundary"
+      },
+      "min_points": 3,
+      "options": null,
+      "output_format": "geojson_polygon",
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "GPS_POLYGON",
+      "validation": null
+    }
+  ],
+  "form_id": "parcel_registration",
+  "submit_endpoint": "/api/v1/parcels",
+  "submit_label": {
+    "en": "Save Parcel",
+    "hi": "Save Parcel"
+  },
+  "submit_method": "POST",
+  "title": {
+    "en": "Land Parcel",
+    "hi": "Land Parcel"
+  },
+  "version": "1.0.0"
+}

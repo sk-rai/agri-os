@@ -1,11 +1,11 @@
 {
   "boron_b": 0.35,
   "data_source": "LAB_REPORT",
-  "farmer_id": "f4c2be80-9da0-41f6-a70d-3a2b0c61f4a9",
-  "id": "0cfd4fb5-2a86-428d-8cf9-91e9ede32eac",
+  "farmer_id": "c8c94493-1564-4b00-8469-e0175273efcf",
+  "id": "1508b11a-d632-48ca-b4f8-6ad85df15a61",
   "nitrogen_n": 163.0,
   "organic_carbon_oc": 0.55,
-  "parcel_id": "9af54633-303f-488b-98f1-b033588a7e6e",
+  "parcel_id": "d0c9d0e2-5168-4834-a6c6-460c5ac357cd",
   "ph": 7.2,
   "phosphorus_p": 9.0,
   "potassium_k": 213.0,
@@ -14,5 +14,5 @@
   "soil_color": null,
   "soil_texture": null,
   "soil_type_code": null,
-  "test_date": "2026-07-21"
+  "test_date": "2026-07-24"
 }

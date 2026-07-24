@@ -1,0 +1,33 @@
+{
+  "farmers": [],
+  "filters": {
+    "action_code": null,
+    "limit": 5,
+    "missing_field": null,
+    "offset": 0,
+    "project_id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+    "section": null,
+    "section_status": null,
+    "status": "ACTIVE"
+  },
+  "schema_version": "farmer_profile_readiness.v1",
+  "summary": {
+    "farmer_count": 0,
+    "home_ready_count": 0,
+    "missing_parcel_count": 0,
+    "missing_required_count": 0,
+    "parcel_location_recommended_count": 0,
+    "personalized_advisory_ready_count": 0,
+    "satellite_enrichment_ready_count": 0,
+    "shc_slusi_snapshot_available_count": 0,
+    "soil_baseline_enrichment_ready_count": 0,
+    "soil_baseline_snapshot_available_count": 0,
+    "soil_moisture_enrichment_ready_count": 0,
+    "soil_moisture_snapshot_available_count": 0,
+    "soil_profile_recommended_count": 0,
+    "soilgrids_baseline_snapshot_available_count": 0,
+    "weather_advisory_ready_count": 0,
+    "weather_snapshot_available_count": 0
+  },
+  "tenant_id": "android-sample-c1c97a55"
+}

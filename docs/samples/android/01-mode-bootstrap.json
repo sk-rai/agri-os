@@ -1,0 +1,32 @@
+{
+  "agent_profile": null,
+  "endpoints": {
+    "agent_worklist": null,
+    "farmer_home": null,
+    "profile_contract": "/api/v1/forms/profile-contract"
+  },
+  "farmer_profile": null,
+  "first_screen_hint": "FARMER_HOME",
+  "modes": {
+    "agent": {
+      "agent_profile_id": null,
+      "available": false,
+      "role_type": null
+    },
+    "farmer": {
+      "available": true,
+      "farmer_id": null
+    }
+  },
+  "primary_project_id": null,
+  "project_access": [],
+  "schema_version": "auth_mode_bootstrap.v1",
+  "tenant_id": "android-sample-c1c97a55",
+  "user": {
+    "display_name": "Android Sample User",
+    "id": "86ce4055-c92b-45ac-9d09-cf8b42608c91",
+    "language_preference": "hi",
+    "mobile_number_masked": "******1111",
+    "role": "FARMER"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "approved_by": null,
+  "audience_rule_count": 1,
+  "audience_rules": [
+    {
+      "campaign_id": "6e677ada-61f3-408f-8f8d-11ae4853d595",
+      "created_at": "2026-07-24T11:12:54.750001+05:30",
+      "id": "89e4acab-e450-47b4-8f06-3952fbc497bd",
+      "metadata": {},
+      "operator": "IN",
+      "rule_type": "FARMER",
+      "tenant_id": "android-sample-c1c97a55",
+      "values": [
+        "c8c94493-1564-4b00-8469-e0175273efcf"
+      ]
+    }
+  ],
+  "category": "WEATHER",
+  "content_count": 1,
+  "contents": [
+    {
+      "body_text": "Light rain is expected. Review irrigation plans before applying inputs.",
+      "campaign_id": "6e677ada-61f3-408f-8f8d-11ae4853d595",
+      "created_at": "2026-07-24T11:12:54.750001+05:30",
+      "cta_label": "View details",
+      "deeplink_url": "agrios://broadcasts/rain-advisory",
+      "id": "5d5be76c-14eb-42ce-8b37-4dda38a312fa",
+      "language_code": "hi",
+      "media_attachments": [],
+      "metadata": {},
+      "tenant_id": "android-sample-c1c97a55",
+      "title": "Rain advisory",
+      "updated_at": "2026-07-24T11:12:54.750001+05:30"
+    }
+  ],
+  "created_at": "2026-07-24T11:12:54.750001+05:30",
+  "created_by": null,
+  "delivery_count": 1,
+  "delivery_summary": {
+    "acknowledged": 0,
+    "delivered": 0,
+    "failed": 0,
+    "pending": 1,
+    "read": 0,
+    "total": 1
+  },
+  "expires_at": "2026-07-26T11:12:54.750001+05:30",
+  "id": "6e677ada-61f3-408f-8f8d-11ae4853d595",
+  "is_active": true,
+  "metadata": {
+    "targeting_mode": "SAMPLE"
+  },
+  "priority": "HIGH",
+  "project_id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+  "starts_at": "2026-07-24T11:12:54.750001+05:30",
+  "status": "PUBLISHED",
+  "tenant_id": "android-sample-c1c97a55",
+  "title": "Android Sample Rain Advisory",
+  "updated_at": "2026-07-24T11:12:54.750001+05:30"
+}

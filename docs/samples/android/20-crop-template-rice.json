@@ -1,0 +1,593 @@
+{
+  "crop_code": "RICE",
+  "crop_group": "CEREAL",
+  "crop_name": "Rice (Paddy)",
+  "date_label": {
+    "en": "Nursery Start Date",
+    "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0936\u0941\u0930\u0942 \u0915\u0930\u0928\u0947 \u0915\u0940 \u0924\u093e\u0930\u0940\u0916"
+  },
+  "has_nursery": true,
+  "propagation_method": "NURSERY_TRANSPLANT",
+  "season_code": "KHARIF",
+  "stages": [
+    {
+      "bbch_range": [
+        0,
+        9
+      ],
+      "code": "NURSERY",
+      "color": "#81C784",
+      "day_offset": 0,
+      "description": {
+        "en": "Prepare seed bed, soak seeds, grow seedlings for 20-25 days",
+        "hi": "\u092c\u0940\u091c \u0915\u0940 \u0915\u094d\u092f\u093e\u0930\u0940 \u0924\u0948\u092f\u093e\u0930 \u0915\u0930\u0947\u0902, \u092c\u0940\u091c \u092d\u093f\u0917\u094b\u090f\u0902, 20-25 \u0926\u093f\u0928 \u092a\u094c\u0927 \u0909\u0917\u093e\u090f\u0902"
+      },
+      "duration_days": 25,
+      "farmer_actions": [
+        "SEED_SOAKING",
+        "BED_PREPARATION",
+        "WATERING",
+        "SEED_TREATMENT"
+      ],
+      "icon": "seedling",
+      "key_observations": [
+        "GERMINATION_RATE",
+        "SEEDLING_HEIGHT",
+        "DISEASE_CHECK"
+      ],
+      "name": {
+        "en": "Nursery Preparation",
+        "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0924\u0948\u092f\u093e\u0930\u0940"
+      },
+      "order": 1,
+      "phase": "ESTABLISHMENT",
+      "propagation_step": true,
+      "recommended_activities": [
+        {
+          "activity_type": "OTHER",
+          "day_offset": 0,
+          "description": {
+            "en": "Treat seeds with fungicide before soaking to prevent blast",
+            "hi": "\u092c\u0940\u091c \u0915\u094b \u092d\u093f\u0917\u094b\u0928\u0947 \u0938\u0947 \u092a\u0939\u0932\u0947 \u092b\u092b\u0942\u0902\u0926\u0928\u093e\u0936\u0915 \u0938\u0947 \u0909\u092a\u091a\u093e\u0930\u093f\u0924 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "CARBENDAZIM_THIRAM",
+          "input_name": "Seed Treatment (Carbendazim/Thiram)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 150,
+          "typical_quantity": "2g per kg seed"
+        },
+        {
+          "activity_type": "OTHER",
+          "day_offset": 0,
+          "description": {
+            "en": "Soak treated seeds in water for 24 hours",
+            "hi": "\u0909\u092a\u091a\u093e\u0930\u093f\u0924 \u092c\u0940\u091c\u094b\u0902 \u0915\u094b 24 \u0918\u0902\u091f\u0947 \u092a\u093e\u0928\u0940 \u092e\u0947\u0902 \u092d\u093f\u0917\u094b\u090f\u0902"
+          },
+          "input_code": "SEED_SOAKING",
+          "input_name": "Seed Soaking",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "24 hours in water"
+        },
+        {
+          "activity_type": "FERTILIZER",
+          "day_offset": 1,
+          "description": {
+            "en": "Apply well-decomposed FYM to nursery bed",
+            "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0915\u0940 \u0915\u094d\u092f\u093e\u0930\u0940 \u092e\u0947\u0902 \u0905\u091a\u094d\u091b\u0940 \u0924\u0930\u0939 \u0938\u0921\u093c\u0940 \u0917\u094b\u092c\u0930 \u0916\u093e\u0926 \u0921\u093e\u0932\u0947\u0902"
+          },
+          "input_code": "FYM_COMPOST",
+          "input_name": "FYM/Compost (Bed Preparation)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 500,
+          "typical_quantity": "2-3 quintal per nursery bed"
+        },
+        {
+          "activity_type": "IRRIGATION",
+          "day_offset": 5,
+          "description": {
+            "en": "Keep nursery bed moist but not waterlogged",
+            "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0928\u092e \u0930\u0916\u0947\u0902, \u0921\u0941\u092c\u094b\u090f\u0902 \u0928\u0939\u0940\u0902"
+          },
+          "input_code": "IRRIGATION_LIGHT",
+          "input_name": "First Light Irrigation",
+          "is_critical": false,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Keep moist, not flooded"
+        },
+        {
+          "activity_type": "FERTILIZER",
+          "day_offset": 10,
+          "description": {
+            "en": "Apply basal dose of DAP for strong seedling growth",
+            "hi": "\u092e\u091c\u092c\u0942\u0924 \u092a\u094c\u0927 \u0915\u0947 \u0932\u093f\u090f DAP \u0915\u0940 \u092c\u0947\u0938\u0932 \u0916\u0941\u0930\u093e\u0915 \u0926\u0947\u0902"
+          },
+          "input_code": "DAP_18_46_0",
+          "input_name": "DAP (Basal Dose)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 700,
+          "typical_quantity": "25 kg/acre"
+        },
+        {
+          "activity_type": "PESTICIDE",
+          "day_offset": 15,
+          "description": {
+            "en": "Spray if stem borer or leaf folder observed",
+            "hi": "\u0924\u0928\u093e \u091b\u0947\u0926\u0915 \u092f\u093e \u092a\u0924\u094d\u0924\u0940 \u0932\u092a\u0947\u091f\u0915 \u0926\u093f\u0916\u0947 \u0924\u094b \u0938\u094d\u092a\u094d\u0930\u0947 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "CHLORPYRIFOS",
+          "input_name": "Chlorpyrifos (Pest Spray)",
+          "is_critical": false,
+          "metadata": {},
+          "typical_cost_per_acre": 300,
+          "typical_quantity": "1.5 ml per litre water"
+        },
+        {
+          "activity_type": "OTHER",
+          "day_offset": 22,
+          "description": {
+            "en": "Check if seedlings are 15-20cm tall, ready for transplanting",
+            "hi": "\u0926\u0947\u0916\u0947\u0902 \u0915\u093f \u092a\u094c\u0927 15-20cm \u0915\u0940 \u0939\u094b \u0917\u0908 \u0939\u0948, \u0930\u094b\u092a\u093e\u0908 \u0915\u0947 \u0932\u093f\u090f \u0924\u0948\u092f\u093e\u0930"
+          },
+          "input_code": "MATURITY_CHECK",
+          "input_name": "Seedling Readiness Check",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Visual inspection"
+        }
+      ],
+      "stage_type": "PRE_FIELD",
+      "typical_inputs": [
+        "SEED",
+        "WATER",
+        "FUNGICIDE"
+      ]
+    },
+    {
+      "bbch_range": [
+        10,
+        13
+      ],
+      "code": "TRANSPLANTING",
+      "color": "#66BB6A",
+      "day_offset": 25,
+      "description": {
+        "en": "Transplant seedlings from nursery to puddled main field",
+        "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0938\u0947 \u092a\u094c\u0927 \u0915\u094b \u092e\u0941\u0916\u094d\u092f \u0916\u0947\u0924 \u092e\u0947\u0902 \u0930\u094b\u092a\u0947\u0902"
+      },
+      "duration_days": 7,
+      "farmer_actions": [
+        "PUDDLING",
+        "TRANSPLANTING",
+        "INITIAL_FLOODING"
+      ],
+      "icon": "plant_transfer",
+      "key_observations": [
+        "PLANT_SPACING",
+        "WATER_LEVEL",
+        "SURVIVAL_RATE"
+      ],
+      "name": {
+        "en": "Transplanting",
+        "hi": "\u0930\u094b\u092a\u093e\u0908"
+      },
+      "order": 2,
+      "phase": "ESTABLISHMENT",
+      "propagation_step": true,
+      "recommended_activities": [
+        {
+          "activity_type": "LABOR",
+          "day_offset": 0,
+          "description": {
+            "en": "Puddle the main field with standing water",
+            "hi": "\u0916\u0921\u093c\u0947 \u092a\u093e\u0928\u0940 \u092e\u0947\u0902 \u0916\u0947\u0924 \u0915\u0940 \u091c\u0941\u0924\u093e\u0908 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "FIELD_PREPARATION_LABOR",
+          "input_name": "Puddling (Field Preparation)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 3000,
+          "typical_quantity": "2-3 ploughings + leveling"
+        },
+        {
+          "activity_type": "FERTILIZER",
+          "day_offset": 1,
+          "description": {
+            "en": "Apply before transplanting. Mix in puddled soil.",
+            "hi": "\u0930\u094b\u092a\u093e\u0908 \u0938\u0947 \u092a\u0939\u0932\u0947 \u0921\u093e\u0932\u0947\u0902\u0964 \u0917\u0940\u0932\u0940 \u092e\u093f\u091f\u094d\u091f\u0940 \u092e\u0947\u0902 \u092e\u093f\u0932\u093e\u090f\u0902\u0964"
+          },
+          "input_code": "DAP_18_46_0",
+          "input_name": "DAP + Zinc Sulphate (Basal)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 2000,
+          "typical_quantity": "DAP 50kg + ZnSO4 10kg/acre"
+        },
+        {
+          "activity_type": "LABOR",
+          "day_offset": 2,
+          "description": {
+            "en": "Transplant 21-25 day old seedlings at proper spacing",
+            "hi": "21-25 \u0926\u093f\u0928 \u0915\u0940 \u092a\u094c\u0927 \u0915\u094b \u0938\u0939\u0940 \u0926\u0942\u0930\u0940 \u092a\u0930 \u0932\u0917\u093e\u090f\u0902"
+          },
+          "input_code": "TRANSPLANTING_LABOR",
+          "input_name": "Transplanting",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 4000,
+          "typical_quantity": "2-3 seedlings per hill, 20x15cm spacing"
+        },
+        {
+          "activity_type": "IRRIGATION",
+          "day_offset": 5,
+          "description": {
+            "en": "Maintain thin layer of water for establishment",
+            "hi": "\u0938\u094d\u0925\u093e\u092a\u0928\u093e \u0915\u0947 \u0932\u093f\u090f \u092a\u0924\u0932\u0940 \u092a\u093e\u0928\u0940 \u0915\u0940 \u092a\u0930\u0924 \u092c\u0928\u093e\u090f \u0930\u0916\u0947\u0902"
+          },
+          "input_code": "IRRIGATION_MAINTAIN_WATER",
+          "input_name": "Maintain Water Level",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "2-3 cm standing water"
+        }
+      ],
+      "stage_type": "FIELD_ESTABLISHMENT",
+      "typical_inputs": [
+        "LABOR",
+        "WATER"
+      ]
+    },
+    {
+      "bbch_range": [
+        20,
+        29
+      ],
+      "code": "TILLERING",
+      "color": "#4CAF50",
+      "day_offset": 32,
+      "description": {
+        "en": "Active tiller formation. Critical for yield density. Apply nitrogen.",
+        "hi": "\u0915\u0932\u094d\u0932\u0947 \u092c\u0928\u0928\u0947 \u0915\u093e \u0938\u092e\u092f\u0964 \u0909\u092a\u091c \u0915\u0947 \u0932\u093f\u090f \u092e\u0939\u0924\u094d\u0935\u092a\u0942\u0930\u094d\u0923\u0964 \u0928\u093e\u0907\u091f\u094d\u0930\u094b\u091c\u0928 \u0926\u0947\u0902\u0964"
+      },
+      "duration_days": 30,
+      "farmer_actions": [
+        "NITROGEN_APPLICATION",
+        "WEED_CONTROL",
+        "WATER_MANAGEMENT"
+      ],
+      "icon": "grass",
+      "key_observations": [
+        "TILLER_COUNT",
+        "WEED_DENSITY",
+        "NUTRIENT_DEFICIENCY"
+      ],
+      "name": {
+        "en": "Tillering",
+        "hi": "\u0915\u0932\u094d\u0932\u0947 \u0928\u093f\u0915\u0932\u0928\u093e"
+      },
+      "order": 3,
+      "phase": "VEGETATIVE_GROWTH",
+      "propagation_step": false,
+      "recommended_activities": [
+        {
+          "activity_type": "FERTILIZER",
+          "day_offset": 0,
+          "description": {
+            "en": "First nitrogen dose at active tillering start",
+            "hi": "\u0915\u0932\u094d\u0932\u0947 \u0928\u093f\u0915\u0932\u0928\u0947 \u092a\u0930 \u092a\u0939\u0932\u0940 \u0928\u093e\u0907\u091f\u094d\u0930\u094b\u091c\u0928 \u0916\u0941\u0930\u093e\u0915"
+          },
+          "input_code": "UREA_46_N",
+          "input_name": "Urea (1st Top Dressing)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 600,
+          "typical_quantity": "35 kg/acre"
+        },
+        {
+          "activity_type": "PESTICIDE",
+          "day_offset": 7,
+          "description": {
+            "en": "Apply if weeds are visible within 7 days of transplanting",
+            "hi": "\u0930\u094b\u092a\u093e\u0908 \u0915\u0947 7 \u0926\u093f\u0928 \u092e\u0947\u0902 \u0916\u0930\u092a\u0924\u0935\u093e\u0930 \u0926\u093f\u0916\u0947 \u0924\u094b \u0926\u0935\u093e\u0908 \u0926\u0947\u0902"
+          },
+          "input_code": "BUTACHLOR_PRETILACHLOR",
+          "input_name": "Herbicide (Butachlor/Pretilachlor)",
+          "is_critical": false,
+          "metadata": {},
+          "typical_cost_per_acre": 800,
+          "typical_quantity": "1.5 litre/acre"
+        },
+        {
+          "activity_type": "FERTILIZER",
+          "day_offset": 15,
+          "description": {
+            "en": "Second nitrogen dose at maximum tillering",
+            "hi": "\u0905\u0927\u093f\u0915\u0924\u092e \u0915\u0932\u094d\u0932\u0947 \u092a\u0930 \u0926\u0942\u0938\u0930\u0940 \u0928\u093e\u0907\u091f\u094d\u0930\u094b\u091c\u0928 \u0916\u0941\u0930\u093e\u0915"
+          },
+          "input_code": "UREA_46_N",
+          "input_name": "Urea (2nd Top Dressing)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 600,
+          "typical_quantity": "35 kg/acre"
+        },
+        {
+          "activity_type": "PESTICIDE",
+          "day_offset": 20,
+          "description": {
+            "en": "Monitor for Brown Plant Hopper and stem borer",
+            "hi": "\u092d\u0942\u0930\u093e \u092b\u0941\u0926\u0915\u093e \u0914\u0930 \u0924\u0928\u093e \u091b\u0947\u0926\u0915 \u0915\u0940 \u0928\u093f\u0917\u0930\u093e\u0928\u0940 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "PEST_DISEASE_MONITORING",
+          "input_name": "BPH/Stem Borer Check",
+          "is_critical": false,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Monitor weekly"
+        }
+      ],
+      "stage_type": "VEGETATIVE",
+      "typical_inputs": [
+        "UREA",
+        "HERBICIDE",
+        "WATER"
+      ]
+    },
+    {
+      "bbch_range": [
+        50,
+        69
+      ],
+      "code": "FLOWERING",
+      "color": "#FFC107",
+      "day_offset": 62,
+      "description": {
+        "en": "Panicle emergence and flowering. Protect from pests.",
+        "hi": "\u092c\u093e\u0932\u0940 \u0928\u093f\u0915\u0932\u0928\u093e \u0914\u0930 \u092b\u0942\u0932 \u0906\u0928\u093e\u0964 \u0915\u0940\u091f\u094b\u0902 \u0938\u0947 \u092c\u091a\u093e\u0935 \u0915\u0930\u0947\u0902\u0964"
+      },
+      "duration_days": 20,
+      "farmer_actions": [
+        "PEST_MONITORING",
+        "POTASSIUM_APPLICATION",
+        "WATER_MANAGEMENT"
+      ],
+      "icon": "flower",
+      "key_observations": [
+        "PANICLE_COUNT",
+        "PEST_ATTACK",
+        "DISEASE_SYMPTOMS"
+      ],
+      "name": {
+        "en": "Flowering / Heading",
+        "hi": "\u092b\u0942\u0932 \u0906\u0928\u093e / \u092c\u093e\u0932\u0940 \u0928\u093f\u0915\u0932\u0928\u093e"
+      },
+      "order": 4,
+      "phase": "REPRODUCTIVE",
+      "propagation_step": false,
+      "recommended_activities": [
+        {
+          "activity_type": "FERTILIZER",
+          "day_offset": 0,
+          "description": {
+            "en": "Potash application at panicle initiation",
+            "hi": "\u092c\u093e\u0932\u0940 \u092c\u0928\u0928\u0947 \u092a\u0930 \u092a\u094b\u091f\u093e\u0936 \u0926\u0947\u0902"
+          },
+          "input_code": "MOP_POTASH",
+          "input_name": "MOP/Potash",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 500,
+          "typical_quantity": "20 kg/acre"
+        },
+        {
+          "activity_type": "PESTICIDE",
+          "day_offset": 5,
+          "description": {
+            "en": "Spray if blast or sheath blight symptoms seen",
+            "hi": "\u092c\u094d\u0932\u093e\u0938\u094d\u091f \u092f\u093e \u0936\u0940\u0925 \u092c\u094d\u0932\u093e\u0907\u091f \u0926\u093f\u0916\u0947 \u0924\u094b \u0938\u094d\u092a\u094d\u0930\u0947 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "TRICYCLAZOLE",
+          "input_name": "Blast/Sheath Blight Spray",
+          "is_critical": false,
+          "metadata": {},
+          "typical_cost_per_acre": 600,
+          "typical_quantity": "Tricyclazole 0.6g/L"
+        },
+        {
+          "activity_type": "IRRIGATION",
+          "day_offset": 10,
+          "description": {
+            "en": "Critical irrigation during flowering. Do not let field dry.",
+            "hi": "\u092b\u0942\u0932 \u0915\u0947 \u0938\u092e\u092f \u0938\u093f\u0902\u091a\u093e\u0908 \u091c\u0930\u0942\u0930\u0940\u0964 \u0916\u0947\u0924 \u0938\u0942\u0916\u0928\u0947 \u0928 \u0926\u0947\u0902\u0964"
+          },
+          "input_code": "IRRIGATION_MAINTAIN_WATER",
+          "input_name": "Critical Irrigation",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 500,
+          "typical_quantity": "Maintain 5cm water"
+        }
+      ],
+      "stage_type": "REPRODUCTIVE",
+      "typical_inputs": [
+        "POTASH",
+        "PESTICIDE",
+        "WATER"
+      ]
+    },
+    {
+      "bbch_range": [
+        70,
+        79
+      ],
+      "code": "GRAIN_FILLING",
+      "color": "#FF9800",
+      "day_offset": 82,
+      "description": {
+        "en": "Grain development and maturation. Reduce water gradually.",
+        "hi": "\u0926\u093e\u0928\u093e \u092c\u0928\u0928\u093e \u0914\u0930 \u092a\u0915\u0928\u093e\u0964 \u0927\u0940\u0930\u0947-\u0927\u0940\u0930\u0947 \u092a\u093e\u0928\u0940 \u0915\u092e \u0915\u0930\u0947\u0902\u0964"
+      },
+      "duration_days": 25,
+      "farmer_actions": [
+        "WATER_REDUCTION",
+        "BIRD_SCARING",
+        "HARVEST_PLANNING"
+      ],
+      "icon": "grain",
+      "key_observations": [
+        "GRAIN_HARDNESS",
+        "MOISTURE_CONTENT",
+        "BIRD_DAMAGE"
+      ],
+      "name": {
+        "en": "Grain Filling",
+        "hi": "\u0926\u093e\u0928\u093e \u092d\u0930\u0928\u093e"
+      },
+      "order": 5,
+      "phase": "MATURATION",
+      "propagation_step": false,
+      "recommended_activities": [
+        {
+          "activity_type": "IRRIGATION",
+          "day_offset": 0,
+          "description": {
+            "en": "Start reducing water. Stop irrigation 15 days before harvest.",
+            "hi": "\u092a\u093e\u0928\u0940 \u0915\u092e \u0915\u0930\u0928\u093e \u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902\u0964 \u0915\u091f\u093e\u0908 \u0938\u0947 15 \u0926\u093f\u0928 \u092a\u0939\u0932\u0947 \u0938\u093f\u0902\u091a\u093e\u0908 \u092c\u0902\u0926\u0964"
+          },
+          "input_code": "IRRIGATION_MOISTURE",
+          "input_name": "Reduce Water Gradually",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Drain 15 days before harvest"
+        },
+        {
+          "activity_type": "OTHER",
+          "day_offset": 10,
+          "description": {
+            "en": "Protect grain from bird damage",
+            "hi": "\u0926\u093e\u0928\u0947 \u0915\u094b \u091a\u093f\u0921\u093c\u093f\u092f\u094b\u0902 \u0938\u0947 \u092c\u091a\u093e\u090f\u0902"
+          },
+          "input_code": "BIRD_SCARING",
+          "input_name": "Bird Scaring",
+          "is_critical": false,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Daily"
+        },
+        {
+          "activity_type": "OTHER",
+          "day_offset": 20,
+          "description": {
+            "en": "Check if 80% grains are golden. Moisture should be 20-22%.",
+            "hi": "\u0926\u0947\u0916\u0947\u0902 80% \u0926\u093e\u0928\u0947 \u0938\u0941\u0928\u0939\u0930\u0947 \u0939\u0948\u0902\u0964 \u0928\u092e\u0940 20-22% \u0939\u094b\u0928\u0940 \u091a\u093e\u0939\u093f\u090f\u0964"
+          },
+          "input_code": "MATURITY_CHECK",
+          "input_name": "Harvest Readiness Check",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Check grain moisture 20-22%"
+        }
+      ],
+      "stage_type": "REPRODUCTIVE",
+      "typical_inputs": []
+    },
+    {
+      "bbch_range": [
+        90,
+        99
+      ],
+      "code": "HARVEST",
+      "color": "#795548",
+      "day_offset": 107,
+      "description": {
+        "en": "Cut and thresh when grain moisture is 20-22%",
+        "hi": "\u091c\u092c \u0926\u093e\u0928\u0947 \u092e\u0947\u0902 20-22% \u0928\u092e\u0940 \u0939\u094b \u0924\u092c \u0915\u093e\u091f\u0947\u0902"
+      },
+      "duration_days": 7,
+      "farmer_actions": [
+        "CUTTING",
+        "THRESHING",
+        "DRYING",
+        "STORAGE"
+      ],
+      "icon": "harvest",
+      "key_observations": [
+        "YIELD_ESTIMATE",
+        "GRAIN_QUALITY",
+        "MOISTURE_AT_HARVEST"
+      ],
+      "name": {
+        "en": "Harvest",
+        "hi": "\u0915\u091f\u093e\u0908"
+      },
+      "order": 6,
+      "phase": "HARVEST",
+      "propagation_step": false,
+      "recommended_activities": [
+        {
+          "activity_type": "MACHINERY",
+          "day_offset": 0,
+          "description": {
+            "en": "Harvest when grain moisture is 20-22%. Use combine or manual cutting.",
+            "hi": "\u091c\u092c \u0926\u093e\u0928\u0947 \u092e\u0947\u0902 20-22% \u0928\u092e\u0940 \u0939\u094b \u0924\u092c \u0915\u093e\u091f\u0947\u0902\u0964 \u0915\u0902\u092c\u093e\u0907\u0928 \u092f\u093e \u0939\u093e\u0925 \u0938\u0947 \u0915\u091f\u093e\u0908\u0964"
+          },
+          "input_code": "HARVEST_MACHINERY",
+          "input_name": "Harvesting (Manual/Combine)",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 3500,
+          "typical_quantity": "1 acre"
+        },
+        {
+          "activity_type": "LABOR",
+          "day_offset": 2,
+          "description": {
+            "en": "Thresh and clean grain within 2 days of cutting",
+            "hi": "\u0915\u091f\u093e\u0908 \u0915\u0947 2 \u0926\u093f\u0928 \u092e\u0947\u0902 \u0917\u0939\u093e\u0908 \u0914\u0930 \u0938\u092b\u093e\u0908 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "HARVEST_LABOR",
+          "input_name": "Threshing & Winnowing",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 1500,
+          "typical_quantity": "Same day or next"
+        },
+        {
+          "activity_type": "OTHER",
+          "day_offset": 3,
+          "description": {
+            "en": "Dry grain in sun to 12-14% moisture for safe storage",
+            "hi": "\u092d\u0902\u0921\u093e\u0930\u0923 \u0915\u0947 \u0932\u093f\u090f \u0927\u0942\u092a \u092e\u0947\u0902 \u0938\u0941\u0916\u093e\u0915\u0930 12-14% \u0928\u092e\u0940 \u0915\u0930\u0947\u0902"
+          },
+          "input_code": "SUN_DRYING",
+          "input_name": "Sun Drying",
+          "is_critical": true,
+          "metadata": {},
+          "typical_cost_per_acre": 0,
+          "typical_quantity": "Dry to 12-14% moisture"
+        }
+      ],
+      "stage_type": "HARVEST",
+      "typical_inputs": [
+        "MACHINERY",
+        "LABOR"
+      ]
+    }
+  ],
+  "staging_system": "ZADOKS_BBCH",
+  "template_id": "ab20be65-fc67-4a11-b961-b9e9a0615f95",
+  "template_source": "workflow_template",
+  "total_duration_days": 114,
+  "workflow_template_id": "e72e4072-41ad-499e-a72d-97f4e0c0f3d0",
+  "workflow_template_version": "1.0.0",
+  "workflow_template_version_id": "7fd53887-ea29-448f-b150-921940eec890"
+}

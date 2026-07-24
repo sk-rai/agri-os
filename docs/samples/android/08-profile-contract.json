@@ -1,0 +1,487 @@
+{
+  "android_handoff": {
+    "agent_assisted_capture": {
+      "actor_header": "X-Actor-ID",
+      "assignment_source": "farmer_project_enrollments.assigned_user_ids",
+      "dual_mode_rule": "A user can have an AgentProfile and a linked Farmer profile; Android should use mode-bootstrap first_screen_hint.",
+      "dual_mode_supported": true,
+      "supported": true
+    },
+    "agent_worklist_endpoint": "/api/v1/field-agent/worklist",
+    "assignment_endpoint": "/api/v1/farmers/{farmer_id}/project-agent-assignment",
+    "forms_endpoint_template": "/api/v1/forms/{form_id}",
+    "location_model": {
+      "fpo_multi_village_supported": true,
+      "gps_progression": [
+        "NONE",
+        "PIN_DROP",
+        "GPS_WALK",
+        "SATELLITE"
+      ],
+      "manual_village_supported": true,
+      "multi_village_override": "parcel.location_scope",
+      "normal_anchor": "parcel.pin_code"
+    },
+    "mode_bootstrap_endpoint": "/api/v1/auth/mode-bootstrap",
+    "offline_sync": {
+      "forms_cacheable": true,
+      "idempotency_hint": "Use client-generated UUIDs where endpoint accepts ids; otherwise replay by stable local entity linkage and sync conflict rules.",
+      "option_sets_cacheable": true,
+      "queue_mutations_when_offline": true,
+      "replay_order": [
+        "farmer_registration",
+        "parcel_registration",
+        "soil_profile",
+        "soil_enrichment_snapshot",
+        "field_event",
+        "query_thread"
+      ]
+    },
+    "option_endpoint_template": "/api/v1/forms/options/{option_set}?project_id={project_id}",
+    "schema_version": "profile_contract_android_handoff.v1",
+    "screen_groups": {
+      "farmer_registration": {
+        "assistance": [
+          "assistance_mode"
+        ],
+        "crop_and_language": [
+          "primary_crop_code",
+          "total_land_area",
+          "total_land_unit",
+          "language_preference"
+        ],
+        "identity": [
+          "display_name",
+          "mobile_number",
+          "father_name",
+          "age",
+          "gender"
+        ],
+        "location": [
+          "village_id",
+          "village_name_manual",
+          "pin_code",
+          "enrollment_location"
+        ]
+      },
+      "parcel_registration": {
+        "identity": [
+          "local_name",
+          "survey_number"
+        ],
+        "land_holding": [
+          "reported_area",
+          "reported_area_unit",
+          "ownership_type",
+          "share_percentage",
+          "sharecrop_percentage",
+          "annual_rent"
+        ],
+        "location": [
+          "pin_code",
+          "village_id",
+          "village_name_manual",
+          "parcel_location",
+          "parcel_boundary",
+          "location_scope"
+        ],
+        "water_and_crops": [
+          "irrigation_source",
+          "kharif_crops",
+          "rabi_crops",
+          "zaid_crops"
+        ]
+      },
+      "soil_profile": {
+        "backend_enrichment": [
+          "SOILGRIDS",
+          "SHC_SLUSI",
+          "OPEN_METEO",
+          "IN_HOUSE_SATELLITE"
+        ],
+        "lab_or_shc": [
+          "test_date",
+          "lab_name",
+          "shc_card_number",
+          "nitrogen_n",
+          "phosphorus_p",
+          "potassium_k",
+          "sulphur_s",
+          "zinc_zn",
+          "iron_fe",
+          "copper_cu",
+          "manganese_mn",
+          "boron_b",
+          "ph",
+          "ec",
+          "organic_carbon_oc"
+        ],
+        "observation": [
+          "soil_type_code",
+          "soil_texture",
+          "soil_color",
+          "data_source"
+        ]
+      }
+    },
+    "soil_enrichment": {
+      "android_calls_external_providers": false,
+      "baseline_sources": [
+        "SOILGRIDS",
+        "SHC_SLUSI",
+        "IN_HOUSE_SATELLITE"
+      ],
+      "dynamic_sources": [
+        "OPEN_METEO",
+        "IN_HOUSE_SATELLITE"
+      ],
+      "job_audit_endpoint": "/api/v1/soil-profiles/enrichments/jobs/audit",
+      "latest_snapshot_endpoint": "/api/v1/soil-profiles/enrichments/latest",
+      "manual_import_sources": [
+        "SHC_SLUSI"
+      ],
+      "queue_endpoint": "/api/v1/soil-profiles/enrichments/queue?farmer_id={farmer_id}",
+      "snapshot_endpoint": "/api/v1/soil-profiles/enrichments",
+      "source_contract_endpoint": "/api/v1/soil-profiles/enrichments/source-contract",
+      "summary_endpoint": "/api/v1/soil-profiles/enrichments/summary?farmer_id={farmer_id}"
+    }
+  },
+  "backend_owned_contract": {
+    "agent_assisted_capture": true,
+    "android_should_hardcode_options": false,
+    "forms": true,
+    "mode_bootstrap": true,
+    "option_sets": true,
+    "readiness": true,
+    "soil_enrichment_snapshots": true,
+    "validation": true
+  },
+  "forms": [
+    {
+      "canonical_fields": [
+        "farmer.aadhaar_number",
+        "farmer.age",
+        "farmer.display_name",
+        "farmer.enrollment_gps",
+        "farmer.enrollment_method",
+        "farmer.father_name",
+        "farmer.gender",
+        "farmer.language_preference",
+        "farmer.mobile_number",
+        "farmer.pin_code",
+        "farmer.primary_crop_code",
+        "farmer.total_land_area",
+        "farmer.total_land_unit",
+        "farmer.village_id",
+        "farmer.village_name_manual"
+      ],
+      "field_count": 15,
+      "form_id": "farmer_registration",
+      "gps_fields": [
+        "enrollment_location"
+      ],
+      "offline_supported": true,
+      "option_sets": [
+        "assistance_modes",
+        "land_units",
+        "languages"
+      ],
+      "recommended_fields": [
+        "display_name",
+        "village_id",
+        "pin_code",
+        "primary_crop_code",
+        "father_name",
+        "age",
+        "gender",
+        "aadhaar_number",
+        "total_land_area",
+        "total_land_unit",
+        "language_preference",
+        "assistance_mode",
+        "enrollment_location"
+      ],
+      "required_fields": [
+        "mobile_number",
+        "village_name_manual"
+      ],
+      "submit_endpoint": "/api/v1/farmers",
+      "submit_method": "POST",
+      "title": {
+        "en": "Farmer Registration",
+        "hi": "Farmer Registration"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "canonical_fields": [
+        "parcel.annual_rent",
+        "parcel.centroid",
+        "parcel.crops_by_season.KHARIF",
+        "parcel.crops_by_season.RABI",
+        "parcel.crops_by_season.ZAID",
+        "parcel.current_crop_code",
+        "parcel.farmer_id",
+        "parcel.geojson",
+        "parcel.geometry_source",
+        "parcel.irrigation_source",
+        "parcel.local_name",
+        "parcel.location_scope.same_as_home_location",
+        "parcel.ownership_type",
+        "parcel.reported_area",
+        "parcel.reported_area_unit",
+        "parcel.share_percentage",
+        "parcel.sharecrop_percentage",
+        "parcel.soil_type_code",
+        "parcel.survey_number",
+        "parcel.village_id",
+        "parcel.village_name_manual",
+        "soil_profile.soil_color",
+        "soil_profile.soil_texture"
+      ],
+      "field_count": 23,
+      "form_id": "parcel_registration",
+      "gps_fields": [
+        "parcel_point",
+        "parcel_boundary"
+      ],
+      "offline_supported": true,
+      "option_sets": [
+        "geometry_sources",
+        "irrigation_sources",
+        "land_units",
+        "ownership_types",
+        "soil_colors",
+        "soil_textures",
+        "soil_types"
+      ],
+      "recommended_fields": [
+        "village_id",
+        "same_as_home_location",
+        "local_name",
+        "survey_number",
+        "ownership_type",
+        "share_percentage",
+        "sharecrop_percentage",
+        "annual_rent",
+        "irrigation_source",
+        "current_crop_code",
+        "kharif_crops",
+        "rabi_crops",
+        "zaid_crops",
+        "soil_type_code",
+        "soil_texture",
+        "soil_color",
+        "geometry_source",
+        "parcel_point",
+        "parcel_boundary"
+      ],
+      "required_fields": [
+        "farmer_id",
+        "village_name_manual",
+        "reported_area",
+        "reported_area_unit"
+      ],
+      "submit_endpoint": "/api/v1/parcels",
+      "submit_method": "POST",
+      "title": {
+        "en": "Land Parcel",
+        "hi": "Land Parcel"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "canonical_fields": [
+        "soil_profile.boron_bo",
+        "soil_profile.copper_cu",
+        "soil_profile.data_source",
+        "soil_profile.ec",
+        "soil_profile.farmer_id",
+        "soil_profile.inferred_description",
+        "soil_profile.inferred_name",
+        "soil_profile.inferred_ph_range",
+        "soil_profile.iron_fe",
+        "soil_profile.lab_name",
+        "soil_profile.manganese_mn",
+        "soil_profile.nitrogen_n",
+        "soil_profile.notes",
+        "soil_profile.organic_carbon_oc",
+        "soil_profile.parcel_id",
+        "soil_profile.ph",
+        "soil_profile.phosphorus_p",
+        "soil_profile.potassium_k",
+        "soil_profile.shc_card_number",
+        "soil_profile.soil_color",
+        "soil_profile.soil_texture",
+        "soil_profile.soil_type_code",
+        "soil_profile.sulphur_s",
+        "soil_profile.test_date",
+        "soil_profile.zinc_zn"
+      ],
+      "field_count": 26,
+      "form_id": "soil_profile",
+      "gps_fields": [],
+      "offline_supported": true,
+      "option_sets": [
+        "soil_colors",
+        "soil_data_sources",
+        "soil_textures",
+        "soil_types"
+      ],
+      "recommended_fields": [
+        "inferred_soil_type",
+        "inferred_soil_type_name",
+        "inferred_description",
+        "inferred_ph_range",
+        "soil_type_code",
+        "soil_texture",
+        "soil_color",
+        "test_date",
+        "lab_name",
+        "shc_card_number",
+        "ph",
+        "ec",
+        "organic_carbon_oc",
+        "nitrogen_n",
+        "phosphorus_p",
+        "potassium_k",
+        "sulphur_s",
+        "zinc_zn",
+        "iron_fe",
+        "copper_cu",
+        "manganese_mn",
+        "boron_b",
+        "notes"
+      ],
+      "required_fields": [
+        "parcel_id",
+        "farmer_id",
+        "data_source"
+      ],
+      "submit_endpoint": "/api/v1/soil-profiles",
+      "submit_method": "POST",
+      "title": {
+        "en": "Soil Profile",
+        "hi": "Soil Profile"
+      },
+      "version": "1.0.0"
+    }
+  ],
+  "option_set_sources": {
+    "assistance_modes": {
+      "option_count": 4,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "geometry_sources": {
+      "option_count": 4,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "irrigation_sources": {
+      "option_count": 7,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "land_units": {
+      "option_count": 6,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "languages": {
+      "option_count": 6,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "ownership_types": {
+      "option_count": 6,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "soil_colors": {
+      "option_count": 6,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "soil_data_sources": {
+      "option_count": 4,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "soil_textures": {
+      "option_count": 6,
+      "source": "default",
+      "version": "1.0.0"
+    },
+    "soil_types": {
+      "option_count": 7,
+      "source": "default",
+      "version": "1.0.0"
+    }
+  },
+  "option_sets_used": [
+    "assistance_modes",
+    "geometry_sources",
+    "irrigation_sources",
+    "land_units",
+    "languages",
+    "ownership_types",
+    "soil_colors",
+    "soil_data_sources",
+    "soil_textures",
+    "soil_types"
+  ],
+  "payload_mappings": {
+    "farmer_registration": {
+      "assistance_mode": "farmer.enrollment_method",
+      "language_preference": "farmer.language_preference",
+      "mobile_number": "+91XXXXXXXXXX",
+      "pin_code": "farmer.pin_code",
+      "primary_crop_code": "farmer.primary_crop_code",
+      "village_name_manual": "farmer.village_name_manual"
+    },
+    "parcel_registration": {
+      "irrigation_source": "parcel.irrigation_source",
+      "kharif_crops": "parcel.crops_by_season.KHARIF",
+      "location_scope": "parcel.location_scope",
+      "ownership_type": "parcel.ownership_type",
+      "parcel_boundary": "parcel.geojson",
+      "parcel_location": "parcel.centroid_lat_lng",
+      "pin_code": "parcel.pin_code",
+      "rabi_crops": "parcel.crops_by_season.RABI",
+      "reported_area": "parcel.reported_area",
+      "reported_area_unit": "parcel.reported_area_unit",
+      "share_percentage": "parcel.share_percentage",
+      "sharecrop_percentage": "parcel.sharecrop_percentage",
+      "zaid_crops": "parcel.crops_by_season.ZAID"
+    },
+    "soil_profile": {
+      "boron_b": "soil_profile.boron_bo",
+      "data_source": "soil_profile.data_source",
+      "organic_carbon_oc": "soil_profile.organic_carbon_oc",
+      "soil_color": "soil_profile.soil_color",
+      "soil_texture": "soil_profile.soil_texture",
+      "soil_type_code": "soil_profile.soil_type_code"
+    }
+  },
+  "project_id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+  "required_by_form": {
+    "farmer_registration": [
+      "mobile_number",
+      "village_name_manual"
+    ],
+    "parcel_registration": [
+      "farmer_id",
+      "village_name_manual",
+      "reported_area",
+      "reported_area_unit"
+    ],
+    "soil_profile": [
+      "parcel_id",
+      "farmer_id",
+      "data_source"
+    ]
+  },
+  "schema_version": "profile_contract.v1",
+  "tenant_id": "android-sample-c1c97a55"
+}

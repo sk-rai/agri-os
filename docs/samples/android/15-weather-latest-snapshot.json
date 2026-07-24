@@ -1,0 +1,36 @@
+{
+  "condition_code": "RAIN",
+  "created_at": "2026-07-24T11:12:54.750001+05:30",
+  "expires_at": "2026-07-24T17:12:54.750001+05:30",
+  "farmer_id": null,
+  "fetched_at": "2026-07-24T11:12:54.750001+05:30",
+  "forecast_valid_from": "2026-07-24T11:12:54.750001+05:30",
+  "forecast_valid_to": "2026-07-25T11:12:54.750001+05:30",
+  "humidity_percent": 82,
+  "id": "658137d1-2884-4b09-8f3f-eabb9e9c02c7",
+  "lat": null,
+  "lng": null,
+  "location_key": "Android Sample Village",
+  "location_scope": "VILLAGE",
+  "metadata": {
+    "capture": "android_sample_payloads"
+  },
+  "observed_at": null,
+  "parcel_id": "d0c9d0e2-5168-4834-a6c6-460c5ac357cd",
+  "project_id": null,
+  "provider_id": "9d1a84c4-7aa0-4dae-8e95-8d193eda8b07",
+  "rainfall_mm": "6.5",
+  "rainfall_probability_percent": 70,
+  "risk_flags": [
+    "RAIN_NEXT_24H"
+  ],
+  "source_payload": {
+    "sample": true
+  },
+  "summary": "Light rain expected",
+  "temperature_max_c": "31",
+  "temperature_min_c": "23",
+  "tenant_id": "android-sample-c1c97a55",
+  "updated_at": "2026-07-24T11:12:54.750001+05:30",
+  "wind_speed_kmph": "12"
+}

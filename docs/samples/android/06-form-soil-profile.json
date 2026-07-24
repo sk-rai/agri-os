@@ -1,0 +1,796 @@
+{
+  "description": {
+    "en": "Capture observed or lab-tested soil details",
+    "hi": "Capture observed or lab-tested soil details"
+  },
+  "fields": [
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.parcel_id",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "parcel_id",
+      "label": {
+        "en": "Parcel",
+        "hi": "Parcel"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": "local_parcels",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.farmer_id",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "farmer_id",
+      "label": {
+        "en": "Farmer",
+        "hi": "Farmer"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": "local_farmers",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.data_source",
+      "capture_modes": null,
+      "default_value": "MANUAL",
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "data_source",
+      "label": {
+        "en": "Data Source",
+        "hi": "Data Source"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Manual Observation",
+            "hi": "Manual Observation"
+          },
+          "value": "MANUAL"
+        },
+        {
+          "label": {
+            "en": "Inferred",
+            "hi": "Inferred"
+          },
+          "value": "INFERRED"
+        },
+        {
+          "label": {
+            "en": "Soil Health Card",
+            "hi": "Soil Health Card"
+          },
+          "value": "SHC_CARD"
+        },
+        {
+          "label": {
+            "en": "Lab Report",
+            "hi": "Lab Report"
+          },
+          "value": "LAB_REPORT"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": true,
+      "source": "profile_options.soil_data_sources",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "read_only": true,
+        "source": "soil_inference"
+      },
+      "canonical_field": "soil_profile.soil_type_code",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "data_source",
+      "depends_on_value": "INFERRED",
+      "hint": null,
+      "id": "inferred_soil_type",
+      "label": {
+        "en": "Inferred Soil Type",
+        "hi": "Inferred Soil Type"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "read_only": true
+      },
+      "canonical_field": "soil_profile.inferred_name",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "data_source",
+      "depends_on_value": "INFERRED",
+      "hint": null,
+      "id": "inferred_soil_type_name",
+      "label": {
+        "en": "Inferred Soil Name",
+        "hi": "Inferred Soil Name"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "info",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "read_only": true
+      },
+      "canonical_field": "soil_profile.inferred_description",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "data_source",
+      "depends_on_value": "INFERRED",
+      "hint": null,
+      "id": "inferred_description",
+      "label": {
+        "en": "Inferred Soil Description",
+        "hi": "Inferred Soil Description"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "info",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "read_only": true
+      },
+      "canonical_field": "soil_profile.inferred_ph_range",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "data_source",
+      "depends_on_value": "INFERRED",
+      "hint": null,
+      "id": "inferred_ph_range",
+      "label": {
+        "en": "Inferred pH Range",
+        "hi": "Inferred pH Range"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "info",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.soil_type_code",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "soil_type_code",
+      "label": {
+        "en": "Soil Type",
+        "hi": "Soil Type"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.soil_types",
+      "type": "dropdown",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.soil_texture",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "soil_texture",
+      "label": {
+        "en": "Texture",
+        "hi": "Texture"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Sandy",
+            "hi": "Sandy"
+          },
+          "value": "SANDY"
+        },
+        {
+          "label": {
+            "en": "Loam",
+            "hi": "Loam"
+          },
+          "value": "LOAM"
+        },
+        {
+          "label": {
+            "en": "Loamy",
+            "hi": "Loamy"
+          },
+          "value": "LOAMY"
+        },
+        {
+          "label": {
+            "en": "Clay",
+            "hi": "Clay"
+          },
+          "value": "CLAY"
+        },
+        {
+          "label": {
+            "en": "Sandy Loam",
+            "hi": "Sandy Loam"
+          },
+          "value": "SANDY_LOAM"
+        },
+        {
+          "label": {
+            "en": "Clay Loam",
+            "hi": "Clay Loam"
+          },
+          "value": "CLAY_LOAM"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.soil_textures",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.soil_color",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "soil_color",
+      "label": {
+        "en": "Soil Color",
+        "hi": "Soil Color"
+      },
+      "min_points": null,
+      "options": [
+        {
+          "label": {
+            "en": "Brown",
+            "hi": "Brown"
+          },
+          "value": "BROWN"
+        },
+        {
+          "label": {
+            "en": "Dark brown",
+            "hi": "Dark brown"
+          },
+          "value": "DARK_BROWN"
+        },
+        {
+          "label": {
+            "en": "Light brown",
+            "hi": "Light brown"
+          },
+          "value": "LIGHT_BROWN"
+        },
+        {
+          "label": {
+            "en": "Reddish",
+            "hi": "Reddish"
+          },
+          "value": "REDDISH"
+        },
+        {
+          "label": {
+            "en": "Black",
+            "hi": "Black"
+          },
+          "value": "BLACK"
+        },
+        {
+          "label": {
+            "en": "Grey",
+            "hi": "Grey"
+          },
+          "value": "GREY"
+        }
+      ],
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": "profile_options.soil_colors",
+      "type": "single_select",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.test_date",
+      "capture_modes": null,
+      "default_value": "today",
+      "depends_on": "data_source",
+      "depends_on_value": null,
+      "hint": null,
+      "id": "test_date",
+      "label": {
+        "en": "Test Date",
+        "hi": "Test Date"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "date",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.lab_name",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "data_source",
+      "depends_on_value": "LAB_REPORT",
+      "hint": null,
+      "id": "lab_name",
+      "label": {
+        "en": "Lab Name",
+        "hi": "Lab Name"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.shc_card_number",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": "data_source",
+      "depends_on_value": "SHC_CARD",
+      "hint": null,
+      "id": "shc_card_number",
+      "label": {
+        "en": "SHC Card Number",
+        "hi": "SHC Card Number"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.ph",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "ph",
+      "label": {
+        "en": "pH",
+        "hi": "pH"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "max": 14,
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.ec",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "ec",
+      "label": {
+        "en": "EC (dS/m)",
+        "hi": "EC (dS/m)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.organic_carbon_oc",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "organic_carbon_oc",
+      "label": {
+        "en": "Organic Carbon (%)",
+        "hi": "Organic Carbon (%)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.nitrogen_n",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "nitrogen_n",
+      "label": {
+        "en": "Nitrogen (N)",
+        "hi": "Nitrogen (N)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.phosphorus_p",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "phosphorus_p",
+      "label": {
+        "en": "Phosphorus (P)",
+        "hi": "Phosphorus (P)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.potassium_k",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "potassium_k",
+      "label": {
+        "en": "Potassium (K)",
+        "hi": "Potassium (K)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.sulphur_s",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "sulphur_s",
+      "label": {
+        "en": "Sulphur (S)",
+        "hi": "Sulphur (S)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.zinc_zn",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "zinc_zn",
+      "label": {
+        "en": "Zinc (Zn)",
+        "hi": "Zinc (Zn)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.iron_fe",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "iron_fe",
+      "label": {
+        "en": "Iron (Fe)",
+        "hi": "Iron (Fe)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.copper_cu",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "copper_cu",
+      "label": {
+        "en": "Copper (Cu)",
+        "hi": "Copper (Cu)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.manganese_mn",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "manganese_mn",
+      "label": {
+        "en": "Manganese (Mn)",
+        "hi": "Manganese (Mn)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": {
+        "backend_alias": "boron_bo",
+        "payload_field": "boron_b"
+      },
+      "canonical_field": "soil_profile.boron_bo",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "boron_b",
+      "label": {
+        "en": "Boron (B)",
+        "hi": "Boron (B)"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "number",
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "accuracy_required_meters": null,
+      "allow_offline_capture": true,
+      "android_hint": null,
+      "canonical_field": "soil_profile.notes",
+      "capture_modes": null,
+      "default_value": null,
+      "depends_on": null,
+      "depends_on_value": null,
+      "hint": null,
+      "id": "notes",
+      "label": {
+        "en": "Notes",
+        "hi": "Notes"
+      },
+      "min_points": null,
+      "options": null,
+      "output_format": null,
+      "placeholder": null,
+      "required": false,
+      "source": null,
+      "type": "text",
+      "validation": null
+    }
+  ],
+  "form_id": "soil_profile",
+  "submit_endpoint": "/api/v1/soil-profiles",
+  "submit_label": {
+    "en": "Save Soil Profile",
+    "hi": "Save Soil Profile"
+  },
+  "submit_method": "POST",
+  "title": {
+    "en": "Soil Profile",
+    "hi": "Soil Profile"
+  },
+  "version": "1.0.0"
+}

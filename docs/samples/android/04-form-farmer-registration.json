@@ -53,8 +53,8 @@
       "options": null,
       "output_format": null,
       "placeholder": {
-        "en": "+919900000001 or 9900000001",
-        "hi": "+919900000001 or 9900000001"
+        "en": "+91XXXXXXXXXX or 9900000001",
+        "hi": "+91XXXXXXXXXX or 9900000001"
       },
       "required": true,
       "source": null,

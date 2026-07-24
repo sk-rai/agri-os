@@ -1,0 +1,88 @@
+{
+  "count": 1,
+  "project_id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+  "schema_version": "1.0.0",
+  "tenant_id": "android-sample-c1c97a55",
+  "workflows": [
+    {
+      "catalog_selection_key": "RICE:KHARIF",
+      "catalog_selection_policy": "LATEST_PUBLISHED_PER_CROP_SEASON",
+      "crop_code": "RICE",
+      "crop_name": "Rice (Paddy)",
+      "display_order": null,
+      "enabled": true,
+      "enablement_source": "implicit_default",
+      "label": {
+        "en": "Rice Kharif Lifecycle (UP)",
+        "hi": "Rice Kharif Lifecycle (UP)"
+      },
+      "metadata": {
+        "active_pinned_cycle_count_at_archive": 0,
+        "allowed_start_stages": [
+          "NURSERY",
+          "TRANSPLANTING",
+          "VEGETATIVE",
+          "REPRODUCTIVE",
+          "MATURITY",
+          "HARVEST"
+        ],
+        "archived_at": "2026-07-13T09:25:14.666337+00:00",
+        "archived_by_publish": true,
+        "archived_for_new_catalog_only": true,
+        "bbch_baseline": {
+          "enabled": true,
+          "scale": "BBCH_CEREAL_RICE_ADAPTED"
+        },
+        "crop_group": "CEREAL",
+        "crop_system": "ANNUAL_FIELD_CROP",
+        "date_label": {
+          "en": "Nursery Start Date",
+          "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0936\u0941\u0930\u0942 \u0915\u0930\u0928\u0947 \u0915\u0940 \u0924\u093e\u0930\u0940\u0916"
+        },
+        "decision_nodes": [
+          {
+            "allow_override": true,
+            "choices": [
+              "NURSERY_TRANSPLANT",
+              "DIRECT_SEEDED"
+            ],
+            "code": "NURSERY_OR_DIRECT_SEEDED",
+            "default_choice": "NURSERY_TRANSPLANT",
+            "label": {
+              "en": "Nursery transplant or direct seeded?",
+              "hi": "\u0928\u0930\u094d\u0938\u0930\u0940 \u0930\u094b\u092a\u093e\u0908 \u092f\u093e \u0938\u0940\u0927\u0940 \u092c\u0941\u0935\u093e\u0908?"
+            },
+            "stage_code": "PRE_FIELD"
+          }
+        ],
+        "has_nursery": true,
+        "metadata_backfill": "workflow_crop_system_bbch.v1",
+        "metadata_backfilled_at": "2026-07-22T10:53:27.544898+00:00",
+        "pinned_cycle_count_at_archive": 0,
+        "propagation_method": "NURSERY_TRANSPLANT",
+        "requires_establishment_year": false,
+        "source": "workflow_template",
+        "stage_warning_rules": [
+          "season_mismatch",
+          "geography_mismatch",
+          "stage_calendar_mismatch"
+        ],
+        "staging_system": "ZADOKS_BBCH",
+        "supports_existing_crop_current_stage": true,
+        "workflow_template_id": "e72e4072-41ad-499e-a72d-97f4e0c0f3d0",
+        "workflow_template_version": "1.0.0",
+        "workflow_template_version_id": "7fd53887-ea29-448f-b150-921940eec890"
+      },
+      "project_id": null,
+      "propagation_type_code": "NURSERY_TRANSPLANT",
+      "season_code": "KHARIF",
+      "status": "PUBLISHED",
+      "tenant_id": "default",
+      "total_duration_days": 114,
+      "version": "1.0.0",
+      "workflow_template_code": "WF_RICE_KHARIF_DEFAULT",
+      "workflow_template_id": "e72e4072-41ad-499e-a72d-97f4e0c0f3d0",
+      "workflow_template_version_id": "7fd53887-ea29-448f-b150-921940eec890"
+    }
+  ]
+}

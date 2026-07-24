@@ -1,0 +1,181 @@
+{
+  "branding": {
+    "accent_color": "#F59E0B",
+    "app_name": "Agri-OS",
+    "logo_url": null,
+    "primary_color": "#2563EB",
+    "secondary_color": "#16A34A",
+    "support_email": null,
+    "support_phone": null
+  },
+  "contracts": {
+    "parcel_geometry": {
+      "endpoint": "/api/v1/parcels/{parcel_id}/geometry",
+      "gps_walk": "GPS_WALK returns Polygon GeoJSON, centroid_lat/centroid_lng, and computed_area_hectares.",
+      "pin_drop": "PIN_DROP returns centroid_lat/centroid_lng and no GeoJSON for MVP."
+    },
+    "profile_hydration": {
+      "by_mobile_endpoint": "/api/v1/farmers/by-mobile/{mobile}",
+      "me_endpoint": "/api/v1/farmers/me/profile",
+      "schema_version": "profile_hydration.v1"
+    }
+  },
+  "enabled_modules": [
+    "FARMER_PROFILE",
+    "LAND_PARCELS",
+    "SOIL_PROFILE",
+    "CROP_CYCLES",
+    "ACTIVITY_LOGGING",
+    "GPS_GEOMETRY"
+  ],
+  "feature_flags": {
+    "backend_driven_farmer_forms": true,
+    "backend_driven_parcel_forms": true,
+    "backend_driven_soil_forms": true,
+    "broadcast_advisories": true,
+    "economics_summary": false,
+    "farmer_queries": false,
+    "field_event_reporting": false,
+    "media_attachments": false,
+    "project_memberships": false,
+    "soil_enrichment_snapshots": true,
+    "weather_snapshots": true,
+    "white_label_runtime_branding": true
+  },
+  "forms": [
+    {
+      "endpoint": "/api/v1/forms/activity_log",
+      "form_id": "activity_log",
+      "title": {
+        "en": "Log Activity",
+        "hi": "\u0917\u0924\u093f\u0935\u093f\u0927\u093f \u0926\u0930\u094d\u091c \u0915\u0930\u0947\u0902"
+      },
+      "version": "1.2.1"
+    },
+    {
+      "endpoint": "/api/v1/forms/crop_cycle_create",
+      "form_id": "crop_cycle_create",
+      "title": {
+        "en": "Start Crop Cycle",
+        "hi": "\u092b\u0938\u0932 \u091a\u0915\u094d\u0930 \u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902"
+      },
+      "version": "1.3.0"
+    },
+    {
+      "endpoint": "/api/v1/forms/farmer_registration",
+      "form_id": "farmer_registration",
+      "title": {
+        "en": "Farmer Registration",
+        "hi": "Farmer Registration"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "endpoint": "/api/v1/forms/parcel_registration",
+      "form_id": "parcel_registration",
+      "title": {
+        "en": "Land Parcel",
+        "hi": "Land Parcel"
+      },
+      "version": "1.0.0"
+    },
+    {
+      "endpoint": "/api/v1/forms/soil_profile",
+      "form_id": "soil_profile",
+      "title": {
+        "en": "Soil Profile",
+        "hi": "Soil Profile"
+      },
+      "version": "1.0.0"
+    }
+  ],
+  "generated_at": "2026-07-24T05:42:55.198469+00:00",
+  "localization": {
+    "country_code": "IN",
+    "default_language": "en",
+    "supported_languages": [
+      "en",
+      "hi"
+    ],
+    "timezone": "Asia/Kolkata"
+  },
+  "profile_forms": {
+    "farmer_registration": {
+      "enabled": true,
+      "endpoint": "/api/v1/forms/farmer_registration",
+      "feature_flag": "backend_driven_farmer_forms",
+      "form_id": "farmer_registration",
+      "title": {
+        "en": "Farmer Registration",
+        "hi": "Farmer Registration"
+      },
+      "version": "1.0.0"
+    },
+    "parcel_registration": {
+      "enabled": true,
+      "endpoint": "/api/v1/forms/parcel_registration",
+      "feature_flag": "backend_driven_parcel_forms",
+      "form_id": "parcel_registration",
+      "title": {
+        "en": "Land Parcel",
+        "hi": "Land Parcel"
+      },
+      "version": "1.0.0"
+    },
+    "soil_profile": {
+      "enabled": true,
+      "endpoint": "/api/v1/forms/soil_profile",
+      "feature_flag": "backend_driven_soil_forms",
+      "form_id": "soil_profile",
+      "title": {
+        "en": "Soil Profile",
+        "hi": "Soil Profile"
+      },
+      "version": "1.0.0"
+    }
+  },
+  "project": {
+    "crop_scope": [
+      "RICE"
+    ],
+    "end_date": "2027-01-20",
+    "geography_scope": {
+      "village_names": [
+        "Android Sample Village"
+      ]
+    },
+    "id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+    "name": "Android Sample Project",
+    "start_date": "2026-07-24",
+    "status": "ACTIVE"
+  },
+  "schema_version": "app_bootstrap.v1",
+  "self_service": {
+    "allow_direct_farmer_registration": true,
+    "default_tenant_id": "default",
+    "requires_project_invite": false
+  },
+  "service": {
+    "name": "Agri-OS",
+    "version": "0.1.0"
+  },
+  "tenant": {
+    "exists": true,
+    "id": "android-sample-c1c97a55",
+    "name": "Android Sample Tenant",
+    "type": "ENTERPRISE"
+  },
+  "units": {
+    "area_units": [
+      "ACRE",
+      "HECTARE",
+      "BIGHA",
+      "BISWA",
+      "KATHA",
+      "GUNTHA"
+    ],
+    "currency": "INR",
+    "default_area_unit": "BIGHA",
+    "measurement_system": "METRIC"
+  }
+}
