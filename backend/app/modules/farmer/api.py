@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
+from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
 from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
 
@@ -286,6 +287,9 @@ class FarmerResponse(BaseModel):
     village_id: Optional[uuid.UUID] = None
     display_name: Optional[str] = None
     pin_code: Optional[str] = None
+    home_digipin: Optional[str] = None
+    home_digipin_algorithm_version: Optional[str] = None
+    home_digipin_generated_at: Optional[datetime] = None
     primary_crop_code: Optional[str] = None
     status: str
     class Config:
@@ -349,6 +353,9 @@ class ParcelResponse(BaseModel):
     reported_area: float
     reported_area_unit: str
     geometry_source: str
+    centroid_digipin: Optional[str] = None
+    centroid_digipin_algorithm_version: Optional[str] = None
+    centroid_digipin_generated_at: Optional[datetime] = None
     current_crop_code: Optional[str] = None
     soil_type_code: Optional[str] = None
     local_name: Optional[str] = None
@@ -621,6 +628,40 @@ def _model_patch_values(body: BaseModel) -> dict:
     return body.dict(exclude_unset=True)
 
 
+
+def _safe_location_digipin(latitude, longitude) -> Optional[dict]:
+    if latitude is None or longitude is None:
+        return None
+    try:
+        return generate_location_digipin(latitude, longitude)
+    except ValueError:
+        return None
+
+
+def _apply_farmer_home_digipin(farmer) -> None:
+    payload = _safe_location_digipin(farmer.enrollment_gps_lat, farmer.enrollment_gps_lng)
+    if payload:
+        farmer.home_digipin = payload["digipin"]
+        farmer.home_digipin_algorithm_version = payload.get("algorithm_version") or DIGIPIN_ALGORITHM_VERSION
+        farmer.home_digipin_generated_at = datetime.now(timezone.utc)
+    else:
+        farmer.home_digipin = None
+        farmer.home_digipin_algorithm_version = None
+        farmer.home_digipin_generated_at = None
+
+
+def _apply_parcel_centroid_digipin(parcel) -> None:
+    payload = _safe_location_digipin(parcel.centroid_lat, parcel.centroid_lng)
+    if payload:
+        parcel.centroid_digipin = payload["digipin"]
+        parcel.centroid_digipin_algorithm_version = payload.get("algorithm_version") or DIGIPIN_ALGORITHM_VERSION
+        parcel.centroid_digipin_generated_at = datetime.now(timezone.utc)
+    else:
+        parcel.centroid_digipin = None
+        parcel.centroid_digipin_algorithm_version = None
+        parcel.centroid_digipin_generated_at = None
+
+
 def _farmer_payload(farmer: Farmer) -> dict:
     return {
         "id": str(farmer.id),
@@ -635,6 +676,9 @@ def _farmer_payload(farmer: Farmer) -> dict:
         "village_id": str(farmer.village_id) if farmer.village_id else None,
         "village_name_manual": farmer.village_name_manual,
         "pin_code": farmer.pin_code,
+        "home_digipin": farmer.home_digipin,
+        "home_digipin_algorithm_version": farmer.home_digipin_algorithm_version,
+        "home_digipin_generated_at": _iso_date(farmer.home_digipin_generated_at),
         "primary_crop_code": farmer.primary_crop_code,
         "crops_by_season": farmer.crops_by_season or {},
         "total_land_area": _json_number(farmer.total_land_area),
@@ -683,6 +727,9 @@ def _parcel_payload(db: Session, parcel: Parcel) -> dict:
         "geometry_source": parcel.geometry_source,
         "centroid_lat": _json_number(parcel.centroid_lat),
         "centroid_lng": _json_number(parcel.centroid_lng),
+        "centroid_digipin": parcel.centroid_digipin,
+        "centroid_digipin_algorithm_version": parcel.centroid_digipin_algorithm_version,
+        "centroid_digipin_generated_at": _iso_date(parcel.centroid_digipin_generated_at),
         "computed_area_hectares": _json_number(parcel.computed_area_hectares),
         "geometry_accuracy_meters": _json_number(parcel.geometry_accuracy_meters),
         "geometry_captured_at": _iso_date(parcel.geometry_captured_at),
@@ -2760,6 +2807,7 @@ def enroll_farmer(
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
+    _apply_farmer_home_digipin(farmer)
     db.add(farmer)
     db.commit()
     db.refresh(farmer)
@@ -3183,6 +3231,8 @@ def update_farmer_profile(
     for field in ["village_id", "village_name_manual", "pin_code", "primary_crop_code", "crops_by_season", "display_name", "father_name", "age", "gender", "aadhaar_number", "total_land_area", "total_land_unit", "language_preference", "enrollment_gps_lat", "enrollment_gps_lng"]:
         if field in values:
             setattr(farmer, field, values[field])
+    if "enrollment_gps_lat" in values or "enrollment_gps_lng" in values:
+        _apply_farmer_home_digipin(farmer)
     if "assistance_mode" in values:
         farmer.enrollment_method = _normalize_assistance_mode(values.get("assistance_mode"))
     farmer.updated_at = datetime.now(timezone.utc)
@@ -3964,6 +4014,7 @@ def create_parcel(
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
+    _apply_parcel_centroid_digipin(parcel)
     db.add(parcel)
     db.commit()
     db.refresh(parcel)
@@ -4110,6 +4161,7 @@ def update_parcel_geometry(
             {"parcel_id": str(parcel_id), "tenant_id": x_tenant_id},
         )
 
+    _apply_parcel_centroid_digipin(parcel)
     parcel.updated_at = datetime.now(timezone.utc)
     db.commit()
 
@@ -4119,6 +4171,9 @@ def update_parcel_geometry(
         "parcel_id": str(parcel_id),
         "centroid_lat": str(parcel.centroid_lat) if parcel.centroid_lat is not None else None,
         "centroid_lng": str(parcel.centroid_lng) if parcel.centroid_lng is not None else None,
+        "centroid_digipin": parcel.centroid_digipin,
+        "centroid_digipin_algorithm_version": parcel.centroid_digipin_algorithm_version,
+        "centroid_digipin_generated_at": parcel.centroid_digipin_generated_at.isoformat() if parcel.centroid_digipin_generated_at else None,
         "computed_area_hectares": str(parcel.computed_area_hectares) if parcel.computed_area_hectares is not None else None,
         "geojson_type": normalized_geojson.get("type") if normalized_geojson else None,
     }

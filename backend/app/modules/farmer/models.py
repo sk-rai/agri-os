@@ -275,6 +275,9 @@ class Farmer(Base, UUIDPrimaryKey, AuditMixin):
     # ASSISTED (dealer did it), SELF (farmer did it), BULK (CSV import)
     enrollment_gps_lat = Column(DECIMAL(10, 8))
     enrollment_gps_lng = Column(DECIMAL(11, 8))
+    home_digipin = Column(String(10), index=True)
+    home_digipin_algorithm_version = Column(String(64))
+    home_digipin_generated_at = Column(DateTime(timezone=True))
 
     # Status
     status = Column(String(20), default="ACTIVE", nullable=False)
@@ -387,6 +390,9 @@ class Parcel(Base, UUIDPrimaryKey, AuditMixin):
     # NONE, PIN_DROP, GPS_WALK, SATELLITE
     centroid_lat = Column(DECIMAL(10, 8))  # Single pin drop
     centroid_lng = Column(DECIMAL(11, 8))
+    centroid_digipin = Column(String(10), index=True)
+    centroid_digipin_algorithm_version = Column(String(64))
+    centroid_digipin_generated_at = Column(DateTime(timezone=True))
     geometry = Column(Geometry("POLYGON", srid=4326))  # Full polygon (nullable)
     computed_area_hectares = Column(DECIMAL(10, 4))  # From ST_Area(geometry)
     geometry_accuracy_meters = Column(DECIMAL(6, 1))  # GPS accuracy at capture
