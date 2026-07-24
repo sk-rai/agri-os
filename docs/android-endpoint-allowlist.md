@@ -1,6 +1,6 @@
 # Android Endpoint Allowlist
 
-Status date: 2026-07-21
+Status date: 2026-07-24
 
 This document defines which backend endpoints Android may call for MVP and which endpoints must remain admin/backend-only. It is a security and integration boundary, not just an API list.
 
@@ -20,6 +20,7 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - `GET /api/v1/forms/{form_id}`
 - `GET /api/v1/forms/options`
 - `GET /api/v1/forms/options/{option_set}`
+- `GET /api/v1/forms/profile-contract`
 
 ### Farmer/profile write paths
 
@@ -38,10 +39,10 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 
 ### Broadcast consumption
 
-- `GET /api/v1/broadcasts/feed`
+- `GET /api/v1/broadcasts/farmers/{farmer_id}/broadcasts`
 - `GET /api/v1/broadcasts/{campaign_id}` for assigned/visible campaign detail only.
-- `POST /api/v1/broadcasts/{campaign_id}/read`
-- `POST /api/v1/broadcasts/{campaign_id}/acknowledge`
+- `POST /api/v1/broadcasts/deliveries/{delivery_id}/read`
+- `POST /api/v1/broadcasts/deliveries/{delivery_id}/acknowledge`
 
 ### Read-only enrichment/advisory cards
 
@@ -109,7 +110,7 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - Run `backend/scripts/pre_android_handoff_check.py`.
 - Run web build.
 - Confirm this allowlist against Android API client interfaces.
-- Capture final sample payloads from allowed endpoints.
+- Confirm `docs/samples/android/` contains the current 22-file redacted payload bundle.
 
 ## Location lookup requirement
 

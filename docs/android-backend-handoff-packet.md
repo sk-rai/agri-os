@@ -4,7 +4,7 @@ Status date: 2026-07-24
 
 Current backend readiness estimate for Android MVP handoff: backend/admin smoke and Android backend regressions are green for the validated MVP contracts.
 
-This packet is now the backend closeout map for Android integration planning. The generated sample payload bundle is available under docs/samples/android/.
+This packet is now the backend closeout map for Android integration planning. The generated sample payload bundle is available under `docs/samples/android/`.
 
 ## Handoff principle
 
@@ -242,13 +242,32 @@ Still run separately where applicable:
 
 ### D. Payload handoff bundle
 
-- Capture sample bootstrap response.
-- Capture sample profile forms/options.
-- Capture sample profile readiness payload.
-- Capture sample farmer broadcast feed/detail payload.
-- Capture sample weather snapshot/health payload.
-- Capture sample soil enrichment summary/queue/health payload.
-- Capture sample error payloads.
+Generated with `cd ~/projects/farmint/backend && ../venv/bin/python scripts/capture_android_sample_payloads.py`.
+
+Current bundle:
+
+- `01-mode-bootstrap.json`
+- `02-app-config-bootstrap.json`
+- `03-pin-code-villages.json`
+- `04-form-farmer-registration.json`
+- `05-form-parcel-registration.json`
+- `06-form-soil-profile.json`
+- `07-form-options.json`
+- `08-profile-contract.json`
+- `09-farmer-create-response.json`
+- `10-parcel-create-response.json`
+- `11-soil-profile-create-response.json`
+- `12-profile-readiness.json`
+- `13-soil-enrichment-summary.json`
+- `14-soil-enrichment-latest-or-error.json`
+- `15-weather-latest-snapshot.json`
+- `16-broadcast-feed.json`
+- `17-broadcast-detail.json`
+- `18-broadcast-read-response.json`
+- `19-broadcast-ack-response.json`
+- `20-crop-template-rice.json`
+- `21-enabled-crop-workflows.json`
+- `22-sync-dependency-error.json`
 
 ### E. Android rollout order
 
@@ -265,7 +284,7 @@ Recommended later rollout sequence:
 
 ## Current decision
 
-Android work should wait until backend provider-worker stubs, full regression, and permission review are complete. Until then this packet should be maintained as the backend closeout checklist and future Android contract map.
+Android implementation can use the validated backend contracts and `docs/samples/android/` bundle for MVP integration planning. Remaining release gates are clean disposable database bootstrap, real provider execution/rate-limit policy, and final end-to-end UI validation after metadata population.
 
 - Soil enrichment worker can normalize request-body demo payloads into persisted SoilEnrichmentSnapshot rows without network calls.
 
@@ -312,7 +331,7 @@ Recovery guidance is documented in `docs/backend-recovery-playbook.md`; use it b
 
 Backend-side pre-Android handoff checks are available through `backend/scripts/pre_android_handoff_check.py`; run web build separately afterward.
 
-Representative Android payload shapes are documented in `docs/android-sample-payloads.md`; replace examples with captured fixture responses before final Android implementation.
+Representative Android payload shapes are documented in `docs/android-sample-payloads.md`; generated redacted payloads live in `docs/samples/android/`.
 
 Tenant and project administration endpoints now require admin permissions: MANAGE_USERS for tenant creation, EDIT for project creation, and VIEW for tenant/project reads and project enrollment/edit-policy inspection.
 
