@@ -26,6 +26,7 @@ from app.modules.sync.models import (
     AuditChainEntry,
 )
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
+from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
 
 def _uuid_or_none(value) -> Optional[uuid.UUID]:
@@ -58,6 +59,40 @@ def _uuid_string_list_or_empty(value) -> list[str]:
     if not isinstance(value, list):
         raise ValueError("expected a list of UUID values")
     return [str(uuid.UUID(str(item))) for item in value if item]
+
+
+
+def _safe_location_digipin(latitude, longitude) -> dict | None:
+    if latitude is None or longitude is None:
+        return None
+    try:
+        return generate_location_digipin(latitude, longitude)
+    except ValueError:
+        return None
+
+
+def _apply_farmer_home_digipin(farmer: Farmer) -> None:
+    payload = _safe_location_digipin(farmer.enrollment_gps_lat, farmer.enrollment_gps_lng)
+    if payload:
+        farmer.home_digipin = payload["digipin"]
+        farmer.home_digipin_algorithm_version = payload.get("algorithm_version") or DIGIPIN_ALGORITHM_VERSION
+        farmer.home_digipin_generated_at = datetime.now(timezone.utc)
+    else:
+        farmer.home_digipin = None
+        farmer.home_digipin_algorithm_version = None
+        farmer.home_digipin_generated_at = None
+
+
+def _apply_parcel_centroid_digipin(parcel: Parcel) -> None:
+    payload = _safe_location_digipin(parcel.centroid_lat, parcel.centroid_lng)
+    if payload:
+        parcel.centroid_digipin = payload["digipin"]
+        parcel.centroid_digipin_algorithm_version = payload.get("algorithm_version") or DIGIPIN_ALGORITHM_VERSION
+        parcel.centroid_digipin_generated_at = datetime.now(timezone.utc)
+    else:
+        parcel.centroid_digipin = None
+        parcel.centroid_digipin_algorithm_version = None
+        parcel.centroid_digipin_generated_at = None
 
 
 def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
@@ -138,6 +173,7 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
             value = _decimal_or_none(value)
         setattr(farmer, attr, value)
 
+    _apply_farmer_home_digipin(farmer)
     farmer.enrolled_by = _uuid_or_none(payload.get("enrolled_by") or payload.get("enrolledBy")) or _uuid_or_none(actor_id)
     farmer.updated_at = datetime.now(timezone.utc)
 
@@ -219,6 +255,7 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
             value = int(value)
         setattr(parcel, attr, value)
 
+    _apply_parcel_centroid_digipin(parcel)
     parcel.updated_at = datetime.now(timezone.utc)
 
 
@@ -358,6 +395,7 @@ def _materialize_parcel_geometry_event(db: Session, tenant_id: str, actor_id: st
             {"parcel_id": str(parcel_id), "tenant_id": tenant_id},
         )
 
+    _apply_parcel_centroid_digipin(parcel)
     parcel.updated_at = datetime.now(timezone.utc)
 
 
