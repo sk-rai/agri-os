@@ -26,6 +26,12 @@ from app.modules.workflow.template_service import (
     workflow_version_to_stage_definitions,
     workflow_version_to_stage_definitions_for_scope,
 )
+from app.modules.workflow.finance_summary import (
+    DEFAULT_FINANCE_REPORT_CONFIG,
+    build_profit_loss_summary,
+    build_stage_cost_summary,
+    validate_finance_report_config,
+)
 from app.modules.master_data.models import AgriculturalProduct, AgriculturalProductPackage, Crop, CropLifecycleTemplate, CropStageInputRule, ProjectProductApproval
 from app.modules.master_data.input_assignment_service import (
     allowed_input_codes_for_project_crop,
@@ -1099,6 +1105,39 @@ def get_recommended_activities(
         "suppressed_recommendation_count": suppressed_recommendation_count,
         "recommendations": recommendations,
     }
+
+
+@router.get("/finance/report-config")
+def get_finance_report_config():
+    """Return default backend-owned farmer finance config and validation."""
+    return {
+        "config": DEFAULT_FINANCE_REPORT_CONFIG,
+        "validation": validate_finance_report_config(DEFAULT_FINANCE_REPORT_CONFIG),
+    }
+
+
+@router.get("/{cycle_id}/stage-cost-summary")
+def get_crop_cycle_stage_cost_summary(
+    cycle_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return Android-safe stage-wise expense and natural/context event summary."""
+    return build_stage_cost_summary(db, tenant_id=x_tenant_id, cycle_id=cycle_id)
+
+
+@router.get("/{cycle_id}/profit-loss-summary")
+def get_crop_cycle_profit_loss_summary(
+    cycle_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Return Android-safe fixed-formula P&L summary.
+
+    The formula is always income minus expenses. Admin configuration controls
+    category mappings and display, not arbitrary math execution.
+    """
+    return build_profit_loss_summary(db, tenant_id=x_tenant_id, cycle_id=cycle_id)
 
 
 @router.get("/{cycle_id}")
