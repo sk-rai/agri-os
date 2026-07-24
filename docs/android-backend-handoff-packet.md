@@ -1,10 +1,10 @@
 # Android Backend Handoff Packet
 
-Status date: 2026-07-20
+Status date: 2026-07-24
 
-Current backend readiness estimate for Android MVP handoff: about 94%.
+Current backend readiness estimate for Android MVP handoff: backend/admin smoke and Android backend regressions are green for the validated MVP contracts.
 
-This packet is not the signal to begin Android rewiring. It is the backend closeout map that will become the Android integration guide after backend testing, provider-worker stubs, permission review, and final regression are complete.
+This packet is now the backend closeout map for Android integration planning. The generated sample payload bundle is available under docs/samples/android/.
 
 ## Handoff principle
 
@@ -95,7 +95,6 @@ Important endpoints:
 
 Backend still needs:
 
-- final payload examples captured from regression database;
 - tenant/project permission review;
 - final sync/offline replay order review with Android team.
 
