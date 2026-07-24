@@ -2,7 +2,7 @@
   "filters": {
     "farmer_id": null,
     "limit": 50,
-    "parcel_id": "d0c9d0e2-5168-4834-a6c6-460c5ac357cd",
+    "parcel_id": "a61e36b3-0df2-4b74-a408-1563e31a3039",
     "provider": null,
     "snapshot_type": null
   },
@@ -18,5 +18,5 @@
   "snapshot_count": 0,
   "snapshot_type_counts": {},
   "status_counts": {},
-  "tenant_id": "android-sample-c1c97a55"
+  "tenant_id": "android-sample-2bd89e03"
 }

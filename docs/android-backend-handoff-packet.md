@@ -267,7 +267,9 @@ Current bundle:
 - `19-broadcast-ack-response.json`
 - `20-crop-template-rice.json`
 - `21-enabled-crop-workflows.json`
-- `22-sync-dependency-error.json`
+- `22-stage-cost-summary.json`
+- `23-profit-loss-summary.json`
+- `24-sync-dependency-error.json`
 
 ### E. Android rollout order
 

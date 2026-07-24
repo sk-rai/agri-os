@@ -23,8 +23,10 @@ from app.main import app
 from app.modules.auth.models import AgentProfile, User
 from app.modules.auth.service import create_jwt
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
-from app.modules.media.models import BroadcastAudienceRule, BroadcastAuditEvent, BroadcastCampaign, BroadcastContent, BroadcastDelivery, WeatherProviderConfig, WeatherSnapshot
+from app.modules.media.models import BroadcastAudienceRule, BroadcastAuditEvent, BroadcastCampaign, BroadcastContent, BroadcastDelivery, FieldEventReport, WeatherProviderConfig, WeatherSnapshot
 from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot, SoilProfile
+from app.modules.master_data.models import CropLifecycleTemplate
+from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -80,6 +82,9 @@ def main() -> int:
     weather_provider_id = uuid.uuid4()
     campaign_id = uuid.uuid4()
     delivery_id = uuid.uuid4()
+    crop_cycle_id = uuid.uuid4()
+    stage_sowing_id = uuid.uuid4()
+    stage_vegetative_id = uuid.uuid4()
 
     db = SessionLocal()
     try:
@@ -107,7 +112,7 @@ def main() -> int:
             created_at=now_ts,
             updated_at=now_ts,
         ))
-        sample_user = User(id=user_id, mobile_number='+919811111111', role='FARMER', tenant_id=tenant_id, display_name='Android Sample User', language_preference='hi', created_at=now_ts, updated_at=now_ts)
+        sample_user = User(id=user_id, mobile_number=f'+9198{uuid.uuid4().int % 100000000:08d}', role='FARMER', tenant_id=tenant_id, display_name='Android Sample User', language_preference='hi', created_at=now_ts, updated_at=now_ts)
         db.add(sample_user)
         db.commit()
 
@@ -190,6 +195,108 @@ def main() -> int:
         db.add(BroadcastDelivery(id=delivery_id, tenant_id=tenant_id, campaign_id=campaign_id, farmer_id=farmer_id, user_id=user_id, delivery_status='PENDING', metadata_={}, created_at=now_ts, updated_at=now_ts))
         db.commit()
 
+        lifecycle_template = db.query(CropLifecycleTemplate).filter(CropLifecycleTemplate.code == 'RICE_KHARIF').first()
+        if not lifecycle_template:
+            lifecycle_template = db.query(CropLifecycleTemplate).filter(CropLifecycleTemplate.season_code == 'KHARIF').first()
+        if not lifecycle_template:
+            raise SystemExit('No lifecycle template available for Android finance sample capture')
+
+        db.add(CropCycle(
+            id=crop_cycle_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            project_id=project_id,
+            crop_code='RICE',
+            season_code='KHARIF',
+            lifecycle_template_id=lifecycle_template.id,
+            planned_sowing_date=date.today(),
+            status='ACTIVE',
+            total_revenue='28000.00',
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        db.add(CropStageInstance(
+            id=stage_sowing_id,
+            crop_cycle_id=crop_cycle_id,
+            tenant_id=tenant_id,
+            stage_code='SOWING',
+            stage_name='Sowing',
+            stage_order=1,
+            expected_duration_days=15,
+            status='COMPLETED',
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        db.add(CropStageInstance(
+            id=stage_vegetative_id,
+            crop_cycle_id=crop_cycle_id,
+            tenant_id=tenant_id,
+            stage_code='VEGETATIVE',
+            stage_name='Vegetative growth',
+            stage_order=2,
+            expected_duration_days=35,
+            status='ACTIVE',
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        db.add(CropActivity(
+            id=uuid.uuid4(),
+            crop_cycle_id=crop_cycle_id,
+            stage_instance_id=stage_sowing_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            activity_type='SEED',
+            input_name='Paddy seed',
+            quantity='25',
+            quantity_unit='KG',
+            cost_amount='1800.00',
+            cost_currency='INR',
+            activity_date=date.today(),
+            logged_by=actor_id,
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        db.add(CropActivity(
+            id=uuid.uuid4(),
+            crop_cycle_id=crop_cycle_id,
+            stage_instance_id=stage_vegetative_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            activity_type='FERTILIZER',
+            input_name='Urea top dressing',
+            quantity='35',
+            quantity_unit='KG',
+            cost_amount='750.00',
+            cost_currency='INR',
+            activity_date=date.today(),
+            logged_by=actor_id,
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        db.commit()
+
+        db.add(FieldEventReport(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            project_id=project_id,
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            crop_cycle_id=crop_cycle_id,
+            stage_code='VEGETATIVE',
+            event_type='RAIN',
+            severity='MEDIUM',
+            event_date=now_ts,
+            reported_at=now_ts,
+            description='Useful rainfall captured during vegetative stage.',
+            source='FIELD_AGENT_ANDROID',
+            status='REPORTED',
+            metadata_={'capture': 'android_sample_payloads'},
+            created_at=now_ts,
+            updated_at=now_ts,
+        ))
+        db.commit()
+
         readiness = assert_ok('profile readiness', client.get(f'/api/v1/farmers/profile-readiness?status=ACTIVE&limit=5&project_id={project_id}', headers=headers))
         write_json('12-profile-readiness.json', redact(readiness))
 
@@ -220,8 +327,14 @@ def main() -> int:
         enabled_workflows = assert_ok('enabled crop workflows', client.get(f'/api/v1/workflow-catalog/enabled-crop-workflows?project_id={project_id}', headers=headers))
         write_json('21-enabled-crop-workflows.json', redact(enabled_workflows))
 
+        stage_cost_summary = assert_ok('stage cost summary', client.get(f'/api/v1/crop-cycles/{crop_cycle_id}/stage-cost-summary', headers=headers))
+        write_json('22-stage-cost-summary.json', redact(stage_cost_summary))
+
+        profit_loss_summary = assert_ok('profit loss summary', client.get(f'/api/v1/crop-cycles/{crop_cycle_id}/profit-loss-summary', headers=headers))
+        write_json('23-profit-loss-summary.json', redact(profit_loss_summary))
+
         sync_error = assert_ok('sync dependency error sample', client.post('/api/v1/sync/events', headers=headers, json={'events': [{'event_id': str(uuid.uuid4()), 'entity_type': 'parcel', 'operation': 'CREATE', 'payload': {'area': 1.0, 'farmer_id': str(farmer_id)}, 'version': 1, 'dependency_ids': [str(uuid.uuid4())]}]}))
-        write_json('22-sync-dependency-error.json', redact(sync_error))
+        write_json('24-sync-dependency-error.json', redact(sync_error))
 
         readme = OUT / 'README.md'
         readme.write_text('\n'.join([
@@ -240,12 +353,17 @@ def main() -> int:
         print(f'wrote {readme.relative_to(ROOT)}')
 
     finally:
+        db.rollback()
         db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(FieldEventReport).filter(FieldEventReport.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropActivity).filter(CropActivity.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropStageInstance).filter(CropStageInstance.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)

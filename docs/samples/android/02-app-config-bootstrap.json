@@ -89,7 +89,7 @@
       "version": "1.0.0"
     }
   ],
-  "generated_at": "2026-07-24T05:42:55.198469+00:00",
+  "generated_at": "2026-07-24T12:14:11.249767+00:00",
   "localization": {
     "country_code": "IN",
     "default_language": "en",
@@ -144,7 +144,7 @@
         "Android Sample Village"
       ]
     },
-    "id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+    "id": "92cb64b5-42fa-4998-a2c4-aa3d097983c0",
     "name": "Android Sample Project",
     "start_date": "2026-07-24",
     "status": "ACTIVE"
@@ -161,7 +161,7 @@
   },
   "tenant": {
     "exists": true,
-    "id": "android-sample-c1c97a55",
+    "id": "android-sample-2bd89e03",
     "name": "Android Sample Tenant",
     "type": "ENTERPRISE"
   },

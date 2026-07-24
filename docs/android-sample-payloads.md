@@ -11,7 +11,7 @@ cd ~/projects/farmint/backend
 ../venv/bin/python scripts/capture_android_sample_payloads.py
 ```
 
-The current bundle contains 22 redacted JSON samples covering mode bootstrap, app config, profile forms/options, farmer/parcel/soil writes, profile readiness, weather, broadcasts, crop workflows, and sync error handling.
+The current bundle contains 24 redacted JSON samples covering mode bootstrap, app config, profile forms/options, farmer/parcel/soil writes, profile readiness, weather, broadcasts, crop workflows, and sync error handling.
 
 ## Integration order
 
@@ -49,7 +49,9 @@ The current bundle contains 22 redacted JSON samples covering mode bootstrap, ap
 | `19-broadcast-ack-response.json` | Update local state after acknowledgement action. |
 | `20-crop-template-rice.json` | Render crop-cycle template/stages for rice. |
 | `21-enabled-crop-workflows.json` | Choose project-enabled workflow templates. |
-| `22-sync-dependency-error.json` | Handle batch-resilient offline sync dependency failure. |
+| `22-stage-cost-summary.json` | Render backend-computed stage expense, activity, and context-event summary. |
+| `23-profit-loss-summary.json` | Render fixed-formula income minus expenses P&L summary. |
+| `24-sync-dependency-error.json` | Handle batch-resilient offline sync dependency failure. |
 
 ## 1. Mode bootstrap
 

@@ -1,0 +1,91 @@
+{
+  "crop_code": "RICE",
+  "currency": "INR",
+  "cycle_id": "7f285fe8-eea6-4521-8fc9-2386b52089af",
+  "expense_breakup": [
+    {
+      "amount": "750.00",
+      "expense_category": "FERTILIZER"
+    },
+    {
+      "amount": "1800.00",
+      "expense_category": "SEED"
+    }
+  ],
+  "farmer_id": "3bc28e71-be1e-40d9-80e7-b332aa2263e3",
+  "fixed_formula": "profit_or_loss = total_income - total_expenses",
+  "income_breakup": [
+    {
+      "amount": "28000.00",
+      "income_category": "HARVEST_SALE",
+      "source": "crop_cycles.total_revenue"
+    }
+  ],
+  "parcel_id": "a61e36b3-0df2-4b74-a408-1563e31a3039",
+  "per_acre": null,
+  "report_config": {
+    "display": {
+      "show_activity_breakup": true,
+      "show_activity_rows": true,
+      "show_context_events": true,
+      "show_expense_breakup": true,
+      "show_income_breakup": true,
+      "show_per_acre_values": true,
+      "show_planned_cost": true,
+      "show_variance": true
+    },
+    "schema_version": "farmer_finance_report_config.v1",
+    "status": "PUBLISHED_DEFAULT",
+    "validation": {
+      "allowed_context_event_categories": [
+        "COLD_STRESS",
+        "DISEASE",
+        "DROUGHT_STRESS",
+        "FLOOD",
+        "HAILSTORM",
+        "HEAT_STRESS",
+        "IRRIGATION_FAILURE",
+        "LOCUST",
+        "OTHER",
+        "PEST",
+        "RAIN",
+        "THUNDERSTORM_WIND"
+      ],
+      "allowed_expense_categories": [
+        "FERTILIZER",
+        "IRRIGATION",
+        "LABOR",
+        "MACHINERY",
+        "OTHER_EXPENSE",
+        "PESTICIDE",
+        "RENT",
+        "SEED",
+        "TRANSPORT"
+      ],
+      "allowed_income_categories": [
+        "CROP_INSURANCE_PAYOUT",
+        "GOVERNMENT_INCENTIVE",
+        "HARVEST_SALE",
+        "OTHER_INCOME"
+      ],
+      "errors": [],
+      "fixed_formula": "profit_or_loss = total_income - total_expenses",
+      "schema_version": "farmer_finance_report_config_validation.v1",
+      "valid": true,
+      "warnings": []
+    }
+  },
+  "schema_version": "crop_cycle_profit_loss_summary.v1",
+  "season_code": "KHARIF",
+  "tenant_id": "android-sample-2bd89e03",
+  "totals": {
+    "expense_variance_amount": "2550.00",
+    "planned_expense": "0.00",
+    "profit_or_loss": "25450.00",
+    "total_expenses": "2550.00",
+    "total_income": "28000.00"
+  },
+  "warnings": [
+    "Normalized parcel area is unavailable; per-acre P&L values are omitted."
+  ]
+}

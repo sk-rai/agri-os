@@ -464,7 +464,7 @@
       "soil_type_code": "soil_profile.soil_type_code"
     }
   },
-  "project_id": "6975a67e-e753-4e2d-a402-ab24664567f3",
+  "project_id": "92cb64b5-42fa-4998-a2c4-aa3d097983c0",
   "required_by_form": {
     "farmer_registration": [
       "mobile_number",
@@ -483,5 +483,5 @@
     ]
   },
   "schema_version": "profile_contract.v1",
-  "tenant_id": "android-sample-c1c97a55"
+  "tenant_id": "android-sample-2bd89e03"
 }

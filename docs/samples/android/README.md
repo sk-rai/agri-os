@@ -34,4 +34,6 @@ cd ~/projects/farmint/backend
 19. `19-broadcast-ack-response.json` - broadcast delivery acknowledgement action.
 20. `20-crop-template-rice.json` - rice crop-cycle template.
 21. `21-enabled-crop-workflows.json` - enabled workflow catalog for project context.
-22. `22-sync-dependency-error.json` - offline sync dependency failure example.
+22. `22-stage-cost-summary.json` - backend-computed stage expense/activity/context-event summary.
+23. `23-profit-loss-summary.json` - fixed-formula income minus expenses P&L summary.
+24. `24-sync-dependency-error.json` - offline sync dependency failure example.
