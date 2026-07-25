@@ -60,6 +60,12 @@ Expand current one-state geography coverage to all-India while keeping LGD canon
 3. Census enriches aliases, census location codes, population/demographic indicators, and business-opportunity analytics.
 4. Census-only settlements should be represented as reference/enrichment/locality candidates, not as LGD-canonical villages unless reconciled to LGD.
 
+## Analytics-ready modularity
+
+The first DB apply should separate canonical LGD hierarchy, postal/PIN references, village-PIN links, DigiPin coordinate precision, and future Census enrichment. This lets backend analytics later combine farmer/parcel/crop activity with PIN clusters and Census population/amenity indicators without making Census or postal data overwrite LGD identity.
+
+See `docs/geography-enrichment-analytics-model.md`.
+
 ## Delete/expiry rule
 
 No geography import should physically delete rows in normal operation. Missing records should be expired or archived with source metadata so historical crop cycles, farmers, parcels, audits, and reports remain explainable.

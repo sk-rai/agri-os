@@ -122,6 +122,12 @@ Next-phase India/global model should add generic entities:
 - Census enrichment may be attached as reference metadata but cannot override LGD canonical identity.
 - PIN-code refresh should reconcile candidates rather than blindly replacing village identity.
 
+## Census and analytics enrichment checkpoint
+
+Census should remain a separate enrichment layer for aliases, demographic indicators, household/amenity indicators, and business-opportunity analytics. The LGD/PIN DB apply should therefore add modular postal reference and village-PIN link structures now, while keeping Census crosswalk and indicator tables separate for Census 2026 or any curated Census 2011 import.
+
+See `docs/geography-enrichment-analytics-model.md`.
+
 ## Immediate next implementation
 
 1. Create OGD API-key setup notes.
