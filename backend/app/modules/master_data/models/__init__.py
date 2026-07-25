@@ -1,8 +1,11 @@
-﻿from app.modules.master_data.models.geography import (
+from app.modules.master_data.models.geography import (
     GeographyState,
     GeographyDistrict,
     GeographyBlock,
     GeographyVillage,
+    GeographyImportBatch,
+    GeographyPostalReference,
+    GeographyVillagePinLink,
 )
 from app.modules.master_data.models.soil import SoilType
 from app.modules.master_data.models.season import Season
@@ -42,6 +45,9 @@ __all__ = [
     "GeographyDistrict",
     "GeographyBlock",
     "GeographyVillage",
+    "GeographyImportBatch",
+    "GeographyPostalReference",
+    "GeographyVillagePinLink",
     "SoilType",
     "Season",
     "CropCategory",

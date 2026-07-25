@@ -5,7 +5,7 @@ Data source: Local Government Directory (LGD) India.
 Pilot state: Uttar Pradesh.
 """
 
-from sqlalchemy import Column, String, ForeignKey, Index, DECIMAL
+from sqlalchemy import Column, String, ForeignKey, Index, DECIMAL, DateTime, Text, CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
 
@@ -71,6 +71,7 @@ class GeographyBlock(Base, UUIDPrimaryKey, AuditMixin):
 
     __table_args__ = (
         Index("idx_block_district", "district_id"),
+        UniqueConstraint("district_id", "lgd_code", name="uq_geography_blocks_district_lgd"),
     )
 
 
@@ -102,6 +103,7 @@ class GeographyVillage(Base, UUIDPrimaryKey, AuditMixin):
     block = relationship("GeographyBlock", back_populates="villages")
 
     __table_args__ = (
+        UniqueConstraint("block_id", "lgd_code", name="uq_geography_villages_block_lgd"),
         Index("idx_village_block", "block_id"),
         Index("idx_village_district", "district_id"),
         Index("idx_village_pin", "pin_codes", postgresql_using="gin"),
@@ -112,3 +114,90 @@ class GeographyVillage(Base, UUIDPrimaryKey, AuditMixin):
             postgresql_ops={"canonical_name": "gin_trgm_ops"},
         ),
     )
+
+class GeographyImportBatch(Base, UUIDPrimaryKey, AuditMixin):
+    """Source snapshot/import provenance for LGD, postal, and future Census geography feeds."""
+
+    __tablename__ = "geography_import_batches"
+
+    source_system = Column(String(80), nullable=False, index=True)
+    source_resource_id = Column(String(120))
+    source_label = Column(String(255))
+    source_url = Column(Text)
+    license = Column(String(255))
+    raw_manifest_path = Column(Text)
+    validation_report_path = Column(Text)
+    refresh_mode = Column(String(40), default="INITIAL_FULL_LOAD", nullable=False)
+    status = Column(String(40), default="DRAFT", nullable=False, index=True)
+    snapshot_status = Column(String(60))
+    retrieved_at = Column(DateTime(timezone=True))
+    validated_at = Column(DateTime(timezone=True))
+    applied_at = Column(DateTime(timezone=True))
+    actor_id = Column(String(80))
+    reason = Column(Text)
+    row_counts = Column(JSONB, default=dict, nullable=False)
+    checksums = Column(JSONB, default=dict, nullable=False)
+    validation_summary = Column(JSONB, default=dict, nullable=False)
+    diff_summary = Column(JSONB, default=dict, nullable=False)
+
+
+class GeographyPostalReference(Base, UUIDPrimaryKey, AuditMixin):
+    """India Post/OGD postal reference row keyed by PIN and post office context."""
+
+    __tablename__ = "geography_postal_references"
+
+    import_batch_id = Column(UUID(as_uuid=True), ForeignKey("geography_import_batches.id"))
+    pin_code = Column(String(6), nullable=False, index=True)
+    office_name = Column(String(180), nullable=False)
+    office_type = Column(String(40))
+    delivery_status = Column(String(40))
+    circle_name = Column(String(120))
+    region_name = Column(String(120))
+    division_name = Column(String(120))
+    postal_district_name = Column(String(120))
+    postal_state_name = Column(String(120), index=True)
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
+    source_system = Column(String(80), default="OGD_ALL_INDIA_PINCODE_DIRECTORY", nullable=False)
+    source_row_hash = Column(String(64))
+    first_seen_at = Column(DateTime(timezone=True))
+    last_seen_at = Column(DateTime(timezone=True))
+    expired_at = Column(DateTime(timezone=True))
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("pin_code ~ '^[1-9][0-9]{5}$'", name="ck_geography_postal_references_pin"),
+        UniqueConstraint("pin_code", "office_name", "office_type", "postal_state_name", "postal_district_name", name="uq_geography_postal_references_pin_office"),
+    )
+
+
+class GeographyVillagePinLink(Base, UUIDPrimaryKey, AuditMixin):
+    """Many-to-many LGD village to PIN link from OGD LGD villages-with-PIN resource."""
+
+    __tablename__ = "geography_village_pin_links"
+
+    import_batch_id = Column(UUID(as_uuid=True), ForeignKey("geography_import_batches.id"))
+    geography_village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"), index=True)
+    pin_code = Column(String(6), nullable=False, index=True)
+    state_lgd_code = Column(String(20), nullable=False)
+    state_name = Column(String(120))
+    district_lgd_code = Column(String(20), nullable=False)
+    district_name = Column(String(120))
+    subdistrict_lgd_code = Column(String(20), nullable=False)
+    subdistrict_name = Column(String(120))
+    village_lgd_code = Column(String(30), nullable=False)
+    village_name = Column(String(180))
+    source_system = Column(String(80), default="OGD_LGD_VILLAGES_PIN_CODES", nullable=False)
+    source_row_hash = Column(String(64))
+    match_status = Column(String(40), default="UNMATCHED", nullable=False)
+    first_seen_at = Column(DateTime(timezone=True))
+    last_seen_at = Column(DateTime(timezone=True))
+    expired_at = Column(DateTime(timezone=True))
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("pin_code ~ '^[1-9][0-9]{5}$'", name="ck_geography_village_pin_links_pin"),
+        UniqueConstraint("state_lgd_code", "district_lgd_code", "subdistrict_lgd_code", "village_lgd_code", "pin_code", name="uq_geography_village_pin_links_context_pin"),
+        Index("idx_geography_village_pin_links_lgd_context", "state_lgd_code", "district_lgd_code", "subdistrict_lgd_code", "village_lgd_code"),
+    )
+
