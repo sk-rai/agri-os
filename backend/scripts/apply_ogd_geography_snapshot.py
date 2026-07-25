@@ -85,6 +85,15 @@ def decimal_or_none(value: Any):
         return None
 
 
+
+def bounded_decimal_or_none(value: Any, *, min_value: str, max_value: str):
+    parsed = decimal_or_none(value)
+    if parsed is None:
+        return None
+    if parsed < Decimal(min_value) or parsed > Decimal(max_value):
+        return None
+    return parsed
+
 def normalize_name_for_search(name: str) -> str:
     return " ".join(clean(name).lower().replace("-", " ").split())
 
@@ -252,6 +261,12 @@ def load_inputs(staged_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, 
     return lgd, postal, {"validation": validation, "lgd_dedupe": lgd_dedupe, "postal_dedupe": postal_dedupe}
 
 
+class IdRef:
+    def __init__(self, id, pin_codes=None):
+        self.id = id
+        self.pin_codes = pin_codes or []
+
+
 def existing_context_maps(db):
     states = {str(row.lgd_code): row for row in db.query(GeographyState).all()}
     districts = {str(row.lgd_code): row for row in db.query(GeographyDistrict).all()}
@@ -261,13 +276,19 @@ def existing_context_maps(db):
         blocks[(str(district.lgd_code), str(block.lgd_code))] = block
 
     villages = {}
-    for village, block, district in (
-        db.query(GeographyVillage, GeographyBlock, GeographyDistrict)
-        .join(GeographyBlock, GeographyBlock.id == GeographyVillage.block_id)
-        .join(GeographyDistrict, GeographyDistrict.id == GeographyVillage.district_id)
-        .all()
-    ):
-        villages[(str(district.lgd_code), str(block.lgd_code), str(village.lgd_code))] = village
+    rows = db.execute(text("""
+        select
+            gd.lgd_code as district_lgd_code,
+            gb.lgd_code as block_lgd_code,
+            gv.lgd_code as village_lgd_code,
+            gv.id as village_id,
+            gv.pin_codes as pin_codes
+        from geography_villages gv
+        join geography_blocks gb on gb.id = gv.block_id
+        join geography_districts gd on gd.id = gv.district_id
+    """)).mappings().all()
+    for row in rows:
+        villages[(str(row["district_lgd_code"]), str(row["block_lgd_code"]), str(row["village_lgd_code"]))] = IdRef(row["village_id"], row["pin_codes"] or [])
 
     return states, districts, blocks, villages
 
@@ -498,9 +519,8 @@ def ensure_hierarchy(db, *, lgd_rows: list[dict[str, Any]], batch_id, counters: 
         key = (district_code, block_code, village_code)
         if key in villages:
             village = villages[key]
-            if village_name and normalize_name_for_search(village_name) != normalize_name_for_search(village.canonical_name):
-                if add_alias(village, village_name, source_system=PIN_SOURCE_LGD, field="villageNameEnglish"):
-                    counters["village_aliases_added"] += 1
+            # Existing village refs may be lightweight during all-India load.
+            # Name variants are already reported during dedupe; skip alias mutation here.
             continue
         block = blocks[(district_code, block_code)]
         district = districts[district_code]
@@ -522,94 +542,25 @@ def ensure_hierarchy(db, *, lgd_rows: list[dict[str, Any]], batch_id, counters: 
             "version": "v1.0",
             "is_active": True,
         })
-        villages[key] = type("VillageRef", (), {"id": village_id, "pin_codes": []})()
+        villages[key] = IdRef(village_id, [])
 
     counters["villages_created"] = bulk_insert_rows(db, "geography_villages", village_insert_rows, chunk_size=10000)
     db.commit()
     print_progress(f"hierarchy: villages complete created={counters['villages_created']} aliases={counters['village_aliases_added']}")
 
-    # Reload villages as ORM rows/ids after bulk insert.
-    _, _, blocks, villages = existing_context_maps(db)
     return {"states": states, "districts": districts, "blocks": blocks, "villages": villages}
 
 
-def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[dict[str, Any]], refresh_mode: str, expire_missing: bool) -> dict[str, Any]:
+def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[dict[str, Any]], refresh_mode: str, expire_missing: bool, skip_hierarchy: bool = False) -> dict[str, Any]:
     timestamp = now()
     counters = Counter()
-    maps = ensure_hierarchy(db, lgd_rows=lgd_rows, batch_id=batch.id, counters=counters)
+    if skip_hierarchy:
+        print_progress("hierarchy: skipped by --skip-hierarchy; loading lightweight context maps")
+        states, districts, blocks, villages = existing_context_maps(db)
+        maps = {"states": states, "districts": districts, "blocks": blocks, "villages": villages}
+    else:
+        maps = ensure_hierarchy(db, lgd_rows=lgd_rows, batch_id=batch.id, counters=counters)
     villages = maps["villages"]
-
-    for row in lgd_rows:
-        state_code = clean(row.get("state_lgd_code"))
-        state_name = clean(row.get("state_name"))
-        district_code = clean(row.get("district_lgd_code"))
-        district_name = clean(row.get("district_name"))
-        block_code = clean(row.get("subdistrict_lgd_code"))
-        block_name = clean(row.get("subdistrict_name"))
-        village_code = clean(row.get("village_lgd_code"))
-        village_name = clean(row.get("village_name"))
-
-        state = states.get(state_code)
-        if not state:
-            state = GeographyState(id=uuid.uuid4(), lgd_code=state_code, canonical_name=state_name, aliases=[], created_at=timestamp, updated_at=timestamp)
-            db.add(state)
-            db.flush()
-            states[state_code] = state
-            counters["states_created"] += 1
-        else:
-            if state_name and normalize_name_for_search(state_name) != normalize_name_for_search(state.canonical_name):
-                if add_alias(state, state_name, source_system=PIN_SOURCE_LGD, field="stateNameEnglish"):
-                    counters["state_aliases_added"] += 1
-
-        district = districts.get(district_code)
-        if not district:
-            district = GeographyDistrict(id=uuid.uuid4(), lgd_code=district_code, state_id=state.id, canonical_name=district_name, census_name=None, aliases=[], created_at=timestamp, updated_at=timestamp)
-            db.add(district)
-            db.flush()
-            districts[district_code] = district
-            counters["districts_created"] += 1
-        else:
-            if district_name and normalize_name_for_search(district_name) != normalize_name_for_search(district.canonical_name):
-                if add_alias(district, district_name, source_system=PIN_SOURCE_LGD, field="districtNameEnglish"):
-                    counters["district_aliases_added"] += 1
-
-        block_key = (district_code, block_code)
-        block = blocks.get(block_key)
-        if not block:
-            block = GeographyBlock(id=uuid.uuid4(), lgd_code=block_code, district_id=district.id, canonical_name=block_name, aliases=[], created_at=timestamp, updated_at=timestamp)
-            db.add(block)
-            db.flush()
-            blocks[block_key] = block
-            counters["blocks_created"] += 1
-        else:
-            if block_name and normalize_name_for_search(block_name) != normalize_name_for_search(block.canonical_name):
-                if add_alias(block, block_name, source_system=PIN_SOURCE_LGD, field="subdistrictNameEnglish"):
-                    counters["block_aliases_added"] += 1
-
-        village_key = (district_code, block_code, village_code)
-        village = villages.get(village_key)
-        if not village:
-            village = GeographyVillage(
-                id=uuid.uuid4(),
-                lgd_code=village_code,
-                block_id=block.id,
-                district_id=district.id,
-                canonical_name=village_name,
-                census_name=None,
-                census_village_code=None,
-                pin_codes=[],
-                aliases=[],
-                created_at=timestamp,
-                updated_at=timestamp,
-            )
-            db.add(village)
-            db.flush()
-            villages[village_key] = village
-            counters["villages_created"] += 1
-        else:
-            if village_name and normalize_name_for_search(village_name) != normalize_name_for_search(village.canonical_name):
-                if add_alias(village, village_name, source_system=PIN_SOURCE_LGD, field="villageNameEnglish"):
-                    counters["village_aliases_added"] += 1
 
     postal_seen = set()
     db_postal_keys = {
@@ -642,8 +593,8 @@ def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[d
             "division_name": clean(row.get("division_name")),
             "postal_district_name": clean(row.get("postal_district_name")),
             "postal_state_name": clean(row.get("postal_state_name")),
-            "latitude": decimal_or_none(row.get("latitude")),
-            "longitude": decimal_or_none(row.get("longitude")),
+            "latitude": bounded_decimal_or_none(row.get("latitude"), min_value="-90", max_value="90"),
+            "longitude": bounded_decimal_or_none(row.get("longitude"), min_value="-180", max_value="180"),
             "source_system": PIN_SOURCE_POSTAL,
             "source_row_hash": sha256_obj(row.get("source_row") or row),
             "first_seen_at": timestamp,
@@ -784,6 +735,7 @@ def main() -> int:
     parser.add_argument("--refresh-mode", default="INITIAL_FULL_LOAD", choices=sorted(VALID_REFRESH_MODES))
     parser.add_argument("--apply", action="store_true", help="Write DB changes. Default is dry-run.")
     parser.add_argument("--expire-missing", action="store_true", help="Mark source-missing postal/link rows inactive. Only allowed with ANNUAL_FULL_REFRESH and --apply.")
+    parser.add_argument("--skip-hierarchy", action="store_true", help="Resume postal/link apply after LGD hierarchy is already loaded.")
     parser.add_argument("--actor-id")
     parser.add_argument("--reason")
     args = parser.parse_args()
@@ -827,6 +779,7 @@ def main() -> int:
                 postal_rows=postal_rows,
                 refresh_mode=args.refresh_mode,
                 expire_missing=args.expire_missing,
+                skip_hierarchy=args.skip_hierarchy,
             )
             db.commit()
         else:
