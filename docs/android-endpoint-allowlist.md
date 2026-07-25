@@ -50,6 +50,13 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - `GET /api/v1/soil-profiles/enrichments/latest`
 - `GET /api/v1/soil-profiles/enrichments/summary`
 
+### Farmer economics summaries
+
+- `GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary`
+- `GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary`
+
+Android may render these backend-computed summaries. Android should not compute P&L, classify income/expense categories, or infer stage-level cost variance locally.
+
 ### Reference/catalog reads
 
 - geography reference reads required for forms/search;
@@ -110,7 +117,7 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - Run `backend/scripts/pre_android_handoff_check.py`.
 - Run web build.
 - Confirm this allowlist against Android API client interfaces.
-- Confirm `docs/samples/android/` contains the current 22-file redacted payload bundle.
+- Confirm `docs/samples/android/` contains the current 24-file redacted payload bundle.
 
 ## Location lookup requirement
 

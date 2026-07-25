@@ -50,7 +50,7 @@ def main() -> int:
     print('  cd ~/projects/farmint/web')
     print('  npm run build')
     print('')
-    print('If this script and web build pass, backend is ready for final sample payload packaging/review.')
+    print('If this script and web build pass, backend is ready for final Android handoff review after metadata/geography population.')
     return 0
 
 
