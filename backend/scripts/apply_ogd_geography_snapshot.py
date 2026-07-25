@@ -30,6 +30,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from sqlalchemy import text
+
 from app.core.database import SessionLocal
 from app.modules.master_data.models import (
     GeographyBlock,
@@ -395,10 +397,147 @@ def get_or_create_batch(db, *, staged_dir: Path, validation: dict[str, Any], ref
     return batch
 
 
+def print_progress(message: str) -> None:
+    print(f"[{datetime.now().isoformat(timespec='seconds')}] {message}", flush=True)
+
+
+def bulk_insert_rows(db, table_name: str, rows: list[dict[str, Any]], *, chunk_size: int = 5000) -> int:
+    if not rows:
+        return 0
+
+    columns = list(rows[0].keys())
+    col_sql = ", ".join(columns)
+    value_sql = ", ".join(f":{column}" for column in columns)
+    sql = text(f"insert into {table_name} ({col_sql}) values ({value_sql})")
+
+    inserted = 0
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start:start + chunk_size]
+        db.execute(sql, chunk)
+        inserted += len(chunk)
+        print_progress(f"{table_name}: inserted {inserted}/{len(rows)}")
+    return inserted
+
+
+def ensure_hierarchy(db, *, lgd_rows: list[dict[str, Any]], batch_id, counters: Counter) -> dict[str, dict]:
+    timestamp = now()
+    states, districts, blocks, villages = existing_context_maps(db)
+
+    state_rows = {}
+    district_rows = {}
+    block_rows = {}
+    village_rows = {}
+
+    for row in lgd_rows:
+        state_code = clean(row.get("state_lgd_code"))
+        district_code = clean(row.get("district_lgd_code"))
+        block_code = clean(row.get("subdistrict_lgd_code"))
+        village_code = clean(row.get("village_lgd_code"))
+
+        state_rows[state_code] = clean(row.get("state_name"))
+        district_rows[district_code] = (state_code, clean(row.get("district_name")))
+        block_rows[(district_code, block_code)] = clean(row.get("subdistrict_name"))
+        village_rows[(district_code, block_code, village_code)] = clean(row.get("village_name"))
+
+    print_progress(f"hierarchy: states staged={len(state_rows)} existing={len(states)}")
+    for state_code, state_name in sorted(state_rows.items()):
+        if state_code in states:
+            state = states[state_code]
+            if state_name and normalize_name_for_search(state_name) != normalize_name_for_search(state.canonical_name):
+                if add_alias(state, state_name, source_system=PIN_SOURCE_LGD, field="stateNameEnglish"):
+                    counters["state_aliases_added"] += 1
+            continue
+        state = GeographyState(id=uuid.uuid4(), lgd_code=state_code, canonical_name=state_name, aliases=[], created_at=timestamp, updated_at=timestamp)
+        db.add(state)
+        db.flush()
+        states[state_code] = state
+        counters["states_created"] += 1
+    db.commit()
+    print_progress(f"hierarchy: states complete created={counters['states_created']}")
+
+    print_progress(f"hierarchy: districts staged={len(district_rows)} existing={len(districts)}")
+    for district_code, (state_code, district_name) in sorted(district_rows.items()):
+        if district_code in districts:
+            district = districts[district_code]
+            if district_name and normalize_name_for_search(district_name) != normalize_name_for_search(district.canonical_name):
+                if add_alias(district, district_name, source_system=PIN_SOURCE_LGD, field="districtNameEnglish"):
+                    counters["district_aliases_added"] += 1
+            continue
+        state = states[state_code]
+        district = GeographyDistrict(id=uuid.uuid4(), lgd_code=district_code, state_id=state.id, canonical_name=district_name, census_name=None, aliases=[], created_at=timestamp, updated_at=timestamp)
+        db.add(district)
+        db.flush()
+        districts[district_code] = district
+        counters["districts_created"] += 1
+    db.commit()
+    print_progress(f"hierarchy: districts complete created={counters['districts_created']} aliases={counters['district_aliases_added']}")
+
+    print_progress(f"hierarchy: blocks staged={len(block_rows)} existing={len(blocks)}")
+    for (district_code, block_code), block_name in sorted(block_rows.items()):
+        key = (district_code, block_code)
+        if key in blocks:
+            block = blocks[key]
+            if block_name and normalize_name_for_search(block_name) != normalize_name_for_search(block.canonical_name):
+                if add_alias(block, block_name, source_system=PIN_SOURCE_LGD, field="subdistrictNameEnglish"):
+                    counters["block_aliases_added"] += 1
+            continue
+        district = districts[district_code]
+        block = GeographyBlock(id=uuid.uuid4(), lgd_code=block_code, district_id=district.id, canonical_name=block_name, aliases=[], created_at=timestamp, updated_at=timestamp)
+        db.add(block)
+        db.flush()
+        blocks[key] = block
+        counters["blocks_created"] += 1
+        if counters["blocks_created"] % 1000 == 0:
+            print_progress(f"hierarchy: blocks created {counters['blocks_created']}")
+    db.commit()
+    print_progress(f"hierarchy: blocks complete created={counters['blocks_created']} aliases={counters['block_aliases_added']}")
+
+    print_progress(f"hierarchy: villages staged={len(village_rows)} existing={len(villages)}")
+    village_insert_rows = []
+    for (district_code, block_code, village_code), village_name in sorted(village_rows.items()):
+        key = (district_code, block_code, village_code)
+        if key in villages:
+            village = villages[key]
+            if village_name and normalize_name_for_search(village_name) != normalize_name_for_search(village.canonical_name):
+                if add_alias(village, village_name, source_system=PIN_SOURCE_LGD, field="villageNameEnglish"):
+                    counters["village_aliases_added"] += 1
+            continue
+        block = blocks[(district_code, block_code)]
+        district = districts[district_code]
+        village_id = uuid.uuid4()
+        village_insert_rows.append({
+            "id": village_id,
+            "lgd_code": village_code,
+            "block_id": block.id,
+            "district_id": district.id,
+            "canonical_name": village_name,
+            "census_name": None,
+            "census_village_code": None,
+            "pin_codes": [],
+            "latitude": None,
+            "longitude": None,
+            "aliases": json.dumps([]),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "version": "v1.0",
+            "is_active": True,
+        })
+        villages[key] = type("VillageRef", (), {"id": village_id, "pin_codes": []})()
+
+    counters["villages_created"] = bulk_insert_rows(db, "geography_villages", village_insert_rows, chunk_size=10000)
+    db.commit()
+    print_progress(f"hierarchy: villages complete created={counters['villages_created']} aliases={counters['village_aliases_added']}")
+
+    # Reload villages as ORM rows/ids after bulk insert.
+    _, _, blocks, villages = existing_context_maps(db)
+    return {"states": states, "districts": districts, "blocks": blocks, "villages": villages}
+
+
 def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[dict[str, Any]], refresh_mode: str, expire_missing: bool) -> dict[str, Any]:
     timestamp = now()
     counters = Counter()
-    states, districts, blocks, villages = existing_context_maps(db)
+    maps = ensure_hierarchy(db, lgd_rows=lgd_rows, batch_id=batch.id, counters=counters)
+    villages = maps["villages"]
 
     for row in lgd_rows:
         state_code = clean(row.get("state_lgd_code"))
@@ -472,63 +611,69 @@ def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[d
                 if add_alias(village, village_name, source_system=PIN_SOURCE_LGD, field="villageNameEnglish"):
                     counters["village_aliases_added"] += 1
 
-    db.flush()
-
     postal_seen = set()
+    db_postal_keys = {
+        (
+            clean(row.pin_code),
+            clean(row.office_name).upper(),
+            clean(row.office_type).upper(),
+            clean(row.postal_state_name).upper(),
+            clean(row.postal_district_name).upper(),
+        )
+        for row in db.query(GeographyPostalReference).filter(GeographyPostalReference.is_active == True).all()
+    }
+
+    postal_insert_rows = []
     for row in postal_rows:
         key = postal_key(row)
         postal_seen.add(key)
-        existing = (
-            db.query(GeographyPostalReference)
-            .filter(
-                GeographyPostalReference.pin_code == key[0],
-                GeographyPostalReference.office_name == clean(row.get("office_name")),
-                GeographyPostalReference.office_type == clean(row.get("office_type")),
-                GeographyPostalReference.postal_state_name == clean(row.get("postal_state_name")),
-                GeographyPostalReference.postal_district_name == clean(row.get("postal_district_name")),
-            )
-            .first()
+        if key in db_postal_keys:
+            counters["postal_references_existing"] += 1
+            continue
+        postal_insert_rows.append({
+            "id": uuid.uuid4(),
+            "import_batch_id": batch.id,
+            "pin_code": key[0],
+            "office_name": clean(row.get("office_name")),
+            "office_type": clean(row.get("office_type")),
+            "delivery_status": clean(row.get("delivery_status")),
+            "circle_name": clean(row.get("circle_name")),
+            "region_name": clean(row.get("region_name")),
+            "division_name": clean(row.get("division_name")),
+            "postal_district_name": clean(row.get("postal_district_name")),
+            "postal_state_name": clean(row.get("postal_state_name")),
+            "latitude": decimal_or_none(row.get("latitude")),
+            "longitude": decimal_or_none(row.get("longitude")),
+            "source_system": PIN_SOURCE_POSTAL,
+            "source_row_hash": sha256_obj(row.get("source_row") or row),
+            "first_seen_at": timestamp,
+            "last_seen_at": timestamp,
+            "expired_at": None,
+            "metadata": json.dumps({"source_row": row.get("source_row")}, ensure_ascii=False, sort_keys=True),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "version": "v1.0",
+            "is_active": True,
+        })
+
+    counters["postal_references_created"] = bulk_insert_rows(db, "geography_postal_references", postal_insert_rows, chunk_size=10000)
+    db.commit()
+    print_progress(f"postal references complete created={counters['postal_references_created']} existing={counters['postal_references_existing']}")
+
+    db_link_keys = {
+        (
+            clean(row.state_lgd_code),
+            clean(row.district_lgd_code),
+            clean(row.subdistrict_lgd_code),
+            clean(row.village_lgd_code),
+            clean(row.pin_code),
         )
-        if not existing:
-            existing = GeographyPostalReference(
-                id=uuid.uuid4(),
-                import_batch_id=batch.id,
-                pin_code=key[0],
-                office_name=clean(row.get("office_name")),
-                office_type=clean(row.get("office_type")),
-                delivery_status=clean(row.get("delivery_status")),
-                circle_name=clean(row.get("circle_name")),
-                region_name=clean(row.get("region_name")),
-                division_name=clean(row.get("division_name")),
-                postal_district_name=clean(row.get("postal_district_name")),
-                postal_state_name=clean(row.get("postal_state_name")),
-                latitude=decimal_or_none(row.get("latitude")),
-                longitude=decimal_or_none(row.get("longitude")),
-                source_system=PIN_SOURCE_POSTAL,
-                source_row_hash=sha256_obj(row.get("source_row") or row),
-                first_seen_at=timestamp,
-                last_seen_at=timestamp,
-                metadata_={"source_row": row.get("source_row")},
-                created_at=timestamp,
-                updated_at=timestamp,
-                is_active=True,
-            )
-            db.add(existing)
-            counters["postal_references_created"] += 1
-        else:
-            existing.import_batch_id = batch.id
-            existing.last_seen_at = timestamp
-            existing.expired_at = None
-            existing.is_active = True
-            existing.delivery_status = clean(row.get("delivery_status"))
-            existing.latitude = decimal_or_none(row.get("latitude"))
-            existing.longitude = decimal_or_none(row.get("longitude"))
-            existing.source_row_hash = sha256_obj(row.get("source_row") or row)
-            existing.updated_at = timestamp
-            counters["postal_references_updated"] += 1
+        for row in db.query(GeographyVillagePinLink).filter(GeographyVillagePinLink.is_active == True).all()
+    }
 
     link_seen = set()
     village_pin_cache = defaultdict(set)
+    link_insert_rows = []
 
     for row in lgd_rows:
         state_code = clean(row.get("state_lgd_code"))
@@ -538,68 +683,62 @@ def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[d
         pin = clean(row.get("pin_code"))
         key = (state_code, district_code, block_code, village_code, pin)
         link_seen.add(key)
+        if key in db_link_keys:
+            counters["village_pin_links_existing"] += 1
+            continue
 
         village = villages.get((district_code, block_code, village_code))
         if village:
             village_pin_cache[village.id].add(pin)
 
-        existing = (
-            db.query(GeographyVillagePinLink)
-            .filter(
-                GeographyVillagePinLink.state_lgd_code == state_code,
-                GeographyVillagePinLink.district_lgd_code == district_code,
-                GeographyVillagePinLink.subdistrict_lgd_code == block_code,
-                GeographyVillagePinLink.village_lgd_code == village_code,
-                GeographyVillagePinLink.pin_code == pin,
-            )
-            .first()
-        )
-        if not existing:
-            existing = GeographyVillagePinLink(
-                id=uuid.uuid4(),
-                import_batch_id=batch.id,
-                geography_village_id=village.id if village else None,
-                pin_code=pin,
-                state_lgd_code=state_code,
-                state_name=clean(row.get("state_name")),
-                district_lgd_code=district_code,
-                district_name=clean(row.get("district_name")),
-                subdistrict_lgd_code=block_code,
-                subdistrict_name=clean(row.get("subdistrict_name")),
-                village_lgd_code=village_code,
-                village_name=clean(row.get("village_name")),
-                source_system=PIN_SOURCE_LGD,
-                source_row_hash=sha256_obj(row.get("source_row") or row),
-                match_status="MATCHED" if village else "UNMATCHED",
-                first_seen_at=timestamp,
-                last_seen_at=timestamp,
-                metadata_={"source_row": row.get("source_row")},
-                created_at=timestamp,
-                updated_at=timestamp,
-                is_active=True,
-            )
-            db.add(existing)
-            counters["village_pin_links_created"] += 1
-        else:
-            existing.import_batch_id = batch.id
-            existing.geography_village_id = village.id if village else None
-            existing.match_status = "MATCHED" if village else "UNMATCHED"
-            existing.last_seen_at = timestamp
-            existing.expired_at = None
-            existing.is_active = True
-            existing.source_row_hash = sha256_obj(row.get("source_row") or row)
-            existing.updated_at = timestamp
-            counters["village_pin_links_updated"] += 1
+        link_insert_rows.append({
+            "id": uuid.uuid4(),
+            "import_batch_id": batch.id,
+            "geography_village_id": village.id if village else None,
+            "pin_code": pin,
+            "state_lgd_code": state_code,
+            "state_name": clean(row.get("state_name")),
+            "district_lgd_code": district_code,
+            "district_name": clean(row.get("district_name")),
+            "subdistrict_lgd_code": block_code,
+            "subdistrict_name": clean(row.get("subdistrict_name")),
+            "village_lgd_code": village_code,
+            "village_name": clean(row.get("village_name")),
+            "source_system": PIN_SOURCE_LGD,
+            "source_row_hash": sha256_obj(row.get("source_row") or row),
+            "match_status": "MATCHED" if village else "UNMATCHED",
+            "first_seen_at": timestamp,
+            "last_seen_at": timestamp,
+            "expired_at": None,
+            "metadata": json.dumps({"source_row": row.get("source_row")}, ensure_ascii=False, sort_keys=True),
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "version": "v1.0",
+            "is_active": True,
+        })
 
+    counters["village_pin_links_created"] = bulk_insert_rows(db, "geography_village_pin_links", link_insert_rows, chunk_size=10000)
+    db.commit()
+    print_progress(f"village PIN links complete created={counters['village_pin_links_created']} existing={counters['village_pin_links_existing']}")
+
+    # Compatibility cache for Android. Only update villages touched by current links.
+    updated_cache = 0
     for village_id, pins in village_pin_cache.items():
         village = db.get(GeographyVillage, village_id)
-        if village:
-            current = set(village.pin_codes or [])
-            merged = sorted(current | pins)
-            if merged != (village.pin_codes or []):
-                village.pin_codes = merged
-                village.updated_at = timestamp
-                counters["village_pin_cache_updated"] += 1
+        if not village:
+            continue
+        current = set(village.pin_codes or [])
+        merged = sorted(current | pins)
+        if merged != (village.pin_codes or []):
+            village.pin_codes = merged
+            village.updated_at = timestamp
+            updated_cache += 1
+            if updated_cache % 10000 == 0:
+                db.commit()
+                print_progress(f"village PIN compatibility cache updated {updated_cache}")
+    db.commit()
+    counters["village_pin_cache_updated"] = updated_cache
+    print_progress(f"village PIN compatibility cache complete updated={updated_cache}")
 
     if expire_missing:
         active_postal = db.query(GeographyPostalReference).filter(GeographyPostalReference.is_active == True).all()
@@ -631,6 +770,7 @@ def apply_rows(db, *, batch, lgd_rows: list[dict[str, Any]], postal_rows: list[d
                 row.expired_at = timestamp
                 row.updated_at = timestamp
                 counters["village_pin_links_expired"] += 1
+        db.commit()
 
     batch.diff_summary = dict(counters)
     batch.updated_at = timestamp
