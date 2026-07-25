@@ -56,7 +56,7 @@ class GeographyBlock(Base, UUIDPrimaryKey, AuditMixin):
 
     __tablename__ = "geography_blocks"
 
-    lgd_code = Column(String(20), unique=True, nullable=False, index=True)
+    lgd_code = Column(String(20), nullable=False, index=True)
     district_id = Column(
         UUID(as_uuid=True),
         ForeignKey("geography_districts.id"),
@@ -80,7 +80,7 @@ class GeographyVillage(Base, UUIDPrimaryKey, AuditMixin):
 
     __tablename__ = "geography_villages"
 
-    lgd_code = Column(String(30), unique=True, nullable=False, index=True)
+    lgd_code = Column(String(30), nullable=False, index=True)
     block_id = Column(
         UUID(as_uuid=True),
         ForeignKey("geography_blocks.id"),
@@ -114,6 +114,7 @@ class GeographyVillage(Base, UUIDPrimaryKey, AuditMixin):
             postgresql_ops={"canonical_name": "gin_trgm_ops"},
         ),
     )
+
 
 class GeographyImportBatch(Base, UUIDPrimaryKey, AuditMixin):
     """Source snapshot/import provenance for LGD, postal, and future Census geography feeds."""
