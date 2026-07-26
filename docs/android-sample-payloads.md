@@ -363,7 +363,7 @@ Captured redacted sample JSON files can be regenerated with `backend/scripts/cap
 
 ## PIN-code village candidate sample
 
-The generated sample bundle now includes docs/samples/android/01-pin-code-villages.json.
+The generated sample bundle now includes docs/samples/android/03-pin-code-villages.json.
 
 Captured from: GET /api/v1/master-data/geography/villages/by-pin-code?pin_code=560001
 
