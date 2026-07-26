@@ -2,8 +2,10 @@
 """Seed company/manufacturer and representative product catalog metadata.
 
 This is a curated starter pack for local Android/admin testing. It uses public
-company-directory references as source evidence for company/manufacturer names,
-then seeds representative demo/reference products mapped to canonical inputs.
+company-directory references as source evidence for company/manufacturer names.
+Screener is treated as a stock/sector tracker for company discovery only; it is
+not treated as a product-label or dosage source. The script also seeds
+representative demo/reference products mapped to canonical inputs.
 
 Important: rows marked DEMO_REFERENCE_PRODUCT are not regulatory claims. Exact
 product labels, registrations, prices, and certifications must be verified from
@@ -580,8 +582,9 @@ def seed_catalog(db, *, tenant_id: str, actor_id: uuid.UUID | None, apply: bool)
         "products": product_results,
         "next_actions": [
             "Review seeded companies in company discovery/admin before marking any as verified.",
+            "Run company-site product capture in multiple passes because each manufacturer website has a different structure.",
             "Replace demo/reference products with manufacturer/regulator-verified product rows before production.",
-            "Populate price/effective-date/package metadata once source-specific product lists are approved.",
+            "Populate source_url/source_notes/source_text, dosage, price/effective-date/package metadata once source-specific product lists are approved.",
         ],
     }
 

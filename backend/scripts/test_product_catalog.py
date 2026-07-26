@@ -39,9 +39,10 @@ def main():
         check(m.status_code==200 and m.json()["code"]==MFG,"manufacturer is created")
         m_update=client.put(f"/api/v1/product-catalog/manufacturers/{MFG}",json={"short_name":"RAI Updated","reason":"Regression manufacturer update"})
         check(m_update.status_code==200 and m_update.json()["short_name"]=="RAI Updated","manufacturer metadata is updated")
-        payload={"code":PRODUCT,"canonical_input_code":"UREA_46_N","manufacturer_code":MFG,"brand_name":"Regression Urea Gold","composition":"46% Nitrogen","registration_number":"REG-UREA-001","registration_authority":"Regression Authority","country":"India","packages":[{"sku":"REG-UREA-45KG","quantity":"45","unit":"kg","pack_label":"45 kg bag","barcode":"999000111"}],"reason":"Regression product"}
+        payload={"code":PRODUCT,"canonical_input_code":"UREA_46_N","manufacturer_code":MFG,"brand_name":"Regression Urea Gold","composition":"46% Nitrogen","registration_number":"REG-UREA-001","registration_authority":"Regression Authority","source_url":"https://example.com/regression-urea","source_notes":"Company page says use as nitrogen fertilizer; dosage requires label verification.","source_text":"Captured product text placeholder for regression review.","country":"India","packages":[{"sku":"REG-UREA-45KG","quantity":"45","unit":"kg","pack_label":"45 kg bag","barcode":"999000111"}],"reason":"Regression product"}
         p=client.post("/api/v1/product-catalog/products",json=payload)
         check(p.status_code==200 and p.json()["packages"][0]["quantity"]=="45.000","branded product and package are created")
+        check(p.json()["source_url"]=="https://example.com/regression-urea" and "dosage requires label verification" in p.json()["source_notes"],"product source review fields are returned")
         extra=client.post(f"/api/v1/product-catalog/products/{PRODUCT}/packages",json={"sku":"REG-UREA-5KG","quantity":"5","unit":"kg","pack_label":"5 kg bag","reason":"Add small package"})
         check(extra.status_code==200 and extra.json()["sku"]=="REG-UREA-5KG","additional package variant is added")
         duplicate_package=client.post(f"/api/v1/product-catalog/products/{PRODUCT}/packages",json={"sku":"REG-UREA-5KG","quantity":"10","unit":"kg","pack_label":"duplicate","reason":"Duplicate check"})
@@ -82,8 +83,9 @@ def main():
         client.put(f"/api/v1/product-catalog/projects/{PROJECT}/products/{PRODUCT}",json={"enabled":False,"preferred":False,"display_order":1,"reason":"Temporarily blocked"})
         blocked=TestClient(app).get(f"/api/v1/product-catalog/products?input_code=UREA_46_N&project_id={PROJECT}",headers={"X-Tenant-ID":"default"})
         check(blocked.json()["count"]==0,"disabled project product is hidden")
-        updated=client.put(f"/api/v1/product-catalog/products/{PRODUCT}",json={"status":"DISCONTINUED","reason":"Regression discontinuation"})
+        updated=client.put(f"/api/v1/product-catalog/products/{PRODUCT}",json={"status":"DISCONTINUED","source_notes":"Updated source note after company-site review.","reason":"Regression discontinuation"})
         check(updated.status_code==200 and updated.json()["status"]=="DISCONTINUED","product can be discontinued")
+        check(updated.json()["source_notes"]=="Updated source note after company-site review." and updated.json()["source_url"]=="https://example.com/regression-urea","product source review fields can be updated without losing source URL")
         runtime=TestClient(app).get(f"/api/v1/product-catalog/products?input_code=UREA_46_N", headers={"X-Tenant-ID":"default"})
         check(all(x["code"]!=PRODUCT for x in runtime.json()["products"]),"discontinued product is hidden from runtime")
         audit=client.get(f"/api/v1/product-catalog/audit?entity_code={PRODUCT}").json()

@@ -3,7 +3,7 @@ import csv
 from datetime import date, datetime, timedelta, timezone
 import io
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import Any, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
@@ -119,6 +119,9 @@ class ProductCreate(BaseModel):
     registration_number: Optional[str] = Field(None, max_length=100)
     registration_authority: Optional[str] = Field(None, max_length=150)
     registration_expiry_date: Optional[date] = None
+    source_url: Optional[str] = Field(None, max_length=1000)
+    source_notes: Optional[str] = Field(None, max_length=10000)
+    source_text: Optional[str] = Field(None, max_length=50000)
     country: str = Field("India", min_length=2, max_length=50)
     packages: list[PackageCreate] = Field(default_factory=list, min_length=1)
     reason: str = Field(..., min_length=3, max_length=500)
@@ -134,6 +137,9 @@ class ProductUpdate(BaseModel):
     registration_number: Optional[str] = Field(None, max_length=100)
     registration_authority: Optional[str] = Field(None, max_length=150)
     registration_expiry_date: Optional[date] = None
+    source_url: Optional[str] = Field(None, max_length=1000)
+    source_notes: Optional[str] = Field(None, max_length=10000)
+    source_text: Optional[str] = Field(None, max_length=50000)
     country: Optional[str] = Field(None, min_length=2, max_length=50)
     status: Optional[str] = None
     reason: str = Field(..., min_length=3, max_length=500)
@@ -158,7 +164,42 @@ def package_payload(row):
     return {"id": str(row.id), "sku": row.sku, "quantity": str(row.quantity), "unit": row.unit, "pack_label": row.pack_label, "barcode": row.barcode, "status": row.status, "is_active": row.is_active}
 
 
+PRODUCT_SOURCE_METADATA_FIELDS = ("source_url", "source_notes", "source_text")
+
+
+def _clean_source_text(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.strip() or None
+    return value
+
+
+def _source_metadata_from_body(body, *, only_fields_set: bool = False) -> dict[str, Any]:
+    fields_set = getattr(body, "model_fields_set", set(body.model_dump(exclude_unset=True).keys()))
+    result: dict[str, Any] = {}
+    for field in PRODUCT_SOURCE_METADATA_FIELDS:
+        if only_fields_set and field not in fields_set:
+            continue
+        value = _clean_source_text(getattr(body, field, None))
+        if value is not None or only_fields_set:
+            result[field] = value
+    if any(result.get(field) for field in PRODUCT_SOURCE_METADATA_FIELDS):
+        result.setdefault("source_capture_status", "MANUAL_REVIEW")
+    return result
+
+
+def _merge_product_source_metadata(existing: dict[str, Any] | None, body) -> dict[str, Any]:
+    metadata = dict(existing or {})
+    source_update = _source_metadata_from_body(body, only_fields_set=True)
+    if not source_update:
+        return metadata
+    metadata.update(source_update)
+    if any(metadata.get(field) for field in PRODUCT_SOURCE_METADATA_FIELDS):
+        metadata.setdefault("source_capture_status", "MANUAL_REVIEW")
+    return metadata
+
+
 def product_payload(row, approval=None):
+    metadata = row.metadata_ or {}
     return {
         "id": str(row.id), "code": row.code, "canonical_input_code": row.canonical_input.code,
         "canonical_input_name": row.canonical_input.canonical_name, "manufacturer_code": row.manufacturer.code,
@@ -166,6 +207,11 @@ def product_payload(row, approval=None):
         "composition": row.composition, "registration_number": row.registration_number,
         "registration_authority": row.registration_authority,
         "registration_expiry_date": row.registration_expiry_date.isoformat() if row.registration_expiry_date else None,
+        "metadata": metadata,
+        "source_url": metadata.get("source_url"),
+        "source_notes": metadata.get("source_notes"),
+        "source_text": metadata.get("source_text"),
+        "source_capture_status": metadata.get("source_capture_status"),
         "country": row.country, "status": row.status, "is_active": row.is_active,
         "packages": [package_payload(p) for p in sorted(row.packages, key=lambda p: p.pack_label) if p.is_active],
         "project_approval": None if not approval else {"enabled": approval.enabled, "preferred": approval.preferred, "display_order": approval.display_order, "reason": approval.reason},
@@ -642,7 +688,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db), x_tenant_
     row = AgriculturalProduct(id=uuid.uuid4(), code=body.code, canonical_input_id=canonical.id, manufacturer_id=manufacturer.id,
         brand_name=body.brand_name.strip(), composition=body.composition, registration_number=body.registration_number,
         registration_authority=body.registration_authority, registration_expiry_date=body.registration_expiry_date,
-        country=body.country, status="ACTIVE", created_at=now, updated_at=now)
+        country=body.country, status="ACTIVE", metadata_=_source_metadata_from_body(body), created_at=now, updated_at=now)
     db.add(row); db.flush()
     for package in body.packages: db.add(AgriculturalProductPackage(id=uuid.uuid4(), product_id=row.id, sku=package.sku, quantity=package.quantity, unit=package.unit, pack_label=package.pack_label, barcode=package.barcode, status="ACTIVE", created_at=now, updated_at=now))
     db.flush(); db.refresh(row); after = product_payload(row)
@@ -666,9 +712,10 @@ def add_product_package(product_code: str, body: PackageAdd, db: Session = Depen
 def update_product(product_code: str, body: ProductUpdate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
     row = db.query(AgriculturalProduct).filter(AgriculturalProduct.code == product_code.upper()).first()
     if not row: raise HTTPException(404, "Product not found")
-    before = product_payload(row); data = body.model_dump(exclude_unset=True, exclude={"reason"})
+    before = product_payload(row); data = body.model_dump(exclude_unset=True, exclude={"reason", *PRODUCT_SOURCE_METADATA_FIELDS})
     if "status" in data and data["status"] not in {"ACTIVE", "DISCONTINUED"}: raise HTTPException(400, "status must be ACTIVE or DISCONTINUED")
     for key, value in data.items(): setattr(row, key, value)
+    row.metadata_ = _merge_product_source_metadata(row.metadata_, body)
     row.updated_at = datetime.now(timezone.utc); after = product_payload(row)
     record_audit(db, x_tenant_id, principal, "PRODUCT", row.id, row.code, "UPDATE_PRODUCT", before, after, body.reason)
     db.commit(); return after

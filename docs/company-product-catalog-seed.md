@@ -9,7 +9,7 @@ This starter seed gives local admin and Android testing a broader company/manufa
 - Screener fertilizers/agrochemicals sector page: https://www.screener.in/market/IN01/IN0101/IN010102/
 - TNAU AgriTech seed-industry directory PDF: https://agritech.tnau.ac.in/agricultural_marketing/pdf/Seed_Industries_India.pdf
 
-These are used as company-directory references. Exact product labels, registrations, prices, and certifications must be replaced later with manufacturer/regulator-verified product rows.
+These are used as company-directory references only. Screener is a stock/sector tracker, not a product-label source. Exact product labels, dosage, registrations, prices, and certifications must be captured later from each manufacturer website, product label, or regulator source and reviewed before trust.
 
 ## Apply command
 
@@ -50,6 +50,16 @@ The current seed stores this under product metadata fields:
 - `farming_system_tags`
 
 If Android/admin needs first-class filters later, these metadata fields can be promoted into explicit columns or indexed read models.
+
+## Company-site product capture workflow
+
+Because every manufacturer website structures products differently, product enrichment should run in multiple passes:
+
+1. Use Screener/TNAU/local references to identify candidate companies and map them to manufacturer rows.
+2. For each manufacturer, find the official company website and product pages.
+3. Capture source URL, dosage/label notes, and raw useful source text into product metadata fields: `source_url`, `source_notes`, and `source_text`.
+4. Review captured text in admin UI before marking product rows as production-ready.
+5. Distinguish `ORGANIC`, `NATURAL`, `BIO_INPUT`, `CONVENTIONAL`, and `SEED`; do not infer organic certification from marketing text alone.
 
 ## Verification commands
 
