@@ -311,6 +311,54 @@ export interface ActivityUsageRow {
   media_attachment_count?: number;
 }
 
+export interface FinanceAnalyticsSummaryResponse {
+  schema_version: string;
+  tenant_id: string;
+  currency: string;
+  fixed_formula: string;
+  filters: Record<string, unknown>;
+  totals: {
+    cycle_count: number;
+    activity_count: number;
+    total_income: string;
+    total_expenses: string;
+    profit_or_loss: string;
+  };
+  cycle_summary_groups: Array<{
+    crop_code?: string | null;
+    season_code?: string | null;
+    season_year?: number | null;
+    project_id?: string | null;
+    cycle_count: number;
+    total_income: string;
+    total_expenses: string;
+    profit_or_loss: string;
+  }>;
+  stage_cost_groups: Array<{
+    crop_code: string;
+    season_code: string;
+    season_year?: number | null;
+    stage_code: string;
+    activity_count: number;
+    actual_expense: string;
+  }>;
+  activity_period_groups: Array<{
+    period?: string | number | null;
+    crop_code: string;
+    season_code: string;
+    activity_count: number;
+    actual_expense: string;
+  }>;
+  expense_category_groups: Array<{
+    expense_category: string;
+    crop_code: string;
+    season_code: string;
+    activity_count: number;
+    actual_expense: string;
+  }>;
+  notes?: string[];
+}
+
 export interface ActivityUsageReportResponse {
   schema_version: string;
   tenant_id: string;
@@ -1618,6 +1666,32 @@ export const reportsApi = {
     api<ActivityUsageReportResponse>(`/api/v1/reports/activity-usage${activityUsageQuery(params)}`),
   downloadActivityUsageCsv: (params?: ActivityUsageParams) =>
     apiDownload(`/api/v1/reports/activity-usage.csv${activityUsageQuery(params)}`, "activity_usage.csv"),
+  financeAnalytics: (params?: {
+    projectId?: string;
+    farmerId?: string;
+    parcelId?: string;
+    cropCode?: string;
+    seasonCode?: string;
+    seasonYear?: string | number;
+    activityDateFrom?: string;
+    activityDateTo?: string;
+    period?: "month" | "quarter" | "year";
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set("project_id", params.projectId);
+    if (params?.farmerId) q.set("farmer_id", params.farmerId);
+    if (params?.parcelId) q.set("parcel_id", params.parcelId);
+    if (params?.cropCode) q.set("crop_code", params.cropCode);
+    if (params?.seasonCode) q.set("season_code", params.seasonCode);
+    if (params?.seasonYear) q.set("season_year", String(params.seasonYear));
+    if (params?.activityDateFrom) q.set("activity_date_from", params.activityDateFrom);
+    if (params?.activityDateTo) q.set("activity_date_to", params.activityDateTo);
+    if (params?.period) q.set("period", params.period);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return api<FinanceAnalyticsSummaryResponse>(`/api/v1/crop-cycles/finance/analytics-summary${suffix}`);
+  },
 };
 // --- Typed API functions ---
 

@@ -90,7 +90,8 @@ def workflow_audit(db):
         "needs_decision_node_audit": True,
         "stage_cost_summary_endpoint": "/api/v1/crop-cycles/{cycle_id}/stage-cost-summary",
         "profit_loss_summary_endpoint": "/api/v1/crop-cycles/{cycle_id}/profit-loss-summary",
-        "finance_summary_contract_status": "IMPLEMENTED_PERSISTED_CONFIG_WITH_DEFAULT_FALLBACK",
+        "finance_analytics_summary_endpoint": "/api/v1/crop-cycles/finance/analytics-summary",
+        "finance_summary_contract_status": "IMPLEMENTED_PERSISTED_CONFIG_WITH_DEFAULT_FALLBACK_AND_AGGREGATE_ANALYTICS",
         "needs_profit_loss_summary_contract": False,
         "needs_persisted_finance_admin_config": False,
     }
@@ -110,7 +111,6 @@ def main() -> int:
                 "Build crop scenario seed pack covering at least 15 crops.",
                 "Audit local land unit conversion registry.",
                 "Add workflow decision-node and perennial/orchard current-stage onboarding contracts.",
-                "Persist versioned admin finance report config with draft/validate/preview/publish/audit flow.",
                 "Build advisory/broadcast seed content pack.",
             ],
         }
