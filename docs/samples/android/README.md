@@ -1,6 +1,6 @@
 # Android Sample Payloads
 
-Generated from temporary tenant/project rows by `backend/scripts/capture_android_sample_payloads.py`.
+Generated from temporary tenant `android-sample-74da9680` and temporary project `21ccd953-4d58-4bdf-a2a3-2067466f9b00`.
 
 These payloads are representative and redacted. They are Android integration examples, not production seed data.
 
@@ -37,3 +37,4 @@ cd ~/projects/farmint/backend
 22. `22-stage-cost-summary.json` - stage-wise planned/actual cost and context-event summary.
 23. `23-profit-loss-summary.json` - fixed-formula crop-cycle P&L summary.
 24. `24-sync-dependency-error.json` - offline sync dependency failure example.
+25. `25-finance-analytics-summary.json` - aggregate finance analytics across crop, season, stage, expense category, and time period.

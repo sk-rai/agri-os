@@ -601,6 +601,7 @@ Android-facing farmer endpoints:
 
 - `GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary`
 - `GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary`
+- `GET /api/v1/crop-cycles/finance/analytics-summary`
 
 Android should render these backend-computed summaries and must not compute P&L locally.
 
@@ -620,5 +621,5 @@ Finance summary payloads include analytics dimensions for future comparison acro
 - planned versus actual expense;
 - income, expense, and per-acre values.
 
-This allows later backend analytics for stage-to-stage, season-to-season, crop-to-crop, and year-over-year cost/P&L comparisons without changing Android’s role.
+The aggregate finance analytics endpoint exposes backend-computed stage-to-stage, season-to-season, crop-to-crop, expense-category, and month/quarter/year cost/P&L comparisons without changing Android’s role.
 

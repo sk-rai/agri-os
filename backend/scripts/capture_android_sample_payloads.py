@@ -335,23 +335,59 @@ def main() -> int:
         profit_loss_summary = assert_ok('profit loss summary', client.get(f'/api/v1/crop-cycles/{crop_cycle_id}/profit-loss-summary', headers=headers))
         write_json('23-profit-loss-summary.json', redact(profit_loss_summary))
 
+        finance_analytics_summary = assert_ok('finance analytics summary', client.get('/api/v1/crop-cycles/finance/analytics-summary?period=month', headers=headers))
+        write_json('25-finance-analytics-summary.json', redact(finance_analytics_summary))
+
         sync_error = assert_ok('sync dependency error sample', client.post('/api/v1/sync/events', headers=headers, json={'events': [{'event_id': str(uuid.uuid4()), 'entity_type': 'parcel', 'operation': 'CREATE', 'payload': {'area': 1.0, 'farmer_id': str(farmer_id)}, 'version': 1, 'dependency_ids': [str(uuid.uuid4())]}]}))
         write_json('24-sync-dependency-error.json', redact(sync_error))
 
         readme = OUT / 'README.md'
-        readme.write_text('\n'.join([
+        payload_index = [
+            ('01-mode-bootstrap.json', 'post-login farmer/agent mode routing.'),
+            ('02-app-config-bootstrap.json', 'project-effective app config, feature flags, branding, and form hints.'),
+            ('03-pin-code-villages.json', 'PIN-code guardrail lookup example, including valid postal PINs with or without LGD village candidates.'),
+            ('04-form-farmer-registration.json', 'backend-driven farmer form schema.'),
+            ('05-form-parcel-registration.json', 'backend-driven parcel form schema.'),
+            ('06-form-soil-profile.json', 'backend-driven soil profile form schema.'),
+            ('07-form-options.json', 'backend-owned option sets.'),
+            ('08-profile-contract.json', 'Android profile contract summary.'),
+            ('09-farmer-create-response.json', 'farmer create response with backend-computed home DigiPin when GPS is present.'),
+            ('10-parcel-create-response.json', 'parcel create response with backend-computed centroid DigiPin when centroid GPS is present.'),
+            ('11-soil-profile-create-response.json', 'soil profile create response.'),
+            ('12-profile-readiness.json', 'profile readiness response.'),
+            ('13-soil-enrichment-summary.json', 'soil enrichment summary.'),
+            ('14-soil-enrichment-latest-or-error.json', 'latest soil enrichment empty/error example.'),
+            ('15-weather-latest-snapshot.json', 'latest backend weather snapshot.'),
+            ('16-broadcast-feed.json', 'farmer broadcast feed.'),
+            ('17-broadcast-detail.json', 'broadcast detail.'),
+            ('18-broadcast-read-response.json', 'broadcast delivery read action.'),
+            ('19-broadcast-ack-response.json', 'broadcast delivery acknowledgement action.'),
+            ('20-crop-template-rice.json', 'rice crop-cycle template.'),
+            ('21-enabled-crop-workflows.json', 'enabled workflow catalog for project context.'),
+            ('22-stage-cost-summary.json', 'stage-wise planned/actual cost and context-event summary.'),
+            ('23-profit-loss-summary.json', 'fixed-formula crop-cycle P&L summary.'),
+            ('24-sync-dependency-error.json', 'offline sync dependency failure example.'),
+            ('25-finance-analytics-summary.json', 'aggregate finance analytics across crop, season, stage, expense category, and time period.'),
+        ]
+        readme_lines = [
             '# Android Sample Payloads',
             '',
             f'Generated from temporary tenant `{tenant_id}` and temporary project `{project_id}`.',
             '',
-            'These payloads are representative and redacted. Regenerate with:',
+            'These payloads are representative and redacted. They are Android integration examples, not production seed data.',
+            '',
+            'Regenerate with:',
             '',
             '```bash',
             'cd ~/projects/farmint/backend',
             '../venv/bin/python scripts/capture_android_sample_payloads.py',
             '```',
             '',
-        ]) + '\n', encoding='utf-8')
+            '## Payload index',
+            '',
+        ]
+        readme_lines.extend(f'{index}. `{name}` - {description}' for index, (name, description) in enumerate(payload_index, start=1))
+        readme.write_text('\n'.join(readme_lines) + '\n', encoding='utf-8')
         print(f'wrote {readme.relative_to(ROOT)}')
 
     finally:

@@ -1,0 +1,84 @@
+{
+  "activity_period_groups": [
+    {
+      "activity_count": 2,
+      "actual_expense": "2550.00",
+      "crop_code": "RICE",
+      "period": "2026-07",
+      "season_code": "KHARIF"
+    }
+  ],
+  "currency": "INR",
+  "cycle_summary_groups": [
+    {
+      "crop_code": "RICE",
+      "cycle_count": 1,
+      "profit_or_loss": "25450.00",
+      "project_id": "21ccd953-4d58-4bdf-a2a3-2067466f9b00",
+      "season_code": "KHARIF",
+      "season_year": 2026,
+      "total_expenses": "2550.00",
+      "total_income": "28000.00"
+    }
+  ],
+  "expense_category_groups": [
+    {
+      "activity_count": 1,
+      "actual_expense": "750.00",
+      "crop_code": "RICE",
+      "expense_category": "FERTILIZER",
+      "season_code": "KHARIF"
+    },
+    {
+      "activity_count": 1,
+      "actual_expense": "1800.00",
+      "crop_code": "RICE",
+      "expense_category": "SEED",
+      "season_code": "KHARIF"
+    }
+  ],
+  "filters": {
+    "activity_date_from": null,
+    "activity_date_to": null,
+    "crop_code": null,
+    "farmer_id": null,
+    "limit": 500,
+    "parcel_id": null,
+    "period": "month",
+    "project_id": null,
+    "season_code": null,
+    "season_year": null
+  },
+  "fixed_formula": "profit_or_loss = total_income - total_expenses",
+  "notes": [
+    "Income is cycle-level revenue; stage and activity-period groups show expenses only unless revenue allocation is added later.",
+    "This endpoint is a read-model contract over operational tables and can later be backed by materialized aggregates."
+  ],
+  "schema_version": "finance_analytics_summary.v1",
+  "stage_cost_groups": [
+    {
+      "activity_count": 1,
+      "actual_expense": "1800.00",
+      "crop_code": "RICE",
+      "season_code": "KHARIF",
+      "season_year": 2026,
+      "stage_code": "SOWING"
+    },
+    {
+      "activity_count": 1,
+      "actual_expense": "750.00",
+      "crop_code": "RICE",
+      "season_code": "KHARIF",
+      "season_year": 2026,
+      "stage_code": "VEGETATIVE"
+    }
+  ],
+  "tenant_id": "android-sample-74da9680",
+  "totals": {
+    "activity_count": 2,
+    "cycle_count": 1,
+    "profit_or_loss": "25450.00",
+    "total_expenses": "2550.00",
+    "total_income": "28000.00"
+  }
+}

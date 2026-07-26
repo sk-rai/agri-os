@@ -63,6 +63,7 @@ Android farmer app should call only the summary endpoints and render backend res
 
 - `GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary`
 - `GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary`
+- `GET /api/v1/crop-cycles/finance/analytics-summary`
 
 Android may render these backend-computed summaries. Android should not compute P&L, classify income/expense categories, or infer stage-level cost variance locally.
 

@@ -52,6 +52,7 @@ The current bundle contains 24 redacted JSON samples covering mode bootstrap, ap
 | `22-stage-cost-summary.json` | Render backend-computed stage expense, activity, and context-event summary. |
 | `23-profit-loss-summary.json` | Render fixed-formula income minus expenses P&L summary. |
 | `24-sync-dependency-error.json` | Handle batch-resilient offline sync dependency failure. |
+| `25-finance-analytics-summary.json` | Render backend-computed aggregate finance analytics across crop, season, stage, expense category, and time period. |
 
 ## 1. Mode bootstrap
 
@@ -371,4 +372,4 @@ Android should use this endpoint after a parcel PIN code is entered when the par
 
 ## Farmer finance summary behavior
 
-The stage-cost and P&L samples are backend-computed. They include report config source metadata and analytics dimensions for crop/season/stage/time-period comparison. Android should not compute income, expense categories, variance, or P&L locally.
+The stage-cost, P&L, and finance analytics samples are backend-computed. They include report config source metadata and analytics dimensions for crop/season/stage/time-period comparison. Android should not compute income, expense categories, variance, aggregate analytics, or P&L locally.
