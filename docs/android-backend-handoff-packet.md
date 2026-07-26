@@ -6,6 +6,8 @@ Current backend readiness estimate for Android MVP handoff: backend/admin smoke 
 
 This packet is now the backend closeout map for Android integration planning. The generated sample payload bundle is available under `docs/samples/android/`.
 
+See `docs/android-handoff-readiness-matrix.md` for the current closed/open/deferred status across personas, metadata, advisories, language readiness, and emulator seed data.
+
 ## Handoff principle
 
 Android should become a thin client for profile capture, communication, readiness, and advisory consumption. It should not duplicate backend rules for eligibility, targeting, provider calls, weather logic, soil enrichment grouping, company discovery, or operational queues.

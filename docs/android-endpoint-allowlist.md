@@ -127,7 +127,7 @@ Android may render these backend-computed summaries. Android should not compute 
 - Run `backend/scripts/pre_android_handoff_check.py`.
 - Run web build.
 - Confirm this allowlist against Android API client interfaces.
-- Confirm `docs/samples/android/` contains the current 24-file redacted payload bundle.
+- Confirm `docs/samples/android/` contains the current 25-file redacted payload bundle.
 
 ## PIN-code guardrail contract
 
