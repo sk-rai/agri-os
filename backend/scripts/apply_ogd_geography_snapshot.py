@@ -293,6 +293,75 @@ def existing_context_maps(db):
     return states, districts, blocks, villages
 
 
+def build_fast_verify(db, lgd_rows: list[dict[str, Any]], postal_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """SQL-first verification for already-loaded large geography snapshots.
+
+    This intentionally avoids ORM-loading hundreds of thousands of postal/link
+    rows. It is meant for post-apply and periodic refresh sanity checks.
+    """
+    staged_states = set()
+    staged_districts = set()
+    staged_blocks = set()
+    staged_villages = set()
+    staged_links = set()
+
+    for row in lgd_rows:
+        state_code = clean(row.get("state_lgd_code"))
+        district_code = clean(row.get("district_lgd_code"))
+        block_code = clean(row.get("subdistrict_lgd_code"))
+        village_code = clean(row.get("village_lgd_code"))
+        pin = clean(row.get("pin_code"))
+
+        staged_states.add(state_code)
+        staged_districts.add(district_code)
+        staged_blocks.add((district_code, block_code))
+        staged_villages.add((district_code, block_code, village_code))
+        staged_links.add((state_code, district_code, block_code, village_code, pin))
+
+    postal_keys = {postal_key(row) for row in postal_rows}
+
+    counts = db.execute(text("""
+        select
+            (select count(*) from geography_states where is_active = true) as states,
+            (select count(*) from geography_districts where is_active = true) as districts,
+            (select count(*) from geography_blocks where is_active = true) as blocks,
+            (select count(*) from geography_villages where is_active = true) as villages,
+            (select count(*) from geography_postal_references where is_active = true) as postal_references,
+            (select count(*) from geography_village_pin_links where is_active = true) as village_pin_links,
+            (select count(*) from geography_villages where is_active = true and cardinality(pin_codes) > 0) as villages_with_pin_codes,
+            (select count(distinct pin_code) from geography_postal_references where is_active = true) as distinct_postal_pins,
+            (select count(distinct pin_code) from geography_village_pin_links where is_active = true) as distinct_link_pins,
+            (select count(*) from geography_village_pin_links where is_active = true and geography_village_id is null) as unmatched_links,
+            (select count(*) from geography_postal_references where is_active = true and latitude is not null and (latitude < -90 or latitude > 90)) as bad_postal_lat,
+            (select count(*) from geography_postal_references where is_active = true and longitude is not null and (longitude < -180 or longitude > 180)) as bad_postal_lng
+    """)).mappings().one()
+
+    return {
+        "mode": "FAST_VERIFY",
+        "staged": {
+            "states": len(staged_states),
+            "districts": len(staged_districts),
+            "blocks": len(staged_blocks),
+            "villages": len(staged_villages),
+            "postal_references": len(postal_keys),
+            "village_pin_links": len(staged_links),
+        },
+        "database": dict(counts),
+        "matches_expected_loaded_counts": {
+            "states": counts["states"] >= len(staged_states),
+            "districts": counts["districts"] >= len(staged_districts),
+            "blocks": counts["blocks"] >= len(staged_blocks),
+            "villages": counts["villages"] >= len(staged_villages),
+            "postal_references": counts["postal_references"] == len(postal_keys),
+            "village_pin_links": counts["village_pin_links"] == len(staged_links),
+            "villages_with_pin_codes": counts["villages_with_pin_codes"] >= len(staged_villages),
+            "unmatched_links": counts["unmatched_links"] == 0,
+            "bad_postal_lat": counts["bad_postal_lat"] == 0,
+            "bad_postal_lng": counts["bad_postal_lng"] == 0,
+        },
+    }
+
+
 def build_diff(db, lgd_rows: list[dict[str, Any]], postal_rows: list[dict[str, Any]]) -> dict[str, Any]:
     states, districts, blocks, villages = existing_context_maps(db)
 
@@ -736,6 +805,7 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="Write DB changes. Default is dry-run.")
     parser.add_argument("--expire-missing", action="store_true", help="Mark source-missing postal/link rows inactive. Only allowed with ANNUAL_FULL_REFRESH and --apply.")
     parser.add_argument("--skip-hierarchy", action="store_true", help="Resume postal/link apply after LGD hierarchy is already loaded.")
+    parser.add_argument("--fast-verify", action="store_true", help="Run SQL-only post-apply verification without ORM-loading large geography tables.")
     parser.add_argument("--actor-id")
     parser.add_argument("--reason")
     args = parser.parse_args()
@@ -751,7 +821,7 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        diff = build_diff(db, lgd_rows, postal_rows)
+        diff = build_fast_verify(db, lgd_rows, postal_rows) if args.fast_verify else build_diff(db, lgd_rows, postal_rows)
         row_counts = {
             "lgd_rows": len(lgd_rows),
             "postal_rows": len(postal_rows),
@@ -787,7 +857,7 @@ def main() -> int:
 
         result = {
             "schema_version": "ogd_geography_apply_result.v1",
-            "mode": "APPLY" if args.apply else "DRY_RUN",
+            "mode": "APPLY" if args.apply else ("FAST_VERIFY" if args.fast_verify else "DRY_RUN"),
             "refresh_mode": args.refresh_mode,
             "expire_missing": args.expire_missing,
             "staged_dir": str(staged_dir),
