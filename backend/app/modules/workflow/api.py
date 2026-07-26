@@ -28,6 +28,7 @@ from app.modules.workflow.template_service import (
 )
 from app.modules.workflow.finance_summary import (
     DEFAULT_FINANCE_REPORT_CONFIG,
+    build_finance_analytics_summary,
     build_profit_loss_summary,
     build_stage_cost_summary,
     validate_finance_report_config,
@@ -1219,6 +1220,38 @@ def publish_finance_report_config(
         },
         "validation": validation,
     }
+
+
+@router.get("/finance/analytics-summary")
+def get_finance_analytics_summary(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    project_id: Optional[uuid.UUID] = Query(None),
+    farmer_id: Optional[uuid.UUID] = Query(None),
+    parcel_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+    season_year: Optional[int] = Query(None),
+    activity_date_from: Optional[date] = Query(None),
+    activity_date_to: Optional[date] = Query(None),
+    period: str = Query("month", pattern="^(month|quarter|year)$"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Return backend-computed finance analytics across crop/season/stage/time dimensions."""
+    return build_finance_analytics_summary(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        farmer_id=farmer_id,
+        parcel_id=parcel_id,
+        crop_code=crop_code,
+        season_code=season_code,
+        season_year=season_year,
+        activity_date_from=activity_date_from,
+        activity_date_to=activity_date_to,
+        period=period,
+        limit=limit,
+    )
 
 
 @router.get("/{cycle_id}/stage-cost-summary")

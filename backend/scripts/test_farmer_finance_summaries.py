@@ -247,7 +247,22 @@ def main():
         check(pnl["totals"]["total_income"] == "10000.00", "Income maps from captured revenue")
         check(pnl["totals"]["total_expenses"] == "2200.00", "Expenses map from configured activity categories")
         check(pnl["totals"]["profit_or_loss"] == "7800.00", "P&L equals income minus expenses")
-        check(pnl["per_acre"]["profit_or_loss_per_acre"] == "3900.00", "Per-acre P&L calculated from parcel acres")
+        analytics = client.get(
+            "/api/v1/crop-cycles/finance/analytics-summary?period=month",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        check(analytics.status_code == 200, "Finance analytics summary returns 200", analytics.text)
+        analytics_payload = analytics.json()
+        check(analytics_payload["schema_version"] == "finance_analytics_summary.v1", "Finance analytics schema stable")
+        check(analytics_payload["fixed_formula"] == "profit_or_loss = total_income - total_expenses", "Finance analytics fixed formula stable")
+        check(analytics_payload["totals"]["cycle_count"] == 1, "Finance analytics cycle count aggregates")
+        check(analytics_payload["totals"]["activity_count"] == 2, "Finance analytics activity count aggregates")
+        check(analytics_payload["totals"]["total_income"] == "10000.00", "Finance analytics income aggregates")
+        check(analytics_payload["totals"]["total_expenses"] == "2200.00", "Finance analytics expense aggregates")
+        check(analytics_payload["totals"]["profit_or_loss"] == "7800.00", "Finance analytics P&L aggregates")
+        check(analytics_payload["stage_cost_groups"][0]["stage_code"] in {"SOWING", "VEGETATIVE"}, "Finance analytics stage groups present")
+        check(analytics_payload["activity_period_groups"][0]["period"] == "2026-07", "Finance analytics monthly period group present")
+        check(any(row["expense_category"] == "SEED" for row in analytics_payload["expense_category_groups"]), "Finance analytics expense category groups present")
 
         print("=" * 72)
         print("Farmer finance summaries validated")

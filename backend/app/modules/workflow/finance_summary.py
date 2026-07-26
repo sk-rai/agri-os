@@ -465,7 +465,414 @@ def _context_event_row(event: FieldEventReport) -> dict[str, Any]:
         "source": event.source,
     }
 
+def _dimension_value(cycle: CropCycle, dimensions: dict[str, Any], key: str) -> Any:
+    if key == "project_id":
+        return str(cycle.project_id) if cycle.project_id else None
+    if key == "farmer_id":
+        return str(cycle.farmer_id)
+    if key == "parcel_id":
+        return str(cycle.parcel_id)
+    return dimensions.get(key)
 
+
+def build_finance_analytics_summary(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id=None,
+    farmer_id=None,
+    parcel_id=None,
+    crop_code: str | None = None,
+    season_code: str | None = None,
+    season_year: int | None = None,
+    activity_date_from=None,
+    activity_date_to=None,
+    period: str = "month",
+    limit: int = 500,
+) -> dict[str, Any]:
+    """Aggregate farmer finance across crop, season, stage, and time dimensions."""
+    period = (period or "month").lower()
+    if period not in {"month", "quarter", "year"}:
+        raise HTTPException(422, "period must be one of month, quarter, year")
+
+    cycle_query = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.is_active == True,
+    )
+    if project_id:
+        cycle_query = cycle_query.filter(CropCycle.project_id == project_id)
+    if farmer_id:
+        cycle_query = cycle_query.filter(CropCycle.farmer_id == farmer_id)
+    if parcel_id:
+        cycle_query = cycle_query.filter(CropCycle.parcel_id == parcel_id)
+    if crop_code:
+        cycle_query = cycle_query.filter(CropCycle.crop_code == crop_code.upper())
+    if season_code:
+        cycle_query = cycle_query.filter(CropCycle.season_code == season_code.upper())
+
+    cycles = cycle_query.order_by(CropCycle.planned_sowing_date.asc(), CropCycle.created_at.asc()).limit(limit).all()
+    if season_year is not None:
+        cycles = [cycle for cycle in cycles if _cycle_dimensions(cycle).get("season_year") == season_year]
+
+    cycle_ids = [cycle.id for cycle in cycles]
+    stages = (
+        db.query(CropStageInstance)
+        .filter(CropStageInstance.tenant_id == tenant_id, CropStageInstance.crop_cycle_id.in_(cycle_ids))
+        .all()
+        if cycle_ids
+        else []
+    )
+    stage_by_id = {stage.id: stage for stage in stages}
+
+    activity_query = db.query(CropActivity).filter(
+        CropActivity.tenant_id == tenant_id,
+        CropActivity.crop_cycle_id.in_(cycle_ids),
+        CropActivity.is_active == True,
+    )
+    if activity_date_from:
+        activity_query = activity_query.filter(CropActivity.activity_date >= activity_date_from)
+    if activity_date_to:
+        activity_query = activity_query.filter(CropActivity.activity_date <= activity_date_to)
+    activities = activity_query.order_by(CropActivity.activity_date.asc()).all() if cycle_ids else []
+
+    cycles_by_id = {cycle.id: cycle for cycle in cycles}
+    totals = {
+        "cycle_count": len(cycles),
+        "activity_count": len(activities),
+        "total_income": Decimal("0.00"),
+        "total_expenses": Decimal("0.00"),
+    }
+    cycle_groups = defaultdict(lambda: {"cycle_count": 0, "total_income": Decimal("0.00"), "total_expenses": Decimal("0.00")})
+    stage_groups = defaultdict(lambda: {"activity_count": 0, "actual_expense": Decimal("0.00")})
+    period_groups = defaultdict(lambda: {"activity_count": 0, "actual_expense": Decimal("0.00")})
+    expense_category_groups = defaultdict(lambda: {"activity_count": 0, "actual_expense": Decimal("0.00")})
+    config_cache: dict[uuid.UUID, tuple[dict[str, Any], dict[str, Any]]] = {}
+
+    for cycle in cycles:
+        dimensions = _cycle_dimensions(cycle)
+        total_income = money(cycle.total_revenue)
+        totals["total_income"] += total_income
+        key = (
+            _dimension_value(cycle, dimensions, "crop_code"),
+            _dimension_value(cycle, dimensions, "season_code"),
+            _dimension_value(cycle, dimensions, "season_year"),
+            _dimension_value(cycle, dimensions, "project_id"),
+        )
+        cycle_groups[key]["cycle_count"] += 1
+        cycle_groups[key]["total_income"] += total_income
+
+    for activity in activities:
+        cycle = cycles_by_id.get(activity.crop_cycle_id)
+        if not cycle:
+            continue
+        config, _ = config_cache.setdefault(cycle.id, load_finance_report_config_for_cycle(db, cycle))
+        activity_mapping = config.get("activity_expense_mapping") or {}
+        expense_category = activity_mapping.get((activity.activity_type or "OTHER").upper(), "OTHER_EXPENSE")
+        cost = money(activity.cost_amount)
+        totals["total_expenses"] += cost
+
+        dimensions = _cycle_dimensions(cycle)
+        cycle_key = (
+            _dimension_value(cycle, dimensions, "crop_code"),
+            _dimension_value(cycle, dimensions, "season_code"),
+            _dimension_value(cycle, dimensions, "season_year"),
+            _dimension_value(cycle, dimensions, "project_id"),
+        )
+        cycle_groups[cycle_key]["total_expenses"] += cost
+
+        stage = stage_by_id.get(activity.stage_instance_id)
+        stage_key = (cycle.crop_code, cycle.season_code, dimensions.get("season_year"), stage.stage_code if stage else "UNASSIGNED")
+        stage_groups[stage_key]["activity_count"] += 1
+        stage_groups[stage_key]["actual_expense"] += cost
+
+        period_dimensions = _date_dimensions(activity.activity_date)
+        period_key = period_dimensions.get(period)
+        period_groups[(period_key, cycle.crop_code, cycle.season_code)]["activity_count"] += 1
+        period_groups[(period_key, cycle.crop_code, cycle.season_code)]["actual_expense"] += cost
+
+        expense_category_groups[(expense_category, cycle.crop_code, cycle.season_code)]["activity_count"] += 1
+        expense_category_groups[(expense_category, cycle.crop_code, cycle.season_code)]["actual_expense"] += cost
+
+    def cycle_row(item):
+        (crop, season, year, project), values = item
+        profit = values["total_income"] - values["total_expenses"]
+        return {
+            "crop_code": crop,
+            "season_code": season,
+            "season_year": year,
+            "project_id": project,
+            "cycle_count": values["cycle_count"],
+            "total_income": money_text(values["total_income"]),
+            "total_expenses": money_text(values["total_expenses"]),
+            "profit_or_loss": money_text(profit),
+        }
+
+    return {
+        "schema_version": "finance_analytics_summary.v1",
+        "tenant_id": tenant_id,
+        "currency": "INR",
+        "fixed_formula": "profit_or_loss = total_income - total_expenses",
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "farmer_id": str(farmer_id) if farmer_id else None,
+            "parcel_id": str(parcel_id) if parcel_id else None,
+            "crop_code": crop_code.upper() if crop_code else None,
+            "season_code": season_code.upper() if season_code else None,
+            "season_year": season_year,
+            "activity_date_from": activity_date_from.isoformat() if activity_date_from else None,
+            "activity_date_to": activity_date_to.isoformat() if activity_date_to else None,
+            "period": period,
+            "limit": limit,
+        },
+        "totals": {
+            "cycle_count": totals["cycle_count"],
+            "activity_count": totals["activity_count"],
+            "total_income": money_text(totals["total_income"]),
+            "total_expenses": money_text(totals["total_expenses"]),
+            "profit_or_loss": money_text(totals["total_income"] - totals["total_expenses"]),
+        },
+        "cycle_summary_groups": [cycle_row(item) for item in sorted(cycle_groups.items())],
+        "stage_cost_groups": [
+            {
+                "crop_code": crop,
+                "season_code": season,
+                "season_year": year,
+                "stage_code": stage,
+                "activity_count": values["activity_count"],
+                "actual_expense": money_text(values["actual_expense"]),
+            }
+            for (crop, season, year, stage), values in sorted(stage_groups.items())
+        ],
+        "activity_period_groups": [
+            {
+                "period": period_key,
+                "crop_code": crop,
+                "season_code": season,
+                "activity_count": values["activity_count"],
+                "actual_expense": money_text(values["actual_expense"]),
+            }
+            for (period_key, crop, season), values in sorted(period_groups.items())
+        ],
+        "expense_category_groups": [
+            {
+                "expense_category": category,
+                "crop_code": crop,
+                "season_code": season,
+                "activity_count": values["activity_count"],
+                "actual_expense": money_text(values["actual_expense"]),
+            }
+            for (category, crop, season), values in sorted(expense_category_groups.items())
+        ],
+        "notes": [
+            "Income is cycle-level revenue; stage and activity-period groups show expenses only unless revenue allocation is added later.",
+            "This endpoint is a read-model contract over operational tables and can later be backed by materialized aggregates.",
+        ],
+    }
+
+
+def _dimension_value(cycle: CropCycle, dimensions: dict[str, Any], key: str) -> Any:
+    if key == "project_id":
+        return str(cycle.project_id) if cycle.project_id else None
+    if key == "farmer_id":
+        return str(cycle.farmer_id)
+    if key == "parcel_id":
+        return str(cycle.parcel_id)
+    return dimensions.get(key)
+
+
+def build_finance_analytics_summary(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id=None,
+    farmer_id=None,
+    parcel_id=None,
+    crop_code: str | None = None,
+    season_code: str | None = None,
+    season_year: int | None = None,
+    activity_date_from=None,
+    activity_date_to=None,
+    period: str = "month",
+    limit: int = 500,
+) -> dict[str, Any]:
+    """Aggregate farmer finance across crop, season, stage, and time dimensions."""
+    period = (period or "month").lower()
+    if period not in {"month", "quarter", "year"}:
+        raise HTTPException(422, "period must be one of month, quarter, year")
+
+    cycle_query = db.query(CropCycle).filter(
+        CropCycle.tenant_id == tenant_id,
+        CropCycle.is_active == True,
+    )
+    if project_id:
+        cycle_query = cycle_query.filter(CropCycle.project_id == project_id)
+    if farmer_id:
+        cycle_query = cycle_query.filter(CropCycle.farmer_id == farmer_id)
+    if parcel_id:
+        cycle_query = cycle_query.filter(CropCycle.parcel_id == parcel_id)
+    if crop_code:
+        cycle_query = cycle_query.filter(CropCycle.crop_code == crop_code.upper())
+    if season_code:
+        cycle_query = cycle_query.filter(CropCycle.season_code == season_code.upper())
+
+    cycles = cycle_query.order_by(CropCycle.planned_sowing_date.asc(), CropCycle.created_at.asc()).limit(limit).all()
+    if season_year is not None:
+        cycles = [cycle for cycle in cycles if _cycle_dimensions(cycle).get("season_year") == season_year]
+
+    cycle_ids = [cycle.id for cycle in cycles]
+    stages = (
+        db.query(CropStageInstance)
+        .filter(CropStageInstance.tenant_id == tenant_id, CropStageInstance.crop_cycle_id.in_(cycle_ids))
+        .all()
+        if cycle_ids
+        else []
+    )
+    stage_by_id = {stage.id: stage for stage in stages}
+
+    activity_query = db.query(CropActivity).filter(
+        CropActivity.tenant_id == tenant_id,
+        CropActivity.crop_cycle_id.in_(cycle_ids),
+        CropActivity.is_active == True,
+    )
+    if activity_date_from:
+        activity_query = activity_query.filter(CropActivity.activity_date >= activity_date_from)
+    if activity_date_to:
+        activity_query = activity_query.filter(CropActivity.activity_date <= activity_date_to)
+    activities = activity_query.order_by(CropActivity.activity_date.asc()).all() if cycle_ids else []
+
+    cycles_by_id = {cycle.id: cycle for cycle in cycles}
+    totals = {
+        "cycle_count": len(cycles),
+        "activity_count": len(activities),
+        "total_income": Decimal("0.00"),
+        "total_expenses": Decimal("0.00"),
+    }
+    cycle_groups = defaultdict(lambda: {"cycle_count": 0, "total_income": Decimal("0.00"), "total_expenses": Decimal("0.00")})
+    stage_groups = defaultdict(lambda: {"activity_count": 0, "actual_expense": Decimal("0.00")})
+    period_groups = defaultdict(lambda: {"activity_count": 0, "actual_expense": Decimal("0.00")})
+    expense_category_groups = defaultdict(lambda: {"activity_count": 0, "actual_expense": Decimal("0.00")})
+    config_cache: dict[uuid.UUID, tuple[dict[str, Any], dict[str, Any]]] = {}
+
+    for cycle in cycles:
+        dimensions = _cycle_dimensions(cycle)
+        total_income = money(cycle.total_revenue)
+        totals["total_income"] += total_income
+        key = (
+            _dimension_value(cycle, dimensions, "crop_code"),
+            _dimension_value(cycle, dimensions, "season_code"),
+            _dimension_value(cycle, dimensions, "season_year"),
+            _dimension_value(cycle, dimensions, "project_id"),
+        )
+        cycle_groups[key]["cycle_count"] += 1
+        cycle_groups[key]["total_income"] += total_income
+
+    for activity in activities:
+        cycle = cycles_by_id.get(activity.crop_cycle_id)
+        if not cycle:
+            continue
+        config, _ = config_cache.setdefault(cycle.id, load_finance_report_config_for_cycle(db, cycle))
+        activity_mapping = config.get("activity_expense_mapping") or {}
+        expense_category = activity_mapping.get((activity.activity_type or "OTHER").upper(), "OTHER_EXPENSE")
+        cost = money(activity.cost_amount)
+        totals["total_expenses"] += cost
+
+        dimensions = _cycle_dimensions(cycle)
+        cycle_key = (
+            _dimension_value(cycle, dimensions, "crop_code"),
+            _dimension_value(cycle, dimensions, "season_code"),
+            _dimension_value(cycle, dimensions, "season_year"),
+            _dimension_value(cycle, dimensions, "project_id"),
+        )
+        cycle_groups[cycle_key]["total_expenses"] += cost
+
+        stage = stage_by_id.get(activity.stage_instance_id)
+        stage_key = (cycle.crop_code, cycle.season_code, dimensions.get("season_year"), stage.stage_code if stage else "UNASSIGNED")
+        stage_groups[stage_key]["activity_count"] += 1
+        stage_groups[stage_key]["actual_expense"] += cost
+
+        period_dimensions = _date_dimensions(activity.activity_date)
+        period_key = period_dimensions.get(period)
+        period_groups[(period_key, cycle.crop_code, cycle.season_code)]["activity_count"] += 1
+        period_groups[(period_key, cycle.crop_code, cycle.season_code)]["actual_expense"] += cost
+
+        expense_category_groups[(expense_category, cycle.crop_code, cycle.season_code)]["activity_count"] += 1
+        expense_category_groups[(expense_category, cycle.crop_code, cycle.season_code)]["actual_expense"] += cost
+
+    def cycle_row(item):
+        (crop, season, year, project), values = item
+        profit = values["total_income"] - values["total_expenses"]
+        return {
+            "crop_code": crop,
+            "season_code": season,
+            "season_year": year,
+            "project_id": project,
+            "cycle_count": values["cycle_count"],
+            "total_income": money_text(values["total_income"]),
+            "total_expenses": money_text(values["total_expenses"]),
+            "profit_or_loss": money_text(profit),
+        }
+
+    return {
+        "schema_version": "finance_analytics_summary.v1",
+        "tenant_id": tenant_id,
+        "currency": "INR",
+        "fixed_formula": "profit_or_loss = total_income - total_expenses",
+        "filters": {
+            "project_id": str(project_id) if project_id else None,
+            "farmer_id": str(farmer_id) if farmer_id else None,
+            "parcel_id": str(parcel_id) if parcel_id else None,
+            "crop_code": crop_code.upper() if crop_code else None,
+            "season_code": season_code.upper() if season_code else None,
+            "season_year": season_year,
+            "activity_date_from": activity_date_from.isoformat() if activity_date_from else None,
+            "activity_date_to": activity_date_to.isoformat() if activity_date_to else None,
+            "period": period,
+            "limit": limit,
+        },
+        "totals": {
+            "cycle_count": totals["cycle_count"],
+            "activity_count": totals["activity_count"],
+            "total_income": money_text(totals["total_income"]),
+            "total_expenses": money_text(totals["total_expenses"]),
+            "profit_or_loss": money_text(totals["total_income"] - totals["total_expenses"]),
+        },
+        "cycle_summary_groups": [cycle_row(item) for item in sorted(cycle_groups.items())],
+        "stage_cost_groups": [
+            {
+                "crop_code": crop,
+                "season_code": season,
+                "season_year": year,
+                "stage_code": stage,
+                "activity_count": values["activity_count"],
+                "actual_expense": money_text(values["actual_expense"]),
+            }
+            for (crop, season, year, stage), values in sorted(stage_groups.items())
+        ],
+        "activity_period_groups": [
+            {
+                "period": period_key,
+                "crop_code": crop,
+                "season_code": season,
+                "activity_count": values["activity_count"],
+                "actual_expense": money_text(values["actual_expense"]),
+            }
+            for (period_key, crop, season), values in sorted(period_groups.items())
+        ],
+        "expense_category_groups": [
+            {
+                "expense_category": category,
+                "crop_code": crop,
+                "season_code": season,
+                "activity_count": values["activity_count"],
+                "actual_expense": money_text(values["actual_expense"]),
+            }
+            for (category, crop, season), values in sorted(expense_category_groups.items())
+        ],
+        "notes": [
+            "Income is cycle-level revenue; stage and activity-period groups show expenses only unless revenue allocation is added later.",
+            "This endpoint is a read-model contract over operational tables and can later be backed by materialized aggregates.",
+        ],
+    }
 def build_stage_cost_summary(
     db: Session,
     *,
