@@ -76,3 +76,69 @@ Expected local starter result after apply:
 - 31 products total;
 - 36 seeded company discovery candidates;
 - seeded product mix: 11 conventional, 5 seed, 2 organic, 2 natural, 2 bio-input.
+
+## Future consumable-input discovery buckets
+
+The current starter universe uses:
+
+- Screener fertilizers/agrochemicals sector page as a listed-company discovery source for fertilizer, agrochemical, and broader agri-input companies.
+- TNAU seed-industry PDF as a seed-company discovery source.
+
+These are starting lists for Android testing and later client demos. They are not product-label or dosage sources. Product truth must come from manufacturer websites, product labels, regulator data, or other reviewable primary sources.
+
+To capture the full consumable-input gamut, future discovery passes should cover:
+
+1. Fertilizers and nutrients
+   - Bulk fertilizers: urea, DAP, MOP, NPK.
+   - Secondary nutrients: calcium, magnesium, sulphur.
+   - Micronutrients: zinc, boron, iron, manganese, copper, molybdenum.
+   - Water-soluble/fertigation fertilizers.
+   - Liquid fertilizers.
+
+2. Crop protection
+   - Insecticides.
+   - Fungicides.
+   - Herbicides/weedicides.
+   - Acaricides, nematicides, rodenticides, molluscicides.
+   - Seed-treatment chemicals.
+
+3. Biological and organic-compatible inputs
+   - Biofertilizers: Rhizobium, Azotobacter, Azospirillum, PSB, KSB.
+   - Biopesticides: Trichoderma, Pseudomonas, Beauveria, Metarhizium, NPV.
+   - Biostimulants: seaweed extract, humic acid, amino acid, fulvic acid.
+   - Organic manure/products: compost, vermicompost, neem cake, castor cake, bone meal.
+
+4. Natural farming inputs
+   - Jeevamrit.
+   - Beejamrit.
+   - Ghanjeevamrit.
+   - Panchagavya.
+   - Dashparni ark.
+   - Neemastra/Brahmastra-style preparations.
+
+   Natural farming inputs must remain distinct from certified/organic-compatible purchased products. `NATURAL` means natural-farming/on-farm or low-external-input practice; `ORGANIC` means externally supplied organic-compatible product where certification/evidence may still need verification.
+
+5. Application helpers and field consumables
+   - Spreaders, stickers, surfactants, adjuvants.
+   - Wetting agents.
+   - pH correctors/water conditioners.
+   - Pheromone traps/lures.
+   - Sticky traps.
+   - Mulching film, grow bags, nursery media/cocopeat where operationally relevant.
+
+6. Planting material
+   - Seeds.
+   - Saplings.
+   - Seedlings.
+   - Tubers, cuttings, rhizomes, and other crop-specific planting material.
+
+## Future company-site scrape workflow
+
+Because every company website has a different structure, product enrichment should happen in multiple reviewable passes:
+
+1. Build a company-product scrape plan from manufacturer rows and discovery candidates.
+2. For each company, identify the official website and product/catalog pages.
+3. Capture `source_url`, `source_notes`, and `source_text` against candidate product rows.
+4. Extract dosage, composition, crops, pests/diseases, application stage, package size, and certification/registration evidence where available.
+5. Keep uncertain rows in `MANUAL_REVIEW`; do not promote to trusted product catalog until reviewed.
+6. Prefer regulator/product-label evidence over marketing pages when dosage or certification claims matter.
