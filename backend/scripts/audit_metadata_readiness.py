@@ -90,9 +90,9 @@ def workflow_audit(db):
         "needs_decision_node_audit": True,
         "stage_cost_summary_endpoint": "/api/v1/crop-cycles/{cycle_id}/stage-cost-summary",
         "profit_loss_summary_endpoint": "/api/v1/crop-cycles/{cycle_id}/profit-loss-summary",
-        "finance_summary_contract_status": "IMPLEMENTED_DEFAULT_CONFIG",
+        "finance_summary_contract_status": "IMPLEMENTED_PERSISTED_CONFIG_WITH_DEFAULT_FALLBACK",
         "needs_profit_loss_summary_contract": False,
-        "needs_persisted_finance_admin_config": True,
+        "needs_persisted_finance_admin_config": False,
     }
 
 

@@ -232,6 +232,37 @@ class WorkflowTemplateAuditEvent(Base, UUIDPrimaryKey):
     )
 
 
+
+class WorkflowFinanceReportConfig(Base, UUIDPrimaryKey, AuditMixin):
+    """Versioned backend-owned finance summary/report configuration.
+
+    Configuration controls category mappings, display flags, thresholds, and
+    scope. It never stores executable formulas; P&L remains fixed as
+    income minus expenses.
+    """
+
+    __tablename__ = "workflow_finance_report_configs"
+
+    tenant_id = Column(String(50), nullable=False)
+    project_id = Column(UUID(as_uuid=True))
+    crop_code = Column(String(30))
+    season_code = Column(String(20))
+    config_version = Column(Integer, nullable=False)
+    status = Column(String(30), nullable=False, default="DRAFT")
+    config = Column(JSONB, nullable=False)
+    validation_result = Column(JSONB, default=dict, nullable=False)
+    published_at = Column(DateTime(timezone=True))
+    published_by = Column(String(80))
+    archived_at = Column(DateTime(timezone=True))
+    archived_by = Column(String(80))
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index("idx_workflow_finance_report_configs_scope", "tenant_id", "project_id", "crop_code", "season_code", "status", "is_active"),
+        CheckConstraint("status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')", name="ck_workflow_finance_report_config_status"),
+    )
+
 class CropCycle(Base, UUIDPrimaryKey, AuditMixin):
     """One growing season of one crop on one parcel.
 

@@ -11,14 +11,14 @@ All mutations require: actor_id, timestamp, GPS.
 
 import uuid
 from datetime import datetime, timezone, date, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
-from app.modules.workflow.models import CropCycle, CropStageInstance, CropActivity
+from app.modules.workflow.models import WorkflowFinanceReportConfig, CropCycle, CropStageInstance, CropActivity
 from app.modules.workflow.template_service import (
     find_published_workflow_template,
     list_enabled_workflow_versions,
@@ -31,6 +31,7 @@ from app.modules.workflow.finance_summary import (
     build_profit_loss_summary,
     build_stage_cost_summary,
     validate_finance_report_config,
+    load_finance_report_config_for_scope,
 )
 from app.modules.master_data.models import AgriculturalProduct, AgriculturalProductPackage, Crop, CropLifecycleTemplate, CropStageInputRule, ProjectProductApproval
 from app.modules.master_data.input_assignment_service import (
@@ -1107,12 +1108,116 @@ def get_recommended_activities(
     }
 
 
+
+class FinanceReportConfigPublishRequest(BaseModel):
+    config: dict[str, Any]
+    project_id: Optional[uuid.UUID] = None
+    crop_code: Optional[str] = None
+    season_code: Optional[str] = None
+    reason: Optional[str] = None
+
+
 @router.get("/finance/report-config")
-def get_finance_report_config():
-    """Return default backend-owned farmer finance config and validation."""
+def get_finance_report_config(
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    project_id: Optional[uuid.UUID] = Query(None),
+    crop_code: Optional[str] = Query(None),
+    season_code: Optional[str] = Query(None),
+):
+    """Return published farmer finance config for scope, falling back to default."""
+    config, source = load_finance_report_config_for_scope(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        crop_code=crop_code,
+        season_code=season_code,
+    )
     return {
-        "config": DEFAULT_FINANCE_REPORT_CONFIG,
-        "validation": validate_finance_report_config(DEFAULT_FINANCE_REPORT_CONFIG),
+        "config": config,
+        "source": source,
+        "validation": validate_finance_report_config(config),
+    }
+
+
+@router.post("/finance/report-config/validate")
+def validate_finance_report_config_endpoint(body: FinanceReportConfigPublishRequest):
+    """Validate finance report config without persisting it."""
+    return validate_finance_report_config(body.config)
+
+
+@router.post("/finance/report-config/publish")
+def publish_finance_report_config(
+    body: FinanceReportConfigPublishRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+):
+    """Publish a validated finance report config for tenant/project/crop/season scope."""
+    validation = validate_finance_report_config(body.config)
+    if not validation["valid"]:
+        raise HTTPException(409, {"error": "FINANCE_REPORT_CONFIG_INVALID", "validation": validation})
+
+    scope_filter = [
+        WorkflowFinanceReportConfig.tenant_id == x_tenant_id,
+        WorkflowFinanceReportConfig.is_active == True,
+        WorkflowFinanceReportConfig.project_id == body.project_id if body.project_id else WorkflowFinanceReportConfig.project_id.is_(None),
+        WorkflowFinanceReportConfig.crop_code == body.crop_code if body.crop_code else WorkflowFinanceReportConfig.crop_code.is_(None),
+        WorkflowFinanceReportConfig.season_code == body.season_code if body.season_code else WorkflowFinanceReportConfig.season_code.is_(None),
+    ]
+
+    latest_version = (
+        db.query(WorkflowFinanceReportConfig.config_version)
+        .filter(*scope_filter)
+        .order_by(WorkflowFinanceReportConfig.config_version.desc())
+        .first()
+    )
+    next_version = (latest_version[0] if latest_version else 0) + 1
+
+    existing_published = (
+        db.query(WorkflowFinanceReportConfig)
+        .filter(*scope_filter, WorkflowFinanceReportConfig.status == "PUBLISHED")
+        .all()
+    )
+    now_ts = datetime.now(timezone.utc)
+    for row in existing_published:
+        row.status = "ARCHIVED"
+        row.archived_at = now_ts
+        row.archived_by = x_actor_id
+        row.updated_at = now_ts
+
+    record = WorkflowFinanceReportConfig(
+        tenant_id=x_tenant_id,
+        project_id=body.project_id,
+        crop_code=body.crop_code,
+        season_code=body.season_code,
+        config_version=next_version,
+        status="PUBLISHED",
+        config=body.config,
+        validation_result=validation,
+        published_at=now_ts,
+        published_by=x_actor_id,
+        reason=body.reason,
+        metadata_={"fixed_formula": "profit_or_loss = total_income - total_expenses"},
+        created_at=now_ts,
+        updated_at=now_ts,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return {
+        "schema_version": "finance_report_config_publish_result.v1",
+        "config_id": str(record.id),
+        "config_version": record.config_version,
+        "status": record.status,
+        "scope": {
+            "tenant_id": record.tenant_id,
+            "project_id": str(record.project_id) if record.project_id else None,
+            "crop_code": record.crop_code,
+            "season_code": record.season_code,
+        },
+        "validation": validation,
     }
 
 

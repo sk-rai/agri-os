@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.modules.farmer.models import Parcel
 from app.modules.media.models import FieldEventReport
 from app.modules.master_data.models import CropLifecycleTemplate
-from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
+from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance, WorkflowFinanceReportConfig
 from app.modules.workflow.template_service import (
     find_published_workflow_template,
     workflow_version_to_stage_definitions_for_scope,
@@ -258,6 +258,154 @@ def _template_stage_defs(db: Session, cycle: CropCycle) -> list[dict[str, Any]]:
     return (template.stages if template else []) or []
 
 
+
+def _date_dimensions(value) -> dict[str, Any]:
+    if not value:
+        return {"date": None, "year": None, "month": None, "quarter": None}
+    quarter = ((value.month - 1) // 3) + 1
+    return {
+        "date": value.isoformat(),
+        "year": value.year,
+        "month": f"{value.year:04d}-{value.month:02d}",
+        "quarter": f"{value.year:04d}-Q{quarter}",
+    }
+
+
+def _cycle_dimensions(cycle: CropCycle) -> dict[str, Any]:
+    sowing = cycle.actual_sowing_date or cycle.planned_sowing_date
+    harvest = cycle.actual_harvest_date or cycle.expected_harvest_date
+    return {
+        "crop_code": cycle.crop_code,
+        "season_code": cycle.season_code,
+        "project_id": str(cycle.project_id) if cycle.project_id else None,
+        "planned_sowing": _date_dimensions(cycle.planned_sowing_date),
+        "actual_sowing": _date_dimensions(cycle.actual_sowing_date),
+        "effective_sowing": _date_dimensions(sowing),
+        "expected_harvest": _date_dimensions(cycle.expected_harvest_date),
+        "actual_harvest": _date_dimensions(cycle.actual_harvest_date),
+        "effective_harvest": _date_dimensions(harvest),
+        "season_year": sowing.year if sowing else None,
+    }
+
+
+def _config_scope_filter(query, *, tenant_id: str, project_id, crop_code: str | None, season_code: str | None):
+    project_filter = (
+        WorkflowFinanceReportConfig.project_id.is_(None)
+        if project_id is None
+        else ((WorkflowFinanceReportConfig.project_id == project_id) | (WorkflowFinanceReportConfig.project_id.is_(None)))
+    )
+    crop_filter = (
+        WorkflowFinanceReportConfig.crop_code.is_(None)
+        if not crop_code
+        else ((WorkflowFinanceReportConfig.crop_code == crop_code) | (WorkflowFinanceReportConfig.crop_code.is_(None)))
+    )
+    season_filter = (
+        WorkflowFinanceReportConfig.season_code.is_(None)
+        if not season_code
+        else ((WorkflowFinanceReportConfig.season_code == season_code) | (WorkflowFinanceReportConfig.season_code.is_(None)))
+    )
+
+    return query.filter(
+        WorkflowFinanceReportConfig.tenant_id == tenant_id,
+        WorkflowFinanceReportConfig.is_active == True,
+        WorkflowFinanceReportConfig.status == "PUBLISHED",
+        project_filter,
+        crop_filter,
+        season_filter,
+    )
+
+
+def _scope_rank(row: WorkflowFinanceReportConfig, *, project_id, crop_code: str | None, season_code: str | None) -> int:
+    rank = 0
+    if project_id and row.project_id == project_id:
+        rank += 4
+    if crop_code and row.crop_code == crop_code:
+        rank += 2
+    if season_code and row.season_code == season_code:
+        rank += 1
+    return rank
+
+
+def load_finance_report_config_for_cycle(db: Session, cycle: CropCycle) -> tuple[dict[str, Any], dict[str, Any]]:
+    rows = _config_scope_filter(
+        db.query(WorkflowFinanceReportConfig),
+        tenant_id=cycle.tenant_id,
+        project_id=cycle.project_id,
+        crop_code=cycle.crop_code,
+        season_code=cycle.season_code,
+    ).all()
+
+    if not rows:
+        return DEFAULT_FINANCE_REPORT_CONFIG, {
+            "source": "DEFAULT_CONFIG",
+            "config_id": None,
+            "config_version": None,
+            "scope": {"tenant_id": cycle.tenant_id, "project_id": None, "crop_code": None, "season_code": None},
+        }
+
+    selected = sorted(
+        rows,
+        key=lambda row: (_scope_rank(row, project_id=cycle.project_id, crop_code=cycle.crop_code, season_code=cycle.season_code), row.config_version),
+        reverse=True,
+    )[0]
+
+    return selected.config, {
+        "source": "PUBLISHED_CONFIG",
+        "config_id": str(selected.id),
+        "config_version": selected.config_version,
+        "scope": {
+            "tenant_id": selected.tenant_id,
+            "project_id": str(selected.project_id) if selected.project_id else None,
+            "crop_code": selected.crop_code,
+            "season_code": selected.season_code,
+        },
+    }
+
+
+def load_finance_report_config_for_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id=None,
+    crop_code: str | None = None,
+    season_code: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    rows = _config_scope_filter(
+        db.query(WorkflowFinanceReportConfig),
+        tenant_id=tenant_id,
+        project_id=project_id,
+        crop_code=crop_code,
+        season_code=season_code,
+    ).all()
+
+    if not rows:
+        return DEFAULT_FINANCE_REPORT_CONFIG, {
+            "source": "DEFAULT_CONFIG",
+            "config_id": None,
+            "config_version": None,
+            "scope": {"tenant_id": tenant_id, "project_id": None, "crop_code": None, "season_code": None},
+        }
+
+    selected = sorted(
+        rows,
+        key=lambda row: (_scope_rank(row, project_id=project_id, crop_code=crop_code, season_code=season_code), row.config_version),
+        reverse=True,
+    )[0]
+
+    return selected.config, {
+        "source": "PUBLISHED_CONFIG",
+        "config_id": str(selected.id),
+        "config_version": selected.config_version,
+        "scope": {
+            "tenant_id": selected.tenant_id,
+            "project_id": str(selected.project_id) if selected.project_id else None,
+            "crop_code": selected.crop_code,
+            "season_code": selected.season_code,
+        },
+    }
+
+
+
 def _planned_cost_by_stage(db: Session, cycle: CropCycle) -> tuple[dict[str, Decimal], dict[str, list[dict[str, Any]]]]:
     planned_by_stage = defaultdict(lambda: Decimal("0.00"))
     planned_rows = defaultdict(list)
@@ -278,7 +426,7 @@ def _planned_cost_by_stage(db: Session, cycle: CropCycle) -> tuple[dict[str, Dec
     return planned_by_stage, planned_rows
 
 
-def _activity_row(activity: CropActivity, expense_category: str, currency: str) -> dict[str, Any]:
+def _activity_row(activity: CropActivity, expense_category: str, currency: str, cycle: CropCycle, stage_code: str | None = None) -> dict[str, Any]:
     return {
         "activity_id": str(activity.id),
         "activity_date": activity.activity_date.isoformat() if activity.activity_date else None,
@@ -293,6 +441,13 @@ def _activity_row(activity: CropActivity, expense_category: str, currency: str) 
         "cost_amount": money_text(activity.cost_amount),
         "cost_currency": activity.cost_currency or currency,
         "notes": activity.notes,
+        "analytics_dimensions": {
+            "crop_code": cycle.crop_code,
+            "season_code": cycle.season_code,
+            "season_year": _cycle_dimensions(cycle).get("season_year"),
+            "stage_code": stage_code,
+            "activity_date": _date_dimensions(activity.activity_date),
+        },
     }
 
 
@@ -318,12 +473,15 @@ def build_stage_cost_summary(
     cycle_id: uuid.UUID,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    config = config or DEFAULT_FINANCE_REPORT_CONFIG
+    config_source = None
+    if config is None:
+        cycle_for_config = _load_cycle(db, tenant_id, cycle_id)
+        config, config_source = load_finance_report_config_for_cycle(db, cycle_for_config)
     validation = validate_finance_report_config(config)
     if not validation["valid"]:
         raise HTTPException(409, {"error": "FINANCE_REPORT_CONFIG_INVALID", "validation": validation})
 
-    cycle = _load_cycle(db, tenant_id, cycle_id)
+    cycle = cycle_for_config if 'cycle_for_config' in locals() else _load_cycle(db, tenant_id, cycle_id)
     currency = config.get("currency") or "INR"
     activity_mapping = config.get("activity_expense_mapping") or {}
 
@@ -356,6 +514,8 @@ def build_stage_cost_summary(
 
     unassigned_key = "UNASSIGNED"
 
+    stage_code_by_id = {stage.id: stage.stage_code for stage in stages}
+
     for activity in activities:
         stage_key = activity.stage_instance_id or unassigned_key
         expense_category = activity_mapping.get((activity.activity_type or "OTHER").upper(), "OTHER_EXPENSE")
@@ -366,7 +526,7 @@ def build_stage_cost_summary(
         expense_breakup_by_stage[stage_key][expense_category] += cost
         input_label = activity.input_name or activity.input_code or activity.activity_type or "Activity"
         input_breakup_by_stage[stage_key][input_label] += cost
-        activities_by_stage[stage_key].append(_activity_row(activity, expense_category, currency))
+        activities_by_stage[stage_key].append(_activity_row(activity, expense_category, currency, cycle, stage_code_by_id.get(activity.stage_instance_id)))
 
     context_events_by_stage = defaultdict(list)
     context_event_categories = set(config.get("context_event_categories") or [])
@@ -391,6 +551,15 @@ def build_stage_cost_summary(
             "stage_name": stage.stage_name,
             "stage_order": stage.stage_order,
             "status": stage.status,
+            "analytics_dimensions": {
+                "crop_code": cycle.crop_code,
+                "season_code": cycle.season_code,
+                "season_year": _cycle_dimensions(cycle).get("season_year"),
+                "stage_code": stage.stage_code,
+                "planned_start": _date_dimensions(stage.planned_start_date),
+                "actual_start": _date_dimensions(stage.actual_start_date),
+                "actual_end": _date_dimensions(stage.actual_end_date),
+            },
             "planned_expense": money_text(planned),
             "actual_expense": money_text(actual),
             "variance_amount": money_text(actual - planned),
@@ -456,7 +625,9 @@ def build_stage_cost_summary(
             "status": config.get("status"),
             "display": config.get("display"),
             "validation": validation,
+            "source": config_source or {"source": "REQUEST_CONFIG"},
         },
+        "analytics_dimensions": _cycle_dimensions(cycle),
         "totals": {
             "planned_expense": money_text(total_planned),
             "actual_expense": money_text(total_actual),
@@ -487,7 +658,9 @@ def build_profit_loss_summary(
     cycle_id: uuid.UUID,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    config = config or DEFAULT_FINANCE_REPORT_CONFIG
+    if config is None:
+        cycle_for_config = _load_cycle(db, tenant_id, cycle_id)
+        config, _ = load_finance_report_config_for_cycle(db, cycle_for_config)
     stage_summary = build_stage_cost_summary(db, tenant_id=tenant_id, cycle_id=cycle_id, config=config)
     cycle = _load_cycle(db, tenant_id, cycle_id)
     parcel = db.query(Parcel).filter(Parcel.id == cycle.parcel_id, Parcel.tenant_id == tenant_id).first()
@@ -536,6 +709,7 @@ def build_profit_loss_summary(
         "season_code": cycle.season_code,
         "currency": config.get("currency") or "INR",
         "fixed_formula": "profit_or_loss = total_income - total_expenses",
+        "analytics_dimensions": _cycle_dimensions(cycle),
         "totals": {
             "total_income": money_text(total_income),
             "total_expenses": money_text(total_expenses),
