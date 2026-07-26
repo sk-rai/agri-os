@@ -53,6 +53,7 @@ def main() -> int:
             "projects": count_if_table(db, "projects"),
             "active_projects": count_if_table(db, "projects", "status in ('ACTIVE', 'PLANNED')"),
             "project_enrollments": count_if_table(db, "project_enrollments"),
+            "farmer_project_enrollments": count_if_table(db, "farmer_project_enrollments"),
             "crop_cycles": count_if_table(db, "crop_cycles"),
             "active_crop_cycles": count_if_table(db, "crop_cycles", "status = 'ACTIVE'"),
             "agent_profiles": count_if_table(db, "agent_profiles"),
@@ -81,30 +82,39 @@ def main() -> int:
                 and p.status = 'ACTIVE'
             """))
 
-        if table_exists(db, "farmers") and table_exists(db, "project_enrollments"):
+        enrollment_table = None
+        if table_exists(db, "farmer_project_enrollments"):
+            enrollment_table = "farmer_project_enrollments"
+        elif table_exists(db, "project_enrollments"):
+            enrollment_table = "project_enrollments"
+
+        if table_exists(db, "farmers") and enrollment_table:
             enrollment_columns = {
                 row[0]
                 for row in db.execute(text("""
                     select column_name
                     from information_schema.columns
                     where table_schema = 'public'
-                    and table_name = 'project_enrollments'
-                """)).all()
+                    and table_name = :table
+                """), {"table": enrollment_table}).all()
             }
             if "farmer_id" in enrollment_columns:
-                associated_farmers = int(scalar(db, """
+                associated_farmers = int(scalar(db, f"""
                     select count(distinct f.id)
                     from farmers f
-                    join project_enrollments pe on pe.farmer_id = f.id
+                    join {enrollment_table} pe on pe.farmer_id = f.id
                     where f.status = 'ACTIVE'
+                    and pe.status in ('ACTIVE', 'ENROLLED', 'APPROVED')
                 """))
 
-                independent_farmers = int(scalar(db, """
+                independent_farmers = int(scalar(db, f"""
                     select count(*)
                     from farmers f
                     where f.status = 'ACTIVE'
                     and not exists (
-                        select 1 from project_enrollments pe where pe.farmer_id = f.id
+                        select 1 from {enrollment_table} pe
+                        where pe.farmer_id = f.id
+                        and pe.status in ('ACTIVE', 'ENROLLED', 'APPROVED')
                     )
                 """))
             else:
