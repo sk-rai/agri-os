@@ -134,6 +134,9 @@ To capture the full consumable-input gamut, future discovery passes should cover
 
 ## Future company-site scrape workflow
 
+See `docs/company-product-source-research.md` for the source trust hierarchy, scrape workflow, and failure-prevention risk register.
+
+
 Because every company website has a different structure, product enrichment should happen in multiple reviewable passes:
 
 1. Build a company-product scrape plan from manufacturer rows and discovery candidates.
