@@ -122,6 +122,22 @@ Next-phase India/global model should add generic entities:
 - Census enrichment may be attached as reference metadata but cannot override LGD canonical identity.
 - PIN-code refresh should reconcile candidates rather than blindly replacing village identity.
 
+## Runtime PIN lookup guardrail
+
+The Android PIN lookup endpoint returns backend-computed guardrail status from the loaded OGD geography tables.
+
+Runtime behavior:
+
+- PIN validation first checks active India Post/OGD postal references.
+- LGD village candidates come from active LGD village-PIN links.
+- A valid postal PIN may have zero LGD village candidates, especially for urban/core postal areas.
+- Android must treat `VALID_POSTAL_PIN_NO_LGD_VILLAGES` as a valid PIN state, not junk input.
+- Android may ask the user to enter/select village manually when no LGD candidates exist.
+- Unknown PINs return `PIN_NOT_FOUND`.
+- Malformed PINs remain request-validation errors.
+
+This keeps postal identity, LGD village identity, and user-entered fallback village text separate.
+
 ## Census and analytics enrichment checkpoint
 
 Census should remain a separate enrichment layer for aliases, demographic indicators, household/amenity indicators, and business-opportunity analytics. The LGD/PIN DB apply should therefore add modular postal reference and village-PIN link structures now, while keeping Census crosswalk and indicator tables separate for Census 2026 or any curated Census 2011 import.

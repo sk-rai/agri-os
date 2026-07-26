@@ -11,7 +11,7 @@ cd ~/projects/farmint/backend
 ../venv/bin/python scripts/capture_android_sample_payloads.py
 ```
 
-The current bundle contains 24 redacted JSON samples covering mode bootstrap, app config, profile forms/options, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, and sync error handling.
+The current bundle contains 24 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, and sync error handling.
 
 ## Integration order
 

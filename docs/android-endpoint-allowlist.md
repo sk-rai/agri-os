@@ -119,6 +119,20 @@ Android may render these backend-computed summaries. Android should not compute 
 - Confirm this allowlist against Android API client interfaces.
 - Confirm `docs/samples/android/` contains the current 24-file redacted payload bundle.
 
+## PIN-code guardrail contract
+
+`GET /api/v1/master-data/geography/villages/by-pin-code?pin_code={pin_code}` returns a structured guardrail response, not a bare village list.
+
+Android should use:
+
+- `is_valid_postal_pin` to decide whether the entered PIN exists in backend postal reference data;
+- `has_lgd_village_candidates` to decide whether village selection can be shown;
+- `status_reason` to distinguish `LGD_VILLAGE_CANDIDATES_FOUND`, `VALID_POSTAL_PIN_NO_LGD_VILLAGES`, and `PIN_NOT_FOUND`;
+- `village_candidates` for rural/LGD village confirmation;
+- `postal_references` only as postal context, not as village identity.
+
+Android should not reject a valid postal PIN only because `village_candidates` is empty. For example, urban/core postal PINs may be valid but have no LGD rural village candidates.
+
 ## Location lookup requirement
 
 Android may call backend-safe geography/PIN lookup endpoints for enrollment. The intended flow is:
