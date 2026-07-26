@@ -122,6 +122,61 @@ Next-phase India/global model should add generic entities:
 - Census enrichment may be attached as reference metadata but cannot override LGD canonical identity.
 - PIN-code refresh should reconcile candidates rather than blindly replacing village identity.
 
+## OGD geography operational runbook
+
+The local development database has been populated from the OGD all-India geography snapshot. Cloud or Render environments must not assume this local data exists. They should reproduce the load from source snapshots using the same staged-data workflow.
+
+### Local authoritative snapshot
+
+Current local authoritative OGD geography apply:
+
+- source: OGD LGD villages with PIN codes + OGD all-India PIN directory;
+- staged snapshot: `data/staged/ogd_geography/20260725T095703Z`;
+- active authoritative import batch: `e1c2c445-c1ee-4acf-af27-c2b9e909147f`;
+- loaded active postal references: `165617`;
+- loaded active village-PIN links: `560316`;
+- villages with PIN compatibility cache: `560151`.
+
+Interrupted local apply attempts were soft-deactivated in `geography_import_batches` and kept only as local audit history.
+
+### Cloud/Render reproduction sequence
+
+For a fresh environment:
+
+1. Configure `DATA_GOV_IN_API_KEY` outside source control.
+2. Fetch OGD raw snapshots.
+3. Validate and stage raw snapshots.
+4. Run Alembic migrations through revision `049`.
+5. Apply the staged OGD geography snapshot.
+6. Run SQL-only fast verification.
+7. Run Android backend closeout checks.
+
+Use the latest source snapshot available at deployment time. Do not copy local database rows blindly into production unless an explicit database migration/seed process has been approved.
+
+### Verification command
+
+After apply, run:
+
+`backend/scripts/apply_ogd_geography_snapshot.py --staged-dir <staged-dir> --refresh-mode INCREMENTAL_REFRESH --fast-verify`
+
+The verification should report:
+
+- `postal_references` equals staged postal references;
+- `village_pin_links` equals staged village-PIN links;
+- `unmatched_links` is `0`;
+- `bad_postal_lat` is `0`;
+- `bad_postal_lng` is `0`.
+
+### Refresh cadence
+
+Recommended cadence:
+
+- monthly or as-needed API fetch and fast verification for update checks;
+- incremental refresh when OGD totals/checksums change;
+- annual full refresh with `--expire-missing` only after reviewing validation and diff summaries.
+
+Census 2026 remains a separate future enrichment source and should not be merged into LGD identity rows.
+
 ## Runtime PIN lookup guardrail
 
 The Android PIN lookup endpoint returns backend-computed guardrail status from the loaded OGD geography tables.
