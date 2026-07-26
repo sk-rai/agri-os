@@ -22,6 +22,8 @@ from app.modules.master_data.models import (
     GeographyDistrict,
     GeographyBlock,
     GeographyVillage,
+    GeographyPostalReference,
+    GeographyVillagePinLink,
 )
 
 router = APIRouter(prefix="/geography", tags=["geography"])
@@ -100,6 +102,29 @@ class PinCodeVillageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PinCodePostalReferenceResponse(BaseModel):
+    office_name: str
+    office_type: Optional[str] = None
+    delivery_status: Optional[str] = None
+    postal_district_name: Optional[str] = None
+    postal_state_name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class PinCodeLookupResponse(BaseModel):
+    schema_version: str = "pin_code_lookup.v1"
+    pin_code: str
+    is_valid_postal_pin: bool
+    has_lgd_village_candidates: bool
+    status_reason: str
+    message: str
+    village_candidate_count: int
+    postal_reference_count: int
+    village_candidates: list[PinCodeVillageResponse]
+    postal_references: list[PinCodePostalReferenceResponse]
 
 
 class PaginatedResponse(BaseModel):
@@ -245,21 +270,49 @@ def list_villages(
     )
 
 
-@router.get("/villages/by-pin-code", response_model=list[PinCodeVillageResponse])
+@router.get("/villages/by-pin-code", response_model=PinCodeLookupResponse)
 def villages_by_pin_code(
     pin_code: str = Query(..., min_length=6, max_length=6, pattern=r"^[0-9]{6}$", description="Indian 6-digit PIN code"),
-    district_id: Optional[UUID] = Query(None, description="Optionally narrow candidates to a selected district"),
+    district_id: Optional[UUID] = Query(None, description="Optionally narrow LGD village candidates to a selected district"),
     limit: int = Query(100, ge=1, le=500),
+    postal_limit: int = Query(25, ge=0, le=100, description="Maximum postal reference rows to include"),
     db: Session = Depends(get_db),
 ):
-    """Return candidate villages associated with a PIN code.
+    """Return guardrail-friendly PIN lookup details for Android.
 
-    A PIN code can cover multiple villages, so Android should display these
-    candidates and let the farmer/agent confirm the correct village. This is
-    intended for parcel land-location capture, not as a substitute for optional
-    GPS point/polygon capture.
+    PIN is postal identity, not village identity. Some valid postal PINs have
+    LGD village candidates; some valid postal PINs are urban/core postal areas
+    with no rural LGD village mapping. Android should render that distinction
+    and should not treat an empty village list as an invalid PIN.
     """
-    query = (
+    postal_count = (
+        db.query(func.count(GeographyPostalReference.id))
+        .filter(
+            GeographyPostalReference.pin_code == pin_code,
+            GeographyPostalReference.is_active == True,
+        )
+        .scalar()
+        or 0
+    )
+
+    postal_rows = (
+        db.query(GeographyPostalReference)
+        .filter(
+            GeographyPostalReference.pin_code == pin_code,
+            GeographyPostalReference.is_active == True,
+        )
+        .order_by(
+            GeographyPostalReference.postal_state_name,
+            GeographyPostalReference.postal_district_name,
+            GeographyPostalReference.office_name,
+        )
+        .limit(postal_limit)
+        .all()
+        if postal_limit > 0
+        else []
+    )
+
+    candidate_query = (
         db.query(
             GeographyVillage,
             GeographyBlock.canonical_name.label("block_name"),
@@ -267,28 +320,34 @@ def villages_by_pin_code(
             GeographyState.id.label("state_id"),
             GeographyState.canonical_name.label("state_name"),
         )
+        .join(GeographyVillagePinLink, GeographyVillagePinLink.geography_village_id == GeographyVillage.id)
         .join(GeographyBlock, GeographyBlock.id == GeographyVillage.block_id)
         .join(GeographyDistrict, GeographyDistrict.id == GeographyVillage.district_id)
         .join(GeographyState, GeographyState.id == GeographyDistrict.state_id)
         .filter(
+            GeographyVillagePinLink.pin_code == pin_code,
+            GeographyVillagePinLink.is_active == True,
+            GeographyVillagePinLink.match_status == "MATCHED",
             GeographyVillage.is_active == True,
             GeographyBlock.is_active == True,
             GeographyDistrict.is_active == True,
             GeographyState.is_active == True,
-            GeographyVillage.pin_codes.any(pin_code),
         )
     )
+
     if district_id:
-        query = query.filter(GeographyVillage.district_id == district_id)
+        candidate_query = candidate_query.filter(GeographyVillage.district_id == district_id)
+
+    candidate_count = candidate_query.count()
 
     rows = (
-        query
-        .order_by(GeographyDistrict.canonical_name, GeographyBlock.canonical_name, GeographyVillage.canonical_name)
+        candidate_query
+        .order_by(GeographyState.canonical_name, GeographyDistrict.canonical_name, GeographyBlock.canonical_name, GeographyVillage.canonical_name)
         .limit(limit)
         .all()
     )
 
-    return [
+    village_candidates = [
         PinCodeVillageResponse(
             id=row.GeographyVillage.id,
             lgd_code=row.GeographyVillage.lgd_code,
@@ -303,6 +362,41 @@ def villages_by_pin_code(
         )
         for row in rows
     ]
+
+    postal_references = [
+        PinCodePostalReferenceResponse(
+            office_name=row.office_name,
+            office_type=row.office_type,
+            delivery_status=row.delivery_status,
+            postal_district_name=row.postal_district_name,
+            postal_state_name=row.postal_state_name,
+            latitude=float(row.latitude) if row.latitude is not None else None,
+            longitude=float(row.longitude) if row.longitude is not None else None,
+        )
+        for row in postal_rows
+    ]
+
+    if candidate_count > 0:
+        status_reason = "LGD_VILLAGE_CANDIDATES_FOUND"
+        message = "PIN code is valid and LGD village candidates are available."
+    elif postal_count > 0:
+        status_reason = "VALID_POSTAL_PIN_NO_LGD_VILLAGES"
+        message = "PIN code is valid in India Post data, but no LGD rural village candidates are mapped to it."
+    else:
+        status_reason = "PIN_NOT_FOUND"
+        message = "PIN code was not found in the active postal or LGD village-PIN reference data."
+
+    return PinCodeLookupResponse(
+        pin_code=pin_code,
+        is_valid_postal_pin=postal_count > 0,
+        has_lgd_village_candidates=candidate_count > 0,
+        status_reason=status_reason,
+        message=message,
+        village_candidate_count=candidate_count,
+        postal_reference_count=postal_count,
+        village_candidates=village_candidates,
+        postal_references=postal_references,
+    )
 
 
 @router.get("/villages/search", response_model=list[VillageSearchResult])

@@ -15,7 +15,7 @@ cd ~/projects/farmint/backend
 
 1. `01-mode-bootstrap.json` - post-login farmer/agent mode routing.
 2. `02-app-config-bootstrap.json` - project-effective app config, feature flags, branding, and form hints.
-3. `03-pin-code-villages.json` - PIN-code village lookup example.
+3. `03-pin-code-villages.json` - PIN-code guardrail lookup example, including valid postal PINs with or without LGD village candidates.
 4. `04-form-farmer-registration.json` - backend-driven farmer form schema.
 5. `05-form-parcel-registration.json` - backend-driven parcel form schema.
 6. `06-form-soil-profile.json` - backend-driven soil profile form schema.
