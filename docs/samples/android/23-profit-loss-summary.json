@@ -1,7 +1,49 @@
 {
+  "analytics_dimensions": {
+    "actual_harvest": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "actual_sowing": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "crop_code": "RICE",
+    "effective_harvest": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "effective_sowing": {
+      "date": "2026-07-26",
+      "month": "2026-07",
+      "quarter": "2026-Q3",
+      "year": 2026
+    },
+    "expected_harvest": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "planned_sowing": {
+      "date": "2026-07-26",
+      "month": "2026-07",
+      "quarter": "2026-Q3",
+      "year": 2026
+    },
+    "project_id": "9808411a-baf1-4914-bdb3-2a9d78e72de0",
+    "season_code": "KHARIF",
+    "season_year": 2026
+  },
   "crop_code": "RICE",
   "currency": "INR",
-  "cycle_id": "b9047b32-f5a9-4e58-bcde-dc1c7ebd1ecc",
+  "cycle_id": "fa2701c4-5908-4a5f-9fb0-5c0fcfc1501f",
   "expense_breakup": [
     {
       "amount": "750.00",
@@ -12,7 +54,7 @@
       "expense_category": "SEED"
     }
   ],
-  "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
+  "farmer_id": "c3690af7-c10a-430a-adf8-4e9802e44376",
   "fixed_formula": "profit_or_loss = total_income - total_expenses",
   "income_breakup": [
     {
@@ -21,7 +63,7 @@
       "source": "crop_cycles.total_revenue"
     }
   ],
-  "parcel_id": "3f0f9176-2f70-43d1-bd05-59d843e6361f",
+  "parcel_id": "a06caea6-fe11-4347-a987-ac275f66aa78",
   "per_acre": null,
   "report_config": {
     "display": {
@@ -35,6 +77,9 @@
       "show_variance": true
     },
     "schema_version": "farmer_finance_report_config.v1",
+    "source": {
+      "source": "REQUEST_CONFIG"
+    },
     "status": "PUBLISHED_DEFAULT",
     "validation": {
       "allowed_context_event_categories": [
@@ -77,7 +122,7 @@
   },
   "schema_version": "crop_cycle_profit_loss_summary.v1",
   "season_code": "KHARIF",
-  "tenant_id": "android-sample-ca2a213b",
+  "tenant_id": "android-sample-9c1e6ab7",
   "totals": {
     "expense_variance_amount": "2550.00",
     "planned_expense": "0.00",

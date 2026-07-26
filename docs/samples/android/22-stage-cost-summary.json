@@ -1,9 +1,51 @@
 {
+  "analytics_dimensions": {
+    "actual_harvest": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "actual_sowing": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "crop_code": "RICE",
+    "effective_harvest": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "effective_sowing": {
+      "date": "2026-07-26",
+      "month": "2026-07",
+      "quarter": "2026-Q3",
+      "year": 2026
+    },
+    "expected_harvest": {
+      "date": null,
+      "month": null,
+      "quarter": null,
+      "year": null
+    },
+    "planned_sowing": {
+      "date": "2026-07-26",
+      "month": "2026-07",
+      "quarter": "2026-Q3",
+      "year": 2026
+    },
+    "project_id": "9808411a-baf1-4914-bdb3-2a9d78e72de0",
+    "season_code": "KHARIF",
+    "season_year": 2026
+  },
   "crop_code": "RICE",
   "currency": "INR",
-  "cycle_id": "b9047b32-f5a9-4e58-bcde-dc1c7ebd1ecc",
-  "farmer_id": "f16d4424-4b13-4569-91dd-21cf644870e1",
-  "parcel_id": "3f0f9176-2f70-43d1-bd05-59d843e6361f",
+  "cycle_id": "fa2701c4-5908-4a5f-9fb0-5c0fcfc1501f",
+  "farmer_id": "c3690af7-c10a-430a-adf8-4e9802e44376",
+  "parcel_id": "a06caea6-fe11-4347-a987-ac275f66aa78",
   "report_config": {
     "display": {
       "show_activity_breakup": true,
@@ -16,6 +58,17 @@
       "show_variance": true
     },
     "schema_version": "farmer_finance_report_config.v1",
+    "source": {
+      "config_id": null,
+      "config_version": null,
+      "scope": {
+        "crop_code": null,
+        "project_id": null,
+        "season_code": null,
+        "tenant_id": "android-sample-9c1e6ab7"
+      },
+      "source": "DEFAULT_CONFIG"
+    },
     "status": "PUBLISHED_DEFAULT",
     "validation": {
       "allowed_context_event_categories": [
@@ -62,9 +115,21 @@
     {
       "activities": [
         {
-          "activity_date": "2026-07-24",
-          "activity_id": "7cfc0576-aee9-4854-90bf-554741c1eb1c",
+          "activity_date": "2026-07-26",
+          "activity_id": "921c4415-a2f1-4e29-a04a-e8a0ec3adb9d",
           "activity_type": "SEED",
+          "analytics_dimensions": {
+            "activity_date": {
+              "date": "2026-07-26",
+              "month": "2026-07",
+              "quarter": "2026-Q3",
+              "year": 2026
+            },
+            "crop_code": "RICE",
+            "season_code": "KHARIF",
+            "season_year": 2026,
+            "stage_code": "SOWING"
+          },
           "area_applied": null,
           "area_unit": null,
           "cost_amount": "1800.00",
@@ -79,6 +144,30 @@
       ],
       "activity_count": 1,
       "actual_expense": "1800.00",
+      "analytics_dimensions": {
+        "actual_end": {
+          "date": null,
+          "month": null,
+          "quarter": null,
+          "year": null
+        },
+        "actual_start": {
+          "date": null,
+          "month": null,
+          "quarter": null,
+          "year": null
+        },
+        "crop_code": "RICE",
+        "planned_start": {
+          "date": null,
+          "month": null,
+          "quarter": null,
+          "year": null
+        },
+        "season_code": "KHARIF",
+        "season_year": 2026,
+        "stage_code": "SOWING"
+      },
       "context_events": [],
       "expense_breakup_by_activity_type": [
         {
@@ -101,7 +190,7 @@
       "planned_expense": "0.00",
       "planned_recommendations": [],
       "stage_code": "SOWING",
-      "stage_id": "15c2a305-f613-486d-bd0c-0a13c1e7b03f",
+      "stage_id": "d0b4790c-e93f-45b8-8c8c-faca3518f2d4",
       "stage_name": "Sowing",
       "stage_order": 1,
       "status": "COMPLETED",
@@ -110,9 +199,21 @@
     {
       "activities": [
         {
-          "activity_date": "2026-07-24",
-          "activity_id": "85766445-8b9d-4a88-8a68-929656635080",
+          "activity_date": "2026-07-26",
+          "activity_id": "41bd0cbc-1695-4922-a295-6ab484333d57",
           "activity_type": "FERTILIZER",
+          "analytics_dimensions": {
+            "activity_date": {
+              "date": "2026-07-26",
+              "month": "2026-07",
+              "quarter": "2026-Q3",
+              "year": 2026
+            },
+            "crop_code": "RICE",
+            "season_code": "KHARIF",
+            "season_year": 2026,
+            "stage_code": "VEGETATIVE"
+          },
           "area_applied": null,
           "area_unit": null,
           "cost_amount": "750.00",
@@ -127,13 +228,37 @@
       ],
       "activity_count": 1,
       "actual_expense": "750.00",
+      "analytics_dimensions": {
+        "actual_end": {
+          "date": null,
+          "month": null,
+          "quarter": null,
+          "year": null
+        },
+        "actual_start": {
+          "date": null,
+          "month": null,
+          "quarter": null,
+          "year": null
+        },
+        "crop_code": "RICE",
+        "planned_start": {
+          "date": null,
+          "month": null,
+          "quarter": null,
+          "year": null
+        },
+        "season_code": "KHARIF",
+        "season_year": 2026,
+        "stage_code": "VEGETATIVE"
+      },
       "context_events": [
         {
           "description": "Useful rainfall captured during vegetative stage.",
           "estimated_area_affected": null,
           "estimated_loss_percent": null,
-          "event_date": "2026-07-24T20:53:49.001671+05:30",
-          "event_id": "8de0530c-d16a-4ae6-a51b-01ac9c538c7d",
+          "event_date": "2026-07-26T15:17:48.617141+05:30",
+          "event_id": "76d7f3ff-bea6-4af3-a5d5-b5c0def56c9a",
           "event_type": "RAIN",
           "severity": "MEDIUM",
           "source": "FIELD_AGENT_ANDROID",
@@ -162,14 +287,14 @@
       "planned_expense": "0.00",
       "planned_recommendations": [],
       "stage_code": "VEGETATIVE",
-      "stage_id": "b655d730-c493-4a4f-ba46-6b5d19033f3f",
+      "stage_id": "134931d7-76e0-45a1-83bd-aa1f670cdf1a",
       "stage_name": "Vegetative growth",
       "stage_order": 2,
       "status": "ACTIVE",
       "variance_amount": "750.00"
     }
   ],
-  "tenant_id": "android-sample-ca2a213b",
+  "tenant_id": "android-sample-9c1e6ab7",
   "totals": {
     "activity_count": 2,
     "actual_expense": "2550.00",
