@@ -88,9 +88,10 @@ def main() -> int:
             'input_gaps': input_gaps[:50],
             'sample_products': sample_products,
             'recommended_next_actions': [
-                'Seed representative products for existing manufacturers.',
-                'Prioritize seed, fertilizer, crop protection, irrigation, and bio-input scenarios used by Android demos.',
+                'Review seeded company/manufacturer directory candidates before marking them verified.',
+                'Replace demo/reference product rows with manufacturer/regulator-verified products before production use.',
                 'Add package/price metadata where available, but keep pricing source and effective date explicit.',
+                'Keep organic, natural-farming, biological, seed, and conventional products classified separately in metadata.',
             ],
         }
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))

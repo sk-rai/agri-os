@@ -22,7 +22,7 @@ This matrix captures the current backend/admin readiness for Android handoff, in
 | Independent farmer | Ready for Android MVP after seed data | Farmer/parcel/soil flows do not require project association for core capture | Test farmer without project enrollment; avoid company-only assumptions | Seed at least one independent farmer fixture before emulator pass |
 | Geography/PIN lookup | Ready for Android MVP | All-India OGD LGD/PIN data loaded locally; 03-pin-code-villages.json; PIN guardrail response | Use backend PIN guardrail; do not ship local PIN DB | Cloud deployment must run authoritative latest OGD apply from validated staged snapshot |
 | Crop metadata | Seed before emulator testing | Crop taxonomy/admin pages; metadata audit target minimum is 15 crops | Render crop choices from backend | Ensure scenario seed pack covers representative crops used in Android tests |
-| Inputs/products metadata | Seed before emulator testing | Input/product catalogs and audits exist; product catalog audit reports gaps | Render input/product choices from backend where exposed | Seed representative products/packages/prices for demo crops and activities |
+| Inputs/products metadata | Ready after local seed; production verification later | Input/product catalogs; `docs/company-product-catalog-seed.md`; `backend/scripts/seed_company_product_catalog.py` | Render input/product choices from backend where exposed; keep organic/natural distinctions from backend metadata | Replace demo/reference products with manufacturer/regulator-verified product rows before production |
 | Workflow templates/crop stages | Ready for MVP, needs hardening review | Workflow templates, versions, draft/publish, stage/recommendation admin edits, project workflow enablement | Render backend workflow/stage labels and transitions; do not hardcode stages | Formal decision-node/current-stage onboarding metadata remains known later/hardening |
 | Dynamic labels/language readiness | Ready for core forms/content; seed translations before broad language QA | Backend-driven form labels/options; broadcast localized content; workflow stage names as configurable metadata | Android renders backend labels, language content, and option labels | Add language QA checklist and Hindi/local-language sample coverage for crops/stages/advisories |
 | Finance summaries | Ready for Android MVP | Stage-cost/P&L endpoints, persisted config, fixed formula, sample payloads 22/23 | Android renders backend-computed summary; no local P&L math | None for MVP; later materialize aggregates when volume grows |
@@ -31,7 +31,7 @@ This matrix captures the current backend/admin readiness for Android handoff, in
 | Soil enrichment | Ready as saved snapshots/readiness; live provider deferred | Soil enrichment summary/latest endpoints and worker stubs | Render backend readiness/snapshot cards only | Live provider adapters remain backend-controlled and approval-gated |
 | Broadcast/advisories | Ready after local seed | Broadcast campaign/content/audience/delivery/read/ack; sample payloads 16-19; `backend/scripts/seed_android_emulator_advisories.py` | Android consumes assigned advisories/feed/detail/read/ack | Run the emulator advisory seed for selected local farmers before Android broadcast QA |
 | Offline sync dependency behavior | Ready for Android MVP | 24-sync-dependency-error.json, sync closeout regression | Test dependency failure and retry behavior | Final replay order review with Android team |
-| Company discovery/profile | Admin/backend only | Company profile/discovery docs/admin pages | Android should not call company admin endpoints | Public-source citation/confidence improvements later |
+| Company discovery/profile | Admin/backend ready after local seed | Company profile/discovery docs/admin pages; seeded manufacturer/company candidates from Screener/TNAU references | Android should not call company admin endpoints | Admin should review candidates before marking verified; public-source confidence improvements later |
 | Global/non-India geography | Known later | India compatibility profile and all-India OGD path documented | Android should use hierarchy-profile, not hardcode India assumptions | Generic multi-country geo_entity migration later |
 
 ## Android persona test matrix
@@ -52,7 +52,7 @@ Before Android emulator testing, create or verify local fixtures for:
 3. one company/project-associated farmer;
 4. one independent farmer;
 5. at least one active project with enabled crop workflow and input/product assignments;
-6. representative crop/input/product metadata for the demo path;
+6. representative crop/input/product metadata for the demo path via `backend/scripts/seed_company_product_catalog.py --tenant-id default --apply`;
 7. generic published advisory campaigns with generated deliveries via `backend/scripts/seed_android_emulator_advisories.py --tenant-id default --limit-farmers 5 --apply`;
 8. weather and soil sample snapshots for at least one parcel/location;
 9. PIN examples covering valid postal PIN with LGD villages, valid postal PIN without LGD villages, and unknown PIN.
