@@ -29,7 +29,7 @@ This matrix captures the current backend/admin readiness for Android handoff, in
 | Finance analytics/admin UI | Admin/backend ready | /finance-analytics admin page; 25-finance-analytics-summary.json; aggregate endpoint | Android may consume only if product wants farmer-facing analytics; otherwise admin-only | Decide whether Android MVP shows aggregate analytics or keeps it admin-only |
 | Weather snapshots | Ready as saved backend snapshots; live provider deferred | Weather snapshot/latest endpoints and worker stubs | Render backend snapshot cards only | Live provider execution remains blocked until explicitly approved/configured |
 | Soil enrichment | Ready as saved snapshots/readiness; live provider deferred | Soil enrichment summary/latest endpoints and worker stubs | Render backend readiness/snapshot cards only | Live provider adapters remain backend-controlled and approval-gated |
-| Broadcast/advisories | Contract ready; seed before emulator testing | Broadcast campaign/content/audience/delivery/read/ack; sample payloads 16-19 | Android consumes assigned advisories/feed/detail/read/ack | Build generic advisory seed pack for emulator testing |
+| Broadcast/advisories | Ready after local seed | Broadcast campaign/content/audience/delivery/read/ack; sample payloads 16-19; `backend/scripts/seed_android_emulator_advisories.py` | Android consumes assigned advisories/feed/detail/read/ack | Run the emulator advisory seed for selected local farmers before Android broadcast QA |
 | Offline sync dependency behavior | Ready for Android MVP | 24-sync-dependency-error.json, sync closeout regression | Test dependency failure and retry behavior | Final replay order review with Android team |
 | Company discovery/profile | Admin/backend only | Company profile/discovery docs/admin pages | Android should not call company admin endpoints | Public-source citation/confidence improvements later |
 | Global/non-India geography | Known later | India compatibility profile and all-India OGD path documented | Android should use hierarchy-profile, not hardcode India assumptions | Generic multi-country geo_entity migration later |
@@ -53,7 +53,7 @@ Before Android emulator testing, create or verify local fixtures for:
 4. one independent farmer;
 5. at least one active project with enabled crop workflow and input/product assignments;
 6. representative crop/input/product metadata for the demo path;
-7. generic published advisory campaigns with generated deliveries;
+7. generic published advisory campaigns with generated deliveries via `backend/scripts/seed_android_emulator_advisories.py --tenant-id default --limit-farmers 5 --apply`;
 8. weather and soil sample snapshots for at least one parcel/location;
 9. PIN examples covering valid postal PIN with LGD villages, valid postal PIN without LGD villages, and unknown PIN.
 
@@ -67,7 +67,7 @@ Before Android emulator testing, create or verify local fixtures for:
 
 ## Immediate next implementation slices
 
-1. Build seed_android_emulator_advisories.py to create generic localized advisory campaigns and deliveries for emulator testing.
-2. Build or update Android emulator fixture seed script for the four persona scenarios.
-3. Add a language/readiness QA checklist for Hindi/local-language labels in forms, crop workflows, option sets, and advisories.
-4. Review metadata audit output after scenario seed data to decide whether crop/input/product seed coverage is sufficient for Android handoff.
+1. Build or update Android emulator fixture seed script for the four persona scenarios.
+2. Add a language/readiness QA checklist for Hindi/local-language labels in forms, crop workflows, option sets, and advisories.
+3. Review metadata audit output after scenario seed data to decide whether crop/input/product seed coverage is sufficient for Android handoff.
+4. Keep `backend/scripts/seed_android_emulator_advisories.py` idempotent and rerun it whenever emulator farmer fixtures are refreshed.

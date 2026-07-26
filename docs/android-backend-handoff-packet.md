@@ -37,6 +37,15 @@ Android should not:
 - call weather or soil providers;
 - decide campaign eligibility locally.
 
+Local emulator advisory seed:
+
+```bash
+cd ~/projects/farmint/backend
+../venv/bin/python scripts/seed_android_emulator_advisories.py --tenant-id default --limit-farmers 5 --apply
+```
+
+This creates idempotent generic published advisories with English/Hindi content and pending farmer deliveries for broadcast feed/read/ack testing.
+
 ### 2. Backend-owned weather
 
 Backend-ready capabilities:

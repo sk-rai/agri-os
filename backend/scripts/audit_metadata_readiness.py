@@ -111,7 +111,7 @@ def main() -> int:
                 "Build crop scenario seed pack covering at least 15 crops.",
                 "Audit local land unit conversion registry.",
                 "Add workflow decision-node and perennial/orchard current-stage onboarding contracts.",
-                "Build advisory/broadcast seed content pack.",
+                "Run android emulator advisory seed pack before broadcast QA.",
             ],
         }
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
