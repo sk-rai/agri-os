@@ -52,6 +52,15 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 
 ### Farmer economics summaries
 
+Admin-only finance configuration endpoints are intentionally not Android farmer-app endpoints:
+
+- `GET /api/v1/crop-cycles/finance/report-config`
+- `POST /api/v1/crop-cycles/finance/report-config/validate`
+- `POST /api/v1/crop-cycles/finance/report-config/publish`
+
+Android farmer app should call only the summary endpoints and render backend results.
+
+
 - `GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary`
 - `GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary`
 

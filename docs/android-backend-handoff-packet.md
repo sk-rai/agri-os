@@ -591,3 +591,34 @@ The latest pre-Android backend handoff checker passed with local geography stagi
 
 Authenticated web UI smoke checkpoint
 The web/admin UI now has an authenticated Playwright smoke sweep covering 29 routes. With an existing `default` tenant `ENTERPRISE_ADMIN` JWT, all routes returned HTTP 200 with zero console errors, failed requests, or HTTP error responses. The tenant admin page auth wiring was corrected so `/api/v1/tenants` uses standard auth headers.
+
+
+## Farmer finance summaries and analytics dimensions
+
+Backend finance summaries are now config-backed and Android-safe.
+
+Android-facing farmer endpoints:
+
+- `GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary`
+- `GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary`
+
+Android should render these backend-computed summaries and must not compute P&L locally.
+
+The fixed formula remains:
+
+`profit_or_loss = total_income - total_expenses`
+
+Admin/backend configuration can control category mappings, display flags, thresholds, and scoped published config versions. It cannot execute arbitrary formulas.
+
+Finance summary payloads include analytics dimensions for future comparison across:
+
+- crop;
+- season;
+- season year;
+- stage;
+- activity date/month/quarter;
+- planned versus actual expense;
+- income, expense, and per-acre values.
+
+This allows later backend analytics for stage-to-stage, season-to-season, crop-to-crop, and year-over-year cost/P&L comparisons without changing Android’s role.
+

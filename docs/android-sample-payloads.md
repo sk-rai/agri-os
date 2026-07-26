@@ -368,3 +368,7 @@ The generated sample bundle now includes docs/samples/android/01-pin-code-villag
 Captured from: GET /api/v1/master-data/geography/villages/by-pin-code?pin_code=560001
 
 Android should use this endpoint after a parcel PIN code is entered when the parcel is not in the same village/PIN as the farmer home. If the farmer confirms all parcels are in the same village/PIN as home, Android can copy farmer pin_code, village_id, and village_name_manual into parcel defaults and store location_scope.type=SAME_AS_HOME.
+
+## Farmer finance summary behavior
+
+The stage-cost and P&L samples are backend-computed. They include report config source metadata and analytics dimensions for crop/season/stage/time-period comparison. Android should not compute income, expense categories, variance, or P&L locally.
