@@ -350,3 +350,41 @@ Source caution:
 - The Aikosh page shows CC BY 4.0 and describes the dataset as redirected/secondary.
 - Keep imported CoRE-derived rows in review status until source and methodology are reviewed.
 - Do not upgrade suitability confidence to `GOVT_SOURCE` merely because a class exists in the CoRE layer.
+
+## District fallback mapping checkpoint - 2026-07-27
+
+Because selected-state LGD villages currently have no stored latitude/longitude centroids, village-to-climate-zone polygon matching is not available yet.
+
+A district-level fallback mapping script has been added:
+
+    backend/scripts/seed_climate_region_district_fallback_mappings.py
+
+Local apply result:
+
+- 186 district fallback mappings;
+- Karnataka: 31 districts;
+- Maharashtra: 35 districts;
+- Punjab: 23 districts;
+- Uttar Pradesh: 75 districts;
+- West Bengal: 22 districts.
+
+These rows use:
+
+- `scope_level = DISTRICT`;
+- `confidence = LOCAL_DEMO_DISTRICT_FALLBACK`;
+- `review_status = MANUAL_REVIEW`.
+
+This is an approximation for Android/demo/admin suitability warnings, not polygon-derived climatic truth. Future refinement should replace or supplement these rows with CoRE polygon overlay, official district-zone crosswalks, or parcel GPS point-in-polygon matching.
+
+## Village coordinate enrichment caution
+
+It is technically possible to enrich LGD villages by sending village name, district, state, and PIN context to geocoding providers. However, this must be treated as a provider-gated backend enrichment workflow, not a scraper and not an Android responsibility.
+
+Guidelines:
+
+- Do not call Google/Bing/Azure/OSM geocoding directly from Android.
+- Do not bulk geocode against public OSM Nominatim; the public service is not intended for systematic bulk geocoding.
+- Review provider terms before storing coordinates. Some providers restrict long-term caching/storage of geocoded latitude/longitude values.
+- Store provider-derived points as `GEOCODED_LABEL_POINT`, not as true `CENTROID`.
+- Preserve source query, provider, provider place ID where available, confidence, review status, attribution, expiry/refresh requirement, and actor/job audit data.
+- Prefer official LGD/Census/geospatial boundaries or CoRE polygon overlay for durable climate-zone mapping.
