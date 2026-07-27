@@ -409,3 +409,28 @@ Local imported class-reference rows:
 These rows are metadata only. They do not replace LGD geography and do not yet define district/block/village mappings. All imported rows remain `MANUAL_REVIEW` with confidence `CORE_STACK_CLASS_REFERENCE`.
 
 The next step is polygon/LGD overlay: export or obtain CoRE geometries, intersect them with official district/block/village boundaries or parcel GPS points, and write reviewed mappings into `geography_climate_region_mappings`.
+
+
+## Polygon overlay readiness audit - 2026-07-27
+
+Read-only audit script:
+
+    backend/scripts/audit_climate_polygon_overlay_readiness.py
+
+Latest local result:
+
+- CoRE class metadata is ready:
+  - 20 agro-ecological zone classes;
+  - 15 agro-climatic zone classes;
+  - 10 biogeographic zone classes.
+- Demo district fallback is ready:
+  - 186 district mappings across Maharashtra, Karnataka, Uttar Pradesh, Punjab, and West Bengal.
+- LGD state/district reference data is ready:
+  - 35 states with LGD codes;
+  - 778 districts with LGD codes.
+- CoRE polygon exports are not yet available locally.
+- Village point overlay is not ready:
+  - `geography_villages.latitude` and `geography_villages.longitude` columns exist;
+  - all selected-state village coordinate counts are currently zero.
+
+Current conclusion: district fallback remains the best available demo approximation. Authoritative mapping needs CoRE polygon export plus LGD boundary geometry or parcel GPS point overlay.
