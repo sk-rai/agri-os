@@ -159,3 +159,19 @@ Current policy:
 - Screener/TNAU are discovery sources only;
 - official company sites/regulators/labels are product truth sources;
 - no product scraping should start until official websites are reviewed.
+
+## Next backend richness slice
+
+After Android starts backend-driven profile migration, the next backend priority is crop/climate/geography suitability enrichment.
+
+See:
+
+    docs/crop-climate-suitability-roadmap.md
+
+This covers:
+
+- climatic/agro-ecological region seed sources;
+- crop-season-region suitability mapping;
+- 45-entry starter crop scenario target;
+- Android-facing suitability warning contract;
+- provider/source evidence and review policy.

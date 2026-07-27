@@ -1,0 +1,276 @@
+# Crop climate and geography suitability roadmap
+
+Status date: 2026-07-27
+
+This document defines the next backend metadata slice after Android MVP profile migration: richer crop profiles, climatic/agro-ecological regions, and crop-season-geography suitability rules.
+
+The goal is to make Android and admin experiences useful for testing and demos without hardcoding agronomic rules in Android. Android should render backend suitability labels, warnings, and advisory context; backend should own source attribution, confidence, and override policy.
+
+## Why this matters
+
+Current backend audits show Android emulator readiness is green, with 18 crops, all-India LGD/PIN geography, crop workflows, finance summaries, advisories, and product/input starter data. The next gap is richness: the system should be able to say not only "Rice exists" but also "Rice is usually suitable for this season/region/soil/rainfall profile, with these caveats."
+
+This supports:
+
+- crop onboarding warnings;
+- crop/season/geography recommendations;
+- stage and advisory targeting;
+- crop analytics by climatic region;
+- demo/client confidence when comparing regions and seasons;
+- future agronomy review workflows.
+
+## Recommended data-source stack
+
+Use multiple evidence layers rather than a single "truth" table.
+
+### 1. Climatic/agro-ecological region base layer
+
+Preferred source candidates:
+
+- ICAR-NBSS&LUP agro-ecological regions/sub-regions. Use as the agronomic reference layer because it combines soil, climate, physiography, and length of growing period.
+- India-WRIS geospatial datasets where available for agro-ecological sub-regions.
+- ESDAC/EUDASM India agro-ecological subregion map as a public mirror/reference for NBSS&LUP map documentation.
+- Planning Commission/NITI-style 15 agro-climatic regions as a higher-level human-readable grouping, not as the detailed suitability boundary.
+
+Backend use:
+
+- store region code/name/source/version;
+- map regions to states/districts/blocks where exact geometry import is not yet available;
+- later import geometry/polygon boundaries when we are ready for spatial joins;
+- keep source evidence and confidence per mapping.
+
+### 2. Climate normals and rainfall evidence
+
+Preferred source candidates:
+
+- IMD district-wise rainfall normals and rainfall monitoring data;
+- IMD climatological normals for station/district climate benchmarks;
+- Mausam SANKALP / Agromet advisory products for district/block rainfall insights where accessible.
+
+Backend use:
+
+- classify geography into rainfall bands;
+- store annual and seasonal rainfall normals;
+- support warning rules such as dryland/irrigated suitability and high-rainfall disease-risk advisory targeting;
+- avoid using live rainfall APIs inside Android.
+
+### 3. Crop-season empirical evidence
+
+Preferred source candidates:
+
+- data.gov.in district-wise, crop-wise, season-wise area/production/yield statistics from the Directorate of Economics and Statistics, Ministry of Agriculture and Farmers Welfare;
+- state agriculture department crop surveys where available;
+- state agriculture university crop calendars and package-of-practices documents;
+- ICAR/KVK crop advisories for crop-stage and season evidence.
+
+Backend use:
+
+- infer "commonly grown" crop-season-district combinations;
+- rank suitability confidence by observed area/production history;
+- separate empirical prevalence from agronomic suitability. A crop can be common because of market/irrigation/project behavior even if climatic suitability needs caveats.
+
+### 4. Soil and land capability evidence
+
+Preferred source candidates:
+
+- ICAR-NBSS&LUP soil maps and land resource datasets;
+- existing local Soil Health Card / SLUSI / manually captured soil snapshots;
+- later: SoilGrids or other global sources only as secondary enrichment when approved.
+
+Backend use:
+
+- map crop suitability to soil texture/drainage/pH/salinity constraints;
+- generate non-blocking warnings;
+- improve input/fertilizer advisory context.
+
+## Recommended backend model
+
+Do not overload the existing `crops` table too much. It already has `suitable_seasons` and `suitable_soil_types`, but geographic and climate suitability needs versioned evidence.
+
+Recommended first implementation can be config/JSON-seeded, then migrated to tables once stable.
+
+### Region profile
+
+`crop_climate_region_profile.v1`
+
+Fields:
+
+- `region_code`
+- `region_name`
+- `region_system`: `AGRO_CLIMATIC_ZONE`, `AGRO_ECOLOGICAL_REGION`, `AGRO_ECOLOGICAL_SUB_REGION`, `RAINFALL_BAND`, `STATE_AGRO_CLIMATIC_ZONE`
+- `parent_region_code`
+- `country_code`
+- `state_codes`
+- `district_lgd_codes`
+- `block_lgd_codes`
+- `rainfall_band_mm`
+- `temperature_band_c`
+- `length_of_growing_period_days`
+- `dominant_soil_groups`
+- `irrigation_context`
+- `source_references`
+- `confidence`
+- `effective_from`
+- `expires_at`
+- `status`
+
+### Crop suitability rule
+
+`crop_climate_suitability_rule.v1`
+
+Fields:
+
+- `crop_code`
+- `season_code`
+- `region_code`
+- `geography_scope`: country/state/district/block/village/PIN/region
+- `suitability_status`: `HIGHLY_SUITABLE`, `SUITABLE`, `CONDITIONAL`, `NOT_TYPICAL`, `UNSUITABLE`, `UNKNOWN`
+- `confidence`: `GOVERNMENT_SOURCE`, `EMPIRICAL_CROP_STATS`, `STATE_PACKAGE_OF_PRACTICES`, `EXPERT_REVIEW`, `LOCAL_DEMO_SEED`
+- `rainfall_min_mm`
+- `rainfall_max_mm`
+- `temperature_min_c`
+- `temperature_max_c`
+- `soil_requirements`
+- `irrigation_required`
+- `typical_sowing_window`
+- `typical_harvest_window`
+- `warning_rules`
+- `source_references`
+- `review_status`
+- `review_notes`
+
+### Android-facing suitability response
+
+Android should receive a compact interpreted result, not raw source tables:
+
+```json
+{
+  "schema_version": "crop_geography_suitability.v1",
+  "crop_code": "RICE",
+  "season_code": "KHARIF",
+  "geography": {
+    "state_lgd_code": "29",
+    "district_lgd_code": "572",
+    "pin_code": "560001"
+  },
+  "region_matches": [
+    {
+      "region_code": "HIGH_RAINFALL_SOUTHERN_PLATEAU_DEMO",
+      "region_system": "AGRO_ECOLOGICAL_SUB_REGION",
+      "confidence": "LOCAL_DEMO_SEED"
+    }
+  ],
+  "suitability": {
+    "status": "SUITABLE",
+    "confidence": "LOCAL_DEMO_SEED",
+    "warnings": [],
+    "requires_confirmation": false
+  }
+}
+```
+
+## Initial seed target
+
+Build a first scenario pack with 45 crop-season entries:
+
+- 15 Kharif-oriented entries;
+- 15 Rabi-oriented entries;
+- 15 Zaid/summer/perennial/demo entries.
+
+Recommended crop spread:
+
+- Cereals: rice, wheat, maize, pearl millet, sorghum.
+- Pulses: chickpea, pigeon pea, green gram, black gram, lentil.
+- Oilseeds: mustard, groundnut, soybean, sunflower, sesame.
+- Cash/fibre: sugarcane, cotton, jute.
+- Vegetables: potato, onion, tomato, cucumber, bottle gourd, okra, brinjal, chilli.
+- Horticulture/perennial: mango, banana, guava, citrus, apple, grapes, pomegranate.
+- Fodder/other demo crops: berseem, fodder maize, watermelon, muskmelon.
+
+Each crop should have:
+
+- category/taxonomy assignment;
+- aliases/local names;
+- suitable seasons;
+- propagation options;
+- typical duration;
+- workflow coverage where applicable;
+- suitability rules for at least a few representative climatic/geographic regions;
+- review status and source references.
+
+## Implementation order
+
+### Slice 1: audit and contract
+
+1. Add `backend/scripts/audit_crop_climate_suitability_readiness.py`.
+2. Check:
+   - crop count by season/category;
+   - crop records missing aliases, duration, seasons, propagation;
+   - region profile count;
+   - crop-season-region rule count;
+   - rules without source references;
+   - Android-safe suitability endpoint/sample availability.
+3. Document the output in Android/backend handoff docs.
+
+### Slice 2: config-backed seed pack
+
+1. Add a JSON seed file or Python config for demo climatic regions.
+2. Add seed rules for the 45-entry starter pack.
+3. Mark all non-verified rows as `LOCAL_DEMO_SEED` or `MANUAL_REVIEW`.
+4. Do not claim government-verified suitability unless the source is attached.
+
+### Slice 3: API surface
+
+Add backend endpoint:
+
+```text
+GET /api/v1/crop-catalog/suitability?crop_code={crop}&season_code={season}&state_lgd_code={state}&district_lgd_code={district}&pin_code={pin}
+```
+
+Response should include:
+
+- matched region(s);
+- suitability status;
+- warnings;
+- whether Android must ask farmer/agent for confirmation;
+- source/confidence summary.
+
+### Slice 4: admin UI
+
+Add admin page or extend crop taxonomy page to show:
+
+- crop profile completeness;
+- climatic/geographic suitability rules;
+- source references;
+- review status;
+- manual override notes.
+
+### Slice 5: richer source ingestion
+
+Only after the model is stable:
+
+- import NBSS&LUP/India-WRIS agro-ecological region boundaries or district mappings;
+- import IMD rainfall/climate normal references;
+- import district-wise crop-season area/production/yield statistics;
+- add source batch/audit metadata.
+
+## Failure preemption
+
+- Agro-climatic zones, agro-ecological regions, and rainfall bands are not the same thing. Keep them as separate region systems.
+- District/state crop production proves prevalence, not pure suitability.
+- Suitability often changes with irrigation. Store `irrigation_required` and warning text instead of blocking.
+- Crop names vary across sources. Use crop aliases and source-specific mappings before importing.
+- State package-of-practices documents may disagree across states. Keep source-scoped rules.
+- Climate normals are historical; live weather snapshots should be separate.
+- Android should never be the place where suitability rules are hardcoded.
+
+## Additional research needed
+
+Useful manual/review work:
+
+1. Pick the first 3-5 demo states/regions for high-quality suitability coverage.
+2. Collect official state agriculture university/package-of-practices PDFs for those states.
+3. Decide whether the first suitability demo should be India-wide broad coverage or high-confidence coverage for a few states.
+4. Obtain/confirm credentials or terms for any API-based downloads, especially OGD/data.gov.in and IMD endpoints.
+5. Confirm whether client demos will focus on field crops, horticulture, natural farming, or input-company workflows first.
+
