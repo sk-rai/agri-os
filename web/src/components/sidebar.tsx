@@ -30,6 +30,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/workflows", label: "Workflows", icon: "Crop" },
       { href: "/crop-taxonomy", label: "Crop Setup", icon: "Tax" },
+      { href: "/crop-climate-suitability", label: "Crop Climate", icon: "Climate" },
       { href: "/project-workflows", label: "Project Workflows", icon: "Flow" },
       { href: "/profile-forms", label: "Profile Forms", icon: "Form" },
       { href: "/inputs", label: "Inputs", icon: "Input" },

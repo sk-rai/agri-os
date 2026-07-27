@@ -501,3 +501,99 @@ def publish_crop_climate_suitability_override(
         "override": _suitability_public_override(override),
         "message": "Crop climate suitability override published.",
     }
+
+@router.get("/suitability-regions", response_model=dict)
+def list_crop_climate_regions(
+    review_status: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    from app.modules.master_data.models import GeographyClimateRegion, GeographyClimateRegionMapping
+
+    query = db.query(GeographyClimateRegion).filter(GeographyClimateRegion.is_active == True)
+    if review_status:
+        query = query.filter(GeographyClimateRegion.review_status == review_status)
+
+    regions = query.order_by(GeographyClimateRegion.region_system, GeographyClimateRegion.region_code).all()
+    mappings = (
+        db.query(GeographyClimateRegionMapping)
+        .filter(GeographyClimateRegionMapping.is_active == True)
+        .all()
+    )
+    mappings_by_region = {}
+    for mapping in mappings:
+        mappings_by_region.setdefault(mapping.region_code, []).append({
+            "mapping_id": str(mapping.id),
+            "scope_level": mapping.scope_level,
+            "state_lgd_code": mapping.state_lgd_code,
+            "district_lgd_code": mapping.district_lgd_code,
+            "block_lgd_code": mapping.block_lgd_code,
+            "village_lgd_code": mapping.village_lgd_code,
+            "pin_code": mapping.pin_code,
+            "confidence": mapping.confidence,
+            "review_status": mapping.review_status,
+            "metadata": mapping.metadata_ or {},
+        })
+
+    return {
+        "schema_version": "crop_climate_regions.v1",
+        "count": len(regions),
+        "regions": [
+            {
+                "region_id": str(region.id),
+                "region_code": region.region_code,
+                "region_name": region.region_name,
+                "region_system": region.region_system,
+                "parent_region_code": region.parent_region_code,
+                "country_code": region.country_code,
+                "rainfall_band_mm": region.rainfall_band_mm or {},
+                "temperature_band_c": region.temperature_band_c or {},
+                "length_of_growing_period_days": region.length_of_growing_period_days or {},
+                "dominant_soil_groups": region.dominant_soil_groups or [],
+                "irrigation_context": region.irrigation_context or {},
+                "source_references": region.source_references or [],
+                "confidence": region.confidence,
+                "review_status": region.review_status,
+                "metadata": region.metadata_ or {},
+                "mappings": mappings_by_region.get(region.region_code, []),
+            }
+            for region in regions
+        ],
+    }
+
+
+@router.get("/suitability-rules", response_model=dict)
+def list_crop_climate_suitability_rules(
+    crop_code: str | None = Query(None),
+    season_code: str | None = Query(None),
+    region_code: str | None = Query(None),
+    review_status: str | None = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    from app.modules.master_data.models import CropClimateSuitabilityRule
+
+    query = db.query(CropClimateSuitabilityRule).filter(CropClimateSuitabilityRule.is_active == True)
+    if crop_code:
+        query = query.filter(CropClimateSuitabilityRule.crop_code == crop_code.upper())
+    if season_code:
+        query = query.filter(CropClimateSuitabilityRule.season_code == season_code.upper())
+    if region_code:
+        query = query.filter(CropClimateSuitabilityRule.region_code == region_code)
+    if review_status:
+        query = query.filter(CropClimateSuitabilityRule.review_status == review_status)
+
+    rules = (
+        query.order_by(
+            CropClimateSuitabilityRule.region_code,
+            CropClimateSuitabilityRule.season_code,
+            CropClimateSuitabilityRule.crop_code,
+        )
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "schema_version": "crop_climate_suitability_rules.v1",
+        "count": len(rules),
+        "rules": [_suitability_public_rule(rule) for rule in rules],
+    }
