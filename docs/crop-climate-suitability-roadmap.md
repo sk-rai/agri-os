@@ -388,3 +388,24 @@ Guidelines:
 - Store provider-derived points as `GEOCODED_LABEL_POINT`, not as true `CENTROID`.
 - Preserve source query, provider, provider place ID where available, confidence, review status, attribution, expiry/refresh requirement, and actor/job audit data.
 - Prefer official LGD/Census/geospatial boundaries or CoRE polygon overlay for durable climate-zone mapping.
+
+
+## CoRE Stack class import status - 2026-07-27
+
+The CoRE Stack class importer is now available at:
+
+    backend/scripts/import_core_stack_climate_regions.py
+
+It imports class metadata from:
+
+    data/staged/core_stack/core_stack_climate_layer_manifest.json
+
+Local imported class-reference rows:
+
+- 20 agro-ecological zone classes;
+- 15 agro-climatic zone classes;
+- 10 biogeographic zone classes.
+
+These rows are metadata only. They do not replace LGD geography and do not yet define district/block/village mappings. All imported rows remain `MANUAL_REVIEW` with confidence `CORE_STACK_CLASS_REFERENCE`.
+
+The next step is polygon/LGD overlay: export or obtain CoRE geometries, intersect them with official district/block/village boundaries or parcel GPS points, and write reviewed mappings into `geography_climate_region_mappings`.

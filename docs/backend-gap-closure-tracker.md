@@ -31,3 +31,15 @@ This tracker records discussed backend/demo-readiness items so each item is eith
 | Live weather/soil providers | Deferred | Keep approval-gated until credentials, budgets, monitoring, and rate limits are ready. | Provider runbooks |
 | Product source verification | Deferred | Screener/TNAU are discovery only; official labels/regulators/manufacturer sites needed for verified product data. | Product source docs |
 | Language QA expansion | Deferred | Backend supports labels/localized content; broader Hindi/local-language seed coverage later. | Android handoff docs |
+
+
+## Current next backend priority
+
+After importing CoRE Stack class metadata, the next climate/geography step is polygon/LGD overlay planning:
+
+1. export or obtain CoRE AEZ/ACZ/biogeographic geometries;
+2. obtain compatible LGD district/block/village boundaries or use parcel GPS points;
+3. generate reviewed mappings into `geography_climate_region_mappings`;
+4. keep district fallback mappings marked approximate until replaced or validated.
+
+Provider credentials and product-source verification remain important, but they can proceed separately from this climate metadata path.
