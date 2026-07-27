@@ -24,9 +24,9 @@ This tracker records discussed backend/demo-readiness items so each item is eith
 | Crop climate admin page | Closed | Dedicated admin page added. | `/crop-climate-suitability` |
 | CoRE Stack climate source manifest | Closed | Extracted AEZ/ACZ/Biogeographic GEE asset IDs and class properties. | `backend/scripts/build_core_stack_climate_layer_manifest.py` |
 | District fallback climate mappings | Closed | 186 district mappings populated as approximate fallback, not polygon-derived truth. | `backend/scripts/seed_climate_region_district_fallback_mappings.py` |
-| Android land intelligence context | Active next | Android should consume climate/suitability as guidance during parcel/soil/crop onboarding. | `/api/v1/profile/land-intelligence-context` |
-| CoRE class importer | Active next | Import CoRE AEZ/ACZ/Biogeographic class names into climate region rows without LGD mapping yet. | Manifest JSON |
-| CoRE polygon export + LGD overlay | Needs research | Needed for district/block/village precision. State/district fallback remains approximate. | CoRE GEE assets + LGD boundaries |
+| Android land intelligence context | Closed | Android can consume climate/suitability as guidance during parcel/soil/crop onboarding; sample payload added. | `/api/v1/profile/land-intelligence-context`, `docs/samples/android/26-land-intelligence-context.json` |
+| CoRE class importer | Closed | Imported 45 CoRE AEZ/ACZ/Biogeographic class names into climate region rows without LGD mapping. | `backend/scripts/import_core_stack_climate_regions.py` |
+| CoRE polygon export + LGD overlay | Active next | Readiness audit added. CoRE class metadata and district fallback are ready; polygon exports and LGD boundary geometry are missing. | `backend/scripts/audit_climate_polygon_overlay_readiness.py` |
 | Village coordinate geocoding | Needs research | Possible only as provider-gated enrichment with source/license/cache rules; store as label point, not centroid. | Provider terms review |
 | Live weather/soil providers | Deferred | Keep approval-gated until credentials, budgets, monitoring, and rate limits are ready. | Provider runbooks |
 | Product source verification | Deferred | Screener/TNAU are discovery only; official labels/regulators/manufacturer sites needed for verified product data. | Product source docs |
