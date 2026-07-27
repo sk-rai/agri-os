@@ -18,8 +18,8 @@ This matrix captures the current backend/admin readiness for Android handoff, in
 | --- | --- | --- | --- | --- |
 | Farmer mode | Ready for Android MVP | 01-mode-bootstrap.json, farmer/profile endpoints, profile readiness | Test login/profile capture as direct farmer | Confirm Android auth/profile hydration wiring against allowlist |
 | Field-agent mode | Ready for Android MVP | GET /api/v1/field-agent/worklist, agent profiles/admin page, profile readiness | Test agent-assisted enrollment and worklist flows | Confirm Android role switching UX with real token/tenant data |
-| Farmer associated with company/project | Ready for Android MVP after seed data | Project enrollment, project workflow/input assignment, company profile admin surfaces | Test farmer with project/company context and project-enabled crop workflow | Seed at least one project/company-associated farmer fixture before emulator pass |
-| Independent farmer | Ready for Android MVP after seed data | Farmer/parcel/soil flows do not require project association for core capture | Test farmer without project enrollment; avoid company-only assumptions | Seed at least one independent farmer fixture before emulator pass |
+| Farmer associated with company/project | Ready for Android MVP | `backend/scripts/audit_android_emulator_persona_readiness.py`; 4 farmer-project enrollment fixtures present | Test farmer with project/company context and project-enabled crop workflow | None for MVP; keep deterministic fixture IDs documented for Android QA |
+| Independent farmer | Ready for Android MVP | `backend/scripts/audit_android_emulator_persona_readiness.py`; 119 independent active farmers present | Test farmer without project enrollment; avoid company-only assumptions | None for MVP |
 | Geography/PIN lookup | Ready for Android MVP | All-India OGD LGD/PIN data loaded locally; 03-pin-code-villages.json; PIN guardrail response | Use backend PIN guardrail; do not ship local PIN DB | Cloud deployment must run authoritative latest OGD apply from validated staged snapshot |
 | Crop metadata | Seed before emulator testing | Crop taxonomy/admin pages; metadata audit target minimum is 15 crops | Render crop choices from backend | Ensure scenario seed pack covers representative crops used in Android tests |
 | Inputs/products metadata | Ready after local seed; production verification later | Input/product catalogs; `docs/company-product-catalog-seed.md`; `backend/scripts/seed_company_product_catalog.py` | Render input/product choices from backend where exposed; keep organic/natural distinctions from backend metadata | Replace demo/reference products with manufacturer/regulator-verified product rows before production |
@@ -46,6 +46,18 @@ This matrix captures the current backend/admin readiness for Android handoff, in
 ## Emulator seed-data checklist
 
 Before Android emulator testing, create or verify local fixtures for:
+
+Verified on 2026-07-27 with `backend/scripts/audit_android_emulator_persona_readiness.py`:
+
+- 123 active farmers;
+- 97 active parcels;
+- 65 farmers with active parcels;
+- 4 company/project-associated farmers;
+- 119 independent active farmers;
+- 2 agent profiles;
+- advisory fixtures present: 72 campaigns and 92 deliveries;
+- crop/workflow/input/product metadata ready.
+
 
 1. one direct farmer;
 2. one field agent with worklist-visible farmer(s);
