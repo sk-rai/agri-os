@@ -29,7 +29,7 @@ This tracker records discussed backend/demo-readiness items so each item is eith
 | CoRE polygon export + LGD overlay | Active next | Readiness audit and GEE export checklist added. CoRE class metadata and district fallback are ready; polygon exports and LGD boundary geometry are missing. | `backend/scripts/audit_climate_polygon_overlay_readiness.py`, `docs/core-stack-gee-export-checklist.md` |
 | Village coordinate geocoding | Needs research | Possible only as provider-gated enrichment with source/license/cache rules; store as label point, not centroid. | Provider terms review |
 | Live weather/soil providers | Deferred | Readiness audit and live-test runbook added. Current local state: no credentials, no live-enabled providers, not safe for demo live calls yet. Keep approval-gated until credentials, budgets, monitoring, and rate limits are ready. | `backend/scripts/audit_provider_live_readiness.py`, `docs/provider-live-test-readiness-runbook.md` |
-| Product source verification | Deferred | Screener/TNAU are discovery only; official labels/regulators/manufacturer sites needed for verified product data. | Product source docs |
+| Product source verification | Deferred | Audit and runbook added. Current catalog is demo/reference only: 31 products, 0 source URLs, 0 label URLs, 0 registration numbers, 0 review statuses. Screener/TNAU remain discovery only; official labels/regulators/manufacturer sites needed for verified product data. | `backend/scripts/audit_product_source_verification_readiness.py`, `docs/product-source-verification-runbook.md` |
 | Language QA expansion | Deferred | Backend supports labels/localized content; broader Hindi/local-language seed coverage later. | Android handoff docs |
 
 
