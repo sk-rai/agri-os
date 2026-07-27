@@ -28,7 +28,7 @@ This tracker records discussed backend/demo-readiness items so each item is eith
 | CoRE class importer | Closed | Imported 45 CoRE AEZ/ACZ/Biogeographic class names into climate region rows without LGD mapping. | `backend/scripts/import_core_stack_climate_regions.py` |
 | CoRE polygon export + LGD overlay | Active next | Readiness audit and GEE export checklist added. CoRE class metadata and district fallback are ready; polygon exports and LGD boundary geometry are missing. | `backend/scripts/audit_climate_polygon_overlay_readiness.py`, `docs/core-stack-gee-export-checklist.md` |
 | Village coordinate geocoding | Needs research | Possible only as provider-gated enrichment with source/license/cache rules; store as label point, not centroid. | Provider terms review |
-| Live weather/soil providers | Deferred | Keep approval-gated until credentials, budgets, monitoring, and rate limits are ready. | Provider runbooks |
+| Live weather/soil providers | Deferred | Readiness audit and live-test runbook added. Current local state: no credentials, no live-enabled providers, not safe for demo live calls yet. Keep approval-gated until credentials, budgets, monitoring, and rate limits are ready. | `backend/scripts/audit_provider_live_readiness.py`, `docs/provider-live-test-readiness-runbook.md` |
 | Product source verification | Deferred | Screener/TNAU are discovery only; official labels/regulators/manufacturer sites needed for verified product data. | Product source docs |
 | Language QA expansion | Deferred | Backend supports labels/localized content; broader Hindi/local-language seed coverage later. | Android handoff docs |
 
