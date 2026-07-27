@@ -443,3 +443,12 @@ Manual export and validation steps are tracked in:
     docs/core-stack-gee-export-checklist.md
 
 This checklist explains the CoRE GEE layers, expected local export filenames, what geometry/properties they contain, and how exports will later support LGD/parcel overlay.
+
+
+## LGD boundary source checklist
+
+Boundary geometry source review is tracked in:
+
+    docs/lgd-boundary-source-checklist.md
+
+Preferred approach: use Survey of India/India Maps boundary geometry, LGD Directory for canonical codes, and OGD Admin Boundaries only after schema/source review.
