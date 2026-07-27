@@ -17,6 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from sqlalchemy.orm.attributes import flag_modified
+
 from app.core.database import SessionLocal
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
 
@@ -170,6 +172,7 @@ def seed_crops(db, dry_run: bool, result: dict):
             result["crops_updated"] += 1
             if not dry_run:
                 crop.aliases = new_aliases
+                flag_modified(crop, "aliases")
                 crop.updated_at = now()
 
 
@@ -225,7 +228,9 @@ def seed_lifecycle_templates(db, dry_run: bool, result: dict):
             if not dry_run:
                 if template_alias_changed:
                     template.aliases = new_aliases
+                    flag_modified(template, "aliases")
                 template.stages = stages
+                flag_modified(template, "stages")
                 template.updated_at = now()
 
 
