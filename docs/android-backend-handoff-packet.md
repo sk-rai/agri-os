@@ -8,6 +8,30 @@ This packet is now the backend closeout map for Android integration planning. Th
 
 See `docs/android-handoff-readiness-matrix.md` for the current closed/open/deferred status across personas, metadata, advisories, language readiness, and emulator seed data.
 
+## Verified closeout status
+
+Verified on 2026-07-27:
+
+- Android emulator persona readiness is green via `backend/scripts/audit_android_emulator_persona_readiness.py`.
+- Backend closeout regressions pass via `backend/scripts/pre_android_handoff_check.py`.
+- Web admin build passes via `cd web && npm run build`.
+- Metadata/product/advisory/geography readiness is sufficient for Android MVP emulator integration.
+- Company/product source scraping is intentionally parked; discovery/planning tools are available, but product truth review is not blocking Android handoff.
+
+Current Android MVP persona coverage:
+
+- direct farmer;
+- field agent;
+- company/project-associated farmer;
+- independent farmer.
+
+Known intentional deferrals:
+
+- live weather/soil provider execution remains approval-gated;
+- product catalog rows are demo/reference until manufacturer/regulator verification;
+- company-site product scraping continues after Android integration starts;
+- broader language QA needs additional local-language seed content beyond core contract support.
+
 ## Handoff principle
 
 Android should become a thin client for profile capture, communication, readiness, and advisory consumption. It should not duplicate backend rules for eligibility, targeting, provider calls, weather logic, soil enrichment grouping, company discovery, or operational queues.
