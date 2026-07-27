@@ -11,6 +11,7 @@ crosswalk.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -41,13 +42,22 @@ def slugify(value: str) -> str:
 
 
 def region_code_for(layer: dict, class_value: str) -> str:
+    """Build deterministic DB-safe region_code.
+
+    geography_climate_regions.region_code is varchar(80), while some CoRE class
+    labels are much longer. Keep a readable prefix and append a stable hash so
+    codes remain deterministic without truncation collisions.
+    """
     system = layer["region_system"]
     prefix = {
         "CORE_STACK_AGRO_ECOLOGICAL_ZONE": "CORE_AEZ",
         "CORE_STACK_AGRO_CLIMATIC_ZONE": "CORE_ACZ",
         "CORE_STACK_BIOGEOGRAPHIC_ZONE": "CORE_BGZ",
-    }.get(system, slugify(system))
-    return f"{prefix}_{slugify(class_value)}"
+    }.get(system, slugify(system)[:20])
+    slug = slugify(class_value)
+    digest = hashlib.sha1(f"{system}|{class_value}".encode("utf-8")).hexdigest()[:10]
+    max_slug_len = 80 - len(prefix) - len(digest) - 2
+    return f"{prefix}_{slug[:max_slug_len]}_{digest}"
 
 
 def build_region_payload(layer: dict, class_value: str) -> dict:
