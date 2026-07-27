@@ -4421,3 +4421,184 @@ def get_my_farmer_profile(
         "total_land_unit": farmer.total_land_unit,
         "status": farmer.status,
     }
+
+@router.get("/profile/land-intelligence-context", response_model=dict)
+def get_land_intelligence_context(
+    district_lgd_code: str | None = Query(None),
+    state_lgd_code: str | None = Query(None),
+    pin_code: str | None = Query(None),
+    crop_code: str | None = Query(None),
+    season_code: str | None = Query(None),
+    project_id: str | None = Query(None),
+    tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    db: Session = Depends(get_db),
+):
+    """Android-friendly profile/land onboarding intelligence.
+
+    Android should display this as contextual guidance while creating parcel,
+    soil, and crop profile data. Android should not compute climatic regions.
+    """
+
+    from uuid import UUID
+    from app.modules.master_data.models import (
+        Crop,
+        CropClimateSuitabilityRule,
+        GeographyClimateRegion,
+        GeographyClimateRegionMapping,
+    )
+    from app.modules.master_data.api.crop_catalog import _first_effective_override
+
+    if not any([district_lgd_code, state_lgd_code, pin_code]):
+        raise HTTPException(400, "Provide district_lgd_code, state_lgd_code, or pin_code")
+
+    crop_code_normalized = crop_code.upper() if crop_code else None
+    season_code_normalized = season_code.upper() if season_code else None
+    project_uuid = UUID(project_id) if project_id else None
+
+    if crop_code_normalized and not db.query(Crop).filter(Crop.code == crop_code_normalized, Crop.is_active == True).first():
+        raise HTTPException(404, "Crop not found")
+
+    mapping_query = db.query(GeographyClimateRegionMapping).filter(
+        GeographyClimateRegionMapping.is_active == True
+    )
+    mapping_level = None
+    if pin_code:
+        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.pin_code == pin_code)
+        mapping_level = "PIN"
+    elif district_lgd_code:
+        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.district_lgd_code == district_lgd_code)
+        mapping_level = "DISTRICT"
+    else:
+        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.state_lgd_code == state_lgd_code)
+        mapping_level = "STATE"
+
+    mappings = mapping_query.all()
+    region_codes = sorted({mapping.region_code for mapping in mappings})
+
+    regions = (
+        db.query(GeographyClimateRegion)
+        .filter(
+            GeographyClimateRegion.region_code.in_(region_codes),
+            GeographyClimateRegion.is_active == True,
+        )
+        .order_by(GeographyClimateRegion.region_system, GeographyClimateRegion.region_code)
+        .all()
+        if region_codes else []
+    )
+
+    effective_rules = []
+    warnings = []
+    if crop_code_normalized and season_code_normalized:
+        for region_code in region_codes:
+            rule = (
+                db.query(CropClimateSuitabilityRule)
+                .filter(
+                    CropClimateSuitabilityRule.crop_code == crop_code_normalized,
+                    CropClimateSuitabilityRule.season_code == season_code_normalized,
+                    CropClimateSuitabilityRule.region_code == region_code,
+                    CropClimateSuitabilityRule.is_active == True,
+                )
+                .first()
+            )
+            if not rule:
+                continue
+
+            override = _first_effective_override(
+                db,
+                tenant_id=tenant_id,
+                project_id=project_uuid,
+                crop_code=crop_code_normalized,
+                season_code=season_code_normalized,
+                region_code=region_code,
+            )
+            selected = override or rule
+            source = "PROJECT_OVERRIDE" if override and override.project_id else ("TENANT_OVERRIDE" if override else "DEFAULT_RULE")
+            warning_rules = selected.warning_rules or []
+            warnings.extend(warning_rules)
+
+            effective_rules.append({
+                "source": source,
+                "crop_code": selected.crop_code,
+                "season_code": selected.season_code,
+                "region_code": selected.region_code,
+                "suitability_status": selected.suitability_status,
+                "confidence": selected.confidence,
+                "irrigation_required": selected.irrigation_required,
+                "warning_rules": warning_rules,
+                "review_status": selected.review_status,
+            })
+
+    status_rank = {
+        "UNSUITABLE": 0,
+        "NOT_TYPICAL": 1,
+        "UNKNOWN": 2,
+        "CONDITIONAL": 3,
+        "SUITABLE": 4,
+        "HIGHLY_SUITABLE": 5,
+    }
+    best_rule = max(effective_rules, key=lambda row: status_rank.get(row.get("suitability_status"), 2), default=None)
+
+    needs_irrigation_detail = any(rule.get("irrigation_required") for rule in effective_rules)
+    has_approximate_mapping = any(mapping.confidence in {"LOCAL_DEMO_SEED", "LOCAL_DEMO_DISTRICT_FALLBACK"} for mapping in mappings)
+
+    return {
+        "schema_version": "land_intelligence_context.v1",
+        "tenant_id": tenant_id,
+        "project_id": project_id,
+        "geography": {
+            "state_lgd_code": state_lgd_code,
+            "district_lgd_code": district_lgd_code,
+            "pin_code": pin_code,
+            "mapping_level_used": mapping_level,
+        },
+        "climate_context": {
+            "region_count": len(regions),
+            "mapping_count": len(mappings),
+            "mapping_level": mapping_level,
+            "mapping_precision": "APPROXIMATE" if has_approximate_mapping else "SOURCE_DERIVED",
+            "regions": [
+                {
+                    "region_code": region.region_code,
+                    "region_name": region.region_name,
+                    "region_system": region.region_system,
+                    "rainfall_band_mm": region.rainfall_band_mm or {},
+                    "temperature_band_c": region.temperature_band_c or {},
+                    "dominant_soil_groups": region.dominant_soil_groups or [],
+                    "irrigation_context": region.irrigation_context or {},
+                    "confidence": region.confidence,
+                    "review_status": region.review_status,
+                }
+                for region in regions
+            ],
+        },
+        "crop_suitability": {
+            "input_provided": bool(crop_code_normalized and season_code_normalized),
+            "crop_code": crop_code_normalized,
+            "season_code": season_code_normalized,
+            "effective_rules": effective_rules,
+            "status": best_rule.get("suitability_status") if best_rule else "UNKNOWN",
+            "source": best_rule.get("source") if best_rule else "NO_RULE_MATCH",
+            "confidence": best_rule.get("confidence") if best_rule else "UNKNOWN",
+            "requires_confirmation": any(rule.get("suitability_status") in {"CONDITIONAL", "NOT_TYPICAL", "UNSUITABLE"} for rule in effective_rules),
+            "warnings": warnings,
+        },
+        "soil_capture_guidance": {
+            "ask_soil_texture": True,
+            "ask_soil_color_or_local_soil_name": True,
+            "ask_irrigation_source": True,
+            "ask_waterlogging_or_drainage": True,
+            "ask_soil_test_values_if_available": True,
+            "highlight_irrigation_question": needs_irrigation_detail,
+            "do_not_autofill_soil_type_from_climate_zone": True,
+            "message": (
+                "Climate/agro-ecological context is backend intelligence. "
+                "Use it to guide questions and warnings, but farmer observation or soil-test data should win."
+            ),
+        },
+        "android_contract": {
+            "android_displays_backend_guidance": True,
+            "android_does_not_compute_climate_zone": True,
+            "android_does_not_call_external_geo_or_weather_providers": True,
+            "android_may_continue_after_warning_if_backend_requires_confirmation": True,
+        },
+    }

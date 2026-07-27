@@ -175,3 +175,11 @@ This covers:
 - 45-entry starter crop scenario target;
 - Android-facing suitability warning contract;
 - provider/source evidence and review policy.
+
+## Backend gap closure tracker
+
+Ongoing backend/demo-readiness gaps are tracked in:
+
+    docs/backend-gap-closure-tracker.md
+
+Use this tracker to mark discussed items as closed, active next, needs research, deferred, or watch during Android integration.
