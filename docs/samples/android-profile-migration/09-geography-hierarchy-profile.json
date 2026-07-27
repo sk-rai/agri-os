@@ -1,0 +1,104 @@
+{
+  "android_guidance": {
+    "do_not_hardcode_fixed_level_count": true,
+    "india_current_flow_supported": true,
+    "offline_cache_key": "country_code:IN/geography_profile:v1",
+    "render_levels_from_backend_profile": true
+  },
+  "canonical_source": {
+    "name": "Local Government Directory",
+    "role": "canonical_government_hierarchy_for_india",
+    "source_system": "LGD"
+  },
+  "default_country_code": "IN",
+  "global_model_target": {
+    "admin_level_profile_table": "geo_admin_level_profile",
+    "alias_table": "geo_entity_alias",
+    "entity_table": "geo_entity",
+    "import_batch_table": "geo_import_batch",
+    "postal_code_table": "geo_entity_postal_code",
+    "status": "ROADMAP_NOT_MIGRATED"
+  },
+  "governance": {
+    "admin_editable_fields": [
+      "aliases",
+      "translations",
+      "display_labels",
+      "postal_code_associations",
+      "operational_groupings",
+      "expires_at",
+      "is_active"
+    ],
+    "canonical_corrections_require_verified_import": true,
+    "canonical_government_fields_editable": false,
+    "physical_delete_allowed": false
+  },
+  "levels": [
+    {
+      "endpoint": null,
+      "label": {
+        "en": "Country"
+      },
+      "level_code": "COUNTRY",
+      "required": true,
+      "source_field": "country_code"
+    },
+    {
+      "endpoint": "/api/v1/master-data/geography/states",
+      "label": {
+        "en": "State / Union Territory"
+      },
+      "level_code": "STATE",
+      "required": true,
+      "source_field": "state_id"
+    },
+    {
+      "endpoint": "/api/v1/master-data/geography/districts?state_id={state_id}",
+      "label": {
+        "en": "District"
+      },
+      "level_code": "DISTRICT",
+      "required": true,
+      "source_field": "district_id"
+    },
+    {
+      "endpoint": "/api/v1/master-data/geography/blocks?district_id={district_id}",
+      "label": {
+        "en": "Block / Tehsil / Taluk"
+      },
+      "level_code": "SUB_DISTRICT",
+      "required": false,
+      "source_field": "block_id"
+    },
+    {
+      "endpoint": "/api/v1/master-data/geography/villages?block_id={block_id}",
+      "label": {
+        "en": "Village / Town / Locality"
+      },
+      "level_code": "LOCALITY",
+      "required": true,
+      "source_field": "village_id"
+    },
+    {
+      "endpoint": "/api/v1/master-data/geography/villages/by-pin-code?pin_code={pin_code}",
+      "label": {
+        "en": "PIN / Postal code"
+      },
+      "level_code": "POSTAL_CODE",
+      "required": false,
+      "source_field": "pin_code"
+    }
+  ],
+  "mode": "INDIA_COMPATIBILITY_CURRENT_TABLES",
+  "schema_version": "geography_hierarchy_profile.v1",
+  "supporting_sources": [
+    {
+      "role": "reference_names_codes_aliases",
+      "source_system": "CENSUS"
+    },
+    {
+      "role": "postal_code_to_locality_candidates",
+      "source_system": "PIN_CODE"
+    }
+  ]
+}

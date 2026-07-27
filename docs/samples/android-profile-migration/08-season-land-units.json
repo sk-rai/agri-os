@@ -1,0 +1,150 @@
+{
+  "android_guidance": {
+    "allow_capture_original_unit": true,
+    "show_warning_for_variable_local_units": true,
+    "warning_message": "This local unit needs village/district-specific conversion before profit/loss calculations."
+  },
+  "calculation_contract": {
+    "block_financial_calculation_when_conversion_status_not_converted": true,
+    "normalize_backend_calculations_to_acres_hectares": true,
+    "safe_canonical_units": [
+      "ACRE",
+      "HECTARE"
+    ],
+    "store_original_farmer_unit": true,
+    "variable_local_units_require_geography_scope": [
+      "BIGHA",
+      "BISWA",
+      "KATHA",
+      "GUNTHA"
+    ]
+  },
+  "land_units": [
+    {
+      "acres_per_unit": "1",
+      "category": "canonical",
+      "code": "ACRE",
+      "geography_scope": "ALL_INDIA",
+      "hectares_per_unit": "0.40468564224",
+      "label_en": "Acre",
+      "label_hi": "एकड़",
+      "source": "backend_config"
+    },
+    {
+      "acres_per_unit": "2.4710538147",
+      "category": "metric",
+      "code": "HECTARE",
+      "geography_scope": "ALL_INDIA",
+      "hectares_per_unit": "1",
+      "label_en": "Hectare",
+      "label_hi": "हेक्टेयर",
+      "source": "backend_config"
+    },
+    {
+      "acres_per_unit": "0.625",
+      "category": "local_variable",
+      "code": "BIGHA_UP_EAST",
+      "geography_scope": "IN-UP-EAST",
+      "hectares_per_unit": "0.2529285264",
+      "label_en": "Bigha (UP East)",
+      "label_hi": "बीघा (पूर्वी उत्तर प्रदेश)",
+      "source": "backend_config"
+    },
+    {
+      "acres_per_unit": "0.03125",
+      "category": "local_variable",
+      "code": "BISWA_UP_EAST",
+      "geography_scope": "IN-UP-EAST",
+      "hectares_per_unit": "0.01264642632",
+      "label_en": "Biswa (UP East)",
+      "label_hi": "बिस्वा (पूर्वी उत्तर प्रदेश)",
+      "source": "backend_config"
+    },
+    {
+      "acres_per_unit": null,
+      "category": "local_variable_requires_scope",
+      "code": "BIGHA_UNSPECIFIED",
+      "geography_scope": "ALL_INDIA",
+      "hectares_per_unit": null,
+      "label_en": "Bigha (requires local conversion)",
+      "label_hi": "बीघा (स्थानीय रूपांतरण आवश्यक)",
+      "source": "backend_config"
+    },
+    {
+      "acres_per_unit": null,
+      "category": "local_variable_requires_scope",
+      "code": "BISWA_UNSPECIFIED",
+      "geography_scope": "ALL_INDIA",
+      "hectares_per_unit": null,
+      "label_en": "Biswa (requires local conversion)",
+      "label_hi": "बिस्वा (स्थानीय रूपांतरण आवश्यक)",
+      "source": "backend_config"
+    }
+  ],
+  "schema_version": "season_land_unit_metadata.v1",
+  "seasons": [
+    {
+      "code": "KHARIF",
+      "is_active": true,
+      "label_en": "Kharif",
+      "label_hi": "खरीफ",
+      "sort_order": 10,
+      "typical_months": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "code": "RABI",
+      "is_active": true,
+      "label_en": "Rabi",
+      "label_hi": "रबी",
+      "sort_order": 20,
+      "typical_months": [
+        11,
+        12,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "code": "ZAID",
+      "is_active": true,
+      "label_en": "Zaid",
+      "label_hi": "ज़ैद",
+      "sort_order": 30,
+      "typical_months": [
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "code": "PERENNIAL",
+      "is_active": true,
+      "label_en": "Perennial / Orchard",
+      "label_hi": "बारहमासी / बाग",
+      "sort_order": 40,
+      "typical_months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    }
+  ]
+}

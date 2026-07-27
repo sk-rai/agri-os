@@ -1,0 +1,217 @@
+{
+  "alias_policy": {
+    "known_supported_aliases": {
+      "soil_profile.boron_b": "soil_profile.boron_bo"
+    },
+    "recommendation": "Send canonical fields only. During migration, send an old alias only when backend explicitly documents that alias, e.g. boron_b for soil boron. Do not send both alias and canonical for the same value unless a temporary compatibility test specifically requires it.",
+    "should_android_send_both_old_aliases_and_new_canonical_fields": false
+  },
+  "farmer_create": {
+    "canonical_fields": [
+      "mobile_number",
+      "village_id",
+      "village_name_manual",
+      "pin_code",
+      "primary_crop_code",
+      "crops_by_season",
+      "display_name",
+      "father_name",
+      "age",
+      "gender",
+      "aadhaar_number",
+      "total_land_area",
+      "total_land_unit",
+      "language_preference",
+      "assistance_mode",
+      "enrollment_gps_lat",
+      "enrollment_gps_lng"
+    ],
+    "endpoint": "/api/v1/farmers",
+    "method": "POST",
+    "notes": [
+      "Either village_id or village_name_manual should be supplied for useful readiness.",
+      "Backend computes home_digipin when enrollment_gps_lat/lng are present."
+    ],
+    "recommended_minimum": [
+      "mobile_number",
+      "village_name_manual",
+      "pin_code"
+    ],
+    "required": [
+      "mobile_number"
+    ]
+  },
+  "farmer_update": {
+    "canonical_fields": [
+      "village_id",
+      "village_name_manual",
+      "pin_code",
+      "primary_crop_code",
+      "crops_by_season",
+      "display_name",
+      "father_name",
+      "age",
+      "gender",
+      "aadhaar_number",
+      "total_land_area",
+      "total_land_unit",
+      "language_preference",
+      "assistance_mode",
+      "enrollment_gps_lat",
+      "enrollment_gps_lng"
+    ],
+    "endpoint": "/api/v1/farmers/{farmer_id}",
+    "method": "PATCH"
+  },
+  "feature_flags": {
+    "backend_driven_farmer_forms": "Use backend farmer_registration form instead of legacy hardcoded farmer screen.",
+    "backend_driven_parcel_forms": "Use backend parcel_registration form instead of legacy hardcoded parcel screen.",
+    "backend_driven_soil_forms": "Use backend soil_profile form instead of legacy hardcoded soil screen.",
+    "migration_gate_recommendation": "Android can enable backend-driven profile migration when all three flags are true for the effective project/app config."
+  },
+  "parcel_create": {
+    "canonical_fields": [
+      "farmer_id",
+      "village_id",
+      "village_name_manual",
+      "pin_code",
+      "location_scope",
+      "reported_area",
+      "reported_area_unit",
+      "current_crop_code",
+      "soil_type_code",
+      "local_name",
+      "survey_number",
+      "ownership_type",
+      "annual_rent",
+      "annual_rent_currency",
+      "share_percentage",
+      "sharecrop_percentage",
+      "irrigation_source",
+      "crops_by_season",
+      "centroid_lat",
+      "centroid_lng"
+    ],
+    "endpoint": "/api/v1/parcels",
+    "method": "POST",
+    "notes": [
+      "Backend computes centroid_digipin when centroid_lat/lng are present.",
+      "Use location_scope.type=SAME_AS_HOME when parcel village/PIN is confirmed same as farmer home."
+    ],
+    "recommended_minimum": [
+      "farmer_id",
+      "reported_area",
+      "reported_area_unit",
+      "pin_code",
+      "location_scope"
+    ],
+    "required": [
+      "farmer_id",
+      "reported_area"
+    ]
+  },
+  "parcel_update": {
+    "canonical_fields": [
+      "village_id",
+      "village_name_manual",
+      "pin_code",
+      "location_scope",
+      "reported_area",
+      "reported_area_unit",
+      "current_crop_code",
+      "soil_type_code",
+      "local_name",
+      "survey_number",
+      "ownership_type",
+      "annual_rent",
+      "annual_rent_currency",
+      "share_percentage",
+      "sharecrop_percentage",
+      "irrigation_source",
+      "crops_by_season",
+      "status"
+    ],
+    "endpoint": "/api/v1/parcels/{parcel_id}",
+    "method": "PATCH"
+  },
+  "route_notes": {
+    "alias_status": "Use current route unless backend adds compatibility alias later.",
+    "android_requested_route_alias": "GET /api/v1/config/app-bootstrap",
+    "app_config_bootstrap_current_route": "GET /api/v1/app-config/bootstrap",
+    "profile_contract_current_route": "GET /api/v1/forms/profile-contract"
+  },
+  "schema_version": "android_profile_migration_submit_contract.v1",
+  "soil_profile_create": {
+    "canonical_fields": [
+      "parcel_id",
+      "farmer_id",
+      "soil_type_code",
+      "soil_texture",
+      "soil_color",
+      "test_date",
+      "lab_name",
+      "shc_card_number",
+      "nitrogen_n",
+      "phosphorus_p",
+      "potassium_k",
+      "sulphur_s",
+      "zinc_zn",
+      "iron_fe",
+      "copper_cu",
+      "manganese_mn",
+      "boron_bo",
+      "boron_b",
+      "ph",
+      "ec",
+      "organic_carbon_oc",
+      "data_source",
+      "notes"
+    ],
+    "endpoint": "/api/v1/soil-profiles",
+    "method": "POST",
+    "notes": [
+      "boron_b is accepted as Android/form alias and stored as boron_bo.",
+      "Prefer boron_bo as canonical field once Android migration is complete."
+    ],
+    "recommended_minimum": [
+      "parcel_id",
+      "farmer_id",
+      "data_source"
+    ],
+    "required": [
+      "parcel_id",
+      "farmer_id"
+    ]
+  },
+  "soil_profile_update": {
+    "canonical_fields": [
+      "soil_type_code",
+      "soil_texture",
+      "soil_color",
+      "test_date",
+      "lab_name",
+      "shc_card_number",
+      "nitrogen_n",
+      "phosphorus_p",
+      "potassium_k",
+      "sulphur_s",
+      "zinc_zn",
+      "iron_fe",
+      "copper_cu",
+      "manganese_mn",
+      "boron_bo",
+      "boron_b",
+      "ph",
+      "ec",
+      "organic_carbon_oc",
+      "data_source",
+      "notes"
+    ],
+    "endpoint": "/api/v1/soil-profiles/{profile_id}",
+    "method": "PATCH",
+    "notes": [
+      "boron_b remains accepted as migration alias for Android."
+    ]
+  },
+  "status_date": "2026-07-27"
+}
