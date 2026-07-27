@@ -35,6 +35,7 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 
 - `GET /api/v1/farmers/profile-readiness`
 - farmer/profile hydration endpoints already used by Android mode bootstrap/profile loading.
+- `GET /api/v1/profile/land-intelligence-context`
 - `GET /api/v1/field-agent/worklist` when the user is acting as a field agent.
 
 ### Broadcast consumption
@@ -127,7 +128,28 @@ Android may render these backend-computed summaries. Android should not compute 
 - Run `backend/scripts/pre_android_handoff_check.py`.
 - Run web build.
 - Confirm this allowlist against Android API client interfaces.
-- Confirm `docs/samples/android/` contains the current 25-file redacted payload bundle.
+- Confirm `docs/samples/android/` contains the current 26-file redacted payload bundle.
+
+## Land intelligence context
+
+`GET /api/v1/profile/land-intelligence-context` returns backend-owned land, climate, ecological, and optional crop-season suitability context for Android land/profile creation.
+
+Android may pass:
+
+- `state_lgd_code`;
+- `district_lgd_code`;
+- `pin_code`;
+- optional `crop_code`;
+- optional `season_code`;
+- optional `project_id`.
+
+Android should use this endpoint to display advisory guidance, especially where soil type, irrigation, crop selection, and local practice confirmation matter.
+
+Android must not:
+
+- compute agro-climatic or agro-ecological zones locally;
+- treat demo/manual-review suitability as regulator-verified;
+- block farmer onboarding unless backend later returns an explicit blocking rule.
 
 ## PIN-code guardrail contract
 

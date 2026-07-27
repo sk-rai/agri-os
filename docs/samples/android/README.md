@@ -38,3 +38,4 @@ cd ~/projects/farmint/backend
 23. `23-profit-loss-summary.json` - fixed-formula crop-cycle P&L summary.
 24. `24-sync-dependency-error.json` - offline sync dependency failure example.
 25. `25-finance-analytics-summary.json` - aggregate finance analytics across crop, season, stage, expense category, and time period.
+26. `26-land-intelligence-context.json` - backend-owned land/climate/crop suitability context for parcel/profile creation.

@@ -1,0 +1,94 @@
+{
+  "android_contract": {
+    "android_displays_backend_guidance": true,
+    "android_does_not_call_external_geo_or_weather_providers": true,
+    "android_does_not_compute_climate_zone": true,
+    "android_may_continue_after_warning_if_backend_requires_confirmation": true
+  },
+  "climate_context": {
+    "mapping_count": 1,
+    "mapping_level": "DISTRICT",
+    "mapping_precision": "APPROXIMATE",
+    "region_count": 1,
+    "regions": [
+      {
+        "confidence": "LOCAL_DEMO_SEED",
+        "dominant_soil_groups": [
+          "RED",
+          "BLACK_COTTON",
+          "LATERITE"
+        ],
+        "irrigation_context": {
+          "default": "MIXED_RAINFED_IRRIGATED"
+        },
+        "rainfall_band_mm": {
+          "note": "Coastal/Malenadu districts need separate high-rainfall mapping.",
+          "typical_annual_max": 1000,
+          "typical_annual_min": 450
+        },
+        "region_code": "IND_ACZ_SOUTHERN_PLATEAU_HILLS_KA",
+        "region_name": "Karnataka - Southern Plateau and Hills starter zone",
+        "region_system": "AGRO_CLIMATIC_ZONE_STARTER",
+        "review_status": "MANUAL_REVIEW",
+        "temperature_band_c": {
+          "typical_max": 35,
+          "typical_min": 16
+        }
+      }
+    ]
+  },
+  "crop_suitability": {
+    "confidence": "LOCAL_DEMO_SEED",
+    "crop_code": "RICE",
+    "effective_rules": [
+      {
+        "confidence": "LOCAL_DEMO_SEED",
+        "crop_code": "RICE",
+        "irrigation_required": true,
+        "region_code": "IND_ACZ_SOUTHERN_PLATEAU_HILLS_KA",
+        "review_status": "MANUAL_REVIEW",
+        "season_code": "KHARIF",
+        "source": "DEFAULT_RULE",
+        "suitability_status": "CONDITIONAL",
+        "warning_rules": [
+          {
+            "code": "CHECK_IRRIGATION_AND_LOCAL_PRACTICE",
+            "message": "Suitability depends on irrigation, local rainfall, variety, and district package of practices.",
+            "severity": "INFO"
+          }
+        ]
+      }
+    ],
+    "input_provided": true,
+    "requires_confirmation": true,
+    "season_code": "KHARIF",
+    "source": "DEFAULT_RULE",
+    "status": "CONDITIONAL",
+    "warnings": [
+      {
+        "code": "CHECK_IRRIGATION_AND_LOCAL_PRACTICE",
+        "message": "Suitability depends on irrigation, local rainfall, variety, and district package of practices.",
+        "severity": "INFO"
+      }
+    ]
+  },
+  "geography": {
+    "district_lgd_code": "536",
+    "mapping_level_used": "DISTRICT",
+    "pin_code": null,
+    "state_lgd_code": null
+  },
+  "project_id": null,
+  "schema_version": "land_intelligence_context.v1",
+  "soil_capture_guidance": {
+    "ask_irrigation_source": true,
+    "ask_soil_color_or_local_soil_name": true,
+    "ask_soil_test_values_if_available": true,
+    "ask_soil_texture": true,
+    "ask_waterlogging_or_drainage": true,
+    "do_not_autofill_soil_type_from_climate_zone": true,
+    "highlight_irrigation_question": true,
+    "message": "Climate/agro-ecological context is backend intelligence. Use it to guide questions and warnings, but farmer observation or soil-test data should win."
+  },
+  "tenant_id": "default"
+}

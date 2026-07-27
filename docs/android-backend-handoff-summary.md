@@ -126,6 +126,16 @@ The response distinguishes:
 
 Android must not reject a valid postal PIN only because village candidates are empty.
 
+## Land intelligence during profile creation
+
+Android may call:
+
+    GET /api/v1/profile/land-intelligence-context
+
+Use this after state/district/PIN is known, and optionally after crop/season selection. The response gives backend-owned climate/agro-ecological context, crop-season suitability warnings, and soil capture guidance.
+
+Android should display this as advisory intelligence during land/profile creation. Android should not hardcode climate zones, ecological zones, or crop suitability rules.
+
 ## Android MVP visibility decisions
 
 For MVP emulator integration:

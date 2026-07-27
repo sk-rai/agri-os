@@ -11,7 +11,7 @@ cd ~/projects/farmint/backend
 ../venv/bin/python scripts/capture_android_sample_payloads.py
 ```
 
-The current bundle contains 24 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, and sync error handling.
+The current bundle contains 26 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, sync error handling, finance analytics, and land intelligence context.
 
 ## Integration order
 
@@ -53,6 +53,7 @@ The current bundle contains 24 redacted JSON samples covering mode bootstrap, ap
 | `23-profit-loss-summary.json` | Render fixed-formula income minus expenses P&L summary. |
 | `24-sync-dependency-error.json` | Handle batch-resilient offline sync dependency failure. |
 | `25-finance-analytics-summary.json` | Render backend-computed aggregate finance analytics across crop, season, stage, expense category, and time period. |
+| `26-land-intelligence-context.json` | Render backend-owned climate/agro-ecological context and crop suitability warnings during land/profile creation. |
 
 ## 1. Mode bootstrap
 
@@ -373,3 +374,14 @@ Android should use this endpoint after a parcel PIN code is entered when the par
 ## Farmer finance summary behavior
 
 The stage-cost, P&L, and finance analytics samples are backend-computed. They include report config source metadata and analytics dimensions for crop/season/stage/time-period comparison. Android should not compute income, expense categories, variance, aggregate analytics, or P&L locally.
+
+## Land intelligence context
+
+Endpoint:
+
+    GET /api/v1/profile/land-intelligence-context?district_lgd_code={district_lgd_code}&crop_code={crop_code}&season_code={season_code}
+    X-Tenant-ID: {tenant_id}
+
+Android rule: call this after state/district/PIN is known, and again after crop/season is selected if the UX needs crop-specific warnings. Android should display backend-provided warnings and guidance. Android must not hardcode climate zones, ecological zones, or crop suitability rules locally.
+
+This layer is advisory intelligence for onboarding and analytics. It should not block parcel creation unless a later backend contract explicitly returns a blocking decision.
