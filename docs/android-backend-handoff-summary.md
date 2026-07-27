@@ -126,6 +126,16 @@ The response distinguishes:
 
 Android must not reject a valid postal PIN only because village candidates are empty.
 
+## Android MVP visibility decisions
+
+For MVP emulator integration:
+
+- Finance analytics aggregate page/API remains admin-only. Android should render per-cycle backend-computed stage-cost and P&L summaries only if product UX requires it.
+- Company discovery/profile surfaces remain admin-only. Android should not call company discovery/admin endpoints.
+- Product catalog demo/reference rows may be visible for emulator/demo flows where backend exposes them, but Android should not present them as manufacturer-verified or regulator-verified.
+- Language QA proceeds English-first for emulator integration. Backend contracts support labels/options/localized content, but broader Hindi/local-language seed coverage is a later QA pass.
+- Live weather and soil provider execution remains blocked until provider config is explicitly approved. Android should render saved backend snapshots/readiness only.
+
 ## Known intentional deferrals
 
 These are documented and not blockers for Android MVP emulator integration:
