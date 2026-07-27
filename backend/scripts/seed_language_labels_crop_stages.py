@@ -111,12 +111,26 @@ def has_lang_alias(aliases, lang: str) -> bool:
     return any(isinstance(item, dict) and item.get("lang") == lang for item in aliases)
 
 
+def is_valid_localized_label(value: str) -> bool:
+    value = str(value or "").strip()
+    if not value:
+        return False
+    if set(value) <= {"?", " "}:
+        return False
+    return True
+
+
 def add_alias(aliases, lang: str, name: str, source: str) -> tuple[list, bool]:
     aliases = aliases_list(aliases)
     for item in aliases:
         if isinstance(item, dict) and item.get("lang") == lang:
             existing_name = item.get("name")
             if existing_name == name and item.get("source") == source:
+                return aliases, False
+            if existing_name == name and is_valid_localized_label(existing_name):
+                if item.get("source") != source:
+                    item["source"] = source
+                    return aliases, True
                 return aliases, False
             item["name"] = name
             item["source"] = source
