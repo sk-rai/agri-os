@@ -274,3 +274,33 @@ Useful manual/review work:
 4. Obtain/confirm credentials or terms for any API-based downloads, especially OGD/data.gov.in and IMD endpoints.
 5. Confirm whether client demos will focus on field crops, horticulture, natural farming, or input-company workflows first.
 
+
+## Implementation checkpoint - 2026-07-27
+
+The starter metadata foundation is now implemented locally:
+
+- Alembic revision `051_add_crop_climate_suitability_metadata.py` adds climate region, region mapping, and crop suitability rule tables.
+- `backend/scripts/seed_crop_climate_suitability.py --apply` seeded:
+  - 5 state-level starter climatic/agro-ecological region profiles;
+  - Maharashtra, Karnataka, Uttar Pradesh, Punjab, and West Bengal state mappings;
+  - 45 crop-season-region suitability rules;
+  - 12 additional crop masters and 2 additional crop categories where missing.
+- `backend/scripts/audit_crop_climate_suitability_readiness.py` verifies starter readiness.
+
+Latest local audit result:
+
+- 30 active crops;
+- 5 climate regions;
+- 5 climate region mappings;
+- 45 crop suitability rules;
+- 26 crops with suitability rules;
+- selected state LGD mappings: Maharashtra `27`, Karnataka `29`, Uttar Pradesh `9`, Punjab `3`, West Bengal `19`.
+
+Current confidence remains `LOCAL_DEMO_SEED` / `MANUAL_REVIEW`. These rows are good for Android/demo warnings and admin exploration, but should not be represented as government-verified until source documents or datasets are attached.
+
+Next refinement targets:
+
+1. Add 4 more Zaid/summer rules if we want exactly 15 Zaid entries alongside 15 Rabi and 15+ Kharif.
+2. Refine state-level region mappings into district/block-level mappings using official AESR/agro-climatic-zone crosswalks or source geometry.
+3. Add Android-safe suitability lookup endpoint and sample payload.
+4. Upgrade source references from starter notes to reviewed ICAR/NBSS&LUP, IMD, data.gov.in, and state package-of-practices evidence.

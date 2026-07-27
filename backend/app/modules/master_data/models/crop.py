@@ -226,3 +226,33 @@ class CropPropagationOption(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_crop_propagation_option_season", "season_code"),
     )
 
+class CropClimateSuitabilityRule(Base, UUIDPrimaryKey, AuditMixin):
+    """Crop-season suitability rule for climatic/geographic regions."""
+
+    __tablename__ = "crop_climate_suitability_rules"
+
+    crop_code = Column(String(30), ForeignKey("crops.code"), nullable=False, index=True)
+    season_code = Column(String(20), nullable=False, index=True)
+    region_code = Column(String(80), ForeignKey("geography_climate_regions.region_code"), nullable=False, index=True)
+    geography_scope = Column(String(30), nullable=False, default="REGION", index=True)
+    suitability_status = Column(String(30), nullable=False, default="UNKNOWN", index=True)
+    confidence = Column(String(50), nullable=False, default="LOCAL_DEMO_SEED")
+    rainfall_min_mm = Column(Integer)
+    rainfall_max_mm = Column(Integer)
+    temperature_min_c = Column(Integer)
+    temperature_max_c = Column(Integer)
+    soil_requirements = Column(JSONB, default=list, nullable=False)
+    irrigation_required = Column(Boolean, nullable=False, default=False)
+    typical_sowing_window = Column(JSONB, default=dict, nullable=False)
+    typical_harvest_window = Column(JSONB, default=dict, nullable=False)
+    warning_rules = Column(JSONB, default=list, nullable=False)
+    source_references = Column(JSONB, default=list, nullable=False)
+    review_status = Column(String(40), nullable=False, default="MANUAL_REVIEW", index=True)
+    review_notes = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("crop_code", "season_code", "region_code", "geography_scope", name="uq_crop_climate_suitability_rule_scope"),
+        Index("idx_crop_climate_suitability_lookup", "crop_code", "season_code", "region_code", "suitability_status"),
+    )
+

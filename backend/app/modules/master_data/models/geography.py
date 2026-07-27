@@ -202,3 +202,60 @@ class GeographyVillagePinLink(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_geography_village_pin_links_lgd_context", "state_lgd_code", "district_lgd_code", "subdistrict_lgd_code", "village_lgd_code"),
     )
 
+class GeographyClimateRegion(Base, UUIDPrimaryKey, AuditMixin):
+    """Agro-climatic/agro-ecological reference region for suitability metadata."""
+
+    __tablename__ = "geography_climate_regions"
+
+    region_code = Column(String(80), unique=True, nullable=False, index=True)
+    region_name = Column(String(180), nullable=False)
+    region_system = Column(String(60), nullable=False, index=True)
+    parent_region_code = Column(String(80), index=True)
+    country_code = Column(String(3), default="IND", nullable=False, index=True)
+    rainfall_band_mm = Column(JSONB, default=dict, nullable=False)
+    temperature_band_c = Column(JSONB, default=dict, nullable=False)
+    length_of_growing_period_days = Column(JSONB, default=dict, nullable=False)
+    dominant_soil_groups = Column(JSONB, default=list, nullable=False)
+    irrigation_context = Column(JSONB, default=dict, nullable=False)
+    source_references = Column(JSONB, default=list, nullable=False)
+    confidence = Column(String(50), nullable=False, default="LOCAL_DEMO_SEED")
+    review_status = Column(String(40), nullable=False, default="MANUAL_REVIEW", index=True)
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index("idx_geography_climate_region_system", "region_system", "review_status"),
+    )
+
+
+class GeographyClimateRegionMapping(Base, UUIDPrimaryKey, AuditMixin):
+    """Maps climate/agro-ecological regions to LGD geography scopes."""
+
+    __tablename__ = "geography_climate_region_mappings"
+
+    region_id = Column(UUID(as_uuid=True), ForeignKey("geography_climate_regions.id"), nullable=False, index=True)
+    region_code = Column(String(80), nullable=False, index=True)
+    scope_level = Column(String(30), nullable=False, index=True)
+    state_lgd_code = Column(String(20), index=True)
+    district_lgd_code = Column(String(20), index=True)
+    block_lgd_code = Column(String(20), index=True)
+    village_lgd_code = Column(String(30), index=True)
+    pin_code = Column(String(6), index=True)
+    source_references = Column(JSONB, default=list, nullable=False)
+    confidence = Column(String(50), nullable=False, default="LOCAL_DEMO_SEED")
+    review_status = Column(String(40), nullable=False, default="MANUAL_REVIEW", index=True)
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "region_code",
+            "scope_level",
+            "state_lgd_code",
+            "district_lgd_code",
+            "block_lgd_code",
+            "village_lgd_code",
+            "pin_code",
+            name="uq_geography_climate_region_mapping_scope",
+        ),
+        Index("idx_geography_climate_region_mapping_lookup", "scope_level", "state_lgd_code", "district_lgd_code", "pin_code"),
+    )
+

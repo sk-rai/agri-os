@@ -6,6 +6,8 @@ from app.modules.master_data.models.geography import (
     GeographyImportBatch,
     GeographyPostalReference,
     GeographyVillagePinLink,
+    GeographyClimateRegion,
+    GeographyClimateRegionMapping,
 )
 from app.modules.master_data.models.soil import SoilType
 from app.modules.master_data.models.season import Season
@@ -19,6 +21,7 @@ from app.modules.master_data.models.crop import (
     CropTaxonomyAssignment,
     CropPropagationType,
     CropPropagationOption,
+    CropClimateSuitabilityRule,
 )
 from app.modules.master_data.models.input import (
     InputCategory,
@@ -48,6 +51,8 @@ __all__ = [
     "GeographyImportBatch",
     "GeographyPostalReference",
     "GeographyVillagePinLink",
+    "GeographyClimateRegionMapping",
+    "GeographyClimateRegion",
     "SoilType",
     "Season",
     "CropCategory",
@@ -59,6 +64,7 @@ __all__ = [
     "CropTaxonomyAssignment",
     "CropPropagationType",
     "CropPropagationOption",
+    "CropClimateSuitabilityRule",
     "InputCategory",
     "Manufacturer",
     "AgriculturalInput",
