@@ -434,3 +434,12 @@ Latest local result:
   - all selected-state village coordinate counts are currently zero.
 
 Current conclusion: district fallback remains the best available demo approximation. Authoritative mapping needs CoRE polygon export plus LGD boundary geometry or parcel GPS point overlay.
+
+
+## CoRE GEE export checklist
+
+Manual export and validation steps are tracked in:
+
+    docs/core-stack-gee-export-checklist.md
+
+This checklist explains the CoRE GEE layers, expected local export filenames, what geometry/properties they contain, and how exports will later support LGD/parcel overlay.
