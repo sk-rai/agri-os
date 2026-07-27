@@ -22,6 +22,7 @@ from app.modules.master_data.models.crop import (
     CropPropagationType,
     CropPropagationOption,
     CropClimateSuitabilityRule,
+    CropClimateSuitabilityOverride,
 )
 from app.modules.master_data.models.input import (
     InputCategory,
@@ -65,6 +66,7 @@ __all__ = [
     "CropPropagationType",
     "CropPropagationOption",
     "CropClimateSuitabilityRule",
+    "CropClimateSuitabilityOverride",
     "InputCategory",
     "Manufacturer",
     "AgriculturalInput",

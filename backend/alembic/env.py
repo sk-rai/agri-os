@@ -47,6 +47,7 @@ from app.modules.master_data.models import (  # noqa: F401
     CropPropagationType,
     CropPropagationOption,
     CropClimateSuitabilityRule,
+    CropClimateSuitabilityOverride,
     InputCategory,
     Manufacturer,
     AgriculturalInput,

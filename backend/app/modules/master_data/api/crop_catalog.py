@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -222,3 +222,282 @@ def get_crop_catalog_item(crop_code: str, db: Session = Depends(get_db)):
         from fastapi import HTTPException
         raise HTTPException(404, f"Crop '{crop_code}' not found")
     return _crop_catalog_item(db, crop)
+
+def _suitability_public_rule(rule):
+    return {
+        "rule_id": str(rule.id),
+        "crop_code": rule.crop_code,
+        "season_code": rule.season_code,
+        "region_code": rule.region_code,
+        "geography_scope": rule.geography_scope,
+        "suitability_status": rule.suitability_status,
+        "confidence": rule.confidence,
+        "irrigation_required": rule.irrigation_required,
+        "warning_rules": rule.warning_rules or [],
+        "source_references": rule.source_references or [],
+        "review_status": rule.review_status,
+    }
+
+
+def _suitability_public_override(override):
+    return {
+        "override_id": str(override.id),
+        "tenant_id": override.tenant_id,
+        "project_id": str(override.project_id) if override.project_id else None,
+        "crop_code": override.crop_code,
+        "season_code": override.season_code,
+        "region_code": override.region_code,
+        "geography_scope": override.geography_scope,
+        "suitability_status": override.suitability_status,
+        "confidence": override.confidence,
+        "irrigation_required": override.irrigation_required,
+        "warning_rules": override.warning_rules or [],
+        "source_references": override.source_references or [],
+        "review_status": override.review_status,
+        "review_notes": override.review_notes,
+        "reason": override.reason,
+    }
+
+
+def _first_effective_override(db, *, tenant_id, project_id, crop_code, season_code, region_code):
+    from app.modules.master_data.models import CropClimateSuitabilityOverride
+
+    filters = [
+        CropClimateSuitabilityOverride.tenant_id == tenant_id,
+        CropClimateSuitabilityOverride.crop_code == crop_code,
+        CropClimateSuitabilityOverride.season_code == season_code,
+        CropClimateSuitabilityOverride.region_code == region_code,
+        CropClimateSuitabilityOverride.review_status == "PUBLISHED",
+        CropClimateSuitabilityOverride.is_active == True,
+    ]
+    if project_id:
+        project_override = (
+            db.query(CropClimateSuitabilityOverride)
+            .filter(*filters, CropClimateSuitabilityOverride.project_id == project_id)
+            .order_by(CropClimateSuitabilityOverride.updated_at.desc())
+            .first()
+        )
+        if project_override:
+            return project_override
+    return (
+        db.query(CropClimateSuitabilityOverride)
+        .filter(*filters, CropClimateSuitabilityOverride.project_id.is_(None))
+        .order_by(CropClimateSuitabilityOverride.updated_at.desc())
+        .first()
+    )
+
+
+@router.get("/suitability", response_model=dict)
+def get_crop_geography_suitability(
+    crop_code: str = Query(...),
+    season_code: str = Query(...),
+    state_lgd_code: str | None = Query(None),
+    district_lgd_code: str | None = Query(None),
+    pin_code: str | None = Query(None),
+    project_id: str | None = Query(None),
+    tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    db: Session = Depends(get_db),
+):
+    from uuid import UUID
+    from app.modules.master_data.models import (
+        Crop,
+        CropClimateSuitabilityRule,
+        GeographyClimateRegion,
+        GeographyClimateRegionMapping,
+    )
+
+    crop_code = crop_code.upper()
+    season_code = season_code.upper()
+
+    crop = db.query(Crop).filter(Crop.code == crop_code, Crop.is_active == True).first()
+    if not crop:
+        raise HTTPException(404, "Crop not found")
+
+    project_uuid = UUID(project_id) if project_id else None
+
+    mapping_query = db.query(GeographyClimateRegionMapping).filter(
+        GeographyClimateRegionMapping.is_active == True
+    )
+    if pin_code:
+        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.pin_code == pin_code)
+    elif district_lgd_code:
+        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.district_lgd_code == district_lgd_code)
+    elif state_lgd_code:
+        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.state_lgd_code == state_lgd_code)
+    else:
+        raise HTTPException(400, "Provide state_lgd_code, district_lgd_code, or pin_code")
+
+    mappings = mapping_query.all()
+    region_codes = sorted({m.region_code for m in mappings})
+
+    rules = []
+    effective = []
+    for region_code in region_codes:
+        rule = (
+            db.query(CropClimateSuitabilityRule)
+            .filter(
+                CropClimateSuitabilityRule.crop_code == crop_code,
+                CropClimateSuitabilityRule.season_code == season_code,
+                CropClimateSuitabilityRule.region_code == region_code,
+                CropClimateSuitabilityRule.is_active == True,
+            )
+            .first()
+        )
+        if not rule:
+            continue
+        override = _first_effective_override(
+            db,
+            tenant_id=tenant_id,
+            project_id=project_uuid,
+            crop_code=crop_code,
+            season_code=season_code,
+            region_code=region_code,
+        )
+        default_payload = _suitability_public_rule(rule)
+        effective_payload = _suitability_public_override(override) if override else default_payload
+        effective_payload["source"] = "PROJECT_OVERRIDE" if override and override.project_id else ("TENANT_OVERRIDE" if override else "DEFAULT_RULE")
+        rules.append(default_payload)
+        effective.append(effective_payload)
+
+    status_rank = {
+        "UNSUITABLE": 0,
+        "NOT_TYPICAL": 1,
+        "UNKNOWN": 2,
+        "CONDITIONAL": 3,
+        "SUITABLE": 4,
+        "HIGHLY_SUITABLE": 5,
+    }
+    best = max(effective, key=lambda r: status_rank.get(r.get("suitability_status"), 2), default=None)
+    warnings = []
+    for row in effective:
+        warnings.extend(row.get("warning_rules") or [])
+
+    regions = (
+        db.query(GeographyClimateRegion)
+        .filter(GeographyClimateRegion.region_code.in_(region_codes), GeographyClimateRegion.is_active == True)
+        .all()
+        if region_codes else []
+    )
+
+    return {
+        "schema_version": "crop_geography_suitability.v1",
+        "tenant_id": tenant_id,
+        "project_id": project_id,
+        "crop_code": crop_code,
+        "season_code": season_code,
+        "geography": {
+            "state_lgd_code": state_lgd_code,
+            "district_lgd_code": district_lgd_code,
+            "pin_code": pin_code,
+        },
+        "region_matches": [
+            {
+                "region_code": region.region_code,
+                "region_name": region.region_name,
+                "region_system": region.region_system,
+                "confidence": region.confidence,
+                "review_status": region.review_status,
+            }
+            for region in regions
+        ],
+        "default_rules": rules,
+        "effective_rules": effective,
+        "suitability": {
+            "status": best.get("suitability_status") if best else "UNKNOWN",
+            "source": best.get("source") if best else "NO_RULE_MATCH",
+            "confidence": best.get("confidence") if best else "UNKNOWN",
+            "warnings": warnings,
+            "requires_confirmation": any(row.get("suitability_status") in {"CONDITIONAL", "NOT_TYPICAL", "UNSUITABLE"} for row in effective),
+        },
+        "android_contract": {
+            "android_hardcodes_suitability": False,
+            "android_displays_backend_warning": True,
+            "climate_layer_is_advisory_intelligence": True,
+        },
+    }
+
+
+@router.get("/suitability-overrides", response_model=dict)
+def list_crop_climate_suitability_overrides(
+    crop_code: str | None = Query(None),
+    season_code: str | None = Query(None),
+    project_id: str | None = Query(None),
+    tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    db: Session = Depends(get_db),
+):
+    from uuid import UUID
+    from app.modules.master_data.models import CropClimateSuitabilityOverride
+
+    query = db.query(CropClimateSuitabilityOverride).filter(
+        CropClimateSuitabilityOverride.tenant_id == tenant_id,
+        CropClimateSuitabilityOverride.is_active == True,
+    )
+    if crop_code:
+        query = query.filter(CropClimateSuitabilityOverride.crop_code == crop_code.upper())
+    if season_code:
+        query = query.filter(CropClimateSuitabilityOverride.season_code == season_code.upper())
+    if project_id:
+        query = query.filter(CropClimateSuitabilityOverride.project_id == UUID(project_id))
+
+    overrides = query.order_by(CropClimateSuitabilityOverride.updated_at.desc()).limit(200).all()
+    return {
+        "schema_version": "crop_climate_suitability_overrides.v1",
+        "tenant_id": tenant_id,
+        "count": len(overrides),
+        "overrides": [_suitability_public_override(row) for row in overrides],
+    }
+
+
+@router.post("/suitability-overrides", response_model=dict)
+def publish_crop_climate_suitability_override(
+    payload: dict = Body(...),
+    tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    actor_id: str | None = Header(None, alias="X-Actor-ID"),
+    db: Session = Depends(get_db),
+):
+    from uuid import UUID
+    from app.modules.master_data.models import Crop, CropClimateSuitabilityOverride, GeographyClimateRegion
+
+    crop_code = str(payload.get("crop_code") or "").upper()
+    season_code = str(payload.get("season_code") or "").upper()
+    region_code = str(payload.get("region_code") or "")
+    project_id = payload.get("project_id")
+    project_uuid = UUID(project_id) if project_id else None
+    status = str(payload.get("suitability_status") or "UNKNOWN").upper()
+
+    allowed = {"HIGHLY_SUITABLE", "SUITABLE", "CONDITIONAL", "NOT_TYPICAL", "UNSUITABLE", "UNKNOWN"}
+    if status not in allowed:
+        raise HTTPException(400, {"error": "INVALID_SUITABILITY_STATUS", "allowed": sorted(allowed)})
+
+    if not db.query(Crop).filter(Crop.code == crop_code, Crop.is_active == True).first():
+        raise HTTPException(404, "Crop not found")
+    if not db.query(GeographyClimateRegion).filter(GeographyClimateRegion.region_code == region_code, GeographyClimateRegion.is_active == True).first():
+        raise HTTPException(404, "Climate region not found")
+
+    override = CropClimateSuitabilityOverride(
+        tenant_id=tenant_id,
+        project_id=project_uuid,
+        crop_code=crop_code,
+        season_code=season_code,
+        region_code=region_code,
+        geography_scope=str(payload.get("geography_scope") or "REGION"),
+        suitability_status=status,
+        confidence=str(payload.get("confidence") or "CLIENT_OVERRIDE"),
+        irrigation_required=bool(payload.get("irrigation_required") or False),
+        warning_rules=payload.get("warning_rules") or [],
+        source_references=payload.get("source_references") or [],
+        review_status="PUBLISHED",
+        review_notes=payload.get("review_notes"),
+        published_by=actor_id,
+        reason=payload.get("reason"),
+        metadata_=payload.get("metadata") or {},
+    )
+    db.add(override)
+    db.commit()
+    db.refresh(override)
+
+    return {
+        "schema_version": "crop_climate_suitability_override_publish_result.v1",
+        "override": _suitability_public_override(override),
+        "message": "Crop climate suitability override published.",
+    }

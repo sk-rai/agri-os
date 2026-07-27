@@ -256,3 +256,41 @@ class CropClimateSuitabilityRule(Base, UUIDPrimaryKey, AuditMixin):
         Index("idx_crop_climate_suitability_lookup", "crop_code", "season_code", "region_code", "suitability_status"),
     )
 
+class CropClimateSuitabilityOverride(Base, UUIDPrimaryKey, AuditMixin):
+    """Tenant/project override for crop-climate suitability intelligence.
+
+    Defaults live in crop_climate_suitability_rules. Overrides let an enterprise
+    or project customize suitability status, warnings, and review notes without
+    mutating the default/reference metadata.
+    """
+
+    __tablename__ = "crop_climate_suitability_overrides"
+
+    tenant_id = Column(String(50), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), index=True)
+    crop_code = Column(String(30), ForeignKey("crops.code"), nullable=False, index=True)
+    season_code = Column(String(20), nullable=False, index=True)
+    region_code = Column(String(80), ForeignKey("geography_climate_regions.region_code"), nullable=False, index=True)
+    geography_scope = Column(String(30), nullable=False, default="REGION", index=True)
+    suitability_status = Column(String(30), nullable=False, default="UNKNOWN", index=True)
+    confidence = Column(String(50), nullable=False, default="CLIENT_OVERRIDE")
+    irrigation_required = Column(Boolean, nullable=False, default=False)
+    warning_rules = Column(JSONB, default=list, nullable=False)
+    source_references = Column(JSONB, default=list, nullable=False)
+    review_status = Column(String(40), nullable=False, default="PUBLISHED", index=True)
+    review_notes = Column(Text)
+    published_by = Column(String(80))
+    reason = Column(Text)
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "idx_crop_climate_suitability_override_lookup",
+            "tenant_id",
+            "project_id",
+            "crop_code",
+            "season_code",
+            "region_code",
+            "review_status",
+        ),
+    )
