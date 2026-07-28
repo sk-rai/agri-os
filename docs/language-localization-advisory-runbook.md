@@ -14,14 +14,17 @@ Latest local result:
 
 - backend-driven labels/content supported: yes;
 - English-first Android QA ready: yes;
-- broad Hindi/local-language QA ready: no;
+- broad Hindi crop/stage metadata QA ready: yes;
 - unreviewed dynamic advisory translation safe: no;
-- crops with Hindi alias/script coverage: 16 / 30;
-- workflow lifecycle templates with Hindi alias/script coverage: 2 / 11;
+- crops with Hindi alias/script coverage: 30 / 30;
+- workflow lifecycle templates with Hindi alias/script coverage: 11 / 11;
+- missing seeded Hindi stage labels: 0;
 - broadcast content rows:
   - English: 71;
   - Hindi: 54;
   - Kannada: 4.
+
+Important distinction: crop/stage metadata Hindi readiness is green for demo QA, but advisory translation remains review-gated and should not be treated as automatically safe.
 
 ## Core decision
 
@@ -154,7 +157,7 @@ Android should not:
 
 ## Backend next steps
 
-1. Add language QA seed pack for crops/stages/advisories.
+1. Keep crop/stage Hindi seed pack maintained as crops/workflows expand.
 2. Add advisory content translation/review statuses if missing.
 3. Add backend fallback metadata to advisory feed/detail if Android needs it.
 4. Add sample payloads showing:
