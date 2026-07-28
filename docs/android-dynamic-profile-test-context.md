@@ -157,3 +157,12 @@ Android should not:
 - globally assume backend-driven profile forms are enabled;
 - treat land intelligence as blocking validation;
 - hardcode climate/suitability rules locally.
+
+
+## Related crop-cycle fixture
+
+For crop-cycle creation Maestro tests, use:
+
+    docs/android-crop-cycle-test-fixture.md
+
+This fixture uses the same `android-dynamic-test` tenant but a different mobile/farmer/parcel from dynamic profile enrollment.

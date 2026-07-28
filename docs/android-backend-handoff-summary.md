@@ -162,6 +162,16 @@ Use:
 
 Default tenant legacy fallback remains expected.
 
+## Android crop-cycle test fixture
+
+A deterministic crop-cycle creation fixture is available for Maestro tests.
+
+See:
+
+    docs/android-crop-cycle-test-fixture.md
+
+Use this fixture when Android needs an eligible parcel for crop-cycle creation. The eligible-parcels endpoint returns a bare JSON array.
+
 ## Known intentional deferrals
 
 These are documented and not blockers for Android MVP emulator integration:
