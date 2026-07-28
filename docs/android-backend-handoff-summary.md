@@ -146,6 +146,22 @@ For MVP emulator integration:
 - Language QA proceeds English-first for emulator integration. Backend contracts support labels/options/localized content, but broader Hindi/local-language seed coverage is a later QA pass.
 - Live weather and soil provider execution remains blocked until provider config is explicitly approved. Android should render saved backend snapshots/readiness only.
 
+## Android dynamic profile test context
+
+Dynamic backend-driven profile forms are enabled in a dedicated test context, not on the default tenant.
+
+See:
+
+    docs/android-dynamic-profile-test-context.md
+
+Use:
+
+- `X-Tenant-ID: android-dynamic-test`
+- `project_id=0f7e0a6b-8472-5d6d-8a14-a9d000000001`
+- test mobile `+919900000002`
+
+Default tenant legacy fallback remains expected.
+
 ## Known intentional deferrals
 
 These are documented and not blockers for Android MVP emulator integration:
