@@ -101,7 +101,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "crop_activities",
-        "delete from crop_activities where crop_cycle_id in (select id from crop_cycles where tenant_id = :tenant_id and farmer_id = any(:farmer_ids))",
+        "delete from crop_activities where crop_cycle_id in (select id from crop_cycles where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[])))",
         params,
         result,
         dry_run,
@@ -109,7 +109,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "crop_stage_instances",
-        "delete from crop_stage_instances where crop_cycle_id in (select id from crop_cycles where tenant_id = :tenant_id and farmer_id = any(:farmer_ids))",
+        "delete from crop_stage_instances where crop_cycle_id in (select id from crop_cycles where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[])))",
         params,
         result,
         dry_run,
@@ -117,7 +117,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "crop_cycles",
-        "delete from crop_cycles where tenant_id = :tenant_id and farmer_id = any(:farmer_ids)",
+        "delete from crop_cycles where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
@@ -125,7 +125,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "soil_profiles",
-        "delete from soil_profiles where tenant_id = :tenant_id and farmer_id = any(:farmer_ids)",
+        "delete from soil_profiles where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
@@ -133,7 +133,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "soil_enrichment_snapshots",
-        "delete from soil_enrichment_snapshots where tenant_id = :tenant_id and farmer_id = any(:farmer_ids)",
+        "delete from soil_enrichment_snapshots where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
@@ -141,7 +141,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "farmer_project_enrollments",
-        "delete from farmer_project_enrollments where tenant_id = :tenant_id and farmer_id = any(:farmer_ids)",
+        "delete from farmer_project_enrollments where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
@@ -149,7 +149,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "parcels",
-        "delete from parcels where tenant_id = :tenant_id and farmer_id = any(:farmer_ids)",
+        "delete from parcels where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
@@ -157,7 +157,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "broadcast_deliveries",
-        "delete from broadcast_deliveries where tenant_id = :tenant_id and farmer_id = any(:farmer_ids)",
+        "delete from broadcast_deliveries where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
@@ -165,7 +165,7 @@ def reset_test_mobile(db, dry_run: bool, result: dict):
     delete_if_table(
         db,
         "farmers",
-        "delete from farmers where tenant_id = :tenant_id and id = any(:farmer_ids)",
+        "delete from farmers where tenant_id = :tenant_id and id = any(cast(:farmer_ids as uuid[]))",
         params,
         result,
         dry_run,
