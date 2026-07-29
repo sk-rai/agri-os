@@ -1,0 +1,158 @@
+{
+  "schema_version": "android_offline_sync_crop_cycle_replay_sample.v1",
+  "description": "Representative Android offline-sync replay payload for crop-cycle create, stage start, and activity logging. IDs are deterministic examples for contract testing, not production seed data.",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/v1/sync/events",
+    "headers": {
+      "X-Tenant-ID": "android-dynamic-test",
+      "X-Actor-ID": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  "fixture_context": {
+    "tenant_id": "android-dynamic-test",
+    "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+    "farmer_id": "4df387e8-114f-5c44-a129-a9d000000003",
+    "parcel_id": "4df387e8-114f-5c44-a129-a9d000000004",
+    "crop_code": "RICE",
+    "season_code": "KHARIF"
+  },
+  "missing_dependency_example": {
+    "request": {
+      "events": [
+        {
+          "event_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+          "entity_type": "crop_activity",
+          "entity_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+          "operation": "CREATE",
+          "payload": {
+            "crop_cycle_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+            "activity_type": "LABOR",
+            "input_name": "Nursery bed preparation labor",
+            "cost_amount": "325.50",
+            "activity_date": "2026-07-29"
+          },
+          "version": 1,
+          "dependency_ids": [
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4"
+          ],
+          "metadata": {
+            "android_flow": "offline_dependency_failure_sample"
+          }
+        }
+      ]
+    },
+    "expected_response_shape": {
+      "accepted": [],
+      "conflicts": [],
+      "failed": [
+        {
+          "event_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+          "error_code": "DEPENDENCY_MISSING",
+          "message": "Missing dependencies: [...]"
+        }
+      ],
+      "total_processed": 1
+    }
+  },
+  "ordered_replay_example": {
+    "request": {
+      "events": [
+        {
+          "event_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+          "entity_type": "crop_cycle",
+          "entity_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+          "operation": "CREATE",
+          "payload": {
+            "farmer_id": "4df387e8-114f-5c44-a129-a9d000000003",
+            "parcel_id": "4df387e8-114f-5c44-a129-a9d000000004",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "crop_code": "RICE",
+            "season_code": "KHARIF",
+            "planned_sowing_date": "2026-08-05",
+            "status": "PLANNED",
+            "seed_source": "OWN_SAVED"
+          },
+          "version": 1,
+          "dependency_ids": [],
+          "metadata": {
+            "android_flow": "offline_crop_cycle_create"
+          }
+        },
+        {
+          "event_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3",
+          "entity_type": "crop_stage",
+          "operation": "UPDATE",
+          "payload": {
+            "crop_cycle_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+            "stage_code": "NURSERY",
+            "action": "START",
+            "actual_start_date": "2026-07-29",
+            "gps_lat": 15.4589,
+            "gps_lng": 75.0078,
+            "notes": "Offline sync stage start"
+          },
+          "version": 1,
+          "dependency_ids": [
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"
+          ],
+          "metadata": {
+            "android_flow": "offline_stage_start"
+          }
+        },
+        {
+          "event_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4",
+          "entity_type": "crop_activity",
+          "entity_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5",
+          "operation": "CREATE",
+          "payload": {
+            "crop_cycle_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+            "stage_code": "NURSERY",
+            "activity_type": "LABOR",
+            "input_name": "Nursery bed preparation labor",
+            "quantity": "1",
+            "quantity_unit": "DAY",
+            "area_applied": "1.25",
+            "area_unit": "ACRE",
+            "cost_amount": "325.50",
+            "activity_date": "2026-07-29",
+            "gps_lat": 15.4589,
+            "gps_lng": 75.0078,
+            "notes": "Offline sync activity log"
+          },
+          "version": 1,
+          "dependency_ids": [
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3"
+          ],
+          "metadata": {
+            "android_flow": "offline_activity_log"
+          }
+        }
+      ]
+    },
+    "expected_response_shape": {
+      "accepted": [
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3",
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4"
+      ],
+      "conflicts": [],
+      "failed": [],
+      "total_processed": 3
+    },
+    "post_replay_checks": [
+      "GET /api/v1/crop-cycles/{cycle_id} returns status=ACTIVE and NURSERY stage status=ACTIVE.",
+      "GET /api/v1/crop-cycles/{cycle_id}/activities returns the LABOR activity with stage_code=NURSERY and cost_amount=325.50.",
+      "GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary returns totals.activity_count=1 and totals.actual_expense=325.50."
+    ]
+  },
+  "android_rules": {
+    "dependency_retry": "If backend returns DEPENDENCY_MISSING, replay the missing dependency first, then retry the failed event.",
+    "idempotency": "Replaying already committed event IDs is safe and returns the event IDs in accepted without duplicating records.",
+    "blocking": "Android should not calculate crop-cycle finance locally; use backend summaries after replay."
+  },
+  "backend_regression": {
+    "command": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/test_android_offline_sync_crop_cycle_activity_flow.py",
+    "expected_final_line": "Android offline sync crop-cycle activity flow validated"
+  }
+}
