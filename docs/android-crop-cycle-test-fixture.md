@@ -134,6 +134,92 @@ Expected final line:
 
     Android crop-cycle create flow validated
 
+### Stage transition and activity logging
+
+After creating a crop cycle, Android can start the first stage and log an activity against that active stage.
+
+Start first stage:
+
+    PATCH /api/v1/crop-cycles/{cycle_id}/stages/{stage_id}
+    X-Tenant-ID: android-dynamic-test
+
+    {
+      "action": "START",
+      "gps_lat": 15.4589,
+      "gps_lng": 75.0078,
+      "notes": "Start first stage"
+    }
+
+Expected response includes:
+
+    {
+      "new_status": "ACTIVE",
+      "cycle_status": "ACTIVE",
+      "crop_cycle": {
+        "inferred_current_stage": "NURSERY"
+      }
+    }
+
+Log activity:
+
+    POST /api/v1/crop-cycles/{cycle_id}/activities
+    X-Tenant-ID: android-dynamic-test
+
+    {
+      "activity_type": "LABOR",
+      "input_name": "Nursery bed preparation labor",
+      "quantity": "1",
+      "quantity_unit": "DAY",
+      "area_applied": "1.25",
+      "area_unit": "ACRE",
+      "cost_amount": "325.50",
+      "activity_date": "{today ISO date}",
+      "gps_lat": 15.4589,
+      "gps_lng": 75.0078,
+      "notes": "Android activity log"
+    }
+
+Expected activity response includes:
+
+    {
+      "activity_type": "LABOR",
+      "stage_code": "NURSERY",
+      "cycle_total_input_cost": "325.50",
+      "events_published": ["crop_activity_logged.v1"]
+    }
+
+Summary endpoints should then show the logged cost:
+
+    GET /api/v1/crop-cycles/{cycle_id}/activities
+    GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary
+    GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary
+
+Expected summary snippets:
+
+    {
+      "schema_version": "crop_cycle_stage_cost_summary.v1",
+      "totals": {
+        "activity_count": 1,
+        "actual_expense": "325.50"
+      }
+    }
+
+    {
+      "schema_version": "crop_cycle_profit_loss_summary.v1",
+      "totals": {
+        "total_expenses": "325.50",
+        "profit_or_loss": "-325.50"
+      }
+    }
+
+Backend regression command:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/test_android_crop_cycle_activity_logging_flow.py
+
+Expected final line:
+
+    Android crop-cycle activity logging flow validated
 ## Repeatability rule
 
 Before each Maestro crop-cycle creation test run:
