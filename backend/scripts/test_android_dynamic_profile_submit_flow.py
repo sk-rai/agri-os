@@ -90,6 +90,7 @@ def main() -> int:
 
     farmer_payload = {
         "mobile_number": TEST_MOBILE,
+        "project_id": str(PROJECT_ID),
         "display_name": "Android Dynamic Test Farmer",
         "father_name": "Dynamic Test Father",
         "age": 39,
@@ -109,6 +110,15 @@ def main() -> int:
     farmer = farmer_response.json()
     farmer_id = farmer.get("id") or farmer.get("farmer_id")
     check(bool(farmer_id), "Farmer response exposes id", farmer)
+    check(farmer.get("project_id") == str(PROJECT_ID), "Farmer response is project-scoped", farmer)
+
+    enrollment_response, enrollments = get_json(f"/api/v1/farmers/{farmer_id}/project-enrollments")
+    check(enrollment_response.status_code == 200, "Project enrollments return 200", enrollment_response.text[:800])
+    check(
+        any(row.get("project_id") == str(PROJECT_ID) and row.get("status") == "ACTIVE" for row in enrollments),
+        "Farmer has active dynamic test project enrollment",
+        enrollments,
+    )
 
     parcel_payload = {
         "farmer_id": farmer_id,
@@ -170,6 +180,7 @@ def main() -> int:
     readiness_response, readiness = get_json("/api/v1/farmers/profile-readiness", params={"project_id": str(PROJECT_ID)})
     check(readiness_response.status_code == 200, "Profile readiness returns 200", readiness_response.text[:800])
     check(readiness.get("schema_version") == "farmer_profile_readiness.v1", "Profile readiness schema stable", readiness.get("schema_version"))
+    check((readiness.get("summary") or {}).get("farmer_count", 0) >= 1, "Project-scoped readiness includes submitted farmer", readiness.get("summary"))
 
     print("=" * 72)
     print("Android dynamic profile submit flow validated")

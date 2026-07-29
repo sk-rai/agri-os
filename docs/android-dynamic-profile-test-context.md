@@ -1,6 +1,6 @@
 # Android Dynamic Profile Test Context
 
-Status date: 2026-07-28
+Status date: 2026-07-29
 
 This document defines the dedicated backend test context for Android Maestro flows that need backend-driven profile forms and land-intelligence guidance.
 
@@ -129,6 +129,62 @@ Expected:
 - contains `soil_capture_guidance`;
 - contains `crop_suitability`.
 
+## Dynamic submit contract
+
+When Android submits the farmer in this test context, include the project ID so backend can attach the farmer to the project and project-scoped readiness/worklist endpoints can see the new profile:
+
+    POST /api/v1/farmers
+    X-Tenant-ID: android-dynamic-test
+
+    {
+      "mobile_number": "+919900000002",
+      "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+      "display_name": "Android Dynamic Test Farmer",
+      "pin_code": "560001",
+      "village_name_manual": "Android Dynamic Test Village",
+      "primary_crop_code": "RICE",
+      "assistance_mode": "SELF_SERVICE"
+    }
+
+Expected farmer response includes:
+
+    {
+      "tenant_id": "android-dynamic-test",
+      "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+      "mobile_number": "+919900000002",
+      "status": "ACTIVE"
+    }
+
+Backend also creates an ACTIVE `farmer_project_enrollments` row with `enrollment_source=ANDROID_PROFILE_CREATE`.
+
+For parcel submit, `location_scope` is an object, not a string:
+
+    {
+      "farmer_id": "{farmer_id}",
+      "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+      "reported_area": "1.25",
+      "reported_area_unit": "ACRE",
+      "ownership_type": "OWNED",
+      "pin_code": "560001",
+      "village_name_manual": "Android Dynamic Test Village",
+      "location_scope": {
+        "scope_type": "SINGLE_VILLAGE",
+        "village_name_manual": "Android Dynamic Test Village",
+        "pin_code": "560001"
+      },
+      "geometry_source": "PIN_DROP",
+      "centroid_lat": "15.4589",
+      "centroid_lng": "75.0078"
+    }
+
+Regression command:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/test_android_dynamic_profile_submit_flow.py
+
+Expected final line:
+
+    Android dynamic profile submit flow validated
 ## Android-visible labels
 
 Expected current labels from backend schemas:

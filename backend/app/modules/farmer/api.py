@@ -243,6 +243,7 @@ class RoleAssign(BaseModel):
 class FarmerCreate(BaseModel):
     """Minimum for enrollment: mobile + village. Everything else is progressive."""
     mobile_number: str = Field(..., pattern=r"^\+91[6-9]\d{9}$")
+    project_id: Optional[uuid.UUID] = None
     village_id: Optional[uuid.UUID] = None  # From geography DB (preferred)
     village_name_manual: Optional[str] = None  # If village not in DB (new settlement, etc.)
     pin_code: Optional[str] = Field(None, pattern=r"^\d{6}$")
@@ -283,6 +284,7 @@ class FarmerUpdate(BaseModel):
 class FarmerResponse(BaseModel):
     id: uuid.UUID
     tenant_id: str
+    project_id: Optional[uuid.UUID] = None
     mobile_number: str
     village_id: Optional[uuid.UUID] = None
     display_name: Optional[str] = None
@@ -2757,10 +2759,16 @@ def enroll_farmer(
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
 
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="land_units", value=body.total_land_unit, path="total_land_unit")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="languages", value=body.language_preference, path="language_preference")
+    project = None
+    if body.project_id:
+        project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id, Project.is_active == True).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=body.project_id, option_set="land_units", value=body.total_land_unit, path="total_land_unit")
+    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=body.project_id, option_set="languages", value=body.language_preference, path="language_preference")
     if body.assistance_mode:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, option_set="assistance_modes", value=body.assistance_mode, path="assistance_mode")
+        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=body.project_id, option_set="assistance_modes", value=body.assistance_mode, path="assistance_mode")
 
     normalized_mobile = normalize_mobile_number(body.mobile_number)
     existing_farmer = (
@@ -2786,6 +2794,7 @@ def enroll_farmer(
     farmer = Farmer(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
+        project_id=body.project_id,
         mobile_number=normalized_mobile,
         village_id=body.village_id,  # Can be None if manual village
         village_name_manual=body.village_name_manual,
@@ -2809,6 +2818,25 @@ def enroll_farmer(
     )
     _apply_farmer_home_digipin(farmer)
     db.add(farmer)
+    if project:
+        db.add(FarmerProjectEnrollment(
+            id=uuid.uuid4(),
+            tenant_id=x_tenant_id,
+            farmer_id=farmer.id,
+            project_id=project.id,
+            enrollment_method=_normalize_assistance_mode(body.assistance_mode),
+            enrollment_source="ANDROID_PROFILE_CREATE",
+            enrolled_by=uuid.UUID(x_actor_id),
+            status="ACTIVE",
+            parcel_ids=[],
+            assigned_user_ids=[],
+            metadata_={
+                "created_from": "POST /api/v1/farmers",
+                "android_dynamic_profile": True,
+            },
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
     db.commit()
     db.refresh(farmer)
     return farmer
