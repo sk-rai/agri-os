@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -556,6 +556,42 @@ def _string_or_none(value) -> Optional[str]:
     return value or None
 
 
+def _date_or_today(value) -> date:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str) and value.strip():
+        return date.fromisoformat(value[:10])
+    return date.today()
+
+
+CROP_STAGE_VALID_TRANSITIONS = {
+    ("PENDING", "START"): "ACTIVE",
+    ("PENDING", "SKIP"): "SKIPPED",
+    ("ACTIVE", "COMPLETE"): "COMPLETED",
+    ("ACTIVE", "FAIL"): "FAILED",
+    ("ACTIVE", "SKIP"): "SKIPPED",
+}
+
+
+def _compute_crop_cycle_status_from_stages(stages) -> str:
+    statuses = [stage.status for stage in stages]
+    if not statuses or all(status == "PENDING" for status in statuses):
+        return "PLANNED"
+    if "ACTIVE" in statuses:
+        return "ACTIVE"
+    if all(status in ("COMPLETED", "SKIPPED") for status in statuses):
+        if "COMPLETED" in statuses:
+            return "COMPLETED"
+        return "ABANDONED"
+    if all(status in ("FAILED", "SKIPPED") for status in statuses):
+        return "ABANDONED"
+    if any(status == "COMPLETED" for status in statuses) and not any(status == "ACTIVE" for status in statuses):
+        return "PARTIALLY_TRACKED"
+    return "ACTIVE"
+
+
 def _validate_tenant_reference(db: Session, tenant_id: str, model, value, label: str):
     if value and not db.query(model).filter(model.id == value, model.tenant_id == tenant_id).first():
         raise ValueError(f"field event sync references unknown {label}")
@@ -881,6 +917,259 @@ def _materialize_field_event_report_event(db: Session, tenant_id: str, event: Sy
     _materialize_field_event_media_attachments(db, tenant_id, report.id, payload, now_ts)
 
 
+
+def _crop_cycle_template_for_payload(db: Session, tenant_id: str, payload: dict):
+    from app.modules.master_data.models import Crop, CropLifecycleTemplate
+    from app.modules.workflow.template_service import find_published_workflow_template
+
+    template_id = _uuid_or_none(_first_payload_value(payload, "lifecycle_template_id", "lifecycleTemplateId"))
+    crop_code = str(_first_payload_value(payload, "crop_code", "cropCode") or "").upper()
+    season_code = str(_first_payload_value(payload, "season_code", "seasonCode") or "").upper()
+
+    template = None
+    if template_id:
+        template = db.query(CropLifecycleTemplate).filter(CropLifecycleTemplate.id == template_id, CropLifecycleTemplate.is_active == True).first()
+    if not template:
+        crop = db.query(Crop).filter(Crop.code == crop_code).first()
+        if crop:
+            template = (
+                db.query(CropLifecycleTemplate)
+                .filter(
+                    CropLifecycleTemplate.crop_id == crop.id,
+                    CropLifecycleTemplate.season_code == season_code,
+                    CropLifecycleTemplate.is_active == True,
+                )
+                .first()
+            )
+    if not template:
+        raise ValueError(f"No lifecycle template found for {crop_code}/{season_code}")
+
+    workflow_pair = find_published_workflow_template(
+        db,
+        crop_code=crop_code,
+        season_code=season_code,
+        tenant_id=tenant_id,
+        lifecycle_template_id=template.id,
+    )
+    return template, workflow_pair[1] if workflow_pair else None
+
+
+def _materialize_crop_cycle_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
+    from app.modules.workflow.models import CropCycle, CropStageInstance
+    from app.modules.workflow.template_service import workflow_version_to_stage_definitions_for_scope
+
+    payload = event.payload or {}
+    cycle_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "id", "crop_cycle_id", "cropCycleId"))
+    if not cycle_id:
+        raise ValueError("crop_cycle sync event requires entity_id or payload.id")
+
+    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id).first()
+    if event.operation == "DELETE":
+        if cycle:
+            cycle.status = "ARCHIVED"
+            cycle.is_active = False
+            cycle.updated_at = datetime.now(timezone.utc)
+        return
+
+    farmer_id = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+    parcel_id = _uuid_or_none(_first_payload_value(payload, "parcel_id", "parcelId"))
+    project_id = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+    crop_code = str(_first_payload_value(payload, "crop_code", "cropCode") or "").upper()
+    season_code = str(_first_payload_value(payload, "season_code", "seasonCode") or "").upper()
+    if not farmer_id or not parcel_id or not crop_code or not season_code:
+        raise ValueError("crop_cycle sync requires farmer_id, parcel_id, crop_code, and season_code")
+    _validate_tenant_reference(db, tenant_id, Farmer, farmer_id, "farmer")
+    _validate_tenant_reference(db, tenant_id, Parcel, parcel_id, "parcel")
+    _validate_tenant_reference(db, tenant_id, Project, project_id, "project")
+
+    template, pinned_workflow_version = _crop_cycle_template_for_payload(db, tenant_id, payload)
+    planned_sowing = _date_or_today(_first_payload_value(payload, "planned_sowing_date", "plannedSowingDate"))
+
+    if not cycle:
+        cycle = CropCycle(
+            id=cycle_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            project_id=project_id,
+            crop_code=crop_code,
+            season_code=season_code,
+            lifecycle_template_id=template.id,
+            workflow_template_version_id=pinned_workflow_version.id if pinned_workflow_version else None,
+            planned_sowing_date=planned_sowing,
+            expected_harvest_date=planned_sowing,
+            status=str(_first_payload_value(payload, "status") or "PLANNED").upper(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(cycle)
+        db.flush()
+    else:
+        cycle.farmer_id = farmer_id
+        cycle.parcel_id = parcel_id
+        cycle.project_id = project_id
+        cycle.crop_code = crop_code
+        cycle.season_code = season_code
+        cycle.lifecycle_template_id = template.id
+        cycle.workflow_template_version_id = pinned_workflow_version.id if pinned_workflow_version else cycle.workflow_template_version_id
+        cycle.planned_sowing_date = planned_sowing
+        cycle.status = str(_first_payload_value(payload, "status") or cycle.status or "PLANNED").upper()
+        cycle.updated_at = datetime.now(timezone.utc)
+
+    if not db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == cycle.id, CropStageInstance.tenant_id == tenant_id).first():
+        if pinned_workflow_version:
+            stages_data = workflow_version_to_stage_definitions_for_scope(
+                db,
+                pinned_workflow_version.id,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                crop_code=crop_code,
+                season_code=season_code,
+            )
+        else:
+            stages_data = template.stages or []
+
+        cumulative_days = 0
+        for stage_def in stages_data:
+            raw_name = stage_def.get("name", "")
+            stage_name = raw_name.get("en", str(raw_name)) if isinstance(raw_name, dict) else str(raw_name)
+            duration = int(stage_def.get("duration_days") or 0)
+            db.add(CropStageInstance(
+                id=uuid.uuid4(),
+                crop_cycle_id=cycle.id,
+                tenant_id=tenant_id,
+                stage_code=stage_def["code"],
+                stage_name=stage_name,
+                stage_order=int(stage_def["order"]),
+                expected_duration_days=duration,
+                planned_start_date=planned_sowing + timedelta(days=cumulative_days),
+                status="PENDING",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ))
+            cumulative_days += duration
+        cycle.expected_harvest_date = planned_sowing + timedelta(days=cumulative_days)
+
+
+def _materialize_crop_stage_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    from app.modules.workflow.models import CropCycle, CropStageInstance
+
+    payload = event.payload or {}
+    cycle_id = _uuid_or_none(_first_payload_value(payload, "crop_cycle_id", "cropCycleId"))
+    stage_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "stage_id", "stageId"))
+    stage_code = _string_or_none(_first_payload_value(payload, "stage_code", "stageCode"))
+    if not cycle_id:
+        raise ValueError("crop_stage sync requires crop_cycle_id")
+
+    query = db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == cycle_id, CropStageInstance.tenant_id == tenant_id)
+    stage = query.filter(CropStageInstance.id == stage_id).first() if stage_id else None
+    if not stage and stage_code:
+        stage = query.filter(CropStageInstance.stage_code == stage_code.upper()).first()
+    if not stage:
+        raise ValueError("crop_stage sync references unknown stage")
+
+    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id).first()
+    if not cycle:
+        raise ValueError("crop_stage sync references unknown crop cycle")
+
+    if event.operation == "DELETE":
+        stage.status = "SKIPPED"
+        stage.skip_reason = _string_or_none(_first_payload_value(payload, "skip_reason", "skipReason", "notes")) or "Deleted by sync"
+        stage.updated_at = datetime.now(timezone.utc)
+    else:
+        action = str(_first_payload_value(payload, "action") or "START").upper()
+        new_status = CROP_STAGE_VALID_TRANSITIONS.get((stage.status, action))
+        if not new_status:
+            raise ValueError(f"Invalid stage transition: cannot {action} from {stage.status}")
+        stage.status = new_status
+        if action == "START":
+            stage.actual_start_date = _date_or_today(_first_payload_value(payload, "actual_start_date", "actualStartDate"))
+            stage.started_by = _uuid_or_none(actor_id)
+        elif action == "COMPLETE":
+            stage.actual_end_date = _date_or_today(_first_payload_value(payload, "actual_end_date", "actualEndDate"))
+            stage.completed_by = _uuid_or_none(actor_id)
+        elif action == "SKIP":
+            stage.skip_reason = _string_or_none(_first_payload_value(payload, "skip_reason", "skipReason", "notes"))
+        stage.updated_at = datetime.now(timezone.utc)
+
+    stages = db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == cycle_id, CropStageInstance.tenant_id == tenant_id).all()
+    cycle.status = _compute_crop_cycle_status_from_stages(stages)
+    if stage.stage_order == 1 and stage.actual_start_date and cycle.actual_sowing_date is None:
+        cycle.actual_sowing_date = stage.actual_start_date
+    cycle.updated_at = datetime.now(timezone.utc)
+
+
+def _materialize_crop_activity_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
+    from app.modules.workflow.models import CropActivity, CropCycle, CropStageInstance
+
+    payload = event.payload or {}
+    activity_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "id", "activity_id", "activityId"))
+    if not activity_id:
+        raise ValueError("crop_activity sync event requires entity_id or payload.id")
+
+    activity = db.query(CropActivity).filter(CropActivity.id == activity_id, CropActivity.tenant_id == tenant_id).first()
+    if event.operation == "DELETE":
+        if activity:
+            activity.is_active = False
+            activity.updated_at = datetime.now(timezone.utc)
+        return
+
+    cycle_id = _uuid_or_none(_first_payload_value(payload, "crop_cycle_id", "cropCycleId"))
+    if not cycle_id:
+        raise ValueError("crop_activity sync requires crop_cycle_id")
+    cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id).first()
+    if not cycle:
+        raise ValueError("crop_activity sync references unknown crop cycle")
+
+    stage_id = _uuid_or_none(_first_payload_value(payload, "stage_id", "stageId"))
+    stage_code = _string_or_none(_first_payload_value(payload, "stage_code", "stageCode"))
+    stage = None
+    if stage_id:
+        stage = db.query(CropStageInstance).filter(CropStageInstance.id == stage_id, CropStageInstance.tenant_id == tenant_id).first()
+    if not stage and stage_code:
+        stage = db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == cycle_id, CropStageInstance.tenant_id == tenant_id, CropStageInstance.stage_code == stage_code.upper()).first()
+    if not stage:
+        stage = db.query(CropStageInstance).filter(CropStageInstance.crop_cycle_id == cycle_id, CropStageInstance.tenant_id == tenant_id, CropStageInstance.status == "ACTIVE").order_by(CropStageInstance.stage_order.desc()).first()
+
+    cost = _decimal_or_none(_first_payload_value(payload, "cost_amount", "costAmount"))
+    if not activity:
+        activity = CropActivity(
+            id=activity_id,
+            crop_cycle_id=cycle_id,
+            tenant_id=tenant_id,
+            farmer_id=cycle.farmer_id,
+            activity_type=str(_first_payload_value(payload, "activity_type", "activityType") or "OTHER").upper(),
+            activity_date=_date_or_today(_first_payload_value(payload, "activity_date", "activityDate")),
+            logged_by=_uuid_or_none(actor_id) or uuid.uuid4(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(activity)
+
+    activity.stage_instance_id = stage.id if stage else None
+    activity.farmer_id = cycle.farmer_id
+    activity.activity_type = str(_first_payload_value(payload, "activity_type", "activityType") or activity.activity_type or "OTHER").upper()
+    activity.input_code = _string_or_none(_first_payload_value(payload, "input_code", "inputCode"))
+    activity.input_name = _string_or_none(_first_payload_value(payload, "input_name", "inputName"))
+    activity.quantity = _decimal_or_none(_first_payload_value(payload, "quantity"))
+    activity.quantity_unit = _string_or_none(_first_payload_value(payload, "quantity_unit", "quantityUnit"))
+    activity.area_applied = _decimal_or_none(_first_payload_value(payload, "area_applied", "areaApplied"))
+    activity.area_unit = _string_or_none(_first_payload_value(payload, "area_unit", "areaUnit"))
+    activity.cost_amount = cost
+    activity.gps_lat = _decimal_or_none(_first_payload_value(payload, "gps_lat", "gpsLat", "latitude"))
+    activity.gps_lng = _decimal_or_none(_first_payload_value(payload, "gps_lng", "gpsLng", "longitude"))
+    activity.notes = _string_or_none(_first_payload_value(payload, "notes"))
+    activity.logged_by = _uuid_or_none(actor_id) or activity.logged_by
+    activity.updated_at = datetime.now(timezone.utc)
+
+    db.flush()
+    cycle.total_input_cost = sum(
+        (_decimal_or_none(row[0]) or Decimal("0"))
+        for row in db.query(CropActivity.cost_amount).filter(CropActivity.crop_cycle_id == cycle.id, CropActivity.tenant_id == tenant_id).all()
+    )
+    cycle.updated_at = datetime.now(timezone.utc)
+
+
 def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
     entity_type = (event.entity_type or "").lower()
     if entity_type == "farmer":
@@ -897,6 +1186,12 @@ def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, ev
         _materialize_query_message_event(db, tenant_id, actor_id, event)
     elif entity_type in ("field_event_report", "fieldeventreport", "field_event", "fieldevent"):
         _materialize_field_event_report_event(db, tenant_id, event)
+    elif entity_type in ("crop_cycle", "cropcycle"):
+        _materialize_crop_cycle_event(db, tenant_id, event)
+    elif entity_type in ("crop_stage", "cropstage", "crop_stage_instance", "cropstageinstance"):
+        _materialize_crop_stage_event(db, tenant_id, actor_id, event)
+    elif entity_type in ("crop_activity", "cropactivity"):
+        _materialize_crop_activity_event(db, tenant_id, actor_id, event)
 
 
 # --- Schemas for sync events ---

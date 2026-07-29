@@ -220,6 +220,39 @@ Backend regression command:
 Expected final line:
 
     Android crop-cycle activity logging flow validated
+## Offline sync crop-cycle replay
+
+Android can replay crop-cycle work through the existing sync endpoint:
+
+    POST /api/v1/sync/events
+    X-Tenant-ID: android-dynamic-test
+    X-Actor-ID: {android user id / test actor uuid}
+
+Supported crop-cycle entity types for this flow:
+
+- `crop_cycle` creates/updates a crop cycle and instantiates lifecycle stages.
+- `crop_stage` starts/completes/skips a stage using the same state transition rules as the online endpoint.
+- `crop_activity` logs an activity, links it to the supplied/active stage, and updates cycle cost totals.
+
+Dependency ordering rule for Android offline replay:
+
+1. send `crop_cycle` create first;
+2. send `crop_stage` update with `dependency_ids` containing the crop-cycle event ID;
+3. send `crop_activity` create with `dependency_ids` containing the stage event ID.
+
+If a dependency is missing, backend returns HTTP 200 with the event under `failed` and `error_code=DEPENDENCY_MISSING`. Android should retry the failed event after replaying the dependency.
+
+Idempotency rule: replaying the same committed event IDs returns them under `accepted` again without duplicating the crop cycle/activity.
+
+Backend regression command:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/test_android_offline_sync_crop_cycle_activity_flow.py
+
+Expected final line:
+
+    Android offline sync crop-cycle activity flow validated
+
 ## Repeatability rule
 
 Before each Maestro crop-cycle creation test run:

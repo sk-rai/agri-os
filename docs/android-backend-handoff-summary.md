@@ -172,6 +172,9 @@ See:
 
 Use this fixture when Android needs an eligible parcel for crop-cycle creation. The eligible-parcels endpoint returns a bare JSON array.
 
+The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
+
+
 ## Known intentional deferrals
 
 These are documented and not blockers for Android MVP emulator integration:
