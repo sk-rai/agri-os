@@ -54,7 +54,7 @@ The current bundle contains 27 redacted JSON samples covering mode bootstrap, ap
 | `24-sync-dependency-error.json` | Handle batch-resilient offline sync dependency failure. |
 | `25-finance-analytics-summary.json` | Render backend-computed aggregate finance analytics across crop, season, stage, expense category, and time period. |
 | `26-land-intelligence-context.json` | Render backend-owned climate/agro-ecological context and crop suitability warnings during land/profile creation. |
-| `27-offline-sync-crop-cycle-replay.json` | Replay crop-cycle create, stage start, and activity logging through sync with dependency ordering and idempotency. |
+| `27-offline-sync-crop-cycle-replay.json` | Replay crop-cycle create, stage start, and activity logging through sync with dependency ordering, idempotency, and workflow conflict handling. |
 
 ## 1. Mode bootstrap
 

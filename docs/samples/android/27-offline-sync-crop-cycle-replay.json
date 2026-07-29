@@ -144,12 +144,53 @@
       "GET /api/v1/crop-cycles/{cycle_id} returns status=ACTIVE and NURSERY stage status=ACTIVE.",
       "GET /api/v1/crop-cycles/{cycle_id}/activities returns the LABOR activity with stage_code=NURSERY and cost_amount=325.50.",
       "GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary returns totals.activity_count=1 and totals.actual_expense=325.50."
-    ]
+    ],
+    "conflict_example_after_ordered_replay": {
+      "description": "Attempting to COMPLETE a later PENDING stage before START routes to conflicts, not failed.",
+      "request": {
+        "events": [
+          {
+            "event_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+            "entity_type": "crop_stage",
+            "operation": "UPDATE",
+            "payload": {
+              "crop_cycle_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+              "stage_code": "TRANSPLANTING",
+              "action": "COMPLETE",
+              "actual_end_date": "2026-07-29",
+              "notes": "Invalid offline transition sample"
+            },
+            "version": 1,
+            "dependency_ids": [
+              "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"
+            ],
+            "metadata": {
+              "android_flow": "offline_invalid_transition_conflict"
+            }
+          }
+        ]
+      },
+      "expected_response_shape": {
+        "accepted": [],
+        "conflicts": [
+          {
+            "event_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+            "conflict_type": "WORKFLOW_INVALID",
+            "resolution_strategy": "SERVER_AUTHORITY",
+            "detail": "Invalid stage transition: cannot COMPLETE from PENDING"
+          }
+        ],
+        "failed": [],
+        "total_processed": 1
+      },
+      "android_rule": "Treat conflicts as resolution-needed server responses. Do not retry blindly like DEPENDENCY_MISSING."
+    }
   },
   "android_rules": {
     "dependency_retry": "If backend returns DEPENDENCY_MISSING, replay the missing dependency first, then retry the failed event.",
     "idempotency": "Replaying already committed event IDs is safe and returns the event IDs in accepted without duplicating records.",
-    "blocking": "Android should not calculate crop-cycle finance locally; use backend summaries after replay."
+    "blocking": "Android should not calculate crop-cycle finance locally; use backend summaries after replay.",
+    "conflicts": "If response contains conflicts, Android should surface/sync the conflict state and not keep retrying the same event blindly."
   },
   "backend_regression": {
     "command": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/test_android_offline_sync_crop_cycle_activity_flow.py",

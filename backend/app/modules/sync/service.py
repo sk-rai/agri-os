@@ -1441,23 +1441,57 @@ def detect_conflict(
 def validate_workflow_transition(
     db: Session, tenant_id: str, event: SyncEvent
 ) -> Optional[dict]:
-    """Validate stage transition against lifecycle template.
+    """Validate workflow/stage sync events before materialization.
 
-    Never hardcodes stage names — always loads from crop_lifecycle_templates.
+    Template membership checks protect clients from unknown stage codes. Crop-stage
+    state-machine checks route invalid offline actions into the conflict queue
+    instead of returning a generic materialization failure.
     """
-    payload = event.payload
-    target_stage_code = payload.get("stage_code")
-    template_id = payload.get("lifecycle_template_id")
+    payload = event.payload or {}
+    entity_type = (event.entity_type or "").lower()
+    target_stage_code = _string_or_none(_first_payload_value(payload, "stage_code", "stageCode"))
+    template_id = _uuid_or_none(_first_payload_value(payload, "lifecycle_template_id", "lifecycleTemplateId"))
+
+    if entity_type in ("crop_stage", "cropstage", "crop_stage_instance", "cropstageinstance"):
+        from app.modules.workflow.models import CropStageInstance
+
+        cycle_id = _uuid_or_none(_first_payload_value(payload, "crop_cycle_id", "cropCycleId"))
+        stage_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "stage_id", "stageId"))
+        action = str(_first_payload_value(payload, "action") or "START").upper()
+        if cycle_id:
+            query = db.query(CropStageInstance).filter(
+                CropStageInstance.crop_cycle_id == cycle_id,
+                CropStageInstance.tenant_id == tenant_id,
+            )
+            stage = query.filter(CropStageInstance.id == stage_id).first() if stage_id else None
+            if not stage and target_stage_code:
+                stage = query.filter(CropStageInstance.stage_code == target_stage_code.upper()).first()
+            if stage and action and CROP_STAGE_VALID_TRANSITIONS.get((stage.status, action)) is None:
+                return {
+                    "conflict_type": "WORKFLOW_INVALID",
+                    "resolution_strategy": "SERVER_AUTHORITY",
+                    "detail": f"Invalid stage transition: cannot {action} from {stage.status}",
+                    "stage_code": stage.stage_code,
+                    "current_status": stage.status,
+                    "requested_action": action,
+                }
+            if not stage and target_stage_code:
+                return {
+                    "conflict_type": "WORKFLOW_INVALID",
+                    "resolution_strategy": "SERVER_AUTHORITY",
+                    "detail": f"Stage '{target_stage_code}' not found for crop cycle",
+                    "stage_code": target_stage_code,
+                }
 
     if not target_stage_code or not template_id:
-        return None  # Can't validate without these — allow through
+        return None
 
     # Load template stages
     from app.modules.master_data.models import CropLifecycleTemplate
     template = (
         db.query(CropLifecycleTemplate)
         .filter(
-            CropLifecycleTemplate.id == uuid.UUID(template_id),
+            CropLifecycleTemplate.id == template_id,
             CropLifecycleTemplate.is_active == True,
         )
         .first()

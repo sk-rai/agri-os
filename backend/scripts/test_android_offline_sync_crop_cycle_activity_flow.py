@@ -5,6 +5,7 @@ Uses android-dynamic-test crop-cycle fixture and validates:
 - dependency-missing response is Android-readable and retryable;
 - ordered sync batch can create crop cycle, start NURSERY by stage_code, and log activity;
 - idempotent replay returns accepted;
+- invalid stage transition routes to WORKFLOW_INVALID conflict;
 - stage-cost summary reflects replayed activity.
 """
 
@@ -182,12 +183,38 @@ def main() -> int:
     check(idempotent_response.status_code == 200, "Idempotent replay returns 200", idempotent_payload)
     check(set(idempotent_payload.get("accepted") or []) == {str(crop_cycle_event_id), str(stage_event_id), str(activity_event_id)}, "Idempotent replay returns accepted event IDs", idempotent_payload)
 
+    conflict_event_id = uuid.uuid4()
+    conflict_response, conflict_payload = post_sync([
+        event(
+            conflict_event_id,
+            "crop_stage",
+            "UPDATE",
+            {
+                "crop_cycle_id": str(cycle_id),
+                "stage_code": "TRANSPLANTING",
+                "action": "COMPLETE",
+                "actual_end_date": date.today().isoformat(),
+                "notes": "Invalid offline transition sample",
+            },
+            dependency_ids=[crop_cycle_event_id],
+        )
+    ])
+    check(conflict_response.status_code == 200, "Invalid stage transition sync batch returns 200", conflict_payload)
+    check(len(conflict_payload.get("conflicts") or []) == 1, "Invalid stage transition appears in conflicts list", conflict_payload)
+    conflict = conflict_payload["conflicts"][0]
+    check(conflict.get("event_id") == str(conflict_event_id), "Conflict event ID is stable", conflict)
+    check(conflict.get("conflict_type") == "WORKFLOW_INVALID", "Conflict type is WORKFLOW_INVALID", conflict)
+    check(conflict.get("resolution_strategy") == "SERVER_AUTHORITY", "Conflict resolution strategy is SERVER_AUTHORITY", conflict)
+    check(not conflict_payload.get("failed"), "Invalid transition conflict has no failed events", conflict_payload)
+
     cycle_response = client.get(f"/api/v1/crop-cycles/{cycle_id}", headers=HEADERS)
     check(cycle_response.status_code == 200, "Synced crop cycle can be fetched", cycle_response.text[:900])
     cycle = cycle_response.json()
     check(cycle.get("status") == "ACTIVE", "Synced crop cycle is ACTIVE after stage START", cycle)
     nursery = next((stage for stage in cycle.get("stages") or [] if stage.get("code") == "NURSERY"), None)
     check(nursery and nursery.get("status") == "ACTIVE", "Synced NURSERY stage is ACTIVE", nursery)
+    transplanting = next((stage for stage in cycle.get("stages") or [] if stage.get("code") == "TRANSPLANTING"), None)
+    check(transplanting and transplanting.get("status") == "PENDING", "Invalid conflict did not mutate pending TRANSPLANTING stage", transplanting)
 
     activity_response = client.get(f"/api/v1/crop-cycles/{cycle_id}/activities", headers=HEADERS)
     check(activity_response.status_code == 200, "Synced activity list returns 200", activity_response.text[:900])

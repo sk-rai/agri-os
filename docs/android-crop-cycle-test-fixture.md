@@ -242,6 +242,8 @@ Dependency ordering rule for Android offline replay:
 
 If a dependency is missing, backend returns HTTP 200 with the event under `failed` and `error_code=DEPENDENCY_MISSING`. Android should retry the failed event after replaying the dependency.
 
+If a crop-stage action violates the backend workflow state machine, backend returns HTTP 200 with the event under `conflicts`, `conflict_type=WORKFLOW_INVALID`, and `resolution_strategy=SERVER_AUTHORITY`. Android should not blindly retry these events; they need conflict handling/server guidance.
+
 Idempotency rule: replaying the same committed event IDs returns them under `accepted` again without duplicating the crop cycle/activity.
 
 Backend regression command:
