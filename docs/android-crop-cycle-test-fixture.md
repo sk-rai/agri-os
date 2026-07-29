@@ -1,6 +1,6 @@
 # Android Crop-Cycle Test Fixture
 
-Status date: 2026-07-28
+Status date: 2026-07-29
 
 This document defines the deterministic backend fixture for Android Maestro crop-cycle creation tests.
 
@@ -83,6 +83,56 @@ Expected key fields:
       "season_code": "KHARIF",
       "stages": [...]
     }
+
+### Create crop cycle
+
+Android create payload for this fixture:
+
+    POST /api/v1/crop-cycles
+    X-Tenant-ID: android-dynamic-test
+
+    {
+      "farmer_id": "4df387e8-114f-5c44-a129-a9d000000003",
+      "parcel_id": "4df387e8-114f-5c44-a129-a9d000000004",
+      "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+      "crop_code": "RICE",
+      "season_code": "KHARIF",
+      "planned_sowing_date": "{future ISO date}",
+      "seed_source": "OWN_SAVED"
+    }
+
+Expected create response:
+
+    {
+      "parcel_id": "4df387e8-114f-5c44-a129-a9d000000004",
+      "farmer_id": "4df387e8-114f-5c44-a129-a9d000000003",
+      "status": "PLANNED",
+      "crop_code": "RICE",
+      "season_code": "KHARIF",
+      "workflow_template_pinning_status": "PINNED",
+      "stages": [...]
+    }
+
+A duplicate create without reset should return HTTP 409 with `PARCEL_HAS_IN_PROGRESS_CYCLE`.
+
+After successful create, eligible-parcels should still include the parcel row but with:
+
+    {
+      "eligible": false,
+      "eligibility_status": "HAS_ACTIVE_CYCLE",
+      "active_cycle": {
+        "status": "PLANNED"
+      }
+    }
+
+Backend regression command:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/test_android_crop_cycle_create_flow.py
+
+Expected final line:
+
+    Android crop-cycle create flow validated
 
 ## Repeatability rule
 

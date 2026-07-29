@@ -697,6 +697,8 @@ def create_crop_cycle(
 
     return CropCycleResponse(
         id=cycle_id,
+        parcel_id=body.parcel_id,
+        farmer_id=farmer_id,
         status="PLANNED" if sowing > date.today() else "ACTIVE",
         crop_code=resolved_crop_code,
         season_code=requested_season_code,
@@ -818,7 +820,7 @@ def list_eligible_parcels(
         }
 
     def eligibility_for(parcel_cycles: list[CropCycle]) -> tuple[bool, str, Optional[CropCycle], list[CropCycle]]:
-        active_cycle = next((c for c in parcel_cycles if c.status == "ACTIVE"), None)
+        active_cycle = next((c for c in parcel_cycles if c.status in {"PLANNED", "ACTIVE", "PARTIALLY_TRACKED"}), None)
         completed_cycles = [c for c in parcel_cycles if c.status == "COMPLETED"]
         completed_same_season = [
             c for c in completed_cycles
