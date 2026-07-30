@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.database import SessionLocal
+from app.modules.workflow.models import CropCycle
 from scripts.seed_android_crop_cycle_test_fixture import (
     CROP_CODE,
     FARMER_ID,
@@ -115,6 +117,46 @@ def main() -> int:
     check(missing_response.status_code == 200, "Missing dependency sync batch returns 200", missing_payload)
     check(len(missing_payload.get("failed") or []) == 1, "Missing dependency appears in failed list", missing_payload)
     check((missing_payload["failed"][0] or {}).get("error_code") == "DEPENDENCY_MISSING", "Missing dependency error code stable", missing_payload)
+
+    other_farmer_event_id = uuid.uuid4()
+    other_farmer_id = uuid.uuid4()
+    mismatch_cycle_event_id = uuid.uuid4()
+    mismatch_response, mismatch_payload = post_sync([
+        event(
+            other_farmer_event_id,
+            "farmer",
+            "CREATE",
+            {
+                "mobile_number": "+9198" + str(other_farmer_id.int)[-8:],
+                "project_id": str(PROJECT_ID),
+                "display_name": "Android Sync Mismatch Farmer",
+                "village_name_manual": "Android Sync Test Village",
+                "primary_crop_code": CROP_CODE,
+            },
+            entity_id=other_farmer_id,
+        ),
+        event(
+            mismatch_cycle_event_id,
+            "crop_cycle",
+            "CREATE",
+            {
+                "farmer_id": str(other_farmer_id),
+                "parcel_id": str(PARCEL_ID),
+                "project_id": str(PROJECT_ID),
+                "crop_code": CROP_CODE,
+                "season_code": SEASON_CODE,
+                "planned_sowing_date": (date.today() + timedelta(days=7)).isoformat(),
+            },
+            entity_id=uuid.uuid4(),
+            dependency_ids=[other_farmer_event_id],
+        ),
+    ])
+    check(mismatch_response.status_code == 200, "Mismatched farmer/parcel crop-cycle sync returns 200", mismatch_payload)
+    check(str(other_farmer_event_id) in (mismatch_payload.get("accepted") or []), "Mismatch helper farmer is accepted", mismatch_payload)
+    mismatch_failures = mismatch_payload.get("failed") or []
+    check(any(row.get("event_id") == str(mismatch_cycle_event_id) for row in mismatch_failures), "Mismatched farmer/parcel crop-cycle appears in failed list", mismatch_payload)
+    mismatch_failure = next(row for row in mismatch_failures if row.get("event_id") == str(mismatch_cycle_event_id))
+    check("parcel does not belong to farmer" in (mismatch_failure.get("message") or ""), "Mismatched farmer/parcel failure message is explicit", mismatch_failure)
 
     crop_cycle_event_id = uuid.uuid4()
     stage_event_id = uuid.uuid4()
@@ -259,6 +301,15 @@ def main() -> int:
     check(cycle_response.status_code == 200, "Synced crop cycle can be fetched", cycle_response.text[:900])
     cycle = cycle_response.json()
     check(cycle.get("status") == "ACTIVE", "Synced crop cycle is ACTIVE after stage START", cycle)
+    check(cycle.get("farmer_id") == str(FARMER_ID), "Synced crop cycle response preserves farmer_id", cycle)
+    check(cycle.get("parcel_id") == str(PARCEL_ID), "Synced crop cycle response preserves parcel_id", cycle)
+    db = SessionLocal()
+    try:
+        persisted_cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id, CropCycle.tenant_id == TENANT_ID).first()
+        check(bool(persisted_cycle), "Synced crop cycle persists operational row")
+        check(str(persisted_cycle.project_id) == str(PROJECT_ID), "Synced crop cycle persists project_id", {"project_id": persisted_cycle.project_id})
+    finally:
+        db.close()
     nursery = next((stage for stage in cycle.get("stages") or [] if stage.get("code") == "NURSERY"), None)
     check(nursery and nursery.get("status") == "ACTIVE", "Synced NURSERY stage is ACTIVE", nursery)
     transplanting = next((stage for stage in cycle.get("stages") or [] if stage.get("code") == "TRANSPLANTING"), None)

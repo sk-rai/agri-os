@@ -55,6 +55,45 @@
       "total_processed": 1
     }
   },
+  "mismatched_farmer_parcel_failure_example": {
+    "description": "A crop_cycle event whose parcel_id belongs to a different farmer is rejected during materialization. Android should refresh farmer/parcel linkage instead of retrying blindly.",
+    "request": {
+      "events": [
+        {
+          "event_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+          "entity_type": "crop_cycle",
+          "entity_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+          "operation": "CREATE",
+          "payload": {
+            "farmer_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
+            "parcel_id": "4df387e8-114f-5c44-a129-a9d000000004",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "crop_code": "RICE",
+            "season_code": "KHARIF",
+            "planned_sowing_date": "2026-08-05"
+          },
+          "version": 1,
+          "dependency_ids": [],
+          "metadata": {
+            "android_flow": "offline_crop_cycle_mismatched_farmer_parcel"
+          }
+        }
+      ]
+    },
+    "expected_response_shape": {
+      "accepted": [],
+      "conflicts": [],
+      "failed": [
+        {
+          "event_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+          "error_code": "MATERIALIZATION_FAILED",
+          "message": "crop_cycle sync parcel does not belong to farmer"
+        }
+      ],
+      "total_processed": 1
+    },
+    "android_rule": "Treat as a local linkage/data refresh problem. Do not show conflict-resolution UI; refresh farmer/parcel project context and rebuild the local draft."
+  },
   "ordered_replay_example": {
     "request": {
       "events": [

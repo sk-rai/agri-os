@@ -1167,9 +1167,36 @@ def _materialize_crop_cycle_event(db: Session, tenant_id: str, event: SyncEvent)
     season_code = str(_first_payload_value(payload, "season_code", "seasonCode") or "").upper()
     if not farmer_id or not parcel_id or not crop_code or not season_code:
         raise ValueError("crop_cycle sync requires farmer_id, parcel_id, crop_code, and season_code")
-    _validate_tenant_reference(db, tenant_id, Farmer, farmer_id, "farmer")
-    _validate_tenant_reference(db, tenant_id, Parcel, parcel_id, "parcel")
-    _validate_tenant_reference(db, tenant_id, Project, project_id, "project")
+
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
+    if not farmer:
+        raise ValueError("crop_cycle sync references unknown farmer")
+
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
+    if not parcel:
+        raise ValueError("crop_cycle sync references unknown parcel")
+    if parcel.farmer_id != farmer_id:
+        raise ValueError("crop_cycle sync parcel does not belong to farmer")
+
+    inferred_project_id = project_id or parcel.project_id or farmer.project_id
+    if not inferred_project_id:
+        active_enrollment = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+        ).order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).first()
+        inferred_project_id = active_enrollment.project_id if active_enrollment else None
+    if inferred_project_id:
+        project = db.query(Project).filter(
+            Project.id == inferred_project_id,
+            Project.tenant_id == tenant_id,
+            Project.is_active == True,
+        ).first()
+        if not project:
+            raise ValueError("crop_cycle sync references unknown project")
+        if project_id and parcel.project_id and parcel.project_id != project_id:
+            raise ValueError("crop_cycle sync project does not match parcel project")
+    project_id = inferred_project_id
 
     template, pinned_workflow_version = _crop_cycle_template_for_payload(db, tenant_id, payload)
     planned_sowing = _date_or_today(_first_payload_value(payload, "planned_sowing_date", "plannedSowingDate"))
