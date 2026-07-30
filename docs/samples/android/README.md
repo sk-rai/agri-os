@@ -39,4 +39,6 @@ cd ~/projects/farmint/backend
 24. `24-sync-dependency-error.json` - offline sync dependency failure example.
 25. `25-finance-analytics-summary.json` - aggregate finance analytics across crop, season, stage, expense category, and time period.
 26. `26-land-intelligence-context.json` - backend-owned land/climate/crop suitability context for parcel/profile creation.
-27. `27-offline-sync-crop-cycle-replay.json` - offline sync replay for crop-cycle create, stage start, activity logging, dependency failure, and idempotency.
+27. `27-offline-sync-crop-cycle-replay.json` - offline sync replay for crop-cycle create, stage start, activity logging, dependency failure, idempotency, and conflict creation.
+
+28. `28-sync-pending-conflicts.json` - Android-safe pending sync conflict list with safe payload summaries and Android actions.

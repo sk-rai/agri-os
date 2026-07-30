@@ -68,6 +68,13 @@ Android farmer app should call only the summary endpoints and render backend res
 
 Android may render these backend-computed summaries. Android should not compute P&L, classify income/expense categories, or infer stage-level cost variance locally.
 
+### Offline sync replay and conflicts
+
+- `POST /api/v1/sync/events`
+- `GET /api/v1/sync/conflicts/pending`
+
+Android may replay offline events and read the Android-safe pending conflict summary. Android should not call admin conflict detail or resolution endpoints directly.
+
 ### Reference/catalog reads
 
 - geography reference reads required for forms/search;
@@ -114,6 +121,7 @@ Android may render these backend-computed summaries. Android should not compute 
 - admin dashboards;
 - sync health/conflict operations;
 - traceability reports not explicitly designed for Android farmer/agent UX.
+- admin sync conflict detail/resolution endpoints such as `GET /api/v1/sync/conflicts/{conflict_id}` and `PATCH /api/v1/sync/conflicts/{conflict_id}`.
 
 ## Android implementation guidance
 

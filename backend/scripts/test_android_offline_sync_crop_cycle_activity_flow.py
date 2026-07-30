@@ -7,6 +7,7 @@ Uses android-dynamic-test crop-cycle fixture and validates:
 - idempotent replay returns accepted;
 - same entity_id with changed stale payload routes to VERSION_MISMATCH conflict;
 - invalid stage transition routes to WORKFLOW_INVALID conflict;
+- Android-safe pending conflict endpoint exposes both conflict types;
 - stage-cost summary reflects replayed activity.
 """
 
@@ -239,6 +240,20 @@ def main() -> int:
     check(conflict.get("conflict_type") == "WORKFLOW_INVALID", "Conflict type is WORKFLOW_INVALID", conflict)
     check(conflict.get("resolution_strategy") == "SERVER_AUTHORITY", "Conflict resolution strategy is SERVER_AUTHORITY", conflict)
     check(not conflict_payload.get("failed"), "Invalid transition conflict has no failed events", conflict_payload)
+
+    pending_response = client.get("/api/v1/sync/conflicts/pending?limit=100", headers=HEADERS)
+    check(pending_response.status_code == 200, "Android pending sync conflicts endpoint returns 200", pending_response.text[:900])
+    pending_payload = pending_response.json()
+    check(pending_payload.get("schema_version") == "android_pending_sync_conflicts.v1", "Android pending conflicts schema version stable", pending_payload)
+    pending_by_event_id = {row.get("event_id"): row for row in pending_payload.get("conflicts") or []}
+    check(str(stale_payload_event_id) in pending_by_event_id, "Pending conflicts include stale payload VERSION_MISMATCH", pending_payload)
+    check(str(conflict_event_id) in pending_by_event_id, "Pending conflicts include workflow invalid conflict", pending_payload)
+    pending_stale = pending_by_event_id[str(stale_payload_event_id)]
+    pending_workflow = pending_by_event_id[str(conflict_event_id)]
+    check(pending_stale.get("android_action") == "SHOW_MANUAL_REVIEW_CONFLICT", "Stale payload pending conflict has Android manual review action", pending_stale)
+    check(pending_workflow.get("android_action") == "SHOW_SERVER_AUTHORITY_WORKFLOW_MESSAGE", "Workflow pending conflict has Android server-authority action", pending_workflow)
+    check("payload_keys" in (pending_stale.get("client_payload_summary") or {}), "Pending stale conflict exposes safe client payload summary", pending_stale)
+    check("detail" in (pending_workflow.get("server_payload_summary") or {}), "Pending workflow conflict exposes safe server detail", pending_workflow)
 
     cycle_response = client.get(f"/api/v1/crop-cycles/{cycle_id}", headers=HEADERS)
     check(cycle_response.status_code == 200, "Synced crop cycle can be fetched", cycle_response.text[:900])

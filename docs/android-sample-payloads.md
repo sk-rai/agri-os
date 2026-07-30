@@ -11,7 +11,7 @@ cd ~/projects/farmint/backend
 ../venv/bin/python scripts/capture_android_sample_payloads.py
 ```
 
-The current bundle contains 27 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, sync error handling, finance analytics, land intelligence context, and crop-cycle offline replay.
+The current bundle contains 28 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, sync error handling, finance analytics, land intelligence context, crop-cycle offline replay, and pending sync conflicts.
 
 ## Integration order
 
@@ -55,6 +55,7 @@ The current bundle contains 27 redacted JSON samples covering mode bootstrap, ap
 | `25-finance-analytics-summary.json` | Render backend-computed aggregate finance analytics across crop, season, stage, expense category, and time period. |
 | `26-land-intelligence-context.json` | Render backend-owned climate/agro-ecological context and crop suitability warnings during land/profile creation. |
 | `27-offline-sync-crop-cycle-replay.json` | Replay crop-cycle create, stage start, and activity logging through sync with dependency ordering, idempotency, workflow conflicts, and same-entity stale payload conflicts. |
+| `28-sync-pending-conflicts.json` | Render Android-safe pending sync conflict list with conflict type, resolution strategy, safe payload summaries, and Android action hints. |
 
 ## 1. Mode bootstrap
 

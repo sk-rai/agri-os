@@ -1,0 +1,105 @@
+{
+  "schema_version": "android_pending_sync_conflicts.v1",
+  "tenant_id": "android-dynamic-test",
+  "conflict_count": 2,
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/v1/sync/conflicts/pending?limit=100",
+    "headers": {
+      "X-Tenant-ID": "android-dynamic-test"
+    }
+  },
+  "conflicts": [
+    {
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+      "event_id": "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+      "entity_type": "crop_activity",
+      "entity_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5",
+      "conflict_type": "VERSION_MISMATCH",
+      "resolution_strategy": "MANUAL_REVIEW",
+      "status": "PENDING_REVIEW",
+      "created_at": "2026-07-30T13:50:29.158242+05:30",
+      "detail": "Entity already has a committed payload for this version; changed offline payload requires conflict resolution.",
+      "client_payload_summary": {
+        "crop_cycle_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+        "stage_code": "NURSERY",
+        "activity_type": "LABOR",
+        "input_name": "Nursery bed preparation labor - changed offline copy",
+        "cost_amount": "999.00",
+        "activity_date": "2026-07-30",
+        "payload_keys": [
+          "activity_date",
+          "activity_type",
+          "area_applied",
+          "area_unit",
+          "cost_amount",
+          "crop_cycle_id",
+          "input_name",
+          "notes",
+          "quantity",
+          "quantity_unit",
+          "stage_code"
+        ]
+      },
+      "server_payload_summary": {
+        "detail": "Entity already has a committed payload for this version; changed offline payload requires conflict resolution.",
+        "client_version": 1,
+        "server_version": 1,
+        "payload_keys": [
+          "client_payload_hash",
+          "client_version",
+          "conflict_type",
+          "detail",
+          "resolution_strategy",
+          "server_payload_hash",
+          "server_version"
+        ]
+      },
+      "android_action": "SHOW_MANUAL_REVIEW_CONFLICT"
+    },
+    {
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+      "event_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+      "entity_type": "crop_stage",
+      "entity_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
+      "conflict_type": "WORKFLOW_INVALID",
+      "resolution_strategy": "SERVER_AUTHORITY",
+      "status": "PENDING_REVIEW",
+      "created_at": "2026-07-30T13:50:29.191453+05:30",
+      "detail": "Invalid stage transition: cannot COMPLETE from PENDING",
+      "client_payload_summary": {
+        "crop_cycle_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+        "stage_code": "TRANSPLANTING",
+        "action": "COMPLETE",
+        "payload_keys": [
+          "action",
+          "actual_end_date",
+          "crop_cycle_id",
+          "notes",
+          "stage_code"
+        ]
+      },
+      "server_payload_summary": {
+        "stage_code": "TRANSPLANTING",
+        "detail": "Invalid stage transition: cannot COMPLETE from PENDING",
+        "current_status": "PENDING",
+        "requested_action": "COMPLETE",
+        "payload_keys": [
+          "conflict_type",
+          "current_status",
+          "detail",
+          "requested_action",
+          "resolution_strategy",
+          "stage_code"
+        ]
+      },
+      "android_action": "SHOW_SERVER_AUTHORITY_WORKFLOW_MESSAGE"
+    }
+  ],
+  "android_rules": {
+    "dependency_missing": "Retry after replaying missing dependency; dependency failures are returned by /sync/events under failed[].",
+    "workflow_invalid": "Do not blindly retry. Show server-authority workflow message or refresh cycle/stage state.",
+    "version_mismatch": "Do not overwrite silently. Show manual review/conflict state and refresh server entity before retry.",
+    "android_resolves_conflicts_locally": false
+  }
+}

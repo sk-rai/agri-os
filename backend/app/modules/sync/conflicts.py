@@ -66,6 +66,29 @@ class ConflictDetail(BaseModel):
         from_attributes = True
 
 
+class AndroidPendingSyncConflict(BaseModel):
+    id: UUID
+    event_id: UUID
+    entity_type: str
+    entity_id: UUID
+    conflict_type: str
+    resolution_strategy: Optional[str] = None
+    status: str
+    created_at: str
+    detail: Optional[str] = None
+    client_payload_summary: dict = Field(default_factory=dict)
+    server_payload_summary: dict = Field(default_factory=dict)
+    android_action: str
+
+
+class AndroidPendingSyncConflictsResponse(BaseModel):
+    schema_version: str = "android_pending_sync_conflicts.v1"
+    tenant_id: str
+    conflict_count: int
+    conflicts: list[AndroidPendingSyncConflict]
+    android_rules: dict
+
+
 class ResolveRequest(BaseModel):
     strategy: ResolutionStrategy
     comment: Optional[str] = Field(None, max_length=500)
@@ -78,6 +101,51 @@ class ResolveResponse(BaseModel):
 
 
 # --- Endpoints ---
+
+def _safe_payload_summary(payload: Optional[dict]) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+    allowed_keys = [
+        "crop_cycle_id",
+        "cropCycleId",
+        "stage_id",
+        "stageId",
+        "stage_code",
+        "stageCode",
+        "activity_type",
+        "activityType",
+        "input_name",
+        "inputName",
+        "action",
+        "cost_amount",
+        "costAmount",
+        "activity_date",
+        "activityDate",
+        "planned_sowing_date",
+        "plannedSowingDate",
+        "crop_code",
+        "cropCode",
+        "season_code",
+        "seasonCode",
+        "detail",
+        "client_version",
+        "server_version",
+        "current_status",
+        "requested_action",
+    ]
+    summary = {key: payload[key] for key in allowed_keys if key in payload}
+    if payload:
+        summary["payload_keys"] = sorted(payload.keys())
+    return summary
+
+
+def _android_action_for_conflict(conflict: SyncConflict) -> str:
+    if conflict.conflict_type == "WORKFLOW_INVALID":
+        return "SHOW_SERVER_AUTHORITY_WORKFLOW_MESSAGE"
+    if conflict.conflict_type == "VERSION_MISMATCH":
+        return "SHOW_MANUAL_REVIEW_CONFLICT"
+    return "SHOW_SYNC_CONFLICT"
+
 
 @router.get("", response_model=list[ConflictListItem])
 def list_conflicts(
@@ -117,6 +185,67 @@ def list_conflicts(
         )
         for c in conflicts
     ]
+
+
+@router.get("/pending", response_model=AndroidPendingSyncConflictsResponse)
+def list_android_pending_conflicts(
+    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+):
+    """Android-safe pending sync conflicts list.
+
+    This endpoint is intended for mobile sync UX. It returns a backend-owned,
+    tenant-scoped, redacted/summarized view of pending conflicts so Android can
+    distinguish retryable sync failures from conflicts requiring user/server
+    resolution without fetching full admin conflict payloads.
+    """
+    query = db.query(SyncConflict).filter(
+        SyncConflict.tenant_id == x_tenant_id,
+        SyncConflict.status == "PENDING_REVIEW",
+    )
+    if entity_type:
+        query = query.filter(SyncConflict.entity_type == entity_type)
+
+    rows = (
+        query
+        .order_by(SyncConflict.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    conflicts = [
+        AndroidPendingSyncConflict(
+            id=row.id,
+            event_id=row.event_id,
+            entity_type=row.entity_type,
+            entity_id=row.entity_id,
+            conflict_type=row.conflict_type,
+            resolution_strategy=row.resolution_strategy,
+            status=row.status,
+            created_at=row.created_at.isoformat(),
+            detail=(row.server_payload or {}).get("detail") if isinstance(row.server_payload, dict) else None,
+            client_payload_summary=_safe_payload_summary(row.client_payload),
+            server_payload_summary=_safe_payload_summary(row.server_payload),
+            android_action=_android_action_for_conflict(row),
+        )
+        for row in rows
+    ]
+
+    return AndroidPendingSyncConflictsResponse(
+        tenant_id=x_tenant_id,
+        conflict_count=len(conflicts),
+        conflicts=conflicts,
+        android_rules={
+            "dependency_missing": "Retry after replaying missing dependency; dependency failures are returned by /sync/events under failed[].",
+            "workflow_invalid": "Do not blindly retry. Show server-authority workflow message or refresh cycle/stage state.",
+            "version_mismatch": "Do not overwrite silently. Show manual review/conflict state and refresh server entity before retry.",
+            "android_resolves_conflicts_locally": False,
+        },
+    )
 
 
 @router.get("/{conflict_id}", response_model=ConflictDetail)

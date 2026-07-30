@@ -253,6 +253,13 @@ Backend regression command:
     cd ~/projects/farmint/backend
     ../venv/bin/python scripts/test_android_offline_sync_crop_cycle_activity_flow.py
 
+Android-safe pending conflict read:
+
+    GET /api/v1/sync/conflicts/pending?limit=100
+    X-Tenant-ID: android-dynamic-test
+
+This returns `schema_version=android_pending_sync_conflicts.v1`, safe client/server payload summaries, and `android_action` values such as `SHOW_MANUAL_REVIEW_CONFLICT` and `SHOW_SERVER_AUTHORITY_WORKFLOW_MESSAGE`.
+
 Expected final line:
 
     Android offline sync crop-cycle activity flow validated
