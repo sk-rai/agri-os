@@ -157,6 +157,41 @@ Expected farmer response includes:
 
 Backend also creates an ACTIVE `farmer_project_enrollments` row with `enrollment_source=ANDROID_PROFILE_CREATE`.
 
+## Offline sync farmer project enrollment
+
+When Android creates a farmer through offline sync replay, include the same `project_id` in the farmer payload:
+
+    POST /api/v1/sync/events
+    X-Tenant-ID: android-dynamic-test
+    X-Actor-ID: {actor uuid}
+
+    {
+      "events": [
+        {
+          "entity_type": "farmer",
+          "operation": "CREATE",
+          "entity_id": "{android local farmer uuid}",
+          "payload": {
+            "mobile_number": "+919900000004",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "display_name": "Android Sync Test Farmer",
+            "village_name_manual": "Android Sync Test Village",
+            "primary_crop_code": "RICE"
+          },
+          "version": 1,
+          "dependency_ids": []
+        }
+      ]
+    }
+
+Backend now mirrors direct farmer create behavior for synced farmers: it creates/maintains an ACTIVE `farmer_project_enrollments` row with `enrollment_source=ANDROID_SYNC_FARMER_CREATE`.
+
+Hydration then returns the project assignment under `project_enrollments`:
+
+    GET /api/v1/farmers/by-mobile/+919900000004
+
+Expected: `project_enrollments` contains the dynamic test project with `status=ACTIVE`.
+
 For parcel submit, `location_scope` is an object, not a string:
 
     {

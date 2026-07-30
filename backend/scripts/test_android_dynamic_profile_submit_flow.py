@@ -26,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.database import SessionLocal
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment
 from scripts.seed_android_dynamic_profile_test_context import (
     PROJECT_ID,
     TENANT_ID,
@@ -35,6 +37,7 @@ from scripts.seed_android_dynamic_profile_test_context import (
 
 client = TestClient(app)
 HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": str(uuid.uuid4())}
+SYNC_TEST_MOBILE = "+919900000004"
 
 
 def check(condition, label, detail=None):
@@ -55,6 +58,29 @@ def reset_context():
         seed_dynamic_context_main()
     finally:
         sys.argv = old_argv
+
+
+def reset_sync_test_mobile():
+    db = SessionLocal()
+    try:
+        farmers = (
+            db.query(Farmer)
+            .filter(Farmer.tenant_id == TENANT_ID, Farmer.mobile_number == SYNC_TEST_MOBILE)
+            .all()
+        )
+        farmer_ids = [farmer.id for farmer in farmers]
+        if farmer_ids:
+            db.query(FarmerProjectEnrollment).filter(
+                FarmerProjectEnrollment.tenant_id == TENANT_ID,
+                FarmerProjectEnrollment.farmer_id.in_(farmer_ids),
+            ).delete(synchronize_session=False)
+            db.query(Farmer).filter(
+                Farmer.tenant_id == TENANT_ID,
+                Farmer.id.in_(farmer_ids),
+            ).delete(synchronize_session=False)
+            db.commit()
+    finally:
+        db.close()
 
 
 def get_json(path: str, params=None, headers=None):
@@ -177,10 +203,62 @@ def main() -> int:
     check(hydration_response.status_code == 200, "Hydration by mobile returns 200", hydration_response.text[:800])
     check(bool(hydration.get("farmer") or hydration.get("farmers") or hydration.get("profile")), "Hydration returns profile payload")
 
+    reset_sync_test_mobile()
+    sync_farmer_id = uuid.uuid4()
+    sync_event_id = uuid.uuid4()
+    sync_response = client.post(
+        "/api/v1/sync/events",
+        json={
+            "events": [
+                {
+                    "event_id": str(sync_event_id),
+                    "entity_type": "farmer",
+                    "entity_id": str(sync_farmer_id),
+                    "operation": "CREATE",
+                    "payload": {
+                        "mobile_number": SYNC_TEST_MOBILE,
+                        "project_id": str(PROJECT_ID),
+                        "display_name": "Android Sync Test Farmer",
+                        "village_name_manual": "Android Sync Test Village",
+                        "pin_code": "560001",
+                        "primary_crop_code": "RICE",
+                        "language_preference": "en",
+                    },
+                    "version": 1,
+                    "dependency_ids": [],
+                    "metadata": {
+                        "device_id": "android-maestro-sync-profile",
+                        "android_flow": "dynamic_profile_sync_farmer_create",
+                    },
+                }
+            ]
+        },
+        headers=HEADERS,
+    )
+    sync_payload = sync_response.json()
+    check(sync_response.status_code == 200, "Farmer sync create returns 200", sync_payload)
+    check(sync_payload.get("accepted") == [str(sync_event_id)], "Farmer sync create accepted", sync_payload)
+
+    sync_enrollment_response, sync_enrollments = get_json(f"/api/v1/farmers/{sync_farmer_id}/project-enrollments")
+    check(sync_enrollment_response.status_code == 200, "Synced farmer project enrollments return 200", sync_enrollment_response.text[:800])
+    check(
+        any(row.get("project_id") == str(PROJECT_ID) and row.get("status") == "ACTIVE" for row in sync_enrollments),
+        "Synced farmer has active project enrollment",
+        sync_enrollments,
+    )
+
+    sync_hydration_response, sync_hydration = get_json(f"/api/v1/farmers/by-mobile/{SYNC_TEST_MOBILE}")
+    check(sync_hydration_response.status_code == 200, "Synced farmer hydration by mobile returns 200", sync_hydration_response.text[:800])
+    check(
+        any(row.get("project_id") == str(PROJECT_ID) and row.get("status") == "ACTIVE" for row in sync_hydration.get("project_enrollments") or []),
+        "Synced farmer hydration includes active project enrollment",
+        sync_hydration.get("project_enrollments"),
+    )
+
     readiness_response, readiness = get_json("/api/v1/farmers/profile-readiness", params={"project_id": str(PROJECT_ID)})
     check(readiness_response.status_code == 200, "Profile readiness returns 200", readiness_response.text[:800])
     check(readiness.get("schema_version") == "farmer_profile_readiness.v1", "Profile readiness schema stable", readiness.get("schema_version"))
-    check((readiness.get("summary") or {}).get("farmer_count", 0) >= 1, "Project-scoped readiness includes submitted farmer", readiness.get("summary"))
+    check((readiness.get("summary") or {}).get("farmer_count", 0) >= 2, "Project-scoped readiness includes direct and synced farmers", readiness.get("summary"))
 
     print("=" * 72)
     print("Android dynamic profile submit flow validated")

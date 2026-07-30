@@ -177,6 +177,52 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
     farmer.enrolled_by = _uuid_or_none(payload.get("enrolled_by") or payload.get("enrolledBy")) or _uuid_or_none(actor_id)
     farmer.updated_at = datetime.now(timezone.utc)
 
+    if farmer.project_id:
+        project = db.query(Project).filter(
+            Project.id == farmer.project_id,
+            Project.tenant_id == tenant_id,
+            Project.is_active == True,
+        ).first()
+        if not project:
+            raise ValueError("farmer sync references unknown project")
+
+        enrollment = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.project_id == farmer.project_id,
+            FarmerProjectEnrollment.status != "ARCHIVED",
+        ).first()
+        if not enrollment:
+            enrollment = FarmerProjectEnrollment(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                farmer_id=farmer.id,
+                project_id=farmer.project_id,
+                enrollment_source="ANDROID_SYNC_FARMER_CREATE",
+                enrolled_by=_uuid_or_none(actor_id),
+                status="ACTIVE",
+                parcel_ids=[],
+                assigned_user_ids=[],
+                metadata_={
+                    "created_from": "POST /api/v1/sync/events",
+                    "android_offline_sync": True,
+                    "source_event_id": str(event.event_id),
+                },
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            db.add(enrollment)
+        else:
+            enrollment.status = "ACTIVE"
+            enrollment.enrollment_source = enrollment.enrollment_source or "ANDROID_SYNC_FARMER_CREATE"
+            enrollment.enrolled_by = enrollment.enrolled_by or _uuid_or_none(actor_id)
+            enrollment.metadata_ = {
+                **(enrollment.metadata_ or {}),
+                "android_offline_sync_seen": True,
+                "last_source_event_id": str(event.event_id),
+            }
+            enrollment.updated_at = datetime.now(timezone.utc)
+
 
 def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
     """Upsert accepted mobile parcel sync events into the operational table."""
