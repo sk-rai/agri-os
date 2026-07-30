@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
 from app.modules.farmer.soil_profile import SoilProfile
 from scripts.seed_android_dynamic_profile_test_context import (
     PROJECT_ID,
@@ -39,6 +39,7 @@ from scripts.seed_android_dynamic_profile_test_context import (
 client = TestClient(app)
 HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": str(uuid.uuid4())}
 SYNC_TEST_MOBILE = "+919900000004"
+ALT_PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000002")
 
 
 def check(condition, label, detail=None):
@@ -97,12 +98,58 @@ def get_json(path: str, params=None, headers=None):
     return response, response.json()
 
 
+def ensure_alt_project():
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == ALT_PROJECT_ID, Project.tenant_id == TENANT_ID).first()
+        if not project:
+            project = Project(
+                id=ALT_PROJECT_ID,
+                tenant_id=TENANT_ID,
+                name="Android Dynamic Alternate Project",
+                description="Used only for sync project mismatch regression.",
+                start_date=date.today(),
+                end_date=date.today() + timedelta(days=180),
+                status="ACTIVE",
+                geography_scope={"note": "alternate project for mismatch tests"},
+                crop_scope=["RICE"],
+                config={},
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            db.add(project)
+            db.commit()
+    finally:
+        db.close()
+
+
+def post_sync_event(event_payload: dict):
+    response = client.post("/api/v1/sync/events", json={"events": [event_payload]}, headers=HEADERS)
+    try:
+        payload = response.json()
+    except Exception:
+        payload = {"raw": response.text}
+    return response, payload
+
+
+def check_failed_detail(response, payload, label: str, detail_code: str, message_part: str | None = None):
+    check(response.status_code == 200, f"{label} returns 200", payload)
+    failures = payload.get("failed") or []
+    check(len(failures) == 1, f"{label} appears in failed list", payload)
+    failure = failures[0]
+    check(failure.get("error_code") == "MATERIALIZATION_FAILED", f"{label} error_code is MATERIALIZATION_FAILED", failure)
+    check(failure.get("detail_code") == detail_code, f"{label} detail_code is {detail_code}", failure)
+    if message_part:
+        check(message_part in (failure.get("message") or ""), f"{label} message is explicit", failure)
+
+
 def main() -> int:
     print("=" * 72)
     print("ANDROID DYNAMIC PROFILE SUBMIT FLOW REGRESSION")
     print("=" * 72)
 
     reset_context()
+    ensure_alt_project()
 
     bootstrap_response, bootstrap = get_json(
         "/api/v1/app-config/bootstrap",
@@ -339,6 +386,124 @@ def main() -> int:
     check(sync_soil_response.status_code == 200, "Soil profile sync create returns 200", sync_soil_payload)
     check(sync_soil_payload.get("accepted") == [str(sync_soil_event_id)], "Soil profile sync create accepted", sync_soil_payload)
 
+    bad_parcel_farmer_event_id = uuid.uuid4()
+    bad_parcel_farmer_response, bad_parcel_farmer_payload = post_sync_event({
+        "event_id": str(bad_parcel_farmer_event_id),
+        "entity_type": "parcel",
+        "entity_id": str(uuid.uuid4()),
+        "operation": "CREATE",
+        "payload": {
+            "farmer_id": str(uuid.uuid4()),
+            "project_id": str(PROJECT_ID),
+            "reported_area": "1.0",
+            "reported_area_unit": "ACRE",
+        },
+        "version": 1,
+        "dependency_ids": [],
+        "metadata": {"android_flow": "dynamic_profile_sync_bad_parcel_farmer"},
+    })
+    check_failed_detail(
+        bad_parcel_farmer_response,
+        bad_parcel_farmer_payload,
+        "Parcel sync unknown farmer",
+        "INVALID_FARMER_FOR_TENANT",
+        "unknown farmer",
+    )
+
+    bad_parcel_project_response, bad_parcel_project_payload = post_sync_event({
+        "event_id": str(uuid.uuid4()),
+        "entity_type": "parcel",
+        "entity_id": str(uuid.uuid4()),
+        "operation": "CREATE",
+        "payload": {
+            "farmer_id": str(sync_farmer_id),
+            "project_id": str(uuid.uuid4()),
+            "reported_area": "1.0",
+            "reported_area_unit": "ACRE",
+        },
+        "version": 1,
+        "dependency_ids": [],
+        "metadata": {"android_flow": "dynamic_profile_sync_bad_parcel_project"},
+    })
+    check_failed_detail(
+        bad_parcel_project_response,
+        bad_parcel_project_payload,
+        "Parcel sync unknown project",
+        "INVALID_PROJECT_FOR_TENANT",
+        "unknown project",
+    )
+
+    parcel_project_mismatch_response, parcel_project_mismatch_payload = post_sync_event({
+        "event_id": str(uuid.uuid4()),
+        "entity_type": "parcel",
+        "entity_id": str(sync_parcel_id),
+        "operation": "UPDATE",
+        "payload": {
+            "farmer_id": str(sync_farmer_id),
+            "project_id": str(ALT_PROJECT_ID),
+            "reported_area": "1.75",
+            "reported_area_unit": "ACRE",
+        },
+        "version": 2,
+        "dependency_ids": [],
+        "metadata": {"android_flow": "dynamic_profile_sync_parcel_project_mismatch"},
+    })
+    check_failed_detail(
+        parcel_project_mismatch_response,
+        parcel_project_mismatch_payload,
+        "Parcel sync project mismatch",
+        "PARCEL_PROJECT_MISMATCH",
+        "project does not match parcel project",
+    )
+
+    bad_soil_parcel_response, bad_soil_parcel_payload = post_sync_event({
+        "event_id": str(uuid.uuid4()),
+        "entity_type": "soil_profile",
+        "entity_id": str(uuid.uuid4()),
+        "operation": "CREATE",
+        "payload": {
+            "farmer_id": str(sync_farmer_id),
+            "parcel_id": str(uuid.uuid4()),
+            "project_id": str(PROJECT_ID),
+            "data_source": "MANUAL",
+            "test_date": str(date.today()),
+        },
+        "version": 1,
+        "dependency_ids": [],
+        "metadata": {"android_flow": "dynamic_profile_sync_bad_soil_parcel"},
+    })
+    check_failed_detail(
+        bad_soil_parcel_response,
+        bad_soil_parcel_payload,
+        "Soil profile sync invalid parcel for farmer",
+        "INVALID_PARCEL_FOR_FARMER",
+        "unknown parcel",
+    )
+
+    soil_project_mismatch_response, soil_project_mismatch_payload = post_sync_event({
+        "event_id": str(uuid.uuid4()),
+        "entity_type": "soil_profile",
+        "entity_id": str(uuid.uuid4()),
+        "operation": "CREATE",
+        "payload": {
+            "farmer_id": str(sync_farmer_id),
+            "parcel_id": str(sync_parcel_id),
+            "project_id": str(ALT_PROJECT_ID),
+            "data_source": "MANUAL",
+            "test_date": str(date.today()),
+        },
+        "version": 1,
+        "dependency_ids": [],
+        "metadata": {"android_flow": "dynamic_profile_sync_soil_project_mismatch"},
+    })
+    check_failed_detail(
+        soil_project_mismatch_response,
+        soil_project_mismatch_payload,
+        "Soil profile sync project mismatch",
+        "PARCEL_PROJECT_MISMATCH",
+        "project does not match parcel project",
+    )
+
     sync_hydration_response, sync_hydration = get_json(f"/api/v1/farmers/by-mobile/{SYNC_TEST_MOBILE}")
     check(sync_hydration_response.status_code == 200, "Synced farmer hydration by mobile returns 200", sync_hydration_response.text[:800])
     check(
@@ -361,8 +526,22 @@ def main() -> int:
     check(readiness_response.status_code == 200, "Profile readiness returns 200", readiness_response.text[:800])
     check(readiness.get("schema_version") == "farmer_profile_readiness.v1", "Profile readiness schema stable", readiness.get("schema_version"))
     check((readiness.get("summary") or {}).get("farmer_count", 0) >= 2, "Project-scoped readiness includes direct and synced farmers", readiness.get("summary"))
-    check((readiness.get("summary") or {}).get("missing_parcel_count", 0) == 0, "Synced parcel contributes to project-scoped readiness", readiness.get("summary"))
-    check((readiness.get("summary") or {}).get("soil_profile_recommended_count", 0) == 0, "Synced soil profile contributes to project-scoped readiness", readiness.get("summary"))
+    synced_readiness = next(
+        (
+            row
+            for row in readiness.get("farmers") or []
+            if (row.get("farmer") or {}).get("id") == str(sync_farmer_id)
+        ),
+        None,
+    )
+    check(bool(synced_readiness), "Project-scoped readiness includes synced farmer row", readiness.get("farmers"))
+    check(synced_readiness.get("parcel_count") == 1, "Synced parcel contributes to synced farmer readiness", synced_readiness)
+    check(synced_readiness.get("soil_profile_count") == 1, "Synced soil profile contributes to synced farmer readiness", synced_readiness)
+    check(
+        (synced_readiness.get("profile_completion") or {}).get("is_complete_for_home") is True,
+        "Synced farmer is complete for home after parcel sync",
+        synced_readiness,
+    )
 
     print("=" * 72)
     print("Android dynamic profile submit flow validated")

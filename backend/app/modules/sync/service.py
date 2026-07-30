@@ -263,6 +263,8 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
         raise ValueError("parcel sync references unknown project")
 
     parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
+    if parcel and explicit_project_id and parcel.project_id and parcel.project_id != explicit_project_id:
+        raise ValueError("parcel sync project does not match parcel project")
     if not parcel:
         parcel = Parcel(
             id=parcel_id,

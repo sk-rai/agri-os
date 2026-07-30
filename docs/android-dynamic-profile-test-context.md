@@ -192,6 +192,23 @@ Hydration then returns the project assignment under `project_enrollments`:
 
 Expected: `project_enrollments` contains the dynamic test project with `status=ACTIVE`.
 
+### Offline sync failed detail codes
+
+For `/api/v1/sync/events`, Android should reserve conflict/manual-review UI for `conflicts[]`, especially `VERSION_MISMATCH` and `WORKFLOW_INVALID`.
+
+Rows under `failed[]` with `error_code=MATERIALIZATION_FAILED` and the following `detail_code` values should be treated as stale or invalid local context. Android should refresh backend context, rebuild or discard the local draft, and ask the user to retry after refresh.
+
+| detail_code | Android handling |
+| --- | --- |
+| `INVALID_FARMER_FOR_TENANT` | Refresh auth/profile/tenant context; discard drafts linked to the unknown farmer. |
+| `INVALID_PROJECT_FOR_TENANT` | Refresh app bootstrap/project config; do not retry until the project context is valid. |
+| `INVALID_PARCEL_FOR_FARMER` | Refresh farmer hydration and parcels; rebuild soil/crop-cycle draft from current parcel list. |
+| `PARCEL_PROJECT_MISMATCH` | Refresh profile hydration, parcels, and eligible parcels; rebuild or discard the stale parcel-linked draft. |
+| `PARCEL_FARMER_MISMATCH` | Refresh profile hydration and eligible parcels; rebuild or discard the stale crop-cycle draft. |
+| `MATERIALIZATION_FAILED` | Generic fallback: show sync failed, refresh local context, capture logs, and retry only after user/backend context is current. |
+
+`DEPENDENCY_MISSING` means replay order/context is incomplete. Retry after the missing dependency event has been accepted, rather than showing manual conflict UI.
+
 Synced parcel replay also preserves Android project/geography context. When Android replays a parcel create event, include `farmer_id`, `project_id`, `pin_code`, and object-shaped `location_scope` in the parcel payload. Backend validates the farmer/project context, materializes the parcel under the same project, and hydration returns the synced parcel under `parcels`.
 
 Expected hydration fields for synced parcels:
@@ -233,7 +250,7 @@ Offline sync soil profile replay is also supported for the dynamic profile test 
 
 Backend preserves the Android local UUID as `soil_profiles.id`, validates farmer/parcel/project consistency, accepts the Android `boron_b` alias, and returns the profile in hydration under `soil_profiles`. The soil profile table does not store `project_id`; project context is validated and inferred through parcel/farmer/project enrollment.
 
-Expected readiness after synced farmer + parcel + soil profile replay: project-scoped `soil_profile_recommended_count=0`.
+Expected readiness after synced farmer + parcel + soil profile replay: project-scoped readiness contains the synced farmer row with `parcel_count=1`, `soil_profile_count=1`, and `profile_completion.is_complete_for_home=true`. Do not assert tenant-wide `missing_parcel_count=0` because the dynamic test tenant may intentionally contain other incomplete fixture farmers.
 
 For direct or synced parcel submit, `location_scope` is an object, not a string:
 

@@ -125,9 +125,12 @@
     {
       "method": "GET",
       "path": "/api/v1/farmers/profile-readiness?project_id=0f7e0a6b-8472-5d6d-8a14-a9d000000001",
-      "expected_summary": {
-        "missing_parcel_count": 0,
-        "soil_profile_recommended_count": 0
+      "expected_synced_farmer_row": {
+        "match": "farmers[].farmer.mobile_number == +919900000004",
+        "parcel_count": 1,
+        "soil_profile_count": 1,
+        "profile_completion.is_complete_for_home": true,
+        "note": "Do not require tenant-wide missing_parcel_count=0; this test tenant may include other incomplete fixture farmers."
       }
     }
   ],
@@ -136,6 +139,26 @@
     "use_dependency_ids": "Parcel depends on farmer event; soil_profile depends on parcel event.",
     "location_scope_shape": "Object, not string.",
     "android_local_uuid_preserved": true,
-    "soil_profile_project_id_storage": "Soil profile table does not store project_id directly; backend validates/inherits project context from parcel/farmer/enrollment."
+    "soil_profile_project_id_storage": "Soil profile table does not store project_id directly; backend validates/inherits project context from parcel/farmer/enrollment.",
+    "failed_detail_code_handling": {
+      "conflict_ui_source": "Use conflicts[] for VERSION_MISMATCH and WORKFLOW_INVALID manual-review UI.",
+      "DEPENDENCY_MISSING": "Retry after the referenced dependency event is accepted; do not show manual conflict UI.",
+      "INVALID_FARMER_FOR_TENANT": "Refresh auth/profile/tenant context; discard drafts linked to the unknown farmer.",
+      "INVALID_PROJECT_FOR_TENANT": "Refresh app bootstrap/project config; do not retry until the project context is valid.",
+      "INVALID_PARCEL_FOR_FARMER": "Refresh farmer hydration and parcels; rebuild soil/crop-cycle draft from current parcel list.",
+      "PARCEL_PROJECT_MISMATCH": "Refresh profile hydration, parcels, and eligible parcels; rebuild or discard the stale parcel-linked draft.",
+      "PARCEL_FARMER_MISMATCH": "Refresh profile hydration and eligible parcels; rebuild or discard the stale crop-cycle draft.",
+      "MATERIALIZATION_FAILED": "Generic fallback: show sync failed, refresh local context, capture logs, and retry only after context is current."
+    },
+    "failed_detail_code_response_shape": {
+      "failed": [
+        {
+          "event_id": "{event uuid}",
+          "error_code": "MATERIALIZATION_FAILED",
+          "detail_code": "PARCEL_PROJECT_MISMATCH",
+          "message": "parcel sync project does not match parcel project"
+        }
+      ]
+    }
   }
 }
