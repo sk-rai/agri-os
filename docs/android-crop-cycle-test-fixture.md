@@ -120,7 +120,8 @@ Offline sync parity note:
 - `crop_cycle` sync preserves project context in the operational crop-cycle row.
 - Backend validates that the referenced parcel exists in the tenant and belongs to the referenced farmer.
 - If Android replays a crop-cycle event where `parcel_id` belongs to a different farmer, `/api/v1/sync/events` returns HTTP 200 with that event under `failed[]`, `error_code=MATERIALIZATION_FAILED`, `detail_code=PARCEL_FARMER_MISMATCH`, and message `crop_cycle sync parcel does not belong to farmer`.
-- Android should treat this as a local linkage/cache refresh problem, not as a manual conflict-resolution item.
+- If Android replays a crop-cycle event where `project_id` does not match the referenced parcel project, `/api/v1/sync/events` returns HTTP 200 with that event under `failed[]`, `error_code=MATERIALIZATION_FAILED`, `detail_code=PARCEL_PROJECT_MISMATCH`, and message `crop_cycle sync project does not match parcel project`.
+- Android should treat both as local linkage/cache refresh problems, not as manual conflict-resolution items. Refresh profile hydration, parcels, and eligible-parcels, then rebuild or discard the stale crop-cycle draft.
 
 
 After successful create, eligible-parcels should still include the parcel row but with:

@@ -278,10 +278,56 @@
     "idempotency": "Replaying already committed event IDs is safe and returns the event IDs in accepted without duplicating records.",
     "blocking": "Android should not calculate crop-cycle finance locally; use backend summaries after replay.",
     "conflicts": "If response contains conflicts, Android should surface/sync the conflict state and not keep retrying the same event blindly.",
-    "same_entity_changed_payload": "A new event_id with an existing entity_id and changed stale payload returns VERSION_MISMATCH under conflicts, not accepted/failed."
+    "same_entity_changed_payload": "A new event_id with an existing entity_id and changed stale payload returns VERSION_MISMATCH under conflicts, not accepted/failed.",
+    "failed_detail_code_handling": {
+      "PARCEL_FARMER_MISMATCH": "Refresh farmer/profile hydration and eligible parcels; rebuild or discard stale crop-cycle draft.",
+      "PARCEL_PROJECT_MISMATCH": "Refresh project bootstrap/profile hydration/parcels/eligible-parcels; rebuild or discard stale crop-cycle draft.",
+      "DEPENDENCY_MISSING": "Retry after dependency events have been accepted.",
+      "conflicts_array": "Use manual/server-authority UI only for conflicts[] such as VERSION_MISMATCH and WORKFLOW_INVALID."
+    }
   },
   "backend_regression": {
     "command": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/test_android_offline_sync_crop_cycle_activity_flow.py",
     "expected_final_line": "Android offline sync crop-cycle activity flow validated"
+  },
+  "mismatched_project_parcel_failure_example": {
+    "description": "A crop_cycle event whose project_id does not match the referenced parcel project is rejected during materialization. Android should refresh project/parcel eligibility context instead of showing manual conflict UI.",
+    "request": {
+      "events": [
+        {
+          "event_id": "ffffffff-ffff-4fff-8fff-fffffffffff1",
+          "entity_type": "crop_cycle",
+          "entity_id": "ffffffff-ffff-4fff-8fff-fffffffffff2",
+          "operation": "CREATE",
+          "payload": {
+            "farmer_id": "4df387e8-114f-5c44-a129-a9d000000003",
+            "parcel_id": "4df387e8-114f-5c44-a129-a9d000000004",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000002",
+            "crop_code": "RICE",
+            "season_code": "KHARIF",
+            "planned_sowing_date": "2026-08-05"
+          },
+          "version": 1,
+          "dependency_ids": [],
+          "metadata": {
+            "android_flow": "offline_crop_cycle_mismatched_project_parcel"
+          }
+        }
+      ]
+    },
+    "expected_response_shape": {
+      "accepted": [],
+      "conflicts": [],
+      "failed": [
+        {
+          "event_id": "ffffffff-ffff-4fff-8fff-fffffffffff1",
+          "error_code": "MATERIALIZATION_FAILED",
+          "detail_code": "PARCEL_PROJECT_MISMATCH",
+          "message": "crop_cycle sync project does not match parcel project"
+        }
+      ],
+      "total_processed": 1
+    },
+    "android_rule": "Treat as stale local project/parcel context. Refresh profile hydration, parcels, and eligible-parcels; rebuild or discard the local crop-cycle draft. Do not show manual conflict-resolution UI."
   }
 }

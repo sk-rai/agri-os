@@ -40,6 +40,7 @@ client = TestClient(app)
 ACTOR_ID = str(uuid.uuid4())
 HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
 ACTIVITY_COST = "325.50"
+ALT_PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000002")
 
 
 def check(condition, label, detail=None):
@@ -158,6 +159,31 @@ def main() -> int:
     mismatch_failure = next(row for row in mismatch_failures if row.get("event_id") == str(mismatch_cycle_event_id))
     check(mismatch_failure.get("detail_code") == "PARCEL_FARMER_MISMATCH", "Mismatched farmer/parcel detail_code is stable", mismatch_failure)
     check("parcel does not belong to farmer" in (mismatch_failure.get("message") or ""), "Mismatched farmer/parcel failure message is explicit", mismatch_failure)
+
+    project_mismatch_event_id = uuid.uuid4()
+    project_mismatch_response, project_mismatch_payload = post_sync([
+        event(
+            project_mismatch_event_id,
+            "crop_cycle",
+            "CREATE",
+            {
+                "farmer_id": str(FARMER_ID),
+                "parcel_id": str(PARCEL_ID),
+                "project_id": str(ALT_PROJECT_ID),
+                "crop_code": CROP_CODE,
+                "season_code": SEASON_CODE,
+                "planned_sowing_date": (date.today() + timedelta(days=7)).isoformat(),
+            },
+            entity_id=uuid.uuid4(),
+        )
+    ])
+    check(project_mismatch_response.status_code == 200, "Mismatched project/parcel crop-cycle sync returns 200", project_mismatch_payload)
+    project_mismatch_failures = project_mismatch_payload.get("failed") or []
+    check(any(row.get("event_id") == str(project_mismatch_event_id) for row in project_mismatch_failures), "Mismatched project/parcel crop-cycle appears in failed list", project_mismatch_payload)
+    project_mismatch_failure = next(row for row in project_mismatch_failures if row.get("event_id") == str(project_mismatch_event_id))
+    check(project_mismatch_failure.get("detail_code") == "PARCEL_PROJECT_MISMATCH", "Mismatched project/parcel detail_code is stable", project_mismatch_failure)
+    check("project does not match parcel project" in (project_mismatch_failure.get("message") or ""), "Mismatched project/parcel failure message is explicit", project_mismatch_failure)
+    check(not project_mismatch_payload.get("conflicts"), "Mismatched project/parcel has no manual conflicts", project_mismatch_payload)
 
     crop_cycle_event_id = uuid.uuid4()
     stage_event_id = uuid.uuid4()
