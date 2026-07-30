@@ -245,6 +245,22 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
     if not farmer_id:
         raise ValueError("parcel sync event requires farmer_id/farmerId")
 
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
+    if not farmer:
+        raise ValueError("parcel sync references unknown farmer")
+
+    explicit_project_id = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+    inferred_project_id = explicit_project_id or farmer.project_id
+    if not inferred_project_id:
+        active_enrollment = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+        ).order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).first()
+        inferred_project_id = active_enrollment.project_id if active_enrollment else None
+    if inferred_project_id and not db.query(Project).filter(Project.id == inferred_project_id, Project.tenant_id == tenant_id, Project.is_active == True).first():
+        raise ValueError("parcel sync references unknown project")
+
     parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
     if not parcel:
         parcel = Parcel(
@@ -259,9 +275,13 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
         db.add(parcel)
 
     parcel.farmer_id = farmer_id
+    if inferred_project_id:
+        parcel.project_id = inferred_project_id
     field_map = {
         "project_id": ("project_id", "projectId"),
         "village_id": ("village_id", "villageId"),
+        "pin_code": ("pin_code", "pinCode"),
+        "location_scope": ("location_scope", "locationScope"),
         "village_name_manual": ("village_name_manual", "villageNameManual", "village_name", "villageName"),
         "reported_area": ("reported_area", "reportedArea", "area"),
         "reported_area_unit": ("reported_area_unit", "reportedAreaUnit", "unit"),
@@ -299,6 +319,9 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
             value = _decimal_or_none(value)
         elif attr in int_fields:
             value = int(value)
+        elif attr == "location_scope":
+            if not isinstance(value, dict):
+                raise ValueError("parcel sync location_scope must be an object")
         setattr(parcel, attr, value)
 
     _apply_parcel_centroid_digipin(parcel)

@@ -192,7 +192,16 @@ Hydration then returns the project assignment under `project_enrollments`:
 
 Expected: `project_enrollments` contains the dynamic test project with `status=ACTIVE`.
 
-For parcel submit, `location_scope` is an object, not a string:
+Synced parcel replay also preserves Android project/geography context. When Android replays a parcel create event, include `farmer_id`, `project_id`, `pin_code`, and object-shaped `location_scope` in the parcel payload. Backend validates the farmer/project context, materializes the parcel under the same project, and hydration returns the synced parcel under `parcels`.
+
+Expected hydration fields for synced parcels:
+
+- `project_id`: `0f7e0a6b-8472-5d6d-8a14-a9d000000001`;
+- `pin_code`: `560001`;
+- `location_scope.scope_type`: `SINGLE_VILLAGE`;
+- `geometry_source`: `PIN_DROP` when Android sends a pin-drop point.
+
+For direct or synced parcel submit, `location_scope` is an object, not a string:
 
     {
       "farmer_id": "{farmer_id}",
