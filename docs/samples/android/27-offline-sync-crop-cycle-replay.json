@@ -184,13 +184,61 @@
         "total_processed": 1
       },
       "android_rule": "Treat conflicts as resolution-needed server responses. Do not retry blindly like DEPENDENCY_MISSING."
+    },
+    "same_entity_changed_payload_conflict_example": {
+      "description": "A new event_id for an already committed crop_activity entity_id with changed stale payload routes to VERSION_MISMATCH conflict instead of mutating the existing activity.",
+      "request": {
+        "events": [
+          {
+            "event_id": "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+            "entity_type": "crop_activity",
+            "entity_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5",
+            "operation": "CREATE",
+            "payload": {
+              "crop_cycle_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+              "stage_code": "NURSERY",
+              "activity_type": "LABOR",
+              "input_name": "Nursery bed preparation labor - changed offline copy",
+              "quantity": "1",
+              "quantity_unit": "DAY",
+              "area_applied": "1.25",
+              "area_unit": "ACRE",
+              "cost_amount": "999.00",
+              "activity_date": "2026-07-30",
+              "notes": "Changed stale offline payload should conflict"
+            },
+            "version": 1,
+            "dependency_ids": [
+              "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3"
+            ],
+            "metadata": {
+              "android_flow": "offline_same_entity_changed_payload_conflict"
+            }
+          }
+        ]
+      },
+      "expected_response_shape": {
+        "accepted": [],
+        "conflicts": [
+          {
+            "event_id": "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+            "conflict_type": "VERSION_MISMATCH",
+            "resolution_strategy": "MANUAL_REVIEW",
+            "detail": "Entity already has a committed payload for this version; changed offline payload requires conflict resolution."
+          }
+        ],
+        "failed": [],
+        "total_processed": 1
+      },
+      "android_rule": "Treat same-entity changed payload conflicts as manual review / conflict-resolution state. Do not overwrite local/server state silently."
     }
   },
   "android_rules": {
     "dependency_retry": "If backend returns DEPENDENCY_MISSING, replay the missing dependency first, then retry the failed event.",
     "idempotency": "Replaying already committed event IDs is safe and returns the event IDs in accepted without duplicating records.",
     "blocking": "Android should not calculate crop-cycle finance locally; use backend summaries after replay.",
-    "conflicts": "If response contains conflicts, Android should surface/sync the conflict state and not keep retrying the same event blindly."
+    "conflicts": "If response contains conflicts, Android should surface/sync the conflict state and not keep retrying the same event blindly.",
+    "same_entity_changed_payload": "A new event_id with an existing entity_id and changed stale payload returns VERSION_MISMATCH under conflicts, not accepted/failed."
   },
   "backend_regression": {
     "command": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/test_android_offline_sync_crop_cycle_activity_flow.py",

@@ -244,6 +244,8 @@ If a dependency is missing, backend returns HTTP 200 with the event under `faile
 
 If a crop-stage action violates the backend workflow state machine, backend returns HTTP 200 with the event under `conflicts`, `conflict_type=WORKFLOW_INVALID`, and `resolution_strategy=SERVER_AUTHORITY`. Android should not blindly retry these events; they need conflict handling/server guidance.
 
+If Android sends a new event ID for an already committed `entity_id` with changed stale payload/version, backend returns HTTP 200 with the event under `conflicts`, `conflict_type=VERSION_MISMATCH`, and `resolution_strategy=MANUAL_REVIEW`. The existing entity is not mutated.
+
 Idempotency rule: replaying the same committed event IDs returns them under `accepted` again without duplicating the crop cycle/activity.
 
 Backend regression command:

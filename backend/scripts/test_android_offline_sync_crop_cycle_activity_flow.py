@@ -5,6 +5,7 @@ Uses android-dynamic-test crop-cycle fixture and validates:
 - dependency-missing response is Android-readable and retryable;
 - ordered sync batch can create crop cycle, start NURSERY by stage_code, and log activity;
 - idempotent replay returns accepted;
+- same entity_id with changed stale payload routes to VERSION_MISMATCH conflict;
 - invalid stage transition routes to WORKFLOW_INVALID conflict;
 - stage-cost summary reflects replayed activity.
 """
@@ -183,6 +184,38 @@ def main() -> int:
     check(idempotent_response.status_code == 200, "Idempotent replay returns 200", idempotent_payload)
     check(set(idempotent_payload.get("accepted") or []) == {str(crop_cycle_event_id), str(stage_event_id), str(activity_event_id)}, "Idempotent replay returns accepted event IDs", idempotent_payload)
 
+    stale_payload_event_id = uuid.uuid4()
+    stale_payload_response, stale_payload = post_sync([
+        event(
+            stale_payload_event_id,
+            "crop_activity",
+            "CREATE",
+            {
+                "crop_cycle_id": str(cycle_id),
+                "stage_code": "NURSERY",
+                "activity_type": "LABOR",
+                "input_name": "Nursery bed preparation labor - changed offline copy",
+                "quantity": "1",
+                "quantity_unit": "DAY",
+                "area_applied": "1.25",
+                "area_unit": "ACRE",
+                "cost_amount": "999.00",
+                "activity_date": date.today().isoformat(),
+                "notes": "Changed stale offline payload should conflict",
+            },
+            entity_id=activity_id,
+            dependency_ids=[stage_event_id],
+            version=1,
+        )
+    ])
+    check(stale_payload_response.status_code == 200, "Changed stale activity replay returns 200", stale_payload)
+    check(len(stale_payload.get("conflicts") or []) == 1, "Changed stale activity replay appears in conflicts list", stale_payload)
+    stale_conflict = stale_payload["conflicts"][0]
+    check(stale_conflict.get("event_id") == str(stale_payload_event_id), "Changed stale conflict event ID is stable", stale_conflict)
+    check(stale_conflict.get("conflict_type") == "VERSION_MISMATCH", "Changed stale conflict type is VERSION_MISMATCH", stale_conflict)
+    check(stale_conflict.get("resolution_strategy") == "MANUAL_REVIEW", "Changed stale conflict resolution strategy is MANUAL_REVIEW", stale_conflict)
+    check(not stale_payload.get("failed"), "Changed stale conflict has no failed events", stale_payload)
+
     conflict_event_id = uuid.uuid4()
     conflict_response, conflict_payload = post_sync([
         event(
@@ -223,6 +256,7 @@ def main() -> int:
     check(bool(synced_activity), "Synced activity appears in activity list", activities)
     check(synced_activity.get("stage_code") == "NURSERY", "Synced activity is stage-linked", synced_activity)
     check(synced_activity.get("cost_amount") == ACTIVITY_COST, "Synced activity cost is preserved", synced_activity)
+    check(synced_activity.get("input_name") == "Nursery bed preparation labor", "Changed stale conflict did not mutate activity payload", synced_activity)
 
     summary_response = client.get(f"/api/v1/crop-cycles/{cycle_id}/stage-cost-summary", headers=HEADERS)
     check(summary_response.status_code == 200, "Synced stage-cost summary returns 200", summary_response.text[:900])

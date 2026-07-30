@@ -1397,11 +1397,14 @@ def detect_conflict(
     - GEO_OVERLAP: parcel geometry overlaps >5% (stub until parcels exist)
     - WORKFLOW_INVALID: stage transition violates lifecycle template
     """
-    # Check if entity already exists with higher version
-    if event.operation == "UPDATE" and event.entity_id:
+    # Check if entity already has a newer/equal committed server version with
+    # different payload. This protects Android offline replay from mutating an
+    # existing crop-cycle/activity when the event_id is new but entity_id is not.
+    if event.entity_id and event.operation in ("CREATE", "UPDATE"):
         existing = db.execute(
             text("""
-                SELECT server_version, status FROM sync_processed_events
+                SELECT server_version, event_id
+                FROM sync_processed_events
                 WHERE tenant_id = :tenant_id
                 AND entity_id = :entity_id
                 AND entity_type = :entity_type
@@ -1415,13 +1418,37 @@ def detect_conflict(
             },
         ).fetchone()
 
-        if existing and existing[0] > event.client_version:
-            return {
-                "conflict_type": "VERSION_MISMATCH",
-                "resolution_strategy": "MANUAL_REVIEW",
-                "server_version": existing[0],
-                "client_version": event.client_version,
-            }
+        if existing and str(existing[1]) != str(event.event_id):
+            latest_audit = db.execute(
+                text("""
+                    SELECT after_hash
+                    FROM audit_chain
+                    WHERE tenant_id = :tenant_id
+                    AND entity_id = :entity_id
+                    AND entity_type = :entity_type
+                    AND action = 'SYNC_COMMIT'
+                    ORDER BY created_at DESC, id DESC LIMIT 1
+                """),
+                {
+                    "tenant_id": tenant_id,
+                    "entity_id": event.entity_id,
+                    "entity_type": event.entity_type,
+                },
+            ).fetchone()
+            current_payload_hash = compute_payload_hash(event.payload or {})
+            latest_payload_hash = latest_audit[0] if latest_audit else None
+            payload_changed = bool(latest_payload_hash and latest_payload_hash != current_payload_hash)
+
+            if payload_changed and existing[0] >= event.client_version:
+                return {
+                    "conflict_type": "VERSION_MISMATCH",
+                    "resolution_strategy": "MANUAL_REVIEW",
+                    "server_version": existing[0],
+                    "client_version": event.client_version,
+                    "detail": "Entity already has a committed payload for this version; changed offline payload requires conflict resolution.",
+                    "server_payload_hash": latest_payload_hash,
+                    "client_payload_hash": current_payload_hash,
+                }
 
     # Workflow validation for crop_cycle stage transitions
     if event.entity_type in ("crop_stage", "crop_cycle") and event.operation == "UPDATE":
