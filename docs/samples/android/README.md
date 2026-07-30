@@ -42,3 +42,4 @@ cd ~/projects/farmint/backend
 27. `27-offline-sync-crop-cycle-replay.json` - offline sync replay for crop-cycle create, stage start, activity logging, dependency failure, idempotency, and conflict creation.
 
 28. `28-sync-pending-conflicts.json` - Android-safe pending sync conflict list with safe payload summaries and Android actions.
+29. `29-sync-profile-chain-replay.json` - offline sync replay for dynamic farmer, parcel, and soil profile creation.

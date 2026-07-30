@@ -1,0 +1,141 @@
+{
+  "schema_version": "android_offline_sync_profile_chain_replay_sample.v1",
+  "description": "Representative Android offline-sync replay payload for dynamic profile creation: farmer, parcel, then soil profile. IDs are deterministic examples for contract testing, not production seed data.",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/v1/sync/events",
+    "headers": {
+      "X-Tenant-ID": "android-dynamic-test",
+      "X-Actor-ID": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  "fixture_context": {
+    "tenant_id": "android-dynamic-test",
+    "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+    "test_mobile": "+919900000004",
+    "reset_command": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/seed_android_dynamic_profile_test_context.py --reset --apply"
+  },
+  "ordered_replay_example": {
+    "request": {
+      "events": [
+        {
+          "event_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+          "entity_type": "farmer",
+          "entity_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
+          "operation": "CREATE",
+          "payload": {
+            "mobile_number": "+919900000004",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "display_name": "Android Sync Test Farmer",
+            "village_name_manual": "Android Sync Test Village",
+            "pin_code": "560001",
+            "primary_crop_code": "RICE",
+            "language_preference": "en"
+          },
+          "version": 1,
+          "dependency_ids": [],
+          "metadata": {
+            "android_flow": "dynamic_profile_sync_farmer_create"
+          }
+        },
+        {
+          "event_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc3",
+          "entity_type": "parcel",
+          "entity_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc4",
+          "operation": "CREATE",
+          "payload": {
+            "farmer_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "reported_area": "1.75",
+            "reported_area_unit": "ACRE",
+            "ownership_type": "OWNED",
+            "pin_code": "560001",
+            "village_name_manual": "Android Sync Test Village",
+            "location_scope": {
+              "scope_type": "SINGLE_VILLAGE",
+              "village_name_manual": "Android Sync Test Village",
+              "pin_code": "560001"
+            },
+            "geometry_source": "PIN_DROP",
+            "centroid_lat": "15.4589",
+            "centroid_lng": "75.0078"
+          },
+          "version": 1,
+          "dependency_ids": [
+            "cccccccc-cccc-4ccc-8ccc-ccccccccccc1"
+          ],
+          "metadata": {
+            "android_flow": "dynamic_profile_sync_parcel_create"
+          }
+        },
+        {
+          "event_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc5",
+          "entity_type": "soil_profile",
+          "entity_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc6",
+          "operation": "CREATE",
+          "payload": {
+            "farmer_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
+            "parcel_id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc4",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "data_source": "MANUAL",
+            "test_date": "2026-07-30",
+            "soil_texture": "LOAM",
+            "soil_color": "BLACK",
+            "ph": "7.0",
+            "organic_carbon": "0.62",
+            "boron_b": "0.44",
+            "ratings": {
+              "nitrogen_n": "MEDIUM"
+            },
+            "recommendations": {
+              "note": "Android sync smoke fixture"
+            }
+          },
+          "version": 1,
+          "dependency_ids": [
+            "cccccccc-cccc-4ccc-8ccc-ccccccccccc3"
+          ],
+          "metadata": {
+            "android_flow": "dynamic_profile_sync_soil_profile_create"
+          }
+        }
+      ]
+    },
+    "expected_response_shape": {
+      "accepted": [
+        "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+        "cccccccc-cccc-4ccc-8ccc-ccccccccccc3",
+        "cccccccc-cccc-4ccc-8ccc-ccccccccccc5"
+      ],
+      "conflicts": [],
+      "failed": [],
+      "total_processed": 3
+    }
+  },
+  "post_replay_checks": [
+    {
+      "method": "GET",
+      "path": "/api/v1/farmers/by-mobile/+919900000004",
+      "expected": {
+        "project_enrollments_contains_active_project": true,
+        "parcels_contains_synced_parcel": true,
+        "soil_profiles_contains_synced_soil_profile": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/farmers/profile-readiness?project_id=0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+      "expected_summary": {
+        "missing_parcel_count": 0,
+        "soil_profile_recommended_count": 0
+      }
+    }
+  ],
+  "android_rules": {
+    "event_order_matters": true,
+    "use_dependency_ids": "Parcel depends on farmer event; soil_profile depends on parcel event.",
+    "location_scope_shape": "Object, not string.",
+    "android_local_uuid_preserved": true,
+    "soil_profile_project_id_storage": "Soil profile table does not store project_id directly; backend validates/inherits project context from parcel/farmer/enrollment."
+  }
+}
