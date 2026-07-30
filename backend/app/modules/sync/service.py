@@ -26,6 +26,7 @@ from app.modules.sync.models import (
     AuditChainEntry,
 )
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
+from app.modules.farmer.soil_profile import SoilProfile
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
 
@@ -326,6 +327,125 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
 
     _apply_parcel_centroid_digipin(parcel)
     parcel.updated_at = datetime.now(timezone.utc)
+
+
+def _materialize_soil_profile_event(db: Session, tenant_id: str, event: SyncEvent) -> None:
+    """Upsert accepted Android soil profile sync events into operational table."""
+    payload = event.payload or {}
+    profile_id = _uuid_or_none(event.entity_id or _first_payload_value(payload, "id", "profile_id", "profileId", "soil_profile_id", "soilProfileId"))
+    if not profile_id:
+        raise ValueError("soil_profile sync event requires entity_id or payload.id")
+
+    profile = db.query(SoilProfile).filter(SoilProfile.id == profile_id, SoilProfile.tenant_id == tenant_id).first()
+    if event.operation == "DELETE":
+        if profile:
+            if hasattr(profile, "is_active"):
+                profile.is_active = False
+            profile.updated_at = datetime.now(timezone.utc)
+        return
+
+    farmer_id = _uuid_or_none(_first_payload_value(payload, "farmer_id", "farmerId"))
+    parcel_id = _uuid_or_none(_first_payload_value(payload, "parcel_id", "parcelId"))
+    project_id = _uuid_or_none(_first_payload_value(payload, "project_id", "projectId"))
+    if not farmer_id or not parcel_id:
+        raise ValueError("soil_profile sync requires farmer_id and parcel_id")
+
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
+    if not farmer:
+        raise ValueError("soil_profile sync references unknown farmer")
+
+    parcel = db.query(Parcel).filter(
+        Parcel.id == parcel_id,
+        Parcel.tenant_id == tenant_id,
+        Parcel.farmer_id == farmer_id,
+    ).first()
+    if not parcel:
+        raise ValueError("soil_profile sync references unknown parcel for farmer")
+
+    inferred_project_id = project_id or parcel.project_id or farmer.project_id
+    if not inferred_project_id:
+        active_enrollment = db.query(FarmerProjectEnrollment).filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+        ).order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).first()
+        inferred_project_id = active_enrollment.project_id if active_enrollment else None
+    if inferred_project_id:
+        project = db.query(Project).filter(
+            Project.id == inferred_project_id,
+            Project.tenant_id == tenant_id,
+            Project.is_active == True,
+        ).first()
+        if not project:
+            raise ValueError("soil_profile sync references unknown project")
+        if project_id and parcel.project_id and parcel.project_id != project_id:
+            raise ValueError("soil_profile sync project does not match parcel project")
+
+    now_ts = datetime.now(timezone.utc)
+    if not profile:
+        profile = SoilProfile(
+            id=profile_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            parcel_id=parcel_id,
+            test_date=_date_or_today(_first_payload_value(payload, "test_date", "testDate")),
+            created_at=now_ts,
+            updated_at=now_ts,
+        )
+        db.add(profile)
+
+    profile.farmer_id = farmer_id
+    profile.parcel_id = parcel_id
+    field_map = {
+        "test_date": ("test_date", "testDate"),
+        "lab_name": ("lab_name", "labName"),
+        "sample_id": ("sample_id", "sampleId"),
+        "shc_card_number": ("shc_card_number", "shcCardNumber"),
+        "nitrogen_n": ("nitrogen_n", "nitrogenN"),
+        "phosphorus_p": ("phosphorus_p", "phosphorusP"),
+        "potassium_k": ("potassium_k", "potassiumK"),
+        "sulphur_s": ("sulphur_s", "sulphurS"),
+        "zinc_zn": ("zinc_zn", "zincZn"),
+        "iron_fe": ("iron_fe", "ironFe"),
+        "copper_cu": ("copper_cu", "copperCu"),
+        "manganese_mn": ("manganese_mn", "manganeseMn"),
+        "boron_bo": ("boron_bo", "boronBo", "boron_b", "boronB"),
+        "ph": ("ph",),
+        "ec": ("ec",),
+        "organic_carbon_oc": ("organic_carbon_oc", "organicCarbonOc", "organic_carbon", "organicCarbon"),
+        "soil_type_code": ("soil_type_code", "soilTypeCode"),
+        "soil_texture": ("soil_texture", "soilTexture"),
+        "soil_color": ("soil_color", "soilColor"),
+        "ratings": ("ratings",),
+        "recommendations": ("recommendations",),
+        "data_source": ("data_source", "dataSource"),
+        "notes": ("notes",),
+    }
+    decimal_fields = {
+        "nitrogen_n", "phosphorus_p", "potassium_k", "sulphur_s", "zinc_zn", "iron_fe",
+        "copper_cu", "manganese_mn", "boron_bo", "ph", "ec", "organic_carbon_oc",
+    }
+    json_fields = {"ratings", "recommendations"}
+    for attr, keys in field_map.items():
+        value = _first_payload_value(payload, *keys)
+        if value is None:
+            continue
+        if attr == "test_date":
+            value = _date_or_today(value)
+        elif attr in decimal_fields:
+            value = _decimal_or_none(value)
+        elif attr in json_fields:
+            if not isinstance(value, dict):
+                raise ValueError(f"soil_profile sync {attr} must be an object")
+        elif attr == "data_source":
+            value = str(value).upper()
+        setattr(profile, attr, value)
+
+    if profile.ratings is None:
+        profile.ratings = {}
+    if profile.recommendations is None:
+        profile.recommendations = {}
+    profile.updated_at = now_ts
 
 
 def _validate_lng_lat(point: list, label: str) -> tuple[float, float]:
@@ -1247,6 +1367,8 @@ def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, ev
         _materialize_parcel_event(db, tenant_id, event)
     elif entity_type in ("parcel_geometry", "parcelgeometry"):
         _materialize_parcel_geometry_event(db, tenant_id, actor_id, event)
+    elif entity_type in ("soil_profile", "soilprofile"):
+        _materialize_soil_profile_event(db, tenant_id, event)
     elif entity_type in ("farmer_project_enrollment", "farmerprojectenrollment", "project_enrollment", "projectenrollment"):
         _materialize_farmer_project_enrollment_event(db, tenant_id, actor_id, event)
     elif entity_type in ("query_thread", "querythread", "farmer_query_thread", "farmerquerythread"):

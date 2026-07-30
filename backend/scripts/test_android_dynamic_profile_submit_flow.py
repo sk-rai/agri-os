@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel
+from app.modules.farmer.soil_profile import SoilProfile
 from scripts.seed_android_dynamic_profile_test_context import (
     PROJECT_ID,
     TENANT_ID,
@@ -73,6 +74,10 @@ def reset_sync_test_mobile():
             db.query(FarmerProjectEnrollment).filter(
                 FarmerProjectEnrollment.tenant_id == TENANT_ID,
                 FarmerProjectEnrollment.farmer_id.in_(farmer_ids),
+            ).delete(synchronize_session=False)
+            db.query(SoilProfile).filter(
+                SoilProfile.tenant_id == TENANT_ID,
+                SoilProfile.farmer_id.in_(farmer_ids),
             ).delete(synchronize_session=False)
             db.query(Parcel).filter(
                 Parcel.tenant_id == TENANT_ID,
@@ -294,6 +299,46 @@ def main() -> int:
     check(sync_parcel_response.status_code == 200, "Parcel sync create returns 200", sync_parcel_payload)
     check(sync_parcel_payload.get("accepted") == [str(sync_parcel_event_id)], "Parcel sync create accepted", sync_parcel_payload)
 
+    sync_soil_profile_id = uuid.uuid4()
+    sync_soil_event_id = uuid.uuid4()
+    sync_soil_response = client.post(
+        "/api/v1/sync/events",
+        json={
+            "events": [
+                {
+                    "event_id": str(sync_soil_event_id),
+                    "entity_type": "soil_profile",
+                    "entity_id": str(sync_soil_profile_id),
+                    "operation": "CREATE",
+                    "payload": {
+                        "farmer_id": str(sync_farmer_id),
+                        "parcel_id": str(sync_parcel_id),
+                        "project_id": str(PROJECT_ID),
+                        "data_source": "MANUAL",
+                        "test_date": str(date.today()),
+                        "soil_texture": "LOAM",
+                        "soil_color": "BLACK",
+                        "ph": "7.0",
+                        "organic_carbon": "0.62",
+                        "boron_b": "0.44",
+                        "ratings": {"nitrogen_n": "MEDIUM"},
+                        "recommendations": {"note": "Android sync smoke fixture"},
+                    },
+                    "version": 1,
+                    "dependency_ids": [str(sync_parcel_event_id)],
+                    "metadata": {
+                        "device_id": "android-maestro-sync-profile",
+                        "android_flow": "dynamic_profile_sync_soil_profile_create",
+                    },
+                }
+            ]
+        },
+        headers=HEADERS,
+    )
+    sync_soil_payload = sync_soil_response.json()
+    check(sync_soil_response.status_code == 200, "Soil profile sync create returns 200", sync_soil_payload)
+    check(sync_soil_payload.get("accepted") == [str(sync_soil_event_id)], "Soil profile sync create accepted", sync_soil_payload)
+
     sync_hydration_response, sync_hydration = get_json(f"/api/v1/farmers/by-mobile/{SYNC_TEST_MOBILE}")
     check(sync_hydration_response.status_code == 200, "Synced farmer hydration by mobile returns 200", sync_hydration_response.text[:800])
     check(
@@ -306,12 +351,18 @@ def main() -> int:
     check(synced_parcel.get("project_id") == str(PROJECT_ID), "Synced parcel preserves project_id", synced_parcel)
     check(synced_parcel.get("pin_code") == "560001", "Synced parcel preserves pin_code", synced_parcel)
     check((synced_parcel.get("location_scope") or {}).get("scope_type") == "SINGLE_VILLAGE", "Synced parcel preserves location_scope object", synced_parcel)
+    synced_soil = next((row for row in sync_hydration.get("soil_profiles") or [] if row.get("id") == str(sync_soil_profile_id)), None)
+    check(bool(synced_soil), "Synced farmer hydration includes synced soil profile", sync_hydration.get("soil_profiles"))
+    check(synced_soil.get("parcel_id") == str(sync_parcel_id), "Synced soil profile links to synced parcel", synced_soil)
+    check(synced_soil.get("soil_texture") == "LOAM", "Synced soil profile preserves soil_texture", synced_soil)
+    check(synced_soil.get("boron_bo") == 0.44, "Synced soil profile preserves Android boron alias", synced_soil)
 
     readiness_response, readiness = get_json("/api/v1/farmers/profile-readiness", params={"project_id": str(PROJECT_ID)})
     check(readiness_response.status_code == 200, "Profile readiness returns 200", readiness_response.text[:800])
     check(readiness.get("schema_version") == "farmer_profile_readiness.v1", "Profile readiness schema stable", readiness.get("schema_version"))
     check((readiness.get("summary") or {}).get("farmer_count", 0) >= 2, "Project-scoped readiness includes direct and synced farmers", readiness.get("summary"))
     check((readiness.get("summary") or {}).get("missing_parcel_count", 0) == 0, "Synced parcel contributes to project-scoped readiness", readiness.get("summary"))
+    check((readiness.get("summary") or {}).get("soil_profile_recommended_count", 0) == 0, "Synced soil profile contributes to project-scoped readiness", readiness.get("summary"))
 
     print("=" * 72)
     print("Android dynamic profile submit flow validated")

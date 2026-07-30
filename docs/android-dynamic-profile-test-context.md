@@ -201,6 +201,40 @@ Expected hydration fields for synced parcels:
 - `location_scope.scope_type`: `SINGLE_VILLAGE`;
 - `geometry_source`: `PIN_DROP` when Android sends a pin-drop point.
 
+Offline sync soil profile replay is also supported for the dynamic profile test context. After synced farmer and parcel events are accepted, Android may replay:
+
+    POST /api/v1/sync/events
+    X-Tenant-ID: android-dynamic-test
+    X-Actor-ID: {actor uuid}
+
+    {
+      "events": [
+        {
+          "entity_type": "soil_profile",
+          "operation": "CREATE",
+          "entity_id": "{android local soil profile uuid}",
+          "payload": {
+            "farmer_id": "{synced farmer uuid}",
+            "parcel_id": "{synced parcel uuid}",
+            "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+            "data_source": "MANUAL",
+            "test_date": "2026-07-30",
+            "soil_texture": "LOAM",
+            "soil_color": "BLACK",
+            "ph": "7.0",
+            "organic_carbon": "0.62",
+            "boron_b": "0.44"
+          },
+          "version": 1,
+          "dependency_ids": ["{synced parcel event id}"]
+        }
+      ]
+    }
+
+Backend preserves the Android local UUID as `soil_profiles.id`, validates farmer/parcel/project consistency, accepts the Android `boron_b` alias, and returns the profile in hydration under `soil_profiles`. The soil profile table does not store `project_id`; project context is validated and inferred through parcel/farmer/project enrollment.
+
+Expected readiness after synced farmer + parcel + soil profile replay: project-scoped `soil_profile_recommended_count=0`.
+
 For direct or synced parcel submit, `location_scope` is an object, not a string:
 
     {
