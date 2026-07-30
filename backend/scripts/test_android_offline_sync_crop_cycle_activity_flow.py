@@ -156,6 +156,7 @@ def main() -> int:
     mismatch_failures = mismatch_payload.get("failed") or []
     check(any(row.get("event_id") == str(mismatch_cycle_event_id) for row in mismatch_failures), "Mismatched farmer/parcel crop-cycle appears in failed list", mismatch_payload)
     mismatch_failure = next(row for row in mismatch_failures if row.get("event_id") == str(mismatch_cycle_event_id))
+    check(mismatch_failure.get("detail_code") == "PARCEL_FARMER_MISMATCH", "Mismatched farmer/parcel detail_code is stable", mismatch_failure)
     check("parcel does not belong to farmer" in (mismatch_failure.get("message") or ""), "Mismatched farmer/parcel failure message is explicit", mismatch_failure)
 
     crop_cycle_event_id = uuid.uuid4()

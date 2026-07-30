@@ -52,6 +52,7 @@ class ConflictInfo(BaseModel):
 class FailedInfo(BaseModel):
     event_id: str
     error_code: str
+    detail_code: Optional[str] = None
     message: str
 
 

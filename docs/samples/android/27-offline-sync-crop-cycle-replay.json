@@ -87,7 +87,8 @@
         {
           "event_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
           "error_code": "MATERIALIZATION_FAILED",
-          "message": "crop_cycle sync parcel does not belong to farmer"
+          "message": "crop_cycle sync parcel does not belong to farmer",
+          "detail_code": "PARCEL_FARMER_MISMATCH"
         }
       ],
       "total_processed": 1

@@ -1386,6 +1386,23 @@ def _materialize_crop_activity_event(db: Session, tenant_id: str, actor_id: str,
     cycle.updated_at = datetime.now(timezone.utc)
 
 
+def _sync_materialization_detail_code(message: str) -> str:
+    normalized = (message or "").lower()
+    if "missing dependencies" in normalized:
+        return "DEPENDENCY_MISSING"
+    if "parcel does not belong to farmer" in normalized:
+        return "PARCEL_FARMER_MISMATCH"
+    if "project does not match parcel project" in normalized:
+        return "PARCEL_PROJECT_MISMATCH"
+    if "references unknown parcel" in normalized or "parcel not found" in normalized:
+        return "INVALID_PARCEL_FOR_FARMER"
+    if "references unknown farmer" in normalized:
+        return "INVALID_FARMER_FOR_TENANT"
+    if "references unknown project" in normalized:
+        return "INVALID_PROJECT_FOR_TENANT"
+    return "MATERIALIZATION_FAILED"
+
+
 def materialize_operational_event(db: Session, tenant_id: str, actor_id: str, event: SyncEvent) -> None:
     entity_type = (event.entity_type or "").lower()
     if entity_type == "farmer":
@@ -1866,10 +1883,12 @@ def process_sync_batch(
                 )
                 db.flush()
         except Exception as exc:
+            message = str(exc)
             result.failed.append({
                 "event_id": event_id_str,
                 "error_code": "MATERIALIZATION_FAILED",
-                "message": str(exc),
+                "detail_code": _sync_materialization_detail_code(message),
+                "message": message,
             })
             continue
 
