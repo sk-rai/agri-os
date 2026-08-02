@@ -1858,7 +1858,11 @@ def process_sync_batch(
                 db, tenant_id, actor_id, correlation_id,
                 event.entity_type, event.entity_id,
                 "SYNC_CONFLICT", event.payload,
-                {**event.metadata, "conflict_type": conflict["conflict_type"]},
+                {
+                    **event.metadata,
+                    "sync_event_id": event_id_str,
+                    "conflict_type": conflict["conflict_type"],
+                },
             )
 
             result.conflicts.append({

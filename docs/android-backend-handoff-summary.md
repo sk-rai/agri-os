@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android VERSION_MISMATCH conflict test
+
+A controlled VERSION_MISMATCH fixture is available for Maestro Home Sync Status testing. It seeds a committed server sync payload for a fixed `crop_activity` entity, then Android replays a different offline payload for the same entity id/version. Backend returns `conflicts[]` with `VERSION_MISMATCH` and no `failed[]` row.
+
+See:
+
+    docs/android-version-mismatch-conflict-test.md
+
 ## Android stale-context sync failure test
 
 A controlled stale-context sync failure fixture is available for Maestro Home Sync Status testing. It mutates only the Android dynamic test parcel project after Android queues an offline crop-cycle event, then verifies backend returns `MATERIALIZATION_FAILED` with `PARCEL_PROJECT_MISMATCH` and no manual conflict row.
