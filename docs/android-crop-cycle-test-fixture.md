@@ -324,10 +324,15 @@ Canonical sample payload:
 
     docs/samples/android/30-offline-stage-activity-replay-existing-cycle.json
 
-Verifier after Android replay:
+Verifier after Android replay, with random Android-generated activity/event UUIDs:
 
     cd ~/projects/farmint/backend
     ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py
+
+Optional exact-ID verifier if Android shares the replayed activity event/entity UUIDs:
+
+    cd ~/projects/farmint/backend
+    ANDROID_ACTIVITY_EVENT_ID={android event uuid} ANDROID_ACTIVITY_ID={android activity uuid} ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py
 
 Expected after replay:
 

@@ -36,7 +36,8 @@
       "crop_stage transition should depend on crop_cycle create event_id when sent in one ordered batch or when Android wants explicit ordering.",
       "crop_activity create should depend on the crop_stage transition event_id so the backend starts the stage before logging the stage-linked activity."
     ],
-    "activity_dependency_rule": "Activity may technically link by crop_cycle_id + stage_code once the cycle stages exist, but Android should depend on the stage transition event_id for this Maestro flow."
+    "activity_dependency_rule": "Activity may technically link by crop_cycle_id + stage_code once the cycle stages exist, but Android should depend on the stage transition event_id for this Maestro flow.",
+    "random_android_activity_ids": "Supported. The WSL verifier defaults to checking the latest NURSERY activity with cost 325.50. If Android wants exact UUID checks, run verifier with ANDROID_ACTIVITY_EVENT_ID and ANDROID_ACTIVITY_ID env vars."
   },
   "canonical_replay_request": {
     "events": [
@@ -152,5 +153,6 @@
       ]
     }
   },
-  "wsl_verification_command_after_android_replay": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py"
+  "wsl_verification_command_after_android_replay": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py",
+  "wsl_verification_command_with_exact_android_ids": "cd ~/projects/farmint/backend && ANDROID_ACTIVITY_EVENT_ID={android event uuid} ANDROID_ACTIVITY_ID={android activity uuid} ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py"
 }
