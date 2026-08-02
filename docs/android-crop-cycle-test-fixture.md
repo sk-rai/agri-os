@@ -298,3 +298,40 @@ Android should not:
 - reuse the completed-history farmer for crop-cycle creation tests;
 - assume all eligible-parcels responses have `schema_version`;
 - create duplicate crop cycles for the same parcel/season/year without reset.
+
+## Android-created dynamic cycle: offline stage/activity replay
+
+Android has validated offline `crop_cycle` create replay for the dynamic profile farmer/parcel:
+
+    crop_cycle_id=aa346148-468b-47de-9c86-47ad41aa1f11
+    crop_cycle_create_event_id=d0b39998-84f1-41b6-88e5-a2194c192fa8
+    farmer_id=e1ee0941-2bad-4a18-a239-2a4119608a06
+    parcel_id=98c1a0fa-4f5f-4b8c-97ae-d84992db1c44
+    project_id=0f7e0a6b-8472-5d6d-8a14-a9d000000001
+    crop_code=RICE
+    season_code=KHARIF
+
+Current first stage for this cycle:
+
+    stage_id=fc6c842d-973e-40fb-8a0b-00b6aa6e5a8f
+    stage_code=NURSERY
+    stage_name=Nursery Preparation
+    stage_order=1
+
+For offline sync, Android should address the stage by `payload.stage_code=NURSERY`. `stage_id` is server-generated and optional for sync replay; `crop_cycle_id + stage_code` is the durable offline contract.
+
+Canonical sample payload:
+
+    docs/samples/android/30-offline-stage-activity-replay-existing-cycle.json
+
+Verifier after Android replay:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py
+
+Expected after replay:
+
+- `GET /api/v1/crop-cycles/aa346148-468b-47de-9c86-47ad41aa1f11` returns `status=ACTIVE`, `inferred_current_stage=NURSERY`, and NURSERY stage `status=ACTIVE`.
+- `GET /api/v1/crop-cycles/aa346148-468b-47de-9c86-47ad41aa1f11/activities` contains activity `9f7df9e8-97f9-4db6-9d3a-fc9bb0e20103`, `stage_code=NURSERY`, `cost_amount=325.50`.
+- stage-cost summary has `totals.activity_count=1` and `totals.actual_expense=325.50`.
+- P&L summary has `totals.total_expenses=325.50` and `totals.profit_or_loss=-325.50`.

@@ -1,0 +1,156 @@
+{
+  "schema_version": "android_offline_stage_activity_replay_existing_cycle_sample.v1",
+  "description": "Canonical Android offline sync payload for replaying a stage transition and activity log against an existing offline-created crop cycle in android-dynamic-test.",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/v1/sync/events",
+    "headers": {
+      "X-Tenant-ID": "android-dynamic-test",
+      "X-Actor-ID": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  "fixture_context": {
+    "tenant_id": "android-dynamic-test",
+    "project_id": "0f7e0a6b-8472-5d6d-8a14-a9d000000001",
+    "farmer_id": "e1ee0941-2bad-4a18-a239-2a4119608a06",
+    "parcel_id": "98c1a0fa-4f5f-4b8c-97ae-d84992db1c44",
+    "crop_cycle_id": "aa346148-468b-47de-9c86-47ad41aa1f11",
+    "crop_cycle_create_event_id": "d0b39998-84f1-41b6-88e5-a2194c192fa8",
+    "crop_code": "RICE",
+    "season_code": "KHARIF",
+    "current_cycle_status_before_replay": "PLANNED",
+    "first_stage": {
+      "stage_code": "NURSERY",
+      "stage_name": "Nursery Preparation",
+      "server_stage_id_current": "fc6c842d-973e-40fb-8a0b-00b6aa6e5a8f",
+      "stage_order": 1,
+      "status_before_replay": "PENDING"
+    }
+  },
+  "android_contract": {
+    "stage_addressing_recommendation": "Use payload.stage_code=NURSERY for offline replay. stage_id/entity_id is optional and server-generated; stage_code is more stable for Android offline drafts.",
+    "crop_stage_entity_id": "Optional. If supplied, it may be the server CropStageInstance id. For offline replay after crop_cycle create, omit entity_id and use payload.crop_cycle_id + payload.stage_code.",
+    "activity_entity_id": "Required/recommended. Use Android local UUID so idempotent replay preserves activity identity.",
+    "dependency_ordering": [
+      "crop_cycle create event must be accepted before stage transition.",
+      "crop_stage transition should depend on crop_cycle create event_id when sent in one ordered batch or when Android wants explicit ordering.",
+      "crop_activity create should depend on the crop_stage transition event_id so the backend starts the stage before logging the stage-linked activity."
+    ],
+    "activity_dependency_rule": "Activity may technically link by crop_cycle_id + stage_code once the cycle stages exist, but Android should depend on the stage transition event_id for this Maestro flow."
+  },
+  "canonical_replay_request": {
+    "events": [
+      {
+        "event_id": "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20101",
+        "entity_type": "crop_stage",
+        "operation": "UPDATE",
+        "payload": {
+          "crop_cycle_id": "aa346148-468b-47de-9c86-47ad41aa1f11",
+          "stage_code": "NURSERY",
+          "action": "START",
+          "actual_start_date": "2026-08-02",
+          "gps_lat": 15.4589,
+          "gps_lng": 75.0078,
+          "notes": "Android offline replay start Nursery Preparation"
+        },
+        "version": 1,
+        "dependency_ids": [
+          "d0b39998-84f1-41b6-88e5-a2194c192fa8"
+        ],
+        "metadata": {
+          "android_flow": "maestro_offline_stage_start_existing_cycle"
+        }
+      },
+      {
+        "event_id": "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20102",
+        "entity_type": "crop_activity",
+        "entity_id": "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20103",
+        "operation": "CREATE",
+        "payload": {
+          "crop_cycle_id": "aa346148-468b-47de-9c86-47ad41aa1f11",
+          "stage_code": "NURSERY",
+          "activity_type": "LABOR",
+          "input_name": "Nursery bed preparation labor",
+          "quantity": "1",
+          "quantity_unit": "DAY",
+          "area_applied": "1.25",
+          "area_unit": "ACRE",
+          "cost_amount": "325.50",
+          "activity_date": "2026-08-02",
+          "gps_lat": 15.4589,
+          "gps_lng": 75.0078,
+          "notes": "Android offline replay activity under Nursery Preparation"
+        },
+        "version": 1,
+        "dependency_ids": [
+          "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20101"
+        ],
+        "metadata": {
+          "android_flow": "maestro_offline_activity_log_existing_cycle"
+        }
+      }
+    ]
+  },
+  "expected_sync_response_shape": {
+    "accepted": [
+      "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20101",
+      "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20102"
+    ],
+    "conflicts": [],
+    "failed": [],
+    "total_processed": 2
+  },
+  "expected_backend_result": {
+    "GET /api/v1/crop-cycles/{cycle_id}": {
+      "status": "ACTIVE",
+      "inferred_current_stage": "NURSERY",
+      "stages[NURSERY].status": "ACTIVE"
+    },
+    "GET /api/v1/crop-cycles/{cycle_id}/activities": {
+      "contains_activity_id": "9f7df9e8-97f9-4db6-9d3a-fc9bb0e20103",
+      "stage_code": "NURSERY",
+      "cost_amount": "325.50"
+    },
+    "GET /api/v1/crop-cycles/{cycle_id}/stage-cost-summary": {
+      "totals.activity_count": 1,
+      "totals.actual_expense": "325.50"
+    },
+    "GET /api/v1/crop-cycles/{cycle_id}/profit-loss-summary": {
+      "totals.total_expenses": "325.50",
+      "totals.profit_or_loss": "-325.50"
+    }
+  },
+  "expected_error_shapes": {
+    "missing_dependency": {
+      "accepted": [],
+      "conflicts": [],
+      "failed": [
+        {
+          "error_code": "DEPENDENCY_MISSING",
+          "message": "Missing dependencies: [...]"
+        }
+      ]
+    },
+    "invalid_transition": {
+      "accepted": [],
+      "failed": [],
+      "conflicts": [
+        {
+          "conflict_type": "WORKFLOW_INVALID",
+          "resolution_strategy": "SERVER_AUTHORITY"
+        }
+      ]
+    },
+    "changed_duplicate_activity_payload": {
+      "accepted": [],
+      "failed": [],
+      "conflicts": [
+        {
+          "conflict_type": "VERSION_MISMATCH",
+          "resolution_strategy": "MANUAL_REVIEW"
+        }
+      ]
+    }
+  },
+  "wsl_verification_command_after_android_replay": "cd ~/projects/farmint/backend && ../venv/bin/python scripts/verify_android_offline_stage_activity_replay.py"
+}

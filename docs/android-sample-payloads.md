@@ -11,7 +11,7 @@ cd ~/projects/farmint/backend
 ../venv/bin/python scripts/capture_android_sample_payloads.py
 ```
 
-The current bundle contains 29 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, sync error handling, finance analytics, land intelligence context, crop-cycle offline replay, pending sync conflicts, and dynamic profile offline replay.
+The current bundle contains 30 redacted JSON samples covering mode bootstrap, app config, profile forms/options, PIN-code guardrail lookup, farmer/parcel/soil writes, DigiPin fields, profile readiness, weather, broadcasts, crop workflows, stage cost/P&L summaries, sync error handling, finance analytics, land intelligence context, crop-cycle offline replay, pending sync conflicts, and dynamic profile offline replay.
 
 ## Integration order
 
@@ -57,6 +57,7 @@ The current bundle contains 29 redacted JSON samples covering mode bootstrap, ap
 | `27-offline-sync-crop-cycle-replay.json` | Replay crop-cycle create, stage start, and activity logging through sync with dependency ordering, idempotency, workflow conflicts, and same-entity stale payload conflicts. |
 | `28-sync-pending-conflicts.json` | Render Android-safe pending sync conflict list with conflict type, resolution strategy, safe payload summaries, and Android action hints. |
 | `29-sync-profile-chain-replay.json` | Replay dynamic farmer, parcel, and soil profile creation through offline sync with dependency ordering and hydration/readiness checks. |
+| `30-offline-stage-activity-replay-existing-cycle.json` | Replay stage/activity sync against an Android-created crop cycle and verify activity summaries. |
 
 ## 1. Mode bootstrap
 
