@@ -113,3 +113,88 @@ Android should map this to:
 - title: `Refresh required: local context is stale`
 - action: refresh profile hydration, parcels, and eligible parcels;
 - do not show manual conflict UI.
+
+
+## Recovery lifecycle after Android shows stale-context guidance
+
+When `/api/v1/sync/events` returns `failed[]` with `error_code=MATERIALIZATION_FAILED` and stale-context `detail_code` such as `PARCEL_PROJECT_MISMATCH`, `PARCEL_FARMER_MISMATCH`, `INVALID_PARCEL_FOR_FARMER`, `INVALID_FARMER_FOR_TENANT`, or `INVALID_PROJECT_FOR_TENANT`, Android should treat the queued draft as stale local context.
+
+Android should refresh backend-owned context before allowing retry/rebuild:
+
+```http
+GET /api/v1/app-config/bootstrap?project_id=0f7e0a6b-8472-5d6d-8a14-a9d000000001
+X-Tenant-ID: android-dynamic-test
+
+GET /api/v1/auth/mode-bootstrap
+X-Tenant-ID: android-dynamic-test
+
+GET /api/v1/farmers/e1ee0941-2bad-4a18-a239-2a4119608a06/launch-context
+X-Tenant-ID: android-dynamic-test
+
+GET /api/v1/farmers/profile-readiness?project_id=0f7e0a6b-8472-5d6d-8a14-a9d000000001
+X-Tenant-ID: android-dynamic-test
+
+GET /api/v1/crop-cycles/eligible-parcels?farmer_id=e1ee0941-2bad-4a18-a239-2a4119608a06&season=KHARIF
+X-Tenant-ID: android-dynamic-test
+```
+
+If the failed draft was crop-cycle/stage/activity related and a known cycle exists, Android may also refresh:
+
+```http
+GET /api/v1/crop-cycles/aa346148-468b-47de-9c86-47ad41aa1f11
+X-Tenant-ID: android-dynamic-test
+
+GET /api/v1/crop-cycles/aa346148-468b-47de-9c86-47ad41aa1f11/activities
+X-Tenant-ID: android-dynamic-test
+```
+
+### Cleanup rule
+
+Android should discard or mark discarded only the stale local queue row and its local draft data. This is client-side cleanup only.
+
+Android should not call a backend cleanup/acknowledgement endpoint for stale-context failures. There is currently no backend failed-sync acknowledgement endpoint. The backend intentionally keeps:
+
+- `sync_processed_events.status=FAILED` for the failed event id;
+- `audit_chain.action=SYNC_FAILED` with `metadata.sync_event_id`, `metadata.error_code`, `metadata.detail_code`, and `metadata.message`.
+
+Android should not delete:
+
+- synced server rows;
+- unrelated pending local sync rows;
+- unrelated failed/conflicted rows.
+
+Suggested action button copy:
+
+```text
+Refresh and discard draft
+```
+
+Alternative shorter copy:
+
+```text
+Refresh data
+```
+
+Suggested helper text:
+
+```text
+This draft was created from old parcel or project data. Refresh your profile and parcel list, then create it again if needed.
+```
+
+## Recovery verifier
+
+After Android refreshes context and discards the stale local row, run:
+
+```bash
+cd ~/projects/farmint/backend
+../venv/bin/python scripts/verify_android_stale_context_recovery_state.py --event-id {failed_stale_context_event_id}
+```
+
+Expected verifier result:
+
+- durable `sync_processed_events.status=FAILED` remains;
+- durable `SYNC_FAILED` audit remains;
+- no `sync_conflicts` row exists for that event;
+- event was not later accepted/committed;
+- failed crop-cycle draft was not materialized;
+- backend cleanup endpoint required: false.

@@ -191,6 +191,18 @@ See:
 
     docs/android-version-mismatch-conflict-test.md
 
+## Android stale-context recovery lifecycle
+
+Android stale-context recovery is client-side: refresh backend-owned context, discard only the stale local draft queue row, and keep unrelated sync rows intact. Backend keeps durable `FAILED` sync/audit records; no cleanup endpoint is required.
+
+Verifier:
+
+    backend/scripts/verify_android_stale_context_recovery_state.py
+
+See recovery section in:
+
+    docs/android-stale-context-sync-failure-test.md
+
 ## Android stale-context sync failure test
 
 A controlled stale-context sync failure fixture is available for Maestro Home Sync Status testing. It mutates only the Android dynamic test parcel project after Android queues an offline crop-cycle event, then verifies backend returns `MATERIALIZATION_FAILED` with `PARCEL_PROJECT_MISMATCH` and no manual conflict row.
