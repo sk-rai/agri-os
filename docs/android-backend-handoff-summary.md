@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android stale-context sync failure test
+
+A controlled stale-context sync failure fixture is available for Maestro Home Sync Status testing. It mutates only the Android dynamic test parcel project after Android queues an offline crop-cycle event, then verifies backend returns `MATERIALIZATION_FAILED` with `PARCEL_PROJECT_MISMATCH` and no manual conflict row.
+
+See:
+
+    docs/android-stale-context-sync-failure-test.md
+
 ## Known intentional deferrals
 
 These are documented and not blockers for Android MVP emulator integration:

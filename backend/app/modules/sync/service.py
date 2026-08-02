@@ -1886,10 +1886,27 @@ def process_sync_batch(
                 db.flush()
         except Exception as exc:
             message = str(exc)
+            detail_code = _sync_materialization_detail_code(message)
+            upsert_processed_event_record(
+                db, tenant_id, actor_id, event, "FAILED"
+            )
+            append_audit(
+                db, tenant_id, actor_id, correlation_id,
+                event.entity_type, event.entity_id,
+                "SYNC_FAILED",
+                event.payload,
+                {
+                    **event.metadata,
+                    "sync_event_id": event_id_str,
+                    "error_code": "MATERIALIZATION_FAILED",
+                    "detail_code": detail_code,
+                    "message": message,
+                },
+            )
             result.failed.append({
                 "event_id": event_id_str,
                 "error_code": "MATERIALIZATION_FAILED",
-                "detail_code": _sync_materialization_detail_code(message),
+                "detail_code": detail_code,
                 "message": message,
             })
             continue
