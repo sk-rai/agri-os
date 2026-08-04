@@ -67,8 +67,7 @@ def delete_fixture_rows(db, dry_run: bool) -> dict:
         db.query(SyncConflict)
         .filter(
             SyncConflict.tenant_id == TENANT_ID,
-            SyncConflict.entity_type == "crop_activity",
-            SyncConflict.entity_id == ACTIVITY_ENTITY_ID,
+            SyncConflict.event_id == ANDROID_EVENT_ID,
         )
         .all()
     )
@@ -81,8 +80,7 @@ def delete_fixture_rows(db, dry_run: bool) -> dict:
         db.query(SyncProcessedEvent)
         .filter(
             SyncProcessedEvent.tenant_id == TENANT_ID,
-            SyncProcessedEvent.entity_type == "crop_activity",
-            SyncProcessedEvent.entity_id == ACTIVITY_ENTITY_ID,
+            SyncProcessedEvent.event_id == ANDROID_EVENT_ID,
         )
         .all()
     )

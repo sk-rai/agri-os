@@ -72,8 +72,9 @@ Android may render these backend-computed summaries. Android should not compute 
 
 - `POST /api/v1/sync/events`
 - `GET /api/v1/sync/conflicts/pending`
+- `PATCH /api/v1/sync/conflicts/{conflict_id}` with `ACCEPT_SERVER` only after Android refreshes context and the user discards the local conflicted queue row. Android should use this only for conflict ids returned by `/pending`; it should not fetch full admin conflict detail for MVP.
 
-Android may replay offline events and read the Android-safe pending conflict summary. Android should not call admin conflict detail or resolution endpoints directly.
+Android may replay offline events, read the Android-safe pending conflict summary, and acknowledge server-authority conflict recovery. Android should not call admin conflict detail endpoints directly.
 
 ### Reference/catalog reads
 
@@ -121,7 +122,7 @@ Android may replay offline events and read the Android-safe pending conflict sum
 - admin dashboards;
 - sync health/conflict operations;
 - traceability reports not explicitly designed for Android farmer/agent UX.
-- admin sync conflict detail/resolution endpoints such as `GET /api/v1/sync/conflicts/{conflict_id}` and `PATCH /api/v1/sync/conflicts/{conflict_id}`.
+- admin sync conflict detail endpoints such as `GET /api/v1/sync/conflicts/{conflict_id}`. Android MVP should use `/pending` plus the narrow `PATCH ... ACCEPT_SERVER` acknowledgement only.
 
 ## Android implementation guidance
 

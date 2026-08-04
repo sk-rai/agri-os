@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android conflict recovery lifecycle
+
+For `VERSION_MISMATCH` and `WORKFLOW_INVALID`, Android should refresh context, discard only the local conflicted queue row, and acknowledge the backend conflict with `PATCH /api/v1/sync/conflicts/{conflict_id}` using `ACCEPT_SERVER`. This leaves durable resolved conflict/audit state and avoids stale pending conflict rows.
+
+See:
+
+    docs/android-conflict-recovery-lifecycle.md
+
 ## Android WORKFLOW_INVALID conflict test
 
 A controlled WORKFLOW_INVALID fixture is available for Maestro Home Sync Status testing. It ensures the existing Rice NURSERY stage is `ACTIVE`, then Android replays a deterministic invalid `crop_stage` `START` action. Backend returns `conflicts[]` with `WORKFLOW_INVALID` and no `failed[]` row.

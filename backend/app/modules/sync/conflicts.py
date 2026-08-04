@@ -341,7 +341,12 @@ def resolve_conflict(
             "comment": body.comment,
             "conflict_type": conflict.conflict_type,
         },
-        metadata={"resolution_strategy": body.strategy.value},
+        metadata={
+            "resolution_strategy": body.strategy.value,
+            "conflict_id": str(conflict_id),
+            "sync_event_id": str(conflict.event_id),
+            "conflict_type": conflict.conflict_type,
+        },
     )
 
     db.commit()
