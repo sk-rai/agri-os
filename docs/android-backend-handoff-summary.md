@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android device/emulator restart sync persistence
+
+A device/emulator restart persistence contract is available for Android offline sync QA. Android queues a `crop_activity` while backend is unavailable, restarts the emulator/device while preserving app data, then replays the same pending event after app/backend relaunch. Backend uses the same baseline/verifier as cold-start persistence.
+
+See:
+
+    docs/android-device-restart-sync-persistence-test.md
+
 ## Android cold-start offline sync persistence
 
 A cold-start persistence contract is available for Android offline sync QA. Android queues a `crop_activity` while backend is unavailable, force-stops/relaunches the app, then replays after backend restart. Backend verifies a new committed NURSERY activity appears after the WSL baseline and finance summaries include the cost.
