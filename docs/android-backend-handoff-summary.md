@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android cold-start offline sync persistence
+
+A cold-start persistence contract is available for Android offline sync QA. Android queues a `crop_activity` while backend is unavailable, force-stops/relaunches the app, then replays after backend restart. Backend verifies a new committed NURSERY activity appears after the WSL baseline and finance summaries include the cost.
+
+See:
+
+    docs/android-cold-start-sync-persistence-test.md
+
 ## Android conflict recovery lifecycle
 
 For `VERSION_MISMATCH` and `WORKFLOW_INVALID`, Android should refresh context, discard only the local conflicted queue row, and acknowledge the backend conflict with `PATCH /api/v1/sync/conflicts/{conflict_id}` using `ACCEPT_SERVER`. This leaves durable resolved conflict/audit state and avoids stale pending conflict rows.
