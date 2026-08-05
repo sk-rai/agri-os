@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android poison-row backlog sync
+
+A poison-row backlog contract is available for Android offline sync QA. Android queues 25 rows where row 10 is a deterministic `WORKFLOW_INVALID` crop_stage event, while the other 24 are valid crop_activity rows. Backend verifies later batches continue draining, valid rows commit exactly once, and only the poison row remains visible through pending conflict UI.
+
+See:
+
+    docs/android-poison-row-backlog-test.md
+
 ## Android interrupted multi-batch replay resume
 
 An interrupted multi-batch resume contract is available for Android offline sync QA. Android queues 25 `crop_activity` rows, commits the first bounded batch, simulates interruption before the remaining rows are acknowledged, then resumes without duplicating first-batch materialization or finance impact.
