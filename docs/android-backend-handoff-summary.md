@@ -183,6 +183,14 @@ See:
 
     docs/android-device-restart-sync-persistence-test.md
 
+## Android uncertain-result sync idempotency
+
+An uncertain-result idempotency contract is available for Android offline sync QA. Android sends a `crop_activity` sync event, simulates app/network loss before marking the local row synced, then retries the exact same `event_id` and `entity_id`. Backend confirms one committed processed event, one activity row, and one finance impact.
+
+See:
+
+    docs/android-uncertain-result-idempotency-test.md
+
 ## Android cold-start offline sync persistence
 
 A cold-start persistence contract is available for Android offline sync QA. Android queues a `crop_activity` while backend is unavailable, force-stops/relaunches the app, then replays after backend restart. Backend verifies a new committed NURSERY activity appears after the WSL baseline and finance summaries include the cost.
