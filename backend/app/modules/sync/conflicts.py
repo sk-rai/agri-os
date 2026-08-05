@@ -209,13 +209,20 @@ def list_android_pending_conflicts(
     if entity_type:
         query = query.filter(SyncConflict.entity_type == entity_type)
 
-    rows = (
+    raw_rows = (
         query
         .order_by(SyncConflict.created_at.desc())
-        .offset(offset)
-        .limit(limit)
         .all()
     )
+    rows = []
+    seen_event_ids = set()
+    for row in raw_rows:
+        event_id = str(row.event_id)
+        if event_id in seen_event_ids:
+            continue
+        seen_event_ids.add(event_id)
+        rows.append(row)
+    rows = rows[offset:offset + limit]
 
     conflicts = [
         AndroidPendingSyncConflict(
@@ -321,9 +328,19 @@ def resolve_conflict(
         ResolutionStrategy.SEMANTIC_MERGE: "RESOLVED_MERGE",
     }
 
-    conflict.status = status_map[body.strategy]
-    conflict.resolved_at = datetime.now(timezone.utc)
-    conflict.resolved_by = uuid_mod.UUID(x_actor_id)
+    resolution_status = status_map[body.strategy]
+    resolved_at = datetime.now(timezone.utc)
+    resolved_by = uuid_mod.UUID(x_actor_id)
+
+    duplicate_pending_conflicts = db.query(SyncConflict).filter(
+        SyncConflict.tenant_id == x_tenant_id,
+        SyncConflict.event_id == conflict.event_id,
+        SyncConflict.status == "PENDING_REVIEW",
+    ).all()
+    for row in duplicate_pending_conflicts:
+        row.status = resolution_status
+        row.resolved_at = resolved_at
+        row.resolved_by = resolved_by
 
     # Audit the resolution
     correlation_id = str(uuid_mod.uuid4())
