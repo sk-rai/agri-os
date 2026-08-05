@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android interrupted multi-batch replay resume
+
+An interrupted multi-batch resume contract is available for Android offline sync QA. Android queues 25 `crop_activity` rows, commits the first bounded batch, simulates interruption before the remaining rows are acknowledged, then resumes without duplicating first-batch materialization or finance impact.
+
+See:
+
+    docs/android-interrupted-multibatch-resume-test.md
+
 ## Android sync queue pagination/backpressure
 
 A queue backpressure contract is available for Android offline sync QA. Android queues 25 `crop_activity` rows under active Rice/NURSERY, syncs them in bounded batches, and backend verifies exact-once materialization plus a single INR 500.00 finance delta.
