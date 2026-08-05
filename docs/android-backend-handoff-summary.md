@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android sync queue pagination/backpressure
+
+A queue backpressure contract is available for Android offline sync QA. Android queues 25 `crop_activity` rows under active Rice/NURSERY, syncs them in bounded batches, and backend verifies exact-once materialization plus a single INR 500.00 finance delta.
+
+See:
+
+    docs/android-queue-backpressure-test.md
+
 ## Android multi-conflict pending drawer ordering/dedup
 
 A multi-conflict pending drawer contract is available for Android offline sync QA. Android sends one batch with deterministic `VERSION_MISMATCH` and `WORKFLOW_INVALID` conflicts, verifies newest-first pending ordering, one visible card per unresolved event ID, and independent acknowledgement lifecycle.
