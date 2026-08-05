@@ -183,6 +183,14 @@ See:
 
     docs/android-device-restart-sync-persistence-test.md
 
+## Android dependency-ordered offline replay
+
+A dependency-ordered replay contract is available for Android offline sync QA. Android queues a `crop_cycle` create, `crop_stage` start, and `crop_activity` create while backend is unavailable, survives app/device restart, then replays the queue in dependency order. Backend verifies one cycle, active NURSERY stage, one activity, and one finance impact.
+
+See:
+
+    docs/android-dependency-order-replay-test.md
+
 ## Android uncertain-result sync idempotency
 
 An uncertain-result idempotency contract is available for Android offline sync QA. Android sends a `crop_activity` sync event, simulates app/network loss before marking the local row synced, then retries the exact same `event_id` and `entity_id`. Backend confirms one committed processed event, one activity row, and one finance impact.
