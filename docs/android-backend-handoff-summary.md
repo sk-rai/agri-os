@@ -183,6 +183,14 @@ See:
 
     docs/android-device-restart-sync-persistence-test.md
 
+## Android partial-batch offline replay resilience
+
+A partial-batch replay contract is available for Android offline sync QA. Android sends one batch with a valid `crop_activity` and a dependency-missing `crop_stage`; backend commits only the valid row, keeps the dependency-missing row retryable, and verifies retry after the missing `crop_cycle` dependency is committed.
+
+See:
+
+    docs/android-partial-batch-replay-test.md
+
 ## Android dependency-ordered offline replay
 
 A dependency-ordered replay contract is available for Android offline sync QA. Android queues a `crop_cycle` create, `crop_stage` start, and `crop_activity` create while backend is unavailable, survives app/device restart, then replays the queue in dependency order. Backend verifies one cycle, active NURSERY stage, one activity, and one finance impact.
