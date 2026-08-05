@@ -175,6 +175,14 @@ Use this fixture when Android needs an eligible parcel for crop-cycle creation. 
 The fixture also has an offline sync crop-cycle replay regression covering dependency failure, ordered replay, idempotent replay, stage start, activity logging, and finance summary updates.
 
 
+## Android partial-batch success + conflict
+
+A partial-batch success + conflict contract is available for Android offline sync QA. Android sends one mixed batch where a valid `crop_activity` commits while a deterministic `WORKFLOW_INVALID` `crop_stage` event returns `conflicts[]`. Android should mark the accepted row synced and route the conflict row to server-authority workflow conflict UI.
+
+See:
+
+    docs/android-partial-batch-conflict-test.md
+
 ## Android device/emulator restart sync persistence
 
 A device/emulator restart persistence contract is available for Android offline sync QA. Android queues a `crop_activity` while backend is unavailable, restarts the emulator/device while preserving app data, then replays the same pending event after app/backend relaunch. Backend uses the same baseline/verifier as cold-start persistence.
