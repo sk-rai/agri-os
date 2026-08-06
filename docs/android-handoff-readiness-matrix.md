@@ -16,8 +16,8 @@ This matrix captures the current backend/admin readiness for Android handoff, in
 
 | Area | Current status | Evidence | Android action | Remaining work / decision |
 | --- | --- | --- | --- | --- |
-| Farmer mode | Ready for Android MVP | 01-mode-bootstrap.json, farmer/profile endpoints, profile readiness | Test login/profile capture as direct farmer | Confirm Android auth/profile hydration wiring against allowlist |
-| Field-agent mode | Ready for Android MVP | GET /api/v1/field-agent/worklist, agent profiles/admin page, profile readiness | Test agent-assisted enrollment and worklist flows | Confirm Android role switching UX with real token/tenant data |
+| Farmer mode | Ready for Android MVP | 01-mode-bootstrap.json, farmer/profile endpoints, profile readiness, `backend/scripts/prepare_android_persona_lifecycle.py` | Test login/profile capture as direct/independent farmer and project transition farmer | Confirm Android auth/profile hydration wiring against allowlist |
+| Field-agent mode | Ready for Android MVP | GET /api/v1/field-agent/worklist, agent profiles/admin page, profile readiness, `docs/android-persona-lifecycle-test.md` | Test agent-assisted enrollment, dual farmer/agent mode switch, and worklist flows | Confirm Android role switching UX with real token/tenant data |
 | Farmer associated with company/project | Ready for Android MVP | `backend/scripts/audit_android_emulator_persona_readiness.py`; 4 farmer-project enrollment fixtures present | Test farmer with project/company context and project-enabled crop workflow | None for MVP; keep deterministic fixture IDs documented for Android QA |
 | Independent farmer | Ready for Android MVP | `backend/scripts/audit_android_emulator_persona_readiness.py`; 119 independent active farmers present | Test farmer without project enrollment; avoid company-only assumptions | None for MVP |
 | Geography/PIN lookup | Ready for Android MVP | All-India OGD LGD/PIN data loaded locally; 03-pin-code-villages.json; PIN guardrail response | Use backend PIN guardrail; do not ship local PIN DB | Cloud deployment must run authoritative latest OGD apply from validated staged snapshot |
@@ -79,7 +79,7 @@ Verified on 2026-07-27 with `backend/scripts/audit_android_emulator_persona_read
 
 ## Immediate next implementation slices
 
-1. Build or update Android emulator fixture seed script for the four persona scenarios.
+1. Use `backend/scripts/prepare_android_persona_lifecycle.py` --reset --apply for deterministic Android persona lifecycle Maestro setup.
 2. Add a language/readiness QA checklist for Hindi/local-language labels in forms, crop workflows, option sets, and advisories.
 3. Review metadata audit output after scenario seed data to decide whether crop/input/product seed coverage is sufficient for Android handoff.
 4. Keep `backend/scripts/seed_android_emulator_advisories.py` idempotent and rerun it whenever emulator farmer fixtures are refreshed.

@@ -37,6 +37,23 @@ Latest verified readiness counts:
 - 72 broadcast/advisory campaigns;
 - 92 broadcast/advisory deliveries.
 
+## Deterministic persona lifecycle fixture
+
+A dedicated Android persona lifecycle contract is available for Maestro coverage of independent farmers, project-associated farmers, dual farmer/field-agent users, field-agent assisted farmers, and independent/project transition states.
+
+Use:
+
+    backend/scripts/prepare_android_persona_lifecycle.py
+    backend/scripts/verify_android_persona_lifecycle.py
+    docs/android-persona-lifecycle-test.md
+
+Dedicated tenant/project:
+
+    X-Tenant-ID: android-persona-lifecycle-test
+    project_id: 0f7e0a6b-8472-5d6d-8a14-a9d000000201
+
+Verifier coverage includes no duplicate farmer rows per mobile and no orphan parcel, soil profile, enrollment, or agent links.
+
 ## Android integration principle
 
 Android should act as a thin client.
@@ -68,6 +85,7 @@ Android should not locally duplicate backend rules for:
 - docs/android-backend-handoff-packet.md
 - docs/android-handoff-readiness-matrix.md
 - docs/android-endpoint-allowlist.md
+- docs/android-persona-lifecycle-test.md
 - docs/android-sample-payloads.md
 - docs/samples/android/README.md
 
