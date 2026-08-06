@@ -507,3 +507,13 @@ Dry-run district overlay candidate generation is tracked in:
     docs/core-lgd-overlay-candidate-generation.md
 
 Latest local result: 2,355 candidate rows generated for 785 Bharatlas LGD districts across three CoRE region systems, with zero no-overlap rows. These are manual-review artifacts only; no `geography_climate_region_mappings` rows were written. DB import remains blocked on source/provenance and overlay-method review.
+
+
+## CoRE/LGD overlay candidate review
+
+Dry-run candidate review is tracked in:
+
+    backend/scripts/review_core_lgd_overlay_candidates.py
+    docs/core-lgd-overlay-candidate-review.md
+
+Latest local result: 2,355 district overlay candidates are ready for manual review, but not DB import. There are 68 rows below 60% dominant overlap. Import remains blocked on Bharatlas source/provenance review, low-overlap review, and decision on whether to use equal-area reprojection for ranking.
