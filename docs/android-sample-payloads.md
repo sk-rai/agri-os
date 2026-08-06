@@ -238,10 +238,10 @@ Android rule: a farmer may also be an agent. Use bootstrap/worklist context to s
 Endpoints:
 
 ```http
-GET /api/v1/broadcasts/feed?farmer_id={farmer_id}
+GET /api/v1/broadcasts/farmers/{farmer_id}/broadcasts
 GET /api/v1/broadcasts/{campaign_id}
-POST /api/v1/broadcasts/{campaign_id}/read
-POST /api/v1/broadcasts/{campaign_id}/acknowledge
+POST /api/v1/broadcasts/deliveries/{delivery_id}/read
+POST /api/v1/broadcasts/deliveries/{delivery_id}/acknowledge
 ```
 
 Representative feed item:

@@ -50,7 +50,7 @@
       "output_format": null,
       "placeholder": null,
       "required": false,
-      "source": "/api/v1/geography/villages",
+      "source": "/api/v1/master-data/geography/villages",
       "type": "dropdown",
       "validation": null
     },
@@ -67,7 +67,7 @@
           "pin_code",
           "village_name_manual"
         ],
-        "village_lookup_endpoint": "/api/v1/geography/villages/by-pin-code?pin_code={pin_code}"
+        "village_lookup_endpoint": "/api/v1/master-data/geography/villages/by-pin-code?pin_code={pin_code}"
       },
       "canonical_field": "parcel.location_scope.same_as_home_location",
       "capture_modes": null,

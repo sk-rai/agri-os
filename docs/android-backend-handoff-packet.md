@@ -85,7 +85,7 @@ Important endpoints:
 - `GET /api/v1/weather/providers`
 - `POST /api/v1/weather/providers`
 - `GET /api/v1/weather/snapshots/latest`
-- `GET /api/v1/weather/refresh-plan`
+- `GET /api/v1/weather/providers/refresh-plan`
 - `GET /api/v1/weather/operations/health`
 
 Backend still needs:

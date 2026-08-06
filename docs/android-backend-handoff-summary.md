@@ -116,6 +116,15 @@ Current bundle has 25 sample payloads, including:
 - finance analytics summary;
 - sync dependency error.
 
+## Android endpoint allowlist audit
+
+A read-only endpoint drift audit is available:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/audit_android_endpoint_allowlist.py
+
+Latest local result: no known stale Android endpoint aliases and no Android-doc endpoint references missing from the current FastAPI OpenAPI path table. The audit also reports endpoints mentioned in Android docs but not explicitly listed in the allowlist, because some Android docs intentionally discuss admin-only or deferred endpoints.
+
 ## Important endpoint contracts
 
 Android should use the endpoint allowlist:
@@ -125,12 +134,12 @@ Android should use the endpoint allowlist:
 Important contracts include:
 
 - GET /api/v1/auth/mode-bootstrap
-- GET /api/v1/config/app-bootstrap
-- GET /api/v1/profile/contract
+- GET /api/v1/app-config/bootstrap
+- GET /api/v1/forms/profile-contract
 - GET /api/v1/forms/...
 - GET /api/v1/master-data/geography/hierarchy-profile
 - GET /api/v1/master-data/geography/villages/by-pin-code
-- GET /api/v1/profile/readiness
+- GET /api/v1/farmers/profile-readiness
 - broadcast feed/detail/read/ack endpoints;
 - crop workflow/cycle endpoints;
 - backend-computed finance summary endpoints.

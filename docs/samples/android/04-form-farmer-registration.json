@@ -86,7 +86,7 @@
       "output_format": null,
       "placeholder": null,
       "required": false,
-      "source": "/api/v1/geography/villages",
+      "source": "/api/v1/master-data/geography/villages",
       "type": "dropdown",
       "validation": null
     },
