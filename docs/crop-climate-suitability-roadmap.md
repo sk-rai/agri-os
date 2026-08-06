@@ -496,3 +496,14 @@ CoRE GEE exports were staged locally and normalized with:
     docs/core-geojson-normalization.md
 
 Latest local result: all three CoRE layers are polygon-only after normalization, and `all_core_exports_ready = true`. Dry-run overlay readiness remains false because LGD-compatible boundary geometry is not staged yet.
+
+
+## CoRE/LGD overlay candidate generation
+
+Dry-run district overlay candidate generation is tracked in:
+
+    backend/scripts/generate_core_lgd_overlay_candidates.py
+    backend/scripts/verify_core_lgd_overlay_candidates.py
+    docs/core-lgd-overlay-candidate-generation.md
+
+Latest local result: 2,355 candidate rows generated for 785 Bharatlas LGD districts across three CoRE region systems, with zero no-overlap rows. These are manual-review artifacts only; no `geography_climate_region_mappings` rows were written. DB import remains blocked on source/provenance and overlay-method review.
