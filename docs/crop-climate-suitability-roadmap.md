@@ -466,3 +466,13 @@ Read-only scripts:
     backend/scripts/verify_core_polygon_lgd_overlay_plan.py
 
 Current scope is backend-only planning/readiness. No Android Maestro flow is required until reviewed polygon-derived mappings change backend `land-intelligence-context` output for a test location.
+
+
+## CoRE/LGD overlay input validation
+
+Dry-run local input validation is tracked in:
+
+    backend/scripts/validate_core_lgd_overlay_inputs.py
+    docs/core-lgd-overlay-input-validation.md
+
+Latest local result: expected CoRE GeoJSON exports and LGD boundary candidates are not staged yet, so `ready_for_dry_run_overlay` is false. This is backend-only; no Android Maestro flow is required until backend land-intelligence responses change.

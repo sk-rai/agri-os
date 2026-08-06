@@ -184,12 +184,21 @@ Expected verifier result now:
 - plan is read-only;
 - Android Maestro is correctly marked not required for the planning step.
 
-## Next backend implementation after this plan
+## Dry-run input validation
 
-The next code-bearing backend step should be a dry-run geometry validator, not a DB importer.
+The first code-bearing backend step after this plan is available:
+
+    backend/scripts/validate_core_lgd_overlay_inputs.py
+    docs/core-lgd-overlay-input-validation.md
+
+It inspects local GeoJSON/boundary files and reports CRS, feature counts, required property coverage, and LGD-code/crosswalk readiness without writing database rows. Current local readiness is expected to remain false until CoRE exports and boundary candidates are staged.
+
+## Next backend implementation after validation
+
+After local inputs are staged and the validator reports `ready_for_dry_run_overlay = true`, the next backend step should be a dry-run overlay candidate generator, not a DB importer.
 
 Suggested future script:
 
-    backend/scripts/validate_core_lgd_overlay_inputs.py
+    backend/scripts/generate_core_lgd_overlay_candidates.py
 
-It should inspect local GeoJSON/boundary files and report CRS, feature counts, required property coverage, and LGD-code/crosswalk readiness without writing database rows.
+It should calculate district/boundary to CoRE overlap candidates into local staged output for review, while still avoiding database writes.
