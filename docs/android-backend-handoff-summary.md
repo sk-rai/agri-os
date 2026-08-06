@@ -54,6 +54,12 @@ Dedicated tenant/project:
 
 Verifier coverage includes no duplicate farmer rows per mobile and no orphan parcel, soil profile, enrollment, or agent links.
 
+Extension coverage is also available for multiple active project memberships/project picker, agent reassignment, and duplicate profile cleanup:
+
+    backend/scripts/prepare_android_persona_lifecycle_extensions.py
+    backend/scripts/verify_android_persona_lifecycle_extensions.py
+    docs/android-persona-lifecycle-extension-tests.md
+
 ## Android integration principle
 
 Android should act as a thin client.
@@ -86,6 +92,7 @@ Android should not locally duplicate backend rules for:
 - docs/android-handoff-readiness-matrix.md
 - docs/android-endpoint-allowlist.md
 - docs/android-persona-lifecycle-test.md
+- docs/android-persona-lifecycle-extension-tests.md
 - docs/android-sample-payloads.md
 - docs/samples/android/README.md
 
