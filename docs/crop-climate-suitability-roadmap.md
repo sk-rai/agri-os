@@ -526,4 +526,13 @@ BharatAtlas district boundary source review is tracked in:
     backend/scripts/review_bharatlas_boundary_source.py
     docs/bharatlas-boundary-source-review.md
 
-Latest local result: BharatAtlas LGD Districts is acceptable for dry-run/manual-review overlay candidates, but not authoritative government source. The file has 785 features, 36 state codes, 783 distinct district codes, and required LGD fields. DB import remains blocked on duplicate district-code review, low-overlap candidate review, and area-method decision.
+Latest local result: BharatAtlas LGD Districts is acceptable for dry-run/manual-review overlay candidates, but not authoritative government source. The file has 785 features, 36 state codes, 783 distinct district codes, and required LGD fields. DB import remains blocked on duplicate district-code review, low-overlap candidate review, and importer/precedence design.
+
+## CoRE/LGD equal-area overlay comparison
+
+Equal-area comparison is tracked in:
+
+    backend/scripts/compare_core_lgd_overlay_equal_area.py
+    docs/core-lgd-overlay-equal-area-review.md
+
+Latest local result: equal-area reprojection changed 0 of 2,355 dominant district/region candidates. The low-overlap count remains 68 rows below 60%, so those rows should be treated as genuine manual-review cases rather than projection artifacts. DB import remains blocked on duplicate district-code review, low-overlap manual review, and MANUAL_REVIEW importer/precedence design.
