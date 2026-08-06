@@ -52,7 +52,20 @@ For each file, the validator checks:
 - bounding box;
 - CRS declaration, or GeoJSON default WGS84 lon/lat note.
 
-### Boundary candidates
+#
+
+## Normalized CoRE exports
+
+The validator prefers normalized CoRE files from:
+
+    data/staged/core_stack/exports_normalized/
+
+when present. See:
+
+    backend/scripts/normalize_core_geojson_exports.py
+    docs/core-geojson-normalization.md
+
+## Boundary candidates
 
 Expected staging root:
 
@@ -82,16 +95,17 @@ The current script does not parse Shapefile geometry directly. Convert to GeoJSO
 
 ## Latest local result
 
-Current local validation result:
+Current local validation result after CoRE export normalization:
 
-- CoRE export directory not present;
-- all three expected CoRE GeoJSON exports missing;
+- CoRE export directory present;
+- normalized CoRE export directory present;
+- all three expected CoRE layers are polygon-only and ready;
 - boundary staging directory not present;
 - boundary candidates found: 0;
 - malformed inputs found: no;
 - ready for dry-run overlay: no.
 
-This is expected until CoRE exports and reviewed boundary candidates are staged locally.
+The remaining blocker is reviewed LGD-compatible boundary geometry under `data/staged/boundaries/`.
 
 ## Readiness meaning
 

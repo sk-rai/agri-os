@@ -486,3 +486,13 @@ Safe source/download probing is tracked in:
     docs/core-lgd-download-source-probe.md
 
 Latest local result: source pages are reachable, but `earthengine` and `aikosh` CLIs are not installed in WSL, so automatic CoRE export/download is not currently available from this environment. Manual GEE export remains the safest immediate route unless authenticated tooling or direct file URLs are configured.
+
+
+## CoRE GeoJSON normalization
+
+CoRE GEE exports were staged locally and normalized with:
+
+    backend/scripts/normalize_core_geojson_exports.py
+    docs/core-geojson-normalization.md
+
+Latest local result: all three CoRE layers are polygon-only after normalization, and `all_core_exports_ready = true`. Dry-run overlay readiness remains false because LGD-compatible boundary geometry is not staged yet.

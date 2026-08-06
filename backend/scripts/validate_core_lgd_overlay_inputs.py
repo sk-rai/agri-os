@@ -20,6 +20,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE_EXPORT_DIR = ROOT / "data/staged/core_stack/exports"
+NORMALIZED_CORE_EXPORT_DIR = ROOT / "data/staged/core_stack/exports_normalized"
 BOUNDARY_DIR = ROOT / "data/staged/boundaries"
 
 EXPECTED_CORE_EXPORTS = [
@@ -28,18 +29,21 @@ EXPECTED_CORE_EXPORTS = [
         "region_system": "CORE_STACK_AGRO_ECOLOGICAL_ZONE",
         "class_property": "physio_reg",
         "expected_filename": "Agro_Ecological_Zones.geojson",
+        "normalized_filename": "Agro_Ecological_Zones.normalized.geojson",
     },
     {
         "layer_name": "Agro-Climatic Zone",
         "region_system": "CORE_STACK_AGRO_CLIMATIC_ZONE",
         "class_property": "regionname",
         "expected_filename": "Agro_Climatic_Zones.geojson",
+        "normalized_filename": "Agro_Climatic_Zones.normalized.geojson",
     },
     {
         "layer_name": "Biogeographic Zone",
         "region_system": "CORE_STACK_BIOGEOGRAPHIC_ZONE",
         "class_property": "biogeozone",
         "expected_filename": "Biogeographic_Zone_pan_india.geojson",
+        "normalized_filename": "Biogeographic_Zone_pan_india.normalized.geojson",
     },
 ]
 
@@ -166,10 +170,20 @@ def geojson_summary(path: Path, required_property: str | None = None) -> dict[st
     return result
 
 
+def core_export_path(expected: dict[str, str]) -> tuple[Path, str]:
+    normalized_path = NORMALIZED_CORE_EXPORT_DIR / expected["normalized_filename"]
+    raw_path = CORE_EXPORT_DIR / expected["expected_filename"]
+    if normalized_path.exists():
+        return normalized_path, "normalized"
+    return raw_path, "raw"
+
+
 def validate_core_exports() -> list[dict[str, Any]]:
     summaries = []
     for expected in EXPECTED_CORE_EXPORTS:
-        path = CORE_EXPORT_DIR / expected["expected_filename"]
+        path, source_variant = core_export_path(expected)
+        raw_path = CORE_EXPORT_DIR / expected["expected_filename"]
+        normalized_path = NORMALIZED_CORE_EXPORT_DIR / expected["normalized_filename"]
         if path.exists():
             validation = geojson_summary(path, required_property=expected["class_property"])
         else:
@@ -180,7 +194,15 @@ def validate_core_exports() -> list[dict[str, Any]]:
                 "errors": ["missing_expected_geojson_export"],
                 "ready_for_overlay": False,
             }
-        summaries.append({**expected, **validation})
+        summaries.append({
+            **expected,
+            **validation,
+            "source_variant": source_variant,
+            "raw_path": str(raw_path),
+            "raw_exists": raw_path.exists(),
+            "normalized_path": str(normalized_path),
+            "normalized_exists": normalized_path.exists(),
+        })
     return summaries
 
 
@@ -259,11 +281,13 @@ def main() -> int:
         "external_calls_made": False,
         "db_writes_made": False,
         "core_export_dir": str(CORE_EXPORT_DIR),
+        "normalized_core_export_dir": str(NORMALIZED_CORE_EXPORT_DIR),
         "boundary_dir": str(BOUNDARY_DIR),
         "core_exports": core_exports,
         "boundary_candidates": boundary_candidates,
         "readiness": {
             "core_export_dir_exists": CORE_EXPORT_DIR.exists(),
+            "normalized_core_export_dir_exists": NORMALIZED_CORE_EXPORT_DIR.exists(),
             "all_core_exports_ready": all_core_exports_ready,
             "boundary_dir_exists": BOUNDARY_DIR.exists(),
             "boundary_candidates_found": bool(boundary_candidates),
