@@ -452,3 +452,17 @@ Boundary geometry source review is tracked in:
     docs/lgd-boundary-source-checklist.md
 
 Preferred approach: use Survey of India/India Maps boundary geometry, LGD Directory for canonical codes, and OGD Admin Boundaries only after schema/source review.
+
+
+## CoRE polygon/LGD overlay execution plan
+
+Backend execution planning is tracked in:
+
+    docs/core-polygon-lgd-overlay-plan.md
+
+Read-only scripts:
+
+    backend/scripts/plan_core_polygon_lgd_overlay.py
+    backend/scripts/verify_core_polygon_lgd_overlay_plan.py
+
+Current scope is backend-only planning/readiness. No Android Maestro flow is required until reviewed polygon-derived mappings change backend `land-intelligence-context` output for a test location.
