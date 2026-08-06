@@ -476,3 +476,13 @@ Dry-run local input validation is tracked in:
     docs/core-lgd-overlay-input-validation.md
 
 Latest local result: expected CoRE GeoJSON exports and LGD boundary candidates are not staged yet, so `ready_for_dry_run_overlay` is false. This is backend-only; no Android Maestro flow is required until backend land-intelligence responses change.
+
+
+## CoRE/LGD source download probe
+
+Safe source/download probing is tracked in:
+
+    backend/scripts/probe_core_lgd_download_sources.py
+    docs/core-lgd-download-source-probe.md
+
+Latest local result: source pages are reachable, but `earthengine` and `aikosh` CLIs are not installed in WSL, so automatic CoRE export/download is not currently available from this environment. Manual GEE export remains the safest immediate route unless authenticated tooling or direct file URLs are configured.

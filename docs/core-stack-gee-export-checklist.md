@@ -25,6 +25,37 @@ Active next:
 - Locate compatible LGD boundary geometries.
 - Build polygon overlay workflow.
 
+## Source trail
+
+Primary discovery page:
+
+    https://aikosh.indiaai.gov.in/web/datasets/details/agro_ecological_climatic_and_biogeographic_zone.html
+
+CoRE Stack dataset directory:
+
+    https://core-stack.org/datasets-contents/
+
+CoRE Stack GEE directory app:
+
+    https://ee-corestackdev.projects.earthengine.app
+
+Methodology/manual:
+
+    https://core-stack.org/core-stack-technical-manual-v2/
+
+Local source CSV:
+
+    data/staged/core_stack/CoRE Stack GEE Layers Links - Datasets.csv
+
+Local manifest:
+
+    data/staged/core_stack/core_stack_climate_layer_manifest.json
+
+Safe source probe:
+
+    backend/scripts/probe_core_lgd_download_sources.py
+    docs/core-lgd-download-source-probe.md
+
 ## Source layers
 
 ### Agro-Ecological Zone
