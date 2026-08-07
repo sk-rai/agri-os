@@ -606,3 +606,13 @@ The guarded importer and verifier are tracked in:
     docs/core-lgd-manual-review-mapping-import.md
 
 Latest local result: 2,298 polygon-derived district/region candidates were imported as inactive `MANUAL_REVIEW` rows with `confidence=POLY_REV`. Existing fallback mappings remain active. These rows are not effective in land intelligence until a separate review/promotion workflow is implemented.
+
+
+## CoRE/LGD promotion review planning
+
+Promotion review planning is tracked in:
+
+    backend/scripts/plan_core_lgd_mapping_promotion_review.py
+    docs/core-lgd-mapping-promotion-review-plan.md
+
+Latest local result: 2,298 inactive `POLY_REV` candidate rows were classified for promotion review. 236 pilot rows in Karnataka, Maharashtra, and Punjab are high-overlap candidates that would replace active fallback rows only after explicit promotion. 181 rows remain low-overlap manual review. No row is automatically activated.
