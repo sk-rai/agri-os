@@ -1,5 +1,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const token = process.env.WEB_SWEEP_TOKEN;
 const tenantId = process.env.WEB_SWEEP_TENANT_ID || "default";
@@ -11,7 +13,8 @@ if (!token || !actorId) {
 }
 
 const baseUrl = process.env.WEB_BASE_URL || "http://localhost:3000";
-const screenshotDir = "web/smoke/screenshots";
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const screenshotDir = path.join(scriptDir, "screenshots");
 await fs.mkdir(screenshotDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
@@ -54,7 +57,7 @@ console.log(JSON.stringify({
   schema_version: "core_lgd_review_web_smoke.v1",
   status: "PASSED",
   url: `${baseUrl}/core-lgd-review`,
-  screenshot: `${screenshotDir}/core-lgd-review.png`,
+  screenshot: path.join(screenshotDir, "core-lgd-review.png"),
   tenant_id: tenantId,
   rows_seen: rows,
 }, null, 2));
