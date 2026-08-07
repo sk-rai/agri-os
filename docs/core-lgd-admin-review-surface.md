@@ -99,3 +99,20 @@ Permission:
     Admin EDIT
 
 This endpoint updates review metadata/status only. It never activates a mapping row and does not change land-intelligence behavior. Approved rows require a later explicit promotion workflow.
+
+
+## Approved mapping activation planning
+
+Approved candidates are not activated automatically. The read-only planner:
+
+    backend/scripts/plan_core_lgd_approved_mapping_activation.py
+
+reports only inactive `POLY_REV` rows with `review_status=APPROVED_FOR_PROMOTION`.
+
+Current expected baseline after regression reset:
+
+- approved rows: 0
+- eligible rows: 0
+- DB writes: false
+
+A later apply workflow must be explicit and must run verifier/Android smoke coverage because activation changes land-intelligence behavior.

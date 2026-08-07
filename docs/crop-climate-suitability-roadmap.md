@@ -644,3 +644,8 @@ The screen lets admins filter and inspect inactive `POLY_REV` candidates beside 
 ## CoRE/LGD review decision workflow
 
 Admins can record review decisions on inactive `POLY_REV` candidates from the CoRE/LGD review page. The PATCH endpoint requires Admin EDIT and supports `APPROVED_FOR_PROMOTION`, `REJECTED`, and `MANUAL_REVIEW`. This is not activation: `is_active` remains false and land-intelligence behavior is unchanged.
+
+
+## CoRE/LGD activation planning
+
+A read-only activation planner now checks inactive `POLY_REV` rows that have been explicitly marked `APPROVED_FOR_PROMOTION`. The current baseline has zero approved rows, so no mapping behavior is queued to change. Actual activation remains a separate guarded workflow.

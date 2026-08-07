@@ -65,3 +65,6 @@ Provider credentials and product-source verification remain important, but they 
 
 
 - CoRE/LGD review decision workflow added: admins can mark inactive `POLY_REV` candidates as `APPROVED_FOR_PROMOTION`, `REJECTED`, or `MANUAL_REVIEW`. This does not activate rows or change land-intelligence behavior.
+
+
+- CoRE/LGD approved activation planner added: read-only script reports `APPROVED_FOR_PROMOTION` candidates eligible for a future separate apply workflow. Baseline currently has zero approved rows.
