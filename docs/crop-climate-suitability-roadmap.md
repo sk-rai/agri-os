@@ -626,3 +626,16 @@ Pilot review reporting is tracked in:
     docs/core-lgd-pilot-mapping-review-report.md
 
 Latest local result: Karnataka, Maharashtra, and Punjab have 267 pilot-state polygon rows across 89 districts and 3 CoRE region systems. All 267 rows have active fallback mappings available for side-by-side review. The report is read-only and does not affect land-intelligence behavior.
+
+
+## CoRE/LGD admin review surface
+
+The read-only admin review surface is tracked in:
+
+    GET /api/v1/master-data/geography/core-lgd-mapping-review
+    web/src/app/(admin)/core-lgd-review/page.tsx
+    backend/scripts/test_core_lgd_admin_review_endpoint.py
+    web/smoke/core_lgd_review_smoke.mjs
+    docs/core-lgd-admin-review-surface.md
+
+The screen lets admins filter and inspect inactive `POLY_REV` candidates beside active fallback mappings. It is intentionally read-only and does not change land-intelligence behavior.

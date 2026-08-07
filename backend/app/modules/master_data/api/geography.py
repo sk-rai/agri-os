@@ -16,6 +16,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
 from app.modules.master_data.models import (
     GeographyState,
@@ -134,6 +135,21 @@ class PaginatedResponse(BaseModel):
     limit: int
 
 
+class CoreLgdMappingReviewResponse(BaseModel):
+    schema_version: str
+    mode: str
+    filters: dict
+    summary: dict
+    decision_counts: list[dict]
+    state_counts: list[dict]
+    region_system_counts: list[dict]
+    items: list[dict]
+    total: int
+    offset: int
+    limit: int
+    governance: dict
+
+
 # --- Endpoints ---
 
 @router.get("/hierarchy-profile")
@@ -180,6 +196,211 @@ def geography_hierarchy_profile():
             'offline_cache_key': 'country_code:IN/geography_profile:v1',
         },
     }
+
+
+
+@router.get(
+    "/core-lgd-mapping-review",
+    response_model=CoreLgdMappingReviewResponse,
+)
+def core_lgd_mapping_review(
+    state_lgd_code: Optional[str] = Query(None, description="Optional state LGD code filter"),
+    district_lgd_code: Optional[str] = Query(None, description="Optional district LGD code filter"),
+    region_system: Optional[str] = Query(None, description="Optional CoRE region system filter"),
+    promotion_decision: Optional[str] = Query(None, description="Optional review decision bucket filter"),
+    search: Optional[str] = Query(None, min_length=2, description="Optional district/state/region search"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Read-only admin report for inactive CoRE/LGD polygon-derived mapping candidates."""
+    base_sql = """
+        with fallback as (
+          select
+            m.state_lgd_code,
+            m.district_lgd_code,
+            count(*) as active_fallback_count,
+            string_agg(m.region_code, ' | ' order by m.region_code) as active_fallback_region_codes,
+            string_agg(coalesce(r.region_name, m.region_code), ' | ' order by m.region_code) as active_fallback_region_names,
+            string_agg(coalesce(r.region_system, 'UNKNOWN'), ' | ' order by m.region_code) as active_fallback_region_systems,
+            string_agg(m.confidence, ' | ' order by m.region_code) as active_fallback_confidences
+          from geography_climate_region_mappings m
+          left join geography_climate_regions r on r.id = m.region_id
+          where m.is_active is true
+            and m.confidence in ('LOCAL_DEMO_DISTRICT_FALLBACK', 'LOCAL_DEMO_SEED')
+          group by m.state_lgd_code, m.district_lgd_code
+        ),
+        poly as (
+          select
+            m.id as poly_mapping_id,
+            m.region_id as poly_region_id,
+            m.state_lgd_code,
+            m.district_lgd_code,
+            m.region_code as poly_region_code,
+            m.confidence as poly_confidence,
+            m.review_status as poly_review_status,
+            m.is_active as poly_is_active,
+            r.region_name as poly_region_name,
+            r.region_system as poly_region_system,
+            m.metadata ->> 'state_name' as state_name,
+            m.metadata ->> 'district_name' as district_name,
+            m.metadata ->> 'region_class_name' as poly_region_class_name,
+            m.metadata ->> 'region_class_code' as poly_region_class_code,
+            nullif(m.metadata ->> 'overlap_percent_of_district', '')::numeric as overlap_percent_of_district,
+            m.metadata ->> 'crosswalk_category' as crosswalk_category,
+            coalesce(nullif(m.metadata ->> 'low_overlap_bucket', ''), 'NOT_LOW_OVERLAP') as low_overlap_bucket
+          from geography_climate_region_mappings m
+          left join geography_climate_regions r on r.id = m.region_id
+          where m.confidence = 'POLY_REV'
+            and m.review_status = 'MANUAL_REVIEW'
+            and m.is_active is false
+        ),
+        reviewed as (
+          select
+            poly.*,
+            fallback.active_fallback_count,
+            fallback.active_fallback_region_codes,
+            fallback.active_fallback_region_names,
+            fallback.active_fallback_region_systems,
+            fallback.active_fallback_confidences,
+            case
+              when coalesce(poly.low_overlap_bucket, 'NOT_LOW_OVERLAP') in ('SOURCE_VERSION_DRIFT', 'SOURCE_VERSION_CONFLICT')
+                then 'BLOCKED_SOURCE_VERSION'
+              when coalesce(poly.crosswalk_category, '') in ('BHARATLAS_ONLY', 'STATE_CODE_MISMATCH', 'UNSET')
+                then 'BLOCKED_CROSSWALK'
+              when coalesce(poly.low_overlap_bucket, 'NOT_LOW_OVERLAP') <> 'NOT_LOW_OVERLAP'
+                then 'MANUAL_REVIEW_LOW_OVERLAP'
+              when poly.overlap_percent_of_district < 80
+                then 'MANUAL_REVIEW_LOW_OVERLAP'
+              when poly.state_lgd_code in ('29', '27', '3') and fallback.active_fallback_count is not null
+                then 'PILOT_REVIEW_REPLACES_FALLBACK'
+              when poly.state_lgd_code in ('29', '27', '3')
+                then 'PILOT_REVIEW_NEW_MAPPING'
+              when fallback.active_fallback_count is not null
+                then 'GENERAL_REVIEW_REPLACES_FALLBACK'
+              else 'GENERAL_REVIEW_NEW_MAPPING'
+            end as promotion_decision
+          from poly
+          left join fallback
+            on fallback.state_lgd_code is not distinct from poly.state_lgd_code
+           and fallback.district_lgd_code is not distinct from poly.district_lgd_code
+        )
+    """
+
+    where_clauses = []
+    params = {"offset": offset, "limit": limit}
+    if state_lgd_code:
+        where_clauses.append("state_lgd_code = :state_lgd_code")
+        params["state_lgd_code"] = state_lgd_code.strip()
+    if district_lgd_code:
+        where_clauses.append("district_lgd_code = :district_lgd_code")
+        params["district_lgd_code"] = district_lgd_code.strip()
+    if region_system:
+        where_clauses.append("poly_region_system = :region_system")
+        params["region_system"] = region_system.strip()
+    if promotion_decision:
+        where_clauses.append("promotion_decision = :promotion_decision")
+        params["promotion_decision"] = promotion_decision.strip()
+    if search:
+        where_clauses.append("(district_name ilike :search or state_name ilike :search or poly_region_name ilike :search or poly_region_code ilike :search)")
+        params["search"] = f"%{search.strip()}%"
+
+    where_sql = f"where {' and '.join(where_clauses)}" if where_clauses else ""
+
+    items = db.execute(text(f"""
+        {base_sql}
+        select
+          poly_mapping_id::text,
+          poly_region_id::text,
+          state_lgd_code,
+          state_name,
+          district_lgd_code,
+          district_name,
+          poly_region_system,
+          poly_region_code,
+          poly_region_name,
+          poly_region_class_code,
+          poly_region_class_name,
+          overlap_percent_of_district,
+          crosswalk_category,
+          low_overlap_bucket,
+          active_fallback_count,
+          active_fallback_region_codes,
+          active_fallback_region_names,
+          active_fallback_region_systems,
+          active_fallback_confidences,
+          promotion_decision
+        from reviewed
+        {where_sql}
+        order by state_lgd_code, district_lgd_code, poly_region_system, poly_region_code
+        offset :offset
+        limit :limit
+    """), params).mappings().all()
+
+    total = db.execute(text(f"{base_sql} select count(*) from reviewed {where_sql}"), params).scalar_one()
+
+    decision_counts = db.execute(text(f"""
+        {base_sql}
+        select promotion_decision, count(*) as count
+        from reviewed
+        {where_sql}
+        group by promotion_decision
+        order by promotion_decision
+    """), params).mappings().all()
+
+    state_counts = db.execute(text(f"""
+        {base_sql}
+        select state_lgd_code, state_name, count(*) as count
+        from reviewed
+        {where_sql}
+        group by state_lgd_code, state_name
+        order by state_lgd_code
+    """), params).mappings().all()
+
+    region_system_counts = db.execute(text(f"""
+        {base_sql}
+        select poly_region_system as region_system, count(*) as count
+        from reviewed
+        {where_sql}
+        group by poly_region_system
+        order by poly_region_system
+    """), params).mappings().all()
+
+    return {
+        "schema_version": "core_lgd_mapping_review_admin.v1",
+        "mode": "READ_ONLY_ADMIN_REVIEW",
+        "filters": {
+            "state_lgd_code": state_lgd_code,
+            "district_lgd_code": district_lgd_code,
+            "region_system": region_system,
+            "promotion_decision": promotion_decision,
+            "search": search,
+        },
+        "summary": {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "land_intelligence_behavior_changed": False,
+            "source_confidence": "POLY_REV",
+            "source_rows_active": False,
+        },
+        "decision_counts": [dict(row) for row in decision_counts],
+        "state_counts": [dict(row) for row in state_counts],
+        "region_system_counts": [dict(row) for row in region_system_counts],
+        "items": [dict(row) for row in items],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "governance": {
+            "read_only": True,
+            "promotion_supported": False,
+            "promotion_requires_separate_review_workflow": True,
+            "android_maestro_required": False,
+        },
+    }
+
+
 
 
 @router.get("/states", response_model=list[StateResponse])
