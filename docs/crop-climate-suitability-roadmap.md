@@ -595,3 +595,14 @@ Current boundary source policy is tracked in:
     docs/core-lgd-boundary-source-policy.md
 
 Summary: backend LGD master is canonical for district/state identity; BharatAtlas remains the current operational LGD-keyed geometry source for CoRE overlay review; Survey of India ABDB is official geometry reference but the current extracted district shapefile's populated `DIST_LGD` values are not safe for direct backend joins.
+
+
+## CoRE/LGD manual-review candidate import
+
+The guarded importer and verifier are tracked in:
+
+    backend/scripts/import_core_lgd_manual_review_mappings.py
+    backend/scripts/verify_core_lgd_manual_review_mappings.py
+    docs/core-lgd-manual-review-mapping-import.md
+
+Latest local result: 2,298 polygon-derived district/region candidates were imported as inactive `MANUAL_REVIEW` rows with `confidence=POLY_REV`. Existing fallback mappings remain active. These rows are not effective in land intelligence until a separate review/promotion workflow is implemented.
