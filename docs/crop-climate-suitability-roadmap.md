@@ -586,3 +586,12 @@ SOI ABDB district attribute alignment is tracked in:
     docs/soi-district-name-code-alignment-review.md
 
 Latest local result: SOI remains a preferred official geometry reference source, but the current extracted district shapefile's `DIST_LGD` attribute is not safe as a direct backend LGD key. Only 2 rows matched backend by both name and code, while 565 rows had a code that points to a different backend district. For the current CoRE overlay pipeline, BharatAtlas remains the preferred operational LGD-keyed geometry source until a reliable SOI crosswalk is created.
+
+
+## Boundary source policy
+
+Current boundary source policy is tracked in:
+
+    docs/core-lgd-boundary-source-policy.md
+
+Summary: backend LGD master is canonical for district/state identity; BharatAtlas remains the current operational LGD-keyed geometry source for CoRE overlay review; Survey of India ABDB is official geometry reference but the current extracted district shapefile's populated `DIST_LGD` values are not safe for direct backend joins.
