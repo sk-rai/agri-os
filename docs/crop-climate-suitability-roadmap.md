@@ -536,3 +536,13 @@ Equal-area comparison is tracked in:
     docs/core-lgd-overlay-equal-area-review.md
 
 Latest local result: equal-area reprojection changed 0 of 2,355 dominant district/region candidates. The low-overlap count remains 68 rows below 60%, so those rows should be treated as genuine manual-review cases rather than projection artifacts. DB import remains blocked on duplicate district-code review, low-overlap manual review, and MANUAL_REVIEW importer/precedence design.
+
+
+## BharatAtlas/backend LGD district crosswalk
+
+Backend/BharatAtlas district crosswalk review is tracked in:
+
+    backend/scripts/audit_bharatlas_backend_lgd_district_crosswalk.py
+    docs/bharatlas-backend-lgd-district-crosswalk-review.md
+
+Latest local result: 716 exact LGD district matches, 50 matched name variants, 1 state-code mismatch for district LGD `766`, 16 BharatAtlas-only rows, 11 backend-only rows, and no duplicate LGD district codes. BharatAtlas remains suitable for dry-run/manual-review overlay work, but not automatic DB import. Existing fallback mappings should remain active until polygon-derived mappings are reviewed and intentionally promoted.
