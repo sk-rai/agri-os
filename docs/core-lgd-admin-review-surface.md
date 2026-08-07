@@ -80,3 +80,22 @@ Promotion/activation must be implemented as a separate explicit review workflow 
 No Android Maestro flow is required for this read-only admin surface.
 
 Android land-intelligence behavior remains unchanged because `POLY_REV` rows are inactive.
+
+
+## Review decision workflow
+
+The admin surface supports review decisions for inactive `POLY_REV` rows:
+
+- `APPROVED_FOR_PROMOTION`
+- `REJECTED`
+- `MANUAL_REVIEW`
+
+Endpoint:
+
+    PATCH /api/v1/master-data/geography/core-lgd-mapping-review/{mapping_id}/review
+
+Permission:
+
+    Admin EDIT
+
+This endpoint updates review metadata/status only. It never activates a mapping row and does not change land-intelligence behavior. Approved rows require a later explicit promotion workflow.

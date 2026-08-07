@@ -8,13 +8,15 @@ GET /api/v1/master-data/geography/villages?district_id=  (district-wide, for off
 GET /api/v1/master-data/geography/villages/search?q=&district_id=  (fuzzy, optionally scoped)
 """
 
+import json
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, Field, Field
 
 from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
@@ -150,6 +152,11 @@ class CoreLgdMappingReviewResponse(BaseModel):
     governance: dict
 
 
+class CoreLgdMappingReviewDecisionRequest(BaseModel):
+    review_status: str = Field(..., pattern="^(MANUAL_REVIEW|APPROVED_FOR_PROMOTION|REJECTED)$")
+    review_notes: str = Field(..., min_length=3, max_length=1000)
+
+
 # --- Endpoints ---
 
 @router.get("/hierarchy-profile")
@@ -208,6 +215,7 @@ def core_lgd_mapping_review(
     district_lgd_code: Optional[str] = Query(None, description="Optional district LGD code filter"),
     region_system: Optional[str] = Query(None, description="Optional CoRE region system filter"),
     promotion_decision: Optional[str] = Query(None, description="Optional review decision bucket filter"),
+    review_status: Optional[str] = Query(None, description="Optional candidate review status filter"),
     search: Optional[str] = Query(None, min_length=2, description="Optional district/state/region search"),
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -253,7 +261,6 @@ def core_lgd_mapping_review(
           from geography_climate_region_mappings m
           left join geography_climate_regions r on r.id = m.region_id
           where m.confidence = 'POLY_REV'
-            and m.review_status = 'MANUAL_REVIEW'
             and m.is_active is false
         ),
         reviewed as (
@@ -302,6 +309,9 @@ def core_lgd_mapping_review(
     if promotion_decision:
         where_clauses.append("promotion_decision = :promotion_decision")
         params["promotion_decision"] = promotion_decision.strip()
+    if review_status:
+        where_clauses.append("poly_review_status = :review_status")
+        params["review_status"] = review_status.strip()
     if search:
         where_clauses.append("(district_name ilike :search or state_name ilike :search or poly_region_name ilike :search or poly_region_code ilike :search)")
         params["search"] = f"%{search.strip()}%"
@@ -320,6 +330,7 @@ def core_lgd_mapping_review(
           poly_region_system,
           poly_region_code,
           poly_region_name,
+          poly_review_status,
           poly_region_class_code,
           poly_region_class_name,
           overlap_percent_of_district,
@@ -375,6 +386,7 @@ def core_lgd_mapping_review(
             "district_lgd_code": district_lgd_code,
             "region_system": region_system,
             "promotion_decision": promotion_decision,
+            "review_status": review_status,
             "search": search,
         },
         "summary": {
@@ -400,6 +412,94 @@ def core_lgd_mapping_review(
         },
     }
 
+
+
+
+
+
+@router.patch("/core-lgd-mapping-review/{mapping_id}/review")
+def update_core_lgd_mapping_review_decision(
+    mapping_id: UUID,
+    payload: CoreLgdMappingReviewDecisionRequest,
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Set review decision for an inactive POLY_REV candidate without activation."""
+    row = db.execute(text("""
+        select
+          id::text,
+          region_code,
+          state_lgd_code,
+          district_lgd_code,
+          review_status,
+          is_active,
+          confidence,
+          metadata
+        from geography_climate_region_mappings
+        where id = :mapping_id
+          and confidence = 'POLY_REV'
+    """), {"mapping_id": str(mapping_id)}).mappings().first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="POLY_REV mapping candidate not found")
+
+    if row["is_active"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ACTIVE_MAPPING_NOT_REVIEW_EDITABLE",
+                "message": "Active mappings cannot be changed through the review-decision endpoint.",
+            },
+        )
+
+    previous_status = row["review_status"]
+    metadata = dict(row["metadata"] or {})
+    history = list(metadata.get("review_decision_history") or [])
+    event = {
+        "changed_at": datetime.now(timezone.utc).isoformat(),
+        "changed_by": str(principal.user_id),
+        "from_status": previous_status,
+        "to_status": payload.review_status,
+        "review_notes": payload.review_notes,
+        "action": "REVIEW_DECISION_ONLY_NO_ACTIVATION",
+    }
+    history.append(event)
+    metadata["review_decision_history"] = history
+    metadata["latest_review_decision"] = event
+    metadata["promotion_guardrail"] = {
+        "is_active_remains_false": True,
+        "land_intelligence_behavior_changed": False,
+        "activation_requires_separate_workflow": True,
+    }
+
+    db.execute(text("""
+        update geography_climate_region_mappings
+        set
+          review_status = :review_status,
+          metadata = cast(:metadata as jsonb),
+          updated_at = :updated_at
+        where id = :mapping_id
+          and confidence = 'POLY_REV'
+          and is_active is false
+    """), {
+        "mapping_id": str(mapping_id),
+        "review_status": payload.review_status,
+        "metadata": json.dumps(metadata),
+        "updated_at": datetime.now(timezone.utc),
+    })
+    db.commit()
+
+    return {
+        "schema_version": "core_lgd_mapping_review_decision.v1",
+        "mapping_id": str(mapping_id),
+        "previous_review_status": previous_status,
+        "review_status": payload.review_status,
+        "is_active": False,
+        "land_intelligence_behavior_changed": False,
+        "promotion_supported": False,
+        "activation_requires_separate_workflow": True,
+        "latest_review_decision": event,
+    }
 
 
 

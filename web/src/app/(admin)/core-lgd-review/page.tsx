@@ -24,6 +24,7 @@ type ReviewRow = {
   active_fallback_region_systems?: string | null;
   active_fallback_confidences?: string | null;
   promotion_decision: string;
+  poly_review_status: string;
 };
 
 type ReviewResponse = {
@@ -63,6 +64,10 @@ const DECISIONS = [
   "BLOCKED_SOURCE_VERSION",
 ];
 
+const REVIEW_STATUSES = ["", "MANUAL_REVIEW", "APPROVED_FOR_PROMOTION", "REJECTED"];
+
+
+
 const REGION_SYSTEMS = [
   "",
   "CORE_STACK_AGRO_CLIMATIC_ZONE",
@@ -101,6 +106,8 @@ export default function CoreLgdReviewPage() {
   const [regionSystem, setRegionSystem] = useState("");
   const [decision, setDecision] = useState("PILOT_REVIEW_REPLACES_FALLBACK");
   const [search, setSearch] = useState("");
+  const [reviewStatus, setReviewStatus] = useState("MANUAL_REVIEW");
+  const [message, setMessage] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
 
   const limit = 100;
@@ -111,9 +118,10 @@ export default function CoreLgdReviewPage() {
     if (districtCode.trim()) params.set("district_lgd_code", districtCode.trim());
     if (regionSystem) params.set("region_system", regionSystem);
     if (decision) params.set("promotion_decision", decision);
+    if (reviewStatus) params.set("review_status", reviewStatus);
     if (search.trim()) params.set("search", search.trim());
     return `/api/v1/master-data/geography/core-lgd-mapping-review?${params.toString()}`;
-  }, [decision, districtCode, offset, regionSystem, search, stateCode]);
+  }, [decision, districtCode, offset, regionSystem, reviewStatus, search, stateCode]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,6 +143,25 @@ export default function CoreLgdReviewPage() {
     void load();
   }
 
+  async function setRowReviewStatus(row: ReviewRow, status: "APPROVED_FOR_PROMOTION" | "REJECTED" | "MANUAL_REVIEW") {
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/api/v1/master-data/geography/core-lgd-mapping-review/${row.poly_mapping_id}/review`, {
+        method: "PATCH",
+        body: {
+          review_status: status,
+          review_notes: `Admin review decision from CoRE LGD review UI: ${status}`,
+        },
+      });
+      setMessage(`Updated ${row.district_name} / ${row.poly_region_system} to ${status}. No mapping was activated.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update review decision");
+    }
+  }
+
+
   const canPrev = offset > 0;
   const canNext = data ? offset + limit < data.total : false;
 
@@ -150,6 +177,7 @@ export default function CoreLgdReviewPage() {
       </div>
 
       {error ? <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+      {message ? <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700">{message}</div> : null}
 
       <section className="grid gap-4 md:grid-cols-4">
         <Card label="Rows matching filters" value={data?.total ?? "—"} />
@@ -183,12 +211,18 @@ export default function CoreLgdReviewPage() {
             </select>
           </label>
           <label className="space-y-1 text-xs text-gray-500">
+            Review status
+            <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value)} className="w-full rounded border p-2 text-sm text-gray-900">
+              {REVIEW_STATUSES.map((item) => <option key={item} value={item}>{item || "All statuses"}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-gray-500">
             Search
             <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded border p-2 text-sm text-gray-900" placeholder="District / region" />
           </label>
           <div className="flex items-end gap-2">
             <button disabled={loading} className="rounded bg-green-700 px-4 py-2 text-sm text-white disabled:opacity-50">{loading ? "Loading…" : "Apply"}</button>
-            <button type="button" onClick={() => { setStateCode(""); setDistrictCode(""); setRegionSystem(""); setDecision(""); setSearch(""); setOffset(0); }} className="rounded border px-4 py-2 text-sm">Clear</button>
+            <button type="button" onClick={() => { setStateCode(""); setDistrictCode(""); setRegionSystem(""); setDecision(""); setReviewStatus(""); setSearch(""); setOffset(0); }} className="rounded border px-4 py-2 text-sm">Clear</button>
           </div>
         </div>
       </form>
@@ -235,6 +269,7 @@ export default function CoreLgdReviewPage() {
                 <th className="p-3">Overlap</th>
                 <th className="p-3">Fallback</th>
                 <th className="p-3">Source flags</th>
+                <th className="p-3">Review action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -261,16 +296,45 @@ export default function CoreLgdReviewPage() {
                     <div className="mt-1 font-mono text-[11px] text-gray-400">{row.active_fallback_region_codes || ""}</div>
                   </td>
                   <td className="p-3">
+                    <div>Status: {row.poly_review_status || "—"}</div>
                     <div>Crosswalk: {row.crosswalk_category || "—"}</div>
                     <div>Overlap bucket: {row.low_overlap_bucket || "—"}</div>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void setRowReviewStatus(row, "APPROVED_FOR_PROMOTION")}
+                        disabled={row.poly_review_status === "APPROVED_FOR_PROMOTION"}
+                        className="rounded bg-green-700 px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                      >
+                        Approve for promotion
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void setRowReviewStatus(row, "REJECTED")}
+                        disabled={row.poly_review_status === "REJECTED"}
+                        className="rounded border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 disabled:opacity-40"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void setRowReviewStatus(row, "MANUAL_REVIEW")}
+                        disabled={row.poly_review_status === "MANUAL_REVIEW"}
+                        className="rounded border px-3 py-1 text-xs font-semibold text-gray-700 disabled:opacity-40"
+                      >
+                        Return to review
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {!loading && data?.items.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-400">No review rows match these filters.</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-400">No review rows match these filters.</td></tr>
               ) : null}
               {loading ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-400">Loading review rows…</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-400">Loading review rows…</td></tr>
               ) : null}
             </tbody>
           </table>

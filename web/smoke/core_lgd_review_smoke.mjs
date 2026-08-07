@@ -32,7 +32,8 @@ await page.getByRole("heading", { name: "CoRE / LGD Mapping Review" }).waitFor({
 await page.getByText("This surface is read-only").waitFor({ timeout: 15000 });
 await page.getByText("POLY_REV").waitFor({ timeout: 15000 });
 await page.getByText("Behavior changed").waitFor({ timeout: 15000 });
-await page.getByText("Review rows").waitFor({ timeout: 15000 });
+await page.getByRole("heading", { name: "Review rows" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Approve for promotion" }).first().waitFor({ timeout: 15000 });
 await page.waitForFunction(() => {
   const text = document.body.innerText;
   return text.includes("PILOT_REVIEW_REPLACES_FALLBACK")

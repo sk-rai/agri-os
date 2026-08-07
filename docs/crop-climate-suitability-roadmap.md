@@ -639,3 +639,8 @@ The read-only admin review surface is tracked in:
     docs/core-lgd-admin-review-surface.md
 
 The screen lets admins filter and inspect inactive `POLY_REV` candidates beside active fallback mappings. It is intentionally read-only and does not change land-intelligence behavior.
+
+
+## CoRE/LGD review decision workflow
+
+Admins can record review decisions on inactive `POLY_REV` candidates from the CoRE/LGD review page. The PATCH endpoint requires Admin EDIT and supports `APPROVED_FOR_PROMOTION`, `REJECTED`, and `MANUAL_REVIEW`. This is not activation: `is_active` remains false and land-intelligence behavior is unchanged.

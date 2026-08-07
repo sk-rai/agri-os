@@ -62,13 +62,13 @@ def main() -> int:
         )
         check(denied.status_code in {401, 403}, "Unauthenticated/non-admin request is denied", denied.text[:500])
 
-        admin, headers = create_test_admin(db, role="ADMIN_VIEWER", tenant_id="default")
+        admin, headers = create_test_admin(db, role="ADMIN_EDITOR", tenant_id="default")
         response = client.get(
             "/api/v1/master-data/geography/core-lgd-mapping-review"
             "?state_lgd_code=29&promotion_decision=PILOT_REVIEW_REPLACES_FALLBACK&limit=5",
             headers=headers,
         )
-        check(response.status_code == 200, "Admin viewer can read endpoint", response.text[:800])
+        check(response.status_code == 200, "Admin editor can read endpoint", response.text[:800])
 
         data = response.json()
         check(data["schema_version"] == "core_lgd_mapping_review_admin.v1", "Schema version is stable", data["schema_version"])
@@ -83,6 +83,40 @@ def main() -> int:
         check(first["promotion_decision"] == "PILOT_REVIEW_REPLACES_FALLBACK", "Item has expected decision", first)
         check(first["state_lgd_code"] == "29", "Item is Karnataka by filter", first)
         check(first["active_fallback_count"] >= 1, "Item includes active fallback comparison", first)
+
+
+        target_id = first["poly_mapping_id"]
+        patch_response = client.patch(
+            f"/api/v1/master-data/geography/core-lgd-mapping-review/{target_id}/review",
+            headers=headers,
+            json={
+                "review_status": "APPROVED_FOR_PROMOTION",
+                "review_notes": "Regression approves candidate for later promotion without activation.",
+            },
+        )
+        check(patch_response.status_code == 200, "PATCH review decision endpoint updates status without activation", patch_response.text[:800])
+        patch_data = patch_response.json()
+        check(patch_data["review_status"] == "APPROVED_FOR_PROMOTION", "Review status becomes APPROVED_FOR_PROMOTION", patch_data)
+        check(patch_data["is_active"] is False, "Review decision does not activate row", patch_data)
+        check(patch_data["land_intelligence_behavior_changed"] is False, "Review decision does not change behavior", patch_data)
+
+        approved_response = client.get(
+            f"/api/v1/master-data/geography/core-lgd-mapping-review?review_status=APPROVED_FOR_PROMOTION&district_lgd_code={first['district_lgd_code']}&limit=20",
+            headers=headers,
+        )
+        check(approved_response.status_code == 200, "Approved status can be filtered", approved_response.text[:800])
+        approved_rows = approved_response.json()["items"]
+        check(any(row["poly_mapping_id"] == target_id for row in approved_rows), "Approved row appears in approved filter", approved_rows[:3])
+
+        reset_response = client.patch(
+            f"/api/v1/master-data/geography/core-lgd-mapping-review/{target_id}/review",
+            headers=headers,
+            json={
+                "review_status": "MANUAL_REVIEW",
+                "review_notes": "Regression resets candidate to manual review for repeatability.",
+            },
+        )
+        check(reset_response.status_code == 200, "Review status can be reset for repeatability", reset_response.text[:800])
 
         after = poly_rev_summary(db)
         check(after["total"] == before["total"], "Endpoint did not create/delete POLY_REV rows", dict(after))

@@ -62,3 +62,6 @@ After importing CoRE Stack class metadata, the next climate/geography step is po
 
 Provider credentials and product-source verification remain important, but they can proceed separately from this climate metadata path.
 
+
+
+- CoRE/LGD review decision workflow added: admins can mark inactive `POLY_REV` candidates as `APPROVED_FOR_PROMOTION`, `REJECTED`, or `MANUAL_REVIEW`. This does not activate rows or change land-intelligence behavior.
