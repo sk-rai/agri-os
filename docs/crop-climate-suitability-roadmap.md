@@ -546,3 +546,13 @@ Backend/BharatAtlas district crosswalk review is tracked in:
     docs/bharatlas-backend-lgd-district-crosswalk-review.md
 
 Latest local result: 716 exact LGD district matches, 50 matched name variants, 1 state-code mismatch for district LGD `766`, 16 BharatAtlas-only rows, 11 backend-only rows, and no duplicate LGD district codes. BharatAtlas remains suitable for dry-run/manual-review overlay work, but not automatic DB import. Existing fallback mappings should remain active until polygon-derived mappings are reviewed and intentionally promoted.
+
+
+## CoRE/LGD low-overlap review
+
+Low-overlap overlay review is tracked in:
+
+    backend/scripts/review_core_lgd_low_overlap_rows.py
+    docs/core-lgd-low-overlap-review.md
+
+Latest local result: 68 low-overlap rows below 60% were bucketed into 38 ecological/climatic transition-zone rows, 19 manual-review rows, 9 coastal/island geometry rows, and 2 source-version drift rows. These rows are ready for manual review but not automatic DB import. Existing fallback mappings should remain active until reviewed polygon-derived mappings are intentionally promoted.
