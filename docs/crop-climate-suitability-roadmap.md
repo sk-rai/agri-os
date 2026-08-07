@@ -566,3 +566,13 @@ Manual-review import planning is tracked in:
     docs/core-lgd-manual-review-import-plan.md
 
 Latest local result: 2,298 of 2,355 polygon-derived district/region candidates would be staged as inactive `MANUAL_REVIEW` rows. 57 rows would be excluded for LGD/source-version issues. The plan preserves existing fallback mappings and keeps polygon-derived rows ineffective in `land-intelligence-context` until reviewed and intentionally promoted.
+
+
+## Survey of India ABDB boundary source validation
+
+Survey of India boundary source validation is tracked in:
+
+    backend/scripts/validate_survey_of_india_boundary_source.py
+    docs/survey-of-india-boundary-source-review.md
+
+Latest local result: SOI ABDB metadata and state/district/subdistrict shapefiles are staged locally. The district layer has 808 records and includes `STATE_LGD` / `DIST_LGD` fields. Metadata identifies the district dataset as `SOI/ABDB/VECTOR/50000/2025/DISTRICT/INDIA`, published 2026-05-06 at 1:50,000 scale. SOI is acceptable as preferred official geometry source for review, but not automatic import because the district layer includes 31 invalid/blank/not-available district LGD rows and 28 invalid/blank/not-available state LGD rows.
