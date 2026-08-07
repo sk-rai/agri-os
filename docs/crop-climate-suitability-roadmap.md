@@ -556,3 +556,13 @@ Low-overlap overlay review is tracked in:
     docs/core-lgd-low-overlap-review.md
 
 Latest local result: 68 low-overlap rows below 60% were bucketed into 38 ecological/climatic transition-zone rows, 19 manual-review rows, 9 coastal/island geometry rows, and 2 source-version drift rows. These rows are ready for manual review but not automatic DB import. Existing fallback mappings should remain active until reviewed polygon-derived mappings are intentionally promoted.
+
+
+## CoRE/LGD manual-review import plan
+
+Manual-review import planning is tracked in:
+
+    backend/scripts/plan_core_lgd_manual_review_import.py
+    docs/core-lgd-manual-review-import-plan.md
+
+Latest local result: 2,298 of 2,355 polygon-derived district/region candidates would be staged as inactive `MANUAL_REVIEW` rows. 57 rows would be excluded for LGD/source-version issues. The plan preserves existing fallback mappings and keeps polygon-derived rows ineffective in `land-intelligence-context` until reviewed and intentionally promoted.
