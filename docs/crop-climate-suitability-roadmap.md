@@ -576,3 +576,13 @@ Survey of India boundary source validation is tracked in:
     docs/survey-of-india-boundary-source-review.md
 
 Latest local result: SOI ABDB metadata and state/district/subdistrict shapefiles are staged locally. The district layer has 808 records and includes `STATE_LGD` / `DIST_LGD` fields. Metadata identifies the district dataset as `SOI/ABDB/VECTOR/50000/2025/DISTRICT/INDIA`, published 2026-05-06 at 1:50,000 scale. SOI is acceptable as preferred official geometry source for review, but not automatic import because the district layer includes 31 invalid/blank/not-available district LGD rows and 28 invalid/blank/not-available state LGD rows.
+
+
+## Survey of India district name/code alignment
+
+SOI ABDB district attribute alignment is tracked in:
+
+    backend/scripts/audit_soi_district_name_code_alignment.py
+    docs/soi-district-name-code-alignment-review.md
+
+Latest local result: SOI remains a preferred official geometry reference source, but the current extracted district shapefile's `DIST_LGD` attribute is not safe as a direct backend LGD key. Only 2 rows matched backend by both name and code, while 565 rows had a code that points to a different backend district. For the current CoRE overlay pipeline, BharatAtlas remains the preferred operational LGD-keyed geometry source until a reliable SOI crosswalk is created.
