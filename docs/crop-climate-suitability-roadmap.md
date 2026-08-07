@@ -616,3 +616,13 @@ Promotion review planning is tracked in:
     docs/core-lgd-mapping-promotion-review-plan.md
 
 Latest local result: 2,298 inactive `POLY_REV` candidate rows were classified for promotion review. 236 pilot rows in Karnataka, Maharashtra, and Punjab are high-overlap candidates that would replace active fallback rows only after explicit promotion. 181 rows remain low-overlap manual review. No row is automatically activated.
+
+
+## CoRE/LGD pilot mapping review report
+
+Pilot review reporting is tracked in:
+
+    backend/scripts/report_core_lgd_pilot_mapping_review.py
+    docs/core-lgd-pilot-mapping-review-report.md
+
+Latest local result: Karnataka, Maharashtra, and Punjab have 267 pilot-state polygon rows across 89 districts and 3 CoRE region systems. All 267 rows have active fallback mappings available for side-by-side review. The report is read-only and does not affect land-intelligence behavior.
