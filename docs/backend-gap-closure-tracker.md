@@ -68,3 +68,6 @@ Provider credentials and product-source verification remain important, but they 
 
 
 - CoRE/LGD approved activation planner added: read-only script reports `APPROVED_FOR_PROMOTION` candidates eligible for a future separate apply workflow. Baseline currently has zero approved rows.
+
+
+- Bagalkote CoRE/LGD activation pilot promoted: 3 `POLY_APPR` active mappings now replace the previous starter fallback for Karnataka district LGD 524. Verification passed.

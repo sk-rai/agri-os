@@ -116,3 +116,24 @@ Current expected baseline after regression reset:
 - DB writes: false
 
 A later apply workflow must be explicit and must run verifier/Android smoke coverage because activation changes land-intelligence behavior.
+
+
+## Bagalkote activation pilot
+
+Bagalkote, Karnataka (`state_lgd_code=29`, `district_lgd_code=524`) has been promoted as the first CoRE/LGD activation pilot.
+
+Result:
+
+- activated rows: 3
+- active confidence: `POLY_APPR`
+- review status: `PROMOTED`
+- version: `clap_v1`
+- superseded active fallback rows: 1
+- land-intelligence mapping precision: `SOURCE_DERIVED`
+
+Scripts:
+
+    backend/scripts/apply_core_lgd_approved_mapping_activation.py
+    backend/scripts/verify_core_lgd_bagalkote_activation.py
+
+The apply script is district-scoped, dry-run by default, and requires explicit `--apply`.

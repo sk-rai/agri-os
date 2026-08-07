@@ -649,3 +649,8 @@ Admins can record review decisions on inactive `POLY_REV` candidates from the Co
 ## CoRE/LGD activation planning
 
 A read-only activation planner now checks inactive `POLY_REV` rows that have been explicitly marked `APPROVED_FOR_PROMOTION`. The current baseline has zero approved rows, so no mapping behavior is queued to change. Actual activation remains a separate guarded workflow.
+
+
+## Bagalkote CoRE/LGD activation pilot
+
+Bagalkote (`state_lgd_code=29`, `district_lgd_code=524`) is the first live district using promoted CoRE/LGD polygon-derived mappings. The previous starter fallback is inactive, and land intelligence now returns 3 source-derived CoRE region contexts for the district.
