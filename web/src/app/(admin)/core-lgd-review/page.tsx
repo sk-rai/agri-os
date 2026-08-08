@@ -101,6 +101,13 @@ const DECISIONS = [
 
 const REVIEW_STATUSES = ["", "MANUAL_REVIEW", "APPROVED_FOR_PROMOTION", "REJECTED"];
 
+const HELD_LOW_MARGIN_FILTER = {
+  stateCode: "29",
+  reviewStatus: "APPROVED_FOR_PROMOTION",
+  decision: "",
+  districtCodes: ["531", "535"],
+};
+
 
 
 const REGION_SYSTEMS = [
@@ -193,6 +200,24 @@ export default function CoreLgdReviewPage() {
     void load();
   }
 
+  function showHeldLowMargin() {
+    setStateCode(HELD_LOW_MARGIN_FILTER.stateCode);
+    setReviewStatus(HELD_LOW_MARGIN_FILTER.reviewStatus);
+    setDecision(HELD_LOW_MARGIN_FILTER.decision);
+    setDistrictCode("");
+    setRegionSystem("");
+    setSearch("");
+    setOffset(0);
+  }
+
+  function isHeldLowMargin(row: ReviewRow) {
+    return (
+      row.state_lgd_code === HELD_LOW_MARGIN_FILTER.stateCode &&
+      HELD_LOW_MARGIN_FILTER.districtCodes.includes(row.district_lgd_code) &&
+      row.poly_review_status === HELD_LOW_MARGIN_FILTER.reviewStatus
+    );
+  }
+
   async function setRowReviewStatus(row: ReviewRow, status: "APPROVED_FOR_PROMOTION" | "REJECTED" | "MANUAL_REVIEW") {
     setError(null);
     setMessage(null);
@@ -244,6 +269,15 @@ export default function CoreLgdReviewPage() {
       </section>
 
       <form onSubmit={applyFilters} className="rounded-lg border bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={showHeldLowMargin}
+            className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+          >
+            Held low-margin
+          </button>
+        </div>
         <div className="grid gap-3 md:grid-cols-6">
           <label className="space-y-1 text-xs text-gray-500">
             State
@@ -356,6 +390,11 @@ export default function CoreLgdReviewPage() {
                     <div>Status: {row.poly_review_status || "—"}</div>
                     <div>Crosswalk: {row.crosswalk_category || "—"}</div>
                     <div>Overlap bucket: {row.low_overlap_bucket || "—"}</div>
+                      {isHeldLowMargin(row) ? (
+                        <div className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">
+                          Low-margin hold
+                        </div>
+                      ) : null}
                   </td>
                   <td className="p-3">
                     <div className="flex flex-col gap-2">
