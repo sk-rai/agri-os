@@ -172,3 +172,23 @@ A second balanced pilot batch has been promoted after approval, dry-run, activat
 - Punjab: Sri Muktsar Sahib (`state_lgd_code=3`, `district_lgd_code=39`)
 
 Each promoted district has 3 active `POLY_APPR` mappings, one per CoRE region system, with review status `PROMOTED` and version `clap_v1`. Each previous starter fallback row is inactive with supersession metadata.
+
+### Clean 5-district activation batch — 2026-08-08
+
+A guarded clean batch was approved and activated after dry-run review:
+
+- Karnataka: Ballari (`29/528`), Bidar (`29/529`)
+- Maharashtra: Ahmednagar/Ahilyanagar (`27/466`), Akola (`27/467`)
+- Punjab: Amritsar (`3/27`)
+
+Resulting active CoRE/LGD coverage:
+
+- `POLY_APPR` active promoted rows: 36
+- active promoted districts: 12
+- Maharashtra: 4 districts / 12 rows
+- Karnataka: 5 districts / 15 rows
+- Punjab: 3 districts / 9 rows
+- inactive superseded `LOCAL_DEMO_DISTRICT_FALLBACK` rows: 12
+- active `LOCAL_DEMO_DISTRICT_FALLBACK` rows remaining: 174
+
+Activation was scoped district-by-district through the guarded backend workflow.

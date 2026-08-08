@@ -667,3 +667,5 @@ The live CoRE/LGD pilot now covers four districts total: Bagalkote plus Bengalur
 ## Second balanced CoRE/LGD pilot expansion
 
 The live CoRE/LGD pilot now covers seven districts total: Bagalkote, Bengaluru Urban, Beed, Malerkotla, Bengaluru Rural, Hingoli, and Sri Muktsar Sahib. These districts return source-derived CoRE region mappings instead of starter fallback mappings.
+
+- Activated a guarded clean 5-district CoRE/LGD batch after approval-only review and scoped dry-runs: Ballari, Bidar, Ahmednagar/Ahilyanagar, Akola, and Amritsar. Active promoted CoRE/LGD coverage now stands at 12 districts / 36 mapping rows.
