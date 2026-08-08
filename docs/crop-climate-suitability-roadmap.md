@@ -654,3 +654,7 @@ A read-only activation planner now checks inactive `POLY_REV` rows that have bee
 ## Bagalkote CoRE/LGD activation pilot
 
 Bagalkote (`state_lgd_code=29`, `district_lgd_code=524`) is the first live district using promoted CoRE/LGD polygon-derived mappings. The previous starter fallback is inactive, and land intelligence now returns 3 source-derived CoRE region contexts for the district.
+
+## CoRE/LGD next activation batch planning
+
+A reusable district verifier and read-only next-batch planner now support cautious expansion beyond Bagalkote. The planner recommends only high-overlap pilot-state districts with complete 3-system CoRE candidates and active fallbacks; approval and activation remain separate guarded steps.

@@ -137,3 +137,17 @@ Scripts:
     backend/scripts/verify_core_lgd_bagalkote_activation.py
 
 The apply script is district-scoped, dry-run by default, and requires explicit `--apply`.
+
+## Reusable activation verification and next-batch planning
+
+Activation verification is now district-scoped:
+
+    backend/scripts/verify_core_lgd_activation.py --state 29 --district 524 --district-name Bagalkote
+
+The next-batch planner recommends high-overlap pilot-state district groups that still have inactive `POLY_REV` rows in `MANUAL_REVIEW`, one candidate in each CoRE region system, and an active fallback to supersede:
+
+    backend/scripts/plan_core_lgd_next_activation_batch.py --limit 12
+    backend/scripts/plan_core_lgd_next_activation_batch.py --state 29 --limit 8
+    backend/scripts/plan_core_lgd_next_activation_batch.py --state 3 --limit 8
+
+The planner is read-only. Rows still require review approval before the district-scoped activation apply script can change behavior.

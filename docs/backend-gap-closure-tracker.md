@@ -71,3 +71,6 @@ Provider credentials and product-source verification remain important, but they 
 
 
 - Bagalkote CoRE/LGD activation pilot promoted: 3 `POLY_APPR` active mappings now replace the previous starter fallback for Karnataka district LGD 524. Verification passed.
+
+
+- CoRE/LGD reusable activation verifier and next-batch planner added: district-scoped verification now works beyond Bagalkote, and read-only planning recommends safe high-overlap pilot-state candidates before approval/apply.
