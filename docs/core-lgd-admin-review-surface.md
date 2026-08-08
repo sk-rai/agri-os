@@ -161,3 +161,14 @@ A balanced pilot batch has been promoted after approval, dry-run, and verifier c
 - Punjab: Malerkotla (`state_lgd_code=3`, `district_lgd_code=737`)
 
 Each promoted district has 3 active `POLY_APPR` mappings, one per CoRE region system, with review status `PROMOTED` and version `clap_v1`. Each previous starter fallback row is inactive with supersession metadata.
+
+
+## Second balanced three-district activation pilot
+
+A second balanced pilot batch has been promoted after approval, dry-run, activation, verifier checks, and land-intelligence response inspection:
+
+- Karnataka: Bengaluru Rural (`state_lgd_code=29`, `district_lgd_code=526`)
+- Maharashtra: Hingoli (`state_lgd_code=27`, `district_lgd_code=477`)
+- Punjab: Sri Muktsar Sahib (`state_lgd_code=3`, `district_lgd_code=39`)
+
+Each promoted district has 3 active `POLY_APPR` mappings, one per CoRE region system, with review status `PROMOTED` and version `clap_v1`. Each previous starter fallback row is inactive with supersession metadata.

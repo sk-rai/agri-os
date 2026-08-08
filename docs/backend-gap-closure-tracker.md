@@ -77,3 +77,6 @@ Provider credentials and product-source verification remain important, but they 
 
 
 - Balanced CoRE/LGD activation pilot promoted: Bengaluru Urban, Beed, and Malerkotla now use active `POLY_APPR` CoRE mappings across all 3 region systems. Verifiers passed.
+
+
+- Second balanced CoRE/LGD activation pilot promoted: Bengaluru Rural, Hingoli, and Sri Muktsar Sahib now use active `POLY_APPR` CoRE mappings across all 3 region systems. Verifiers and land-intelligence checks passed.

@@ -662,3 +662,8 @@ A reusable district verifier and read-only next-batch planner now support cautio
 ## Balanced CoRE/LGD pilot expansion
 
 The live CoRE/LGD pilot now covers four districts total: Bagalkote plus Bengaluru Urban, Beed, and Malerkotla. These districts return source-derived CoRE region mappings instead of starter fallback mappings.
+
+
+## Second balanced CoRE/LGD pilot expansion
+
+The live CoRE/LGD pilot now covers seven districts total: Bagalkote, Bengaluru Urban, Beed, Malerkotla, Bengaluru Rural, Hingoli, and Sri Muktsar Sahib. These districts return source-derived CoRE region mappings instead of starter fallback mappings.
