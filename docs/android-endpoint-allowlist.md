@@ -193,3 +193,15 @@ Android should not ship or maintain its own PIN-to-village database.
 ## Geography hierarchy profile
 
 - `GET /api/v1/master-data/geography/hierarchy-profile` — returns backend-owned geography cascade metadata. Android should render levels from this profile instead of hardcoding a fixed state/district/block/village structure, while India compatibility endpoints remain stable for MVP.
+## Multilingual backend-driven form labels
+
+Android should render profile forms and option sets from backend label maps using `labels[currentLanguageCode] ?: labels["en"]`. The next Android test pass should include Hindi plus Kannada, Marathi, and Punjabi contexts. Current backend readiness supports complete English fallback and Hindi label keys; Kannada/Marathi/Punjabi should be treated as fallback scenarios until native labels are added.
+
+Read-only audit:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/audit_android_multilingual_form_labels.py
+
+Scenario plan:
+
+    docs/android-multilingual-profile-form-test.md

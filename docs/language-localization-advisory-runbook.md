@@ -164,3 +164,14 @@ Android should not:
    - approved Hindi advisory;
    - missing-language fallback;
    - machine-translated draft not visible to farmer app.
+## Android multilingual form-label test extension
+
+The Android sync/emulator test matrix should also exercise backend-driven form labels under Hindi, Kannada, Marathi, and Punjabi language contexts. Current form/option label readiness is intentionally English-fallback-first: English and Hindi keys exist for audited form labels, while Kannada/Marathi/Punjabi should fall back to English until native labels are added and reviewed.
+
+Read-only audit:
+
+    backend/scripts/audit_android_multilingual_form_labels.py
+
+Detailed Android plan:
+
+    docs/android-multilingual-profile-form-test.md
