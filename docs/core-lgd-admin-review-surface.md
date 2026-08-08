@@ -214,3 +214,12 @@ Resulting active CoRE/LGD coverage:
 - active promoted districts: 20
 - inactive superseded `LOCAL_DEMO_DISTRICT_FALLBACK` rows: 20
 - active `LOCAL_DEMO_DISTRICT_FALLBACK` rows remaining: 166
+
+### Held low-margin Karnataka approvals — 2026-08-08
+
+Two approved Karnataka districts remain intentionally inactive pending manual/map review:
+
+- Chamarajanagar/Chamarajanagara (`29/531`) — minimum row overlap `82.1564%`, `MATCHED_NAME_VARIANT`
+- Davanagere/Davangere (`29/535`) — minimum row overlap `80.781%`, `MATCHED_NAME_VARIANT`
+
+Both remain eligible in the guarded activation dry-run, but active starter fallbacks are preserved until visual/manual review confirms the low-margin boundary classification.

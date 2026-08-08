@@ -84,3 +84,5 @@ Provider credentials and product-source verification remain important, but they 
 - Guarded clean CoRE/LGD activation batch completed for 5 more districts. Active promoted coverage is now 12 districts / 36 rows; active demo fallback rows reduced to 174.
 
 - Expanded active CoRE/LGD promoted coverage to 20 districts / 60 rows; retained Chamarajanagara and Davangere as approved-but-inactive low-margin review items.
+
+- Held two low-margin Karnataka approved candidates, Chamarajanagar and Davanagere, for manual/map review before activation.

@@ -671,3 +671,5 @@ The live CoRE/LGD pilot now covers seven districts total: Bagalkote, Bengaluru U
 - Activated a guarded clean 5-district CoRE/LGD batch after approval-only review and scoped dry-runs: Ballari, Bidar, Ahmednagar/Ahilyanagar, Akola, and Amritsar. Active promoted CoRE/LGD coverage now stands at 12 districts / 36 mapping rows.
 
 - Expanded guarded CoRE/LGD activation by 8 additional clean districts, reaching 20 active promoted districts / 60 mapping rows. Chamarajanagara and Davangere remain approved but inactive for low-margin review.
+
+- Held Chamarajanagar and Davanagere as approved-but-inactive CoRE/LGD candidates pending manual/map review because their minimum overlaps are close to the activation threshold.

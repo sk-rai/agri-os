@@ -13,6 +13,7 @@ if (!token || !actorId) {
 }
 
 const baseUrl = process.env.WEB_BASE_URL || "http://localhost:3000";
+const reviewUrl = process.env.WEB_CORE_LGD_REVIEW_URL || `${baseUrl}/core-lgd-review`;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const screenshotDir = path.join(scriptDir, "screenshots");
 await fs.mkdir(screenshotDir, { recursive: true });
@@ -26,7 +27,7 @@ await page.addInitScript(({ token, tenantId, actorId }) => {
   window.localStorage.setItem("agrios_user_id", actorId);
 }, { token, tenantId, actorId });
 
-await page.goto(`${baseUrl}/core-lgd-review`, { waitUntil: "networkidle" });
+await page.goto(reviewUrl, { waitUntil: "networkidle" });
 
 await page.getByRole("heading", { name: "CoRE / LGD Mapping Review" }).waitFor({ timeout: 15000 });
 await page.getByText("This surface is read-only").waitFor({ timeout: 15000 });
@@ -63,7 +64,7 @@ const rows = await page.locator("tbody tr").count();
 console.log(JSON.stringify({
   schema_version: "core_lgd_review_web_smoke.v1",
   status: "PASSED",
-  url: `${baseUrl}/core-lgd-review`,
+  url: reviewUrl,
   screenshot: path.join(screenshotDir, "core-lgd-review.png"),
   tenant_id: tenantId,
   rows_seen: rows,
