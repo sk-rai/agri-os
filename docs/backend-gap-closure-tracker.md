@@ -74,3 +74,6 @@ Provider credentials and product-source verification remain important, but they 
 
 
 - CoRE/LGD reusable activation verifier and next-batch planner added: district-scoped verification now works beyond Bagalkote, and read-only planning recommends safe high-overlap pilot-state candidates before approval/apply.
+
+
+- Balanced CoRE/LGD activation pilot promoted: Bengaluru Urban, Beed, and Malerkotla now use active `POLY_APPR` CoRE mappings across all 3 region systems. Verifiers passed.

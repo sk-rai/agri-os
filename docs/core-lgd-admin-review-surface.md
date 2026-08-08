@@ -151,3 +151,13 @@ The next-batch planner recommends high-overlap pilot-state district groups that 
     backend/scripts/plan_core_lgd_next_activation_batch.py --state 3 --limit 8
 
 The planner is read-only. Rows still require review approval before the district-scoped activation apply script can change behavior.
+
+## Balanced three-district activation pilot
+
+A balanced pilot batch has been promoted after approval, dry-run, and verifier checks:
+
+- Karnataka: Bengaluru Urban (`state_lgd_code=29`, `district_lgd_code=525`)
+- Maharashtra: Beed (`state_lgd_code=27`, `district_lgd_code=470`)
+- Punjab: Malerkotla (`state_lgd_code=3`, `district_lgd_code=737`)
+
+Each promoted district has 3 active `POLY_APPR` mappings, one per CoRE region system, with review status `PROMOTED` and version `clap_v1`. Each previous starter fallback row is inactive with supersession metadata.

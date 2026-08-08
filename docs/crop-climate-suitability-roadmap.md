@@ -658,3 +658,7 @@ Bagalkote (`state_lgd_code=29`, `district_lgd_code=524`) is the first live distr
 ## CoRE/LGD next activation batch planning
 
 A reusable district verifier and read-only next-batch planner now support cautious expansion beyond Bagalkote. The planner recommends only high-overlap pilot-state districts with complete 3-system CoRE candidates and active fallbacks; approval and activation remain separate guarded steps.
+
+## Balanced CoRE/LGD pilot expansion
+
+The live CoRE/LGD pilot now covers four districts total: Bagalkote plus Bengaluru Urban, Beed, and Malerkotla. These districts return source-derived CoRE region mappings instead of starter fallback mappings.
