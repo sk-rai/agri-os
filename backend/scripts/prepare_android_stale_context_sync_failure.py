@@ -15,14 +15,15 @@ import argparse
 import json
 import sys
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.database import SessionLocal
 from app.modules.master_data import models as _master_data_models  # noqa: F401
-from app.modules.farmer.models import Parcel, Project, Tenant
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
 
 
 TENANT_ID = "android-dynamic-test"
@@ -30,6 +31,178 @@ PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000001")
 ALT_PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000002")
 FARMER_ID = uuid.UUID("e1ee0941-2bad-4a18-a239-2a4119608a06")
 PARCEL_ID = uuid.UUID("98c1a0fa-4f5f-4b8c-97ae-d84992db1c44")
+TEST_MOBILE = "+919900000002"
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def ensure_test_baseline(db, dry_run: bool) -> dict:
+    """Ensure the stale-context fixture owns its deterministic baseline rows."""
+
+    result = {
+        "tenant": "EXISTS",
+        "project": "EXISTS",
+        "farmer": "EXISTS",
+        "parcel": "EXISTS",
+        "farmer_project_enrollment": "EXISTS",
+    }
+
+    tenant = db.query(Tenant).filter(Tenant.id == TENANT_ID).first()
+    if not tenant:
+        result["tenant"] = "WOULD_CREATE" if dry_run else "CREATED"
+        if not dry_run:
+            tenant = Tenant(
+                id=TENANT_ID,
+                name="Android Dynamic Profile Test Tenant",
+                type="ENTERPRISE",
+                config={
+                    "feature_flags": {
+                        "backend_driven_farmer_forms": True,
+                        "backend_driven_parcel_forms": True,
+                        "backend_driven_soil_forms": True,
+                    },
+                    "localization": {
+                        "default_language": "en",
+                        "supported_languages": ["en", "hi"],
+                    },
+                },
+                created_at=now(),
+                updated_at=now(),
+            )
+            db.add(tenant)
+            db.flush()
+
+    project = (
+        db.query(Project)
+        .filter(Project.id == PROJECT_ID, Project.tenant_id == TENANT_ID)
+        .first()
+    )
+    if not project:
+        result["project"] = "WOULD_CREATE" if dry_run else "CREATED"
+        if not dry_run:
+            project = Project(
+                id=PROJECT_ID,
+                tenant_id=TENANT_ID,
+                name="Android Dynamic Profile Test Project",
+                description="Primary Android dynamic test project used by sync fixture scripts.",
+                start_date=date.today(),
+                end_date=date.today() + timedelta(days=180),
+                status="ACTIVE",
+                geography_scope={
+                    "state_lgd_codes": ["29"],
+                    "district_lgd_codes": ["536"],
+                    "pin_codes": ["560001"],
+                    "note": "Android stale-context sync failure fixture baseline.",
+                },
+                crop_scope=["RICE", "SUGARCANE"],
+                config={},
+                created_at=now(),
+                updated_at=now(),
+                is_active=True,
+            )
+            db.add(project)
+            db.flush()
+
+    farmer = (
+        db.query(Farmer)
+        .filter(Farmer.id == FARMER_ID, Farmer.tenant_id == TENANT_ID)
+        .first()
+    )
+    if not farmer:
+        result["farmer"] = "WOULD_CREATE" if dry_run else "CREATED"
+        if not dry_run:
+            farmer = Farmer(
+                id=FARMER_ID,
+                tenant_id=TENANT_ID,
+                project_id=PROJECT_ID,
+                mobile_number=TEST_MOBILE,
+                village_name_manual="Android Dynamic Test Village",
+                pin_code="560001",
+                primary_crop_code="RICE",
+                crops_by_season={"KHARIF": ["RICE"]},
+                display_name="Android Stale Context Farmer",
+                total_land_area=Decimal("2.00"),
+                total_land_unit="ACRE",
+                language_preference="en",
+                enrollment_method="SYNC_MATERIALIZED",
+                status="ACTIVE",
+                created_at=now(),
+                updated_at=now(),
+                is_active=True,
+            )
+            db.add(farmer)
+            db.flush()
+
+    parcel = (
+        db.query(Parcel)
+        .filter(Parcel.id == PARCEL_ID, Parcel.tenant_id == TENANT_ID)
+        .first()
+    )
+    if not parcel:
+        result["parcel"] = "WOULD_CREATE" if dry_run else "CREATED"
+        if not dry_run:
+            parcel = Parcel(
+                id=PARCEL_ID,
+                tenant_id=TENANT_ID,
+                farmer_id=FARMER_ID,
+                project_id=PROJECT_ID,
+                village_name_manual="Android Dynamic Test Village",
+                pin_code="560001",
+                location_scope={
+                    "state_lgd_code": "29",
+                    "district_lgd_code": "536",
+                    "source": "ANDROID_STALE_CONTEXT_TEST",
+                },
+                reported_area=Decimal("2.00"),
+                reported_area_unit="ACRE",
+                current_crop_code="RICE",
+                geometry_source="NONE",
+                local_name="Android stale-context test parcel",
+                ownership_type="OWNED",
+                irrigation_source="CANAL",
+                crops_by_season={"KHARIF": ["RICE"]},
+                status="ACTIVE",
+                created_at=now(),
+                updated_at=now(),
+                is_active=True,
+            )
+            db.add(parcel)
+            db.flush()
+
+    enrollment = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == TENANT_ID,
+            FarmerProjectEnrollment.farmer_id == FARMER_ID,
+            FarmerProjectEnrollment.project_id == PROJECT_ID,
+        )
+        .first()
+    )
+    if not enrollment:
+        result["farmer_project_enrollment"] = "WOULD_CREATE" if dry_run else "CREATED"
+        if not dry_run:
+            enrollment = FarmerProjectEnrollment(
+                tenant_id=TENANT_ID,
+                farmer_id=FARMER_ID,
+                project_id=PROJECT_ID,
+                enrollment_method="SYNC_MATERIALIZED",
+                enrollment_source="ANDROID_STALE_CONTEXT_TEST",
+                status="ACTIVE",
+                parcel_ids=[str(PARCEL_ID)],
+                metadata_={
+                    "source": "prepare_android_stale_context_sync_failure.py",
+                    "fixture_owned": True,
+                },
+                created_at=now(),
+                updated_at=now(),
+                is_active=True,
+            )
+            db.add(enrollment)
+
+    return result
+
 
 
 def ensure_alt_project(db, dry_run: bool) -> str:
@@ -79,17 +252,18 @@ def main() -> int:
 
     db = SessionLocal()
     try:
+        baseline_status = ensure_test_baseline(db, dry_run)
         parcel = (
             db.query(Parcel)
             .filter(Parcel.id == PARCEL_ID, Parcel.tenant_id == TENANT_ID)
             .first()
         )
-        if not parcel:
+        if not parcel and not dry_run:
             raise RuntimeError(
-                f"parcel {PARCEL_ID} not found for tenant {TENANT_ID}; do not run this test yet"
+                f"parcel {PARCEL_ID} not found for tenant {TENANT_ID} after fixture baseline creation"
             )
 
-        before_project_id = str(parcel.project_id) if parcel.project_id else None
+        before_project_id = str(parcel.project_id) if parcel and parcel.project_id else None
         alt_project_status = ensure_alt_project(db, dry_run)
 
         if not dry_run:
@@ -111,6 +285,7 @@ def main() -> int:
             "queued_payload_project_id_android_should_send": str(PROJECT_ID),
             "before": {"parcel_project_id": before_project_id},
             "after": {"parcel_project_id": after_project_id},
+            "baseline": baseline_status,
             "alternate_project": {
                 "project_id": str(ALT_PROJECT_ID),
                 "status": alt_project_status,
