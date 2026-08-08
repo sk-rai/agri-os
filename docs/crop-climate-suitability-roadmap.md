@@ -675,3 +675,5 @@ The live CoRE/LGD pilot now covers seven districts total: Bagalkote, Bengaluru U
 - Held Chamarajanagar and Davanagere as approved-but-inactive CoRE/LGD candidates pending manual/map review because their minimum overlaps are close to the activation threshold.
 
 - Paused CoRE/LGD geometry expansion with enough active promoted districts for Android/backend testing. Remaining geometry work is limited to reviewing the held-low-margin packet for Chamarajanagar/Chamarajanagara (`29/531`) and Davanagere/Davangere (`29/535`) before any later scoped activation.
+
+- Deferred NWIC/CWC Canal Network layer analysis for future irrigation-source plausibility checks: useful for canal/tubewell/rainfed confirmation prompts, but not a blocking source of truth.
