@@ -42,6 +42,7 @@ def main() -> int:
     run('Stage parsed LGD geography', [sys.executable, 'scripts/stage_lgd_parsed_csv_geography.py'])
     run('Diff staged LGD geography against DB', [sys.executable, 'scripts/diff_lgd_staged_geography_against_db.py'])
     run('Android backend closeout regression sweep', [sys.executable, 'scripts/test_android_backend_closeout.py'])
+    run('Android multilingual form label audit', [sys.executable, 'scripts/audit_android_multilingual_form_labels.py'])
 
     print('\n' + '=' * 72)
     print('MANUAL FOLLOW-UP REQUIRED')
