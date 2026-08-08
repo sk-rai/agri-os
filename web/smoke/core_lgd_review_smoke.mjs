@@ -33,7 +33,8 @@ await page.getByText("This surface is read-only").waitFor({ timeout: 15000 });
 await page.getByText("POLY_REV").waitFor({ timeout: 15000 });
 await page.getByText("Behavior changed").waitFor({ timeout: 15000 });
 await page.getByRole("heading", { name: "Review rows" }).waitFor({ timeout: 15000 });
-await page.getByRole("button", { name: "Approve for promotion" }).first().waitFor({ timeout: 15000 });
+await page.getByRole("heading", { name: "Review rows" }).waitFor({ timeout: 15000 });
+await page.getByText("CoRE candidate").first().waitFor({ timeout: 15000 });
 await page.waitForFunction(() => {
   const text = document.body.innerText;
   return text.includes("PILOT_REVIEW_REPLACES_FALLBACK")
@@ -51,6 +52,11 @@ await page.screenshot({
   path: `${screenshotDir}/core-lgd-review.png`,
   fullPage: true,
 });
+
+await page.waitForFunction(() => {
+  const text = document.body.innerText;
+  return !text.includes("Loading review rows") && !text.includes("Role FARMER does not grant VIEW");
+}, null, { timeout: 15000 });
 
 const rows = await page.locator("tbody tr").count();
 

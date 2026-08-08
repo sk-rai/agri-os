@@ -54,6 +54,41 @@ type ReviewResponse = {
   };
 };
 
+type ReviewSummaryResponse = {
+  schema_version: string;
+  active_promoted: {
+    mapping_rows: number;
+    districts: number;
+    states: number;
+    region_codes: number;
+    by_state: Array<{
+      state_lgd_code: string;
+      state_name: string;
+      active_districts: number;
+      active_mapping_rows: number;
+    }>;
+  };
+  inactive_review_queue: {
+    mapping_rows: number;
+    districts: number;
+    review_status_counts: Array<{
+      review_status: string;
+      mapping_rows: number;
+      districts: number;
+    }>;
+  };
+  fallbacks: {
+    active_fallback_rows: number;
+    inactive_superseded_fallback_rows: number;
+  };
+  readiness: {
+    safe_read_only: boolean;
+    active_promoted_rows_present: boolean;
+    manual_review_queue_present: boolean;
+  };
+};
+
+
 const DECISIONS = [
   "",
   "PILOT_REVIEW_REPLACES_FALLBACK",
@@ -98,6 +133,7 @@ function decisionTone(decision: string) {
 
 export default function CoreLgdReviewPage() {
   const [data, setData] = useState<ReviewResponse | null>(null);
+  const [summaryData, setSummaryData] = useState<ReviewSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +170,20 @@ export default function CoreLgdReviewPage() {
       setLoading(false);
     }
   }, [queryPath]);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      setSummaryData(
+        await api<ReviewSummaryResponse>(
+          "/api/v1/master-data/geography/core-lgd-mapping-review/summary",
+        ),
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  useEffect(() => { void loadSummary(); }, [loadSummary]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -178,6 +228,13 @@ export default function CoreLgdReviewPage() {
 
       {error ? <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700">{message}</div> : null}
+
+      <section className="grid gap-4 md:grid-cols-4">
+        <Card label="Active promoted districts" value={summaryData?.active_promoted.districts ?? "—"} />
+        <Card label="Active promoted rows" value={summaryData?.active_promoted.mapping_rows ?? "—"} />
+        <Card label="Manual-review districts" value={summaryData?.inactive_review_queue.districts ?? "—"} />
+        <Card label="Active fallback rows" value={summaryData?.fallbacks.active_fallback_rows ?? "—"} />
+      </section>
 
       <section className="grid gap-4 md:grid-cols-4">
         <Card label="Rows matching filters" value={data?.total ?? "—"} />

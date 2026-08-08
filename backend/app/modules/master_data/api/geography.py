@@ -16,7 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, Field, Field
+from pydantic import BaseModel, Field
 
 from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
@@ -152,6 +152,18 @@ class CoreLgdMappingReviewResponse(BaseModel):
     governance: dict
 
 
+
+class CoreLgdMappingReviewSummaryResponse(BaseModel):
+    schema_version: str = "core_lgd_mapping_review_summary_admin.v1"
+    mode: str = "READ_ONLY_ADMIN_SUMMARY"
+    db_writes_made: bool = False
+    external_calls_made: bool = False
+    active_promoted: dict
+    inactive_review_queue: dict
+    fallbacks: dict
+    readiness: dict
+
+
 class CoreLgdMappingReviewDecisionRequest(BaseModel):
     review_status: str = Field(..., pattern="^(MANUAL_REVIEW|APPROVED_FOR_PROMOTION|REJECTED)$")
     review_notes: str = Field(..., min_length=3, max_length=1000)
@@ -249,6 +261,7 @@ def core_lgd_mapping_review(
             m.confidence as poly_confidence,
             m.review_status as poly_review_status,
             m.is_active as poly_is_active,
+          m.version as poly_version,
             r.region_name as poly_region_name,
             r.region_system as poly_region_system,
             m.metadata ->> 'state_name' as state_name,
@@ -259,9 +272,10 @@ def core_lgd_mapping_review(
             m.metadata ->> 'crosswalk_category' as crosswalk_category,
             coalesce(nullif(m.metadata ->> 'low_overlap_bucket', ''), 'NOT_LOW_OVERLAP') as low_overlap_bucket
           from geography_climate_region_mappings m
-          left join geography_climate_regions r on r.id = m.region_id
-          where m.confidence = 'POLY_REV'
-            and m.is_active is false
+          left join geography_climate_regions r on r.id = m.region_id          where (
+            (m.confidence = 'POLY_REV' and m.is_active is false)
+            or (m.confidence = 'POLY_APPR' and m.is_active is true and m.review_status = 'PROMOTED')
+          )
         ),
         reviewed as (
           select
@@ -272,6 +286,8 @@ def core_lgd_mapping_review(
             fallback.active_fallback_region_systems,
             fallback.active_fallback_confidences,
             case
+              when poly.poly_confidence = 'POLY_APPR' and poly.poly_is_active is true
+                then 'PROMOTED_ACTIVE'
               when coalesce(poly.low_overlap_bucket, 'NOT_LOW_OVERLAP') in ('SOURCE_VERSION_DRIFT', 'SOURCE_VERSION_CONFLICT')
                 then 'BLOCKED_SOURCE_VERSION'
               when coalesce(poly.crosswalk_category, '') in ('BHARATLAS_ONLY', 'STATE_CODE_MISMATCH', 'UNSET')
@@ -331,6 +347,9 @@ def core_lgd_mapping_review(
           poly_region_code,
           poly_region_name,
           poly_review_status,
+          poly_confidence,
+          poly_is_active,
+          poly_version,
           poly_region_class_code,
           poly_region_class_name,
           overlap_percent_of_district,
@@ -394,8 +413,8 @@ def core_lgd_mapping_review(
             "offset": offset,
             "limit": limit,
             "land_intelligence_behavior_changed": False,
-            "source_confidence": "POLY_REV",
-            "source_rows_active": False,
+            "source_confidence": "POLY_REV/POLY_APPR",
+            "source_rows_active": review_status == "PROMOTED",
         },
         "decision_counts": [dict(row) for row in decision_counts],
         "state_counts": [dict(row) for row in state_counts],
@@ -415,6 +434,130 @@ def core_lgd_mapping_review(
 
 
 
+
+
+@router.get("/core-lgd-mapping-review/summary")
+def get_core_lgd_mapping_review_summary(
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Read-only admin summary for inactive review queue and active promoted CoRE/LGD mappings."""
+    active_total = db.execute(text("""
+        select
+          count(*)::int as mapping_rows,
+          count(distinct state_lgd_code || '/' || district_lgd_code)::int as districts,
+          count(distinct state_lgd_code)::int as states,
+          count(distinct region_code)::int as region_codes
+        from geography_climate_region_mappings
+        where confidence = 'POLY_APPR'
+          and review_status = 'PROMOTED'
+          and version = 'clap_v1'
+          and is_active is true
+          and scope_level = 'DISTRICT'
+    """)).mappings().first()
+
+    active_by_state = [
+        dict(row)
+        for row in db.execute(text("""
+            select
+              state_lgd_code,
+              coalesce(max(metadata ->> 'state_name'), state_lgd_code) as state_name,
+              count(distinct district_lgd_code)::int as active_districts,
+              count(*)::int as active_mapping_rows
+            from geography_climate_region_mappings
+            where confidence = 'POLY_APPR'
+              and review_status = 'PROMOTED'
+              and version = 'clap_v1'
+              and is_active is true
+              and scope_level = 'DISTRICT'
+            group by state_lgd_code
+            order by state_lgd_code
+        """)).mappings()
+    ]
+
+    queue_total = db.execute(text("""
+        select
+          count(*)::int as mapping_rows,
+          count(distinct state_lgd_code || '/' || district_lgd_code)::int as districts
+        from geography_climate_region_mappings
+        where confidence = 'POLY_REV'
+          and is_active is false
+          and scope_level = 'DISTRICT'
+    """)).mappings().first()
+
+    queue_status_counts = [
+        dict(row)
+        for row in db.execute(text("""
+            select
+              review_status,
+              count(*)::int as mapping_rows,
+              count(distinct state_lgd_code || '/' || district_lgd_code)::int as districts
+            from geography_climate_region_mappings
+            where confidence = 'POLY_REV'
+              and is_active is false
+              and scope_level = 'DISTRICT'
+            group by review_status
+            order by review_status
+        """)).mappings()
+    ]
+
+    fallback_counts = [
+        dict(row)
+        for row in db.execute(text("""
+            select
+              confidence,
+              is_active,
+              count(*)::int as mapping_rows
+            from geography_climate_region_mappings
+            where confidence in ('LOCAL_DEMO_DISTRICT_FALLBACK', 'LOCAL_DEMO_SEED')
+            group by confidence, is_active
+            order by confidence, is_active
+        """)).mappings()
+    ]
+
+    active_fallback_rows = sum(
+        row["mapping_rows"]
+        for row in fallback_counts
+        if row["is_active"] is True
+    )
+    inactive_superseded_fallback_rows = sum(
+        row["mapping_rows"]
+        for row in fallback_counts
+        if row["confidence"] == "LOCAL_DEMO_DISTRICT_FALLBACK" and row["is_active"] is False
+    )
+
+    return {
+        "schema_version": "core_lgd_mapping_review_summary_admin.v1",
+        "mode": "READ_ONLY_ADMIN_SUMMARY",
+        "db_writes_made": False,
+        "external_calls_made": False,
+        "active_promoted": {
+            "confidence": "POLY_APPR",
+            "review_status": "PROMOTED",
+            "version": "clap_v1",
+            "mapping_rows": active_total["mapping_rows"] if active_total else 0,
+            "districts": active_total["districts"] if active_total else 0,
+            "states": active_total["states"] if active_total else 0,
+            "region_codes": active_total["region_codes"] if active_total else 0,
+            "by_state": active_by_state,
+        },
+        "inactive_review_queue": {
+            "confidence": "POLY_REV",
+            "mapping_rows": queue_total["mapping_rows"] if queue_total else 0,
+            "districts": queue_total["districts"] if queue_total else 0,
+            "review_status_counts": queue_status_counts,
+        },
+        "fallbacks": {
+            "active_fallback_rows": active_fallback_rows,
+            "inactive_superseded_fallback_rows": inactive_superseded_fallback_rows,
+            "counts": fallback_counts,
+        },
+        "readiness": {
+            "safe_read_only": True,
+            "active_promoted_rows_present": bool(active_total and active_total["mapping_rows"]),
+            "manual_review_queue_present": bool(queue_total and queue_total["mapping_rows"]),
+        },
+    }
 
 
 @router.patch("/core-lgd-mapping-review/{mapping_id}/review")
