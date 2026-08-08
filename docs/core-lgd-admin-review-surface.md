@@ -192,3 +192,25 @@ Resulting active CoRE/LGD coverage:
 - active `LOCAL_DEMO_DISTRICT_FALLBACK` rows remaining: 174
 
 Activation was scoped district-by-district through the guarded backend workflow.
+
+### Clean 8-district activation expansion — 2026-08-08
+
+After the 5-district batch, a further clean 8-district batch was activated. Two lower-margin Karnataka districts remain approved but inactive for later review.
+
+Activated:
+
+- Maharashtra: Aurangabad (`27/469`), Bhandara (`27/471`), Buldhana (`27/472`)
+- Karnataka: Chikkaballapura (`29/630`), Dakshina Kannada (`29/534`)
+- Punjab: Barnala (`3/605`), Bathinda (`3/28`), Faridkot (`3/29`)
+
+Held approved but inactive:
+
+- Chamarajanagara (`29/531`)
+- Davangere (`29/535`)
+
+Resulting active CoRE/LGD coverage:
+
+- `POLY_APPR` active promoted rows: 60
+- active promoted districts: 20
+- inactive superseded `LOCAL_DEMO_DISTRICT_FALLBACK` rows: 20
+- active `LOCAL_DEMO_DISTRICT_FALLBACK` rows remaining: 166

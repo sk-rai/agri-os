@@ -30,12 +30,20 @@ EXPECTED_DISTRICTS = {
     ("29", "526"): "Bengaluru Rural",
     ("29", "528"): "Ballari",
     ("29", "529"): "Bidar",
+    ("29", "534"): "Dakshina Kannada",
+    ("29", "630"): "Chikkaballapura",
     ("27", "466"): "Ahmednagar",
     ("27", "467"): "Akola",
+    ("27", "469"): "Aurangabad",
     ("27", "470"): "Beed",
+    ("27", "471"): "Bhandara",
+    ("27", "472"): "Buldhana",
     ("27", "477"): "Hingoli",
     ("3", "27"): "Amritsar",
+    ("3", "28"): "Bathinda",
+    ("3", "29"): "Faridkot",
     ("3", "39"): "Sri Muktsar Sahib",
+    ("3", "605"): "Barnala",
     ("3", "737"): "Malerkotla",
 }
 
@@ -52,10 +60,10 @@ def as_dict(row: Any) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--expected-districts", type=int, default=12)
-    parser.add_argument("--expected-rows", type=int, default=36)
-    parser.add_argument("--expected-inactive-fallbacks", type=int, default=12)
-    parser.add_argument("--expected-active-fallbacks", type=int, default=174)
+    parser.add_argument("--expected-districts", type=int, default=20)
+    parser.add_argument("--expected-rows", type=int, default=60)
+    parser.add_argument("--expected-inactive-fallbacks", type=int, default=20)
+    parser.add_argument("--expected-active-fallbacks", type=int, default=166)
     args = parser.parse_args()
 
     db = SessionLocal()

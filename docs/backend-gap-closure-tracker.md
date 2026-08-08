@@ -82,3 +82,5 @@ Provider credentials and product-source verification remain important, but they 
 - Second balanced CoRE/LGD activation pilot promoted: Bengaluru Rural, Hingoli, and Sri Muktsar Sahib now use active `POLY_APPR` CoRE mappings across all 3 region systems. Verifiers and land-intelligence checks passed.
 
 - Guarded clean CoRE/LGD activation batch completed for 5 more districts. Active promoted coverage is now 12 districts / 36 rows; active demo fallback rows reduced to 174.
+
+- Expanded active CoRE/LGD promoted coverage to 20 districts / 60 rows; retained Chamarajanagara and Davangere as approved-but-inactive low-margin review items.
