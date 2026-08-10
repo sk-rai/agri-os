@@ -133,3 +133,54 @@ Known Android hardening follow-up:
 - If backend reset deletes a pending conflict row while Android still has a local conflict card, conflict ACK/refresh may return `404`.
 - Android should treat that `404` as server-side already resolved/gone and dismiss or mark the local conflict row resolved.
 - This is not a backend blocker for the current passed evidence set.
+
+## Shared Android sync fixture baseline — 2026-08-10
+
+Backend commit: `c972949 refactor: share android sync fixture baseline`
+
+Shared helper:
+
+- `backend/scripts/android_dynamic_sync_baseline.py`
+
+Canonical test scope:
+
+- tenant: `android-dynamic-test`
+- project: `0f7e0a6b-8472-5d6d-8a14-a9d000000001`
+- farmer: `e1ee0941-2bad-4a18-a239-2a4119608a06`
+- parcel: `98c1a0fa-4f5f-4b8c-97ae-d84992db1c44`
+- crop cycle: `aa346148-468b-47de-9c86-47ad41aa1f11`
+- stage: `NURSERY`
+- actor header: `X-Actor-ID: 11111111-1111-4111-8111-111111111111`
+
+Flows using the shared baseline:
+
+- Flow 15: `prepare_android_version_mismatch_conflict.py`
+  - Android event: `0f7e0a6b-8472-5d6d-8a14-a9d000000111`
+  - entity type: `crop_activity`
+  - expected conflict: `VERSION_MISMATCH`
+  - expected resolution strategy: `MANUAL_REVIEW`
+- Flow 16: `prepare_android_workflow_invalid_conflict.py`
+  - Android event: `0f7e0a6b-8472-5d6d-8a14-a9d000000121`
+  - entity type: `crop_stage`
+  - expected conflict: `WORKFLOW_INVALID`
+  - expected resolution strategy: `SERVER_AUTHORITY`
+
+Reset expectations:
+
+- Fixture scripts may delete their own deterministic `sync_conflicts` and `sync_processed_events` rows when run with `--reset --apply`.
+- The shared helper should restore/create the canonical tenant/project/farmer/parcel/crop-cycle/NURSERY-stage baseline as needed.
+- Flow 14 may temporarily move the canonical parcel to an alternate project to force `PARCEL_PROJECT_MISMATCH`; Flow 15/16 should restore/use the canonical project through the shared baseline.
+- Unrelated tenant/project/farmer/parcel data must not be modified.
+
+Post-refactor smoke evidence:
+
+- Android commit: `f9d6629 fix: clear stale conflict cards on 404`
+- Backend commit: `c972949 refactor: share android sync fixture baseline`
+- Flow 15 Maestro artifact: `C:\Users\SANTOSH\.maestro\tests\2026-08-10_183129`
+  - flow name: Version mismatch conflict shows manual review guidance
+  - backend verifier: PASS
+  - durable state: event `0f7e0a6b-8472-5d6d-8a14-a9d000000111`, status `CONFLICT`, conflict type `VERSION_MISMATCH`, resolution strategy `MANUAL_REVIEW`, conflict status `PENDING_REVIEW`
+- Flow 16 Maestro artifact: `C:\Users\SANTOSH\.maestro\tests\2026-08-10_183337`
+  - flow name: Workflow invalid conflict shows server-authority guidance
+  - backend verifier: PASS
+  - durable state: event `0f7e0a6b-8472-5d6d-8a14-a9d000000121`, status `CONFLICT`, conflict type `WORKFLOW_INVALID`, resolution strategy `SERVER_AUTHORITY`, conflict status `PENDING_REVIEW`
