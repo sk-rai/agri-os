@@ -110,3 +110,26 @@ Pass criteria:
 - no hardcoded Android translations for backend-driven forms
 - no on-device advisory translation
 - sync behavior unchanged by selected language
+
+
+## Fresh sync resilience pass — 2026-08-10
+
+Android commit: `1b7ff1e test: harden sync resilience maestro flows`
+
+Fresh Maestro/backend evidence passed for:
+
+- Flow 14: stale-context sync failure
+- Flow 15: VERSION_MISMATCH conflict
+- Flow 16: WORKFLOW_INVALID conflict
+- Flows 20–29: sync resilience/queue hardening set
+
+Backend fixture hardening used:
+
+- `124e68f fix: harden android stale context fixture setup`
+- `65a2209 fix: harden android workflow invalid fixture setup`
+
+Known Android hardening follow-up:
+
+- If backend reset deletes a pending conflict row while Android still has a local conflict card, conflict ACK/refresh may return `404`.
+- Android should treat that `404` as server-side already resolved/gone and dismiss or mark the local conflict row resolved.
+- This is not a backend blocker for the current passed evidence set.

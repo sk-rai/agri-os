@@ -87,3 +87,5 @@ Provider credentials and product-source verification remain important, but they 
 - Expanded active CoRE/LGD promoted coverage to 20 districts / 60 rows; retained Chamarajanagara and Davangere as approved-but-inactive low-margin review items.
 
 - Held two low-margin Karnataka approved candidates, Chamarajanagar and Davanagere, for manual/map review before activation.
+
+| Android stale local conflict card after backend reset | Android follow-up | Fresh sync resilience Maestro pass completed for Flows 14–16 and 20–29. Remaining gap: if backend reset deletes a pending conflict row, Android may retain a stale local conflict card; ACK/refresh `404` should dismiss/mark resolved as already gone server-side. | Android commit `1b7ff1e`; `docs/android-maestro-sync-multilingual-evidence.md` |
