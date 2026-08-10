@@ -104,3 +104,39 @@ A scenario passes when:
 ## Future native-label expansion
 
 When native labels are added for `kn`, `mr`, or `pa`, update `backend/scripts/audit_android_multilingual_form_labels.py` expectations and convert those scenarios from fallback tests to native-label tests. Advisory translation remains separately review-gated under `docs/language-localization-advisory-runbook.md`.
+
+## Native translation backlog and future admin override surface — 2026-08-10
+
+Current status:
+
+- English fallback is mandatory and complete.
+- Hindi labels are present for backend-driven Android profile/workflow forms.
+- Kannada (`kn`), Marathi (`mr`), and Punjabi (`pa`) are intentionally tested through English fallback until reviewed native labels are added.
+- `backend/scripts/audit_android_multilingual_form_labels.py` now scopes the MVP native translation backlog.
+- `backend/scripts/export_android_multilingual_mvp_translation_backlog.py` exports CSV/JSON review artifacts for native translation review without changing runtime form contracts.
+
+MVP native translation backlog scope:
+
+- farmer registration
+- parcel registration
+- crop-cycle create
+- activity log
+- option sets: irrigation sources, land units, languages, ownership types, seasons
+
+Admin translation override direction:
+
+- Add an admin translation surface associated with backend-driven forms, crop stages, stage activities, crop inputs, and option sets.
+- Show system/default translations first.
+- Allow tenant/project admins to override display labels without editing canonical defaults.
+- Store override metadata: language code, scope, target key/path, override text, status, reviewer, timestamp, and fallback/default value.
+- Keep hide/add/reorder behavior for workflow stages separate from label translation; translation override should not mutate workflow semantics.
+- Android should continue resolving labels through backend-provided maps, with English fallback always present.
+
+Future language expansion:
+
+- Keep current near-term scope: English, Hindi, Kannada, Marathi, Punjabi.
+- Before demo readiness, consider adding more Indian languages as a product differentiator, especially:
+  - Tamil (`ta`)
+  - Telugu (`te`)
+  - Bengali/Bangla (`bn`)
+- Add languages only after fallback behavior, admin override governance, and native review workflow are clear.
