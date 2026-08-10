@@ -129,13 +129,13 @@ def reset_fixture(db, result: dict, dry_run: bool) -> None:
     deletes = [
         ("soil_profiles", "delete from soil_profiles where tenant_id = :tenant_id and id = any(cast(:soil_ids as uuid[]))"),
         ("parcels", "delete from parcels where tenant_id = :tenant_id and id = any(cast(:parcel_ids as uuid[]))"),
-        ("farmer_project_enrollments", "delete from farmer_project_enrollments where tenant_id = :tenant_id and farmer_id = any(cast(:farmer_ids as uuid[]))"),
-        ("agent_profiles", "delete from agent_profiles where tenant_id = :tenant_id and user_id = any(cast(:user_ids as uuid[]))"),
-        ("project_roles", "delete from project_roles where project_id = cast(:project_id as uuid) and user_id = any(cast(:user_ids as uuid[]))"),
+        ("farmer_project_enrollments", "delete from farmer_project_enrollments where tenant_id = :tenant_id and (farmer_id = any(cast(:farmer_ids as uuid[])) or project_id = cast(:project_id as uuid))"),
+        ("agent_profiles", "delete from agent_profiles where tenant_id = :tenant_id"),
+        ("project_roles", "delete from project_roles where project_id in (select id from projects where tenant_id = :tenant_id) or user_id = any(cast(:user_ids as uuid[]))"),
+        ("user_devices", "delete from user_devices where user_id = any(cast(:user_ids as uuid[]))"),
         ("farmers", "delete from farmers where tenant_id = :tenant_id and id = any(cast(:farmer_ids as uuid[]))"),
         ("projects", "delete from projects where tenant_id = :tenant_id and id = cast(:project_id as uuid)"),
         ("users", "delete from users where id = any(cast(:user_ids as uuid[]))"),
-        ("tenants", "delete from tenants where id = :tenant_id"),
     ]
     for table_name, sql in deletes:
         execute_delete(db, table_name, sql, params, result, dry_run)
