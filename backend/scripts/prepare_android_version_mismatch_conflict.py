@@ -15,7 +15,6 @@ import argparse
 import json
 import sys
 import uuid
-import importlib.util
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.database import SessionLocal
 from app.modules.sync.models import SyncConflict, SyncProcessedEvent
 from app.modules.sync.service import append_audit
+from android_dynamic_sync_baseline import ensure_android_baseline
 
 
 TENANT_ID = "android-dynamic-test"
@@ -37,25 +37,6 @@ FARMER_ID = uuid.UUID("e1ee0941-2bad-4a18-a239-2a4119608a06")
 PARCEL_ID = uuid.UUID("98c1a0fa-4f5f-4b8c-97ae-d84992db1c44")
 PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000001")
 
-
-
-def ensure_android_baseline(db, dry_run: bool) -> dict:
-    """Reuse the Flow 16 self-healing Android baseline for Flow 15.
-
-    VERSION_MISMATCH itself only needs sync/audit rows, but the Android payload
-    references the canonical farmer/parcel/crop_cycle. Keeping that baseline
-    available makes this fixture safe in a clean or reset local DB.
-    """
-
-    helper_path = Path(__file__).with_name("prepare_android_workflow_invalid_conflict.py")
-    spec = importlib.util.spec_from_file_location("_android_workflow_invalid_fixture", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"could not load Android fixture baseline helper from {helper_path}")
-
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    return module.ensure_android_baseline(db, dry_run)
 
 
 SERVER_PAYLOAD = {
