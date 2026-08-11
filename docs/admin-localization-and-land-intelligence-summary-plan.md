@@ -346,3 +346,34 @@ Smoke script:
 Lifecycle verified:
 
 - `EN_FALLBACK -> TENANT_OVERRIDE -> EN_FALLBACK`
+
+## Land-intelligence summary API v1 — 2026-08-11
+
+Implemented first backend slice for the Android informational land-intelligence summary card.
+
+Runtime endpoint:
+
+- `GET /api/v1/profile/land-intelligence-summary`
+
+Admin endpoints:
+
+- `GET /api/v1/admin/land-intelligence-summaries/effective`
+- `POST /api/v1/admin/land-intelligence-summaries/overrides`
+- `DELETE /api/v1/admin/land-intelligence-summaries/overrides/{override_id}`
+
+V1 behavior:
+
+- supports PIN, district, and state scopes;
+- supports tenant and project override priority;
+- returns a simple Android-ready `summary_payload`;
+- keeps the screen informational only;
+- explicitly tells Android not to block onboarding;
+- supports main crops, alternate crops, caveats, and summary cards;
+- uses existing `land_intelligence_summary_overrides` table from migration `053`.
+
+Smoke evidence:
+
+- `backend/scripts/test_land_intelligence_summary_api.py` passed;
+- lifecycle verified: `DEFAULT_GENERATED -> TENANT_OVERRIDE -> DEFAULT_GENERATED`;
+- no external calls made;
+- generated summary avoids duplicate selected crop entries.
