@@ -23,6 +23,7 @@ from app.core.database import get_db
 from app.modules.master_data.season_land_units import list_land_units, list_seasons
 from app.modules.workflow.perennial_onboarding import current_stage_onboarding_policy, list_crop_systems
 from app.modules.farmer.models import Project, Tenant
+from app.modules.master_data.localization_runtime import localize_form_payload, localize_option_set_payload
 
 router = APIRouter(prefix="/api/v1/forms", tags=["forms"])
 
@@ -788,12 +789,14 @@ def get_profile_option_set(
     resolved = registry.get(option_set)
     if not resolved:
         raise HTTPException(404, f"Option set '{option_set}' not found. Available: {list(registry.keys())}")
-    return resolved
+    return localize_option_set_payload(db, resolved.model_dump(), tenant_id=tenant_id, project_id=project_id)
 
 
 @router.get("/{form_id}", response_model=FormSchema)
 def get_form_schema(
     form_id: str,
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
     x_tenant_id: str = Header(None, alias="X-Tenant-ID"),
 ):
     """Get form schema for client-side rendering.
@@ -802,22 +805,26 @@ def get_form_schema(
     Android resolves: map[currentLanguageCode] ?: map["en"]
     Cacheable: use version field for invalidation.
     """
+    tenant_id = x_tenant_id or "default"
     schema = FORM_REGISTRY.get(form_id)
     if not schema:
         raise HTTPException(404, f"Form '{form_id}' not found. Available: {list(FORM_REGISTRY.keys())}")
-    return schema
+    return localize_form_payload(db, schema.model_dump(), tenant_id=tenant_id, project_id=project_id)
 
 
 @router.get("", response_model=list[dict])
 def list_forms(
+    project_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
     x_tenant_id: str = Header(None, alias="X-Tenant-ID"),
 ):
     """List all available form schemas with versions."""
+    tenant_id = x_tenant_id or "default"
     return [
         {
             "form_id": form_id,
             "version": schema.version,
-            "title": schema.title,
+            "title": localize_form_payload(db, schema.model_dump(), tenant_id=tenant_id, project_id=project_id).get("title", schema.title),
         }
         for form_id, schema in FORM_REGISTRY.items()
     ]

@@ -21,6 +21,7 @@ from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_p
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.farmer.models import Project, ProjectAppConfigAuditEvent, Tenant
+from app.modules.master_data.localization_runtime import localize_form_payload
 from app.modules.workflow.forms import FORM_REGISTRY, PROFILE_OPTION_REGISTRY
 
 
@@ -153,16 +154,19 @@ def _validate_profile_option_overrides(config_patch: dict) -> list[dict]:
     return errors
 
 
-def _form_versions() -> list[dict]:
-    return [
-        {
+def _form_versions(db: Optional[Session] = None, *, tenant_id: str = "default", project_id: Optional[uuid.UUID] = None) -> list[dict]:
+    rows = []
+    for form_id, schema in sorted(FORM_REGISTRY.items()):
+        payload = schema.model_dump()
+        if db is not None:
+            payload = localize_form_payload(db, payload, tenant_id=tenant_id, project_id=project_id)
+        rows.append({
             "form_id": form_id,
             "version": schema.version,
-            "title": schema.title,
+            "title": payload.get("title", schema.title),
             "endpoint": f"/api/v1/forms/{form_id}",
-        }
-        for form_id, schema in sorted(FORM_REGISTRY.items())
-    ]
+        })
+    return rows
 
 
 def _section_sources(tenant_config: Optional[dict], project_config: Optional[dict]) -> dict:
@@ -233,8 +237,8 @@ def _effective_config_payload(tenant: Tenant, project: Project) -> dict:
         },
         "effective_config": effective_config,
         "section_sources": _section_sources(tenant_config, project_config),
-        "profile_forms": _profile_form_contracts(effective_config["feature_flags"]),
-        "forms": _form_versions(),
+        "profile_forms": _profile_form_contracts(effective_config["feature_flags"], db, tenant_id=tenant.id, project_id=project.id),
+        "forms": _form_versions(db, tenant_id=tenant.id, project_id=project.id),
     }
 
 
@@ -344,19 +348,28 @@ def _validate_profile_forms(feature_flags: dict) -> dict:
     }
 
 
-def _profile_form_contracts(feature_flags: dict) -> dict:
+def _profile_form_contracts(
+    feature_flags: dict,
+    db: Optional[Session] = None,
+    *,
+    tenant_id: str = "default",
+    project_id: Optional[uuid.UUID] = None,
+) -> dict:
     contracts = {}
     for form_id, flag_name in PROFILE_FORM_FLAG_MAP.items():
         schema = FORM_REGISTRY.get(form_id)
         if not schema:
             continue
+        payload = schema.model_dump()
+        if db is not None:
+            payload = localize_form_payload(db, payload, tenant_id=tenant_id, project_id=project_id)
         contracts[form_id] = {
             "form_id": form_id,
             "version": schema.version,
             "endpoint": f"/api/v1/forms/{form_id}",
             "enabled": bool(feature_flags.get(flag_name)),
             "feature_flag": flag_name,
-            "title": schema.title,
+            "title": payload.get("title", schema.title),
         }
     return contracts
 
@@ -410,8 +423,8 @@ def get_app_bootstrap_config(
         "enabled_modules": config["enabled_modules"],
         "feature_flags": config["feature_flags"],
         "self_service": config["self_service"],
-        "forms": _form_versions(),
-        "profile_forms": _profile_form_contracts(config["feature_flags"]),
+        "forms": _form_versions(db, tenant_id=tenant_id, project_id=project_id),
+        "profile_forms": _profile_form_contracts(config["feature_flags"], db, tenant_id=tenant_id, project_id=project_id),
         "contracts": {
             "profile_hydration": {
                 "schema_version": "profile_hydration.v1",

@@ -1428,30 +1428,48 @@ def _validate_crops_by_season(db: Session, *, tenant_id: str, project_id: Option
 
 def _profile_form_contract_payload(db: Session, tenant_id: str, project_id: Optional[uuid.UUID] = None) -> dict:
     """Return the backend-owned form/options bundle Android can cache for profile editing."""
+    from app.modules.master_data.localization_runtime import localize_form_payload, localize_option_set_payload
     from app.modules.workflow.forms import FORM_REGISTRY, _effective_profile_option_registry
 
     profile_form_ids = ["farmer_registration", "parcel_registration", "soil_profile"]
     option_registry = _effective_profile_option_registry(db, tenant_id=tenant_id, project_id=project_id)
+    forms = {
+        form_id: localize_form_payload(
+            db,
+            FORM_REGISTRY[form_id].model_dump(),
+            tenant_id=tenant_id,
+            project_id=project_id,
+        )
+        for form_id in profile_form_ids
+        if form_id in FORM_REGISTRY
+    }
+    option_sets = {
+        option_set: localize_option_set_payload(
+            db,
+            option.model_dump(),
+            tenant_id=tenant_id,
+            project_id=project_id,
+        )
+        for option_set, option in sorted(option_registry.items())
+    }
     return {
         "schema_version": "profile_form_contract_bundle.v1",
         "tenant_id": tenant_id,
         "project_id": str(project_id) if project_id else None,
-        "forms": {
-            form_id: FORM_REGISTRY[form_id].model_dump()
-            for form_id in profile_form_ids
-            if form_id in FORM_REGISTRY
-        },
-        "option_sets": {
-            option_set: option.model_dump()
-            for option_set, option in sorted(option_registry.items())
+        "forms": forms,
+        "option_sets": option_sets,
+        "localization": {
+            "override_resolution": "project override > tenant override > platform language label > English fallback",
+            "android_label_resolution": "labels[currentLanguageCode] ?: labels['en']",
+            "published_override_statuses": sorted(["ACTIVE", "APPROVED", "PUBLISHED"]),
         },
         "notes": [
             "Android should render farmer, parcel, and soil profile capture from these backend-owned schemas where possible.",
             "Fields keep canonical_field and source hints so Android can map local drafts back to backend payloads.",
             "Project-specific profile option overrides are applied when project_id is provided or inferred from active farmer context.",
+            "Published admin localization overrides are overlaid into label maps without changing workflow or option semantics.",
         ],
     }
-
 
 def _enrollment_lifecycle_payload(enrollments: list[FarmerProjectEnrollment]) -> dict:
     status_counts: dict[str, int] = {}

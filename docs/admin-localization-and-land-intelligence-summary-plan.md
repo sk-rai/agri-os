@@ -301,3 +301,24 @@ Smoke evidence:
 - seeded registry has 308 platform-owned content keys;
 - English fallback remains complete;
 - Kannada override smoke proved `EN_FALLBACK -> TENANT_OVERRIDE -> EN_FALLBACK` lifecycle.
+
+## Android-facing localization override delivery — 2026-08-11
+
+Published admin localization overrides now flow into Android-facing backend-driven payloads without changing workflow/form semantics.
+
+Runtime delivery scope:
+
+- `/api/v1/forms/{form_id}` overlays published tenant/project label overrides into form label maps;
+- `/api/v1/forms/options/{option_set}` overlays published tenant/project option labels;
+- `/api/v1/app-config/bootstrap` overlays localized form titles in `forms` and `profile_forms`;
+- profile hydration form contracts inherit the same runtime overlay path;
+- Android can keep the existing contract: `labels[currentLanguageCode] ?: labels["en"]`.
+
+Smoke evidence:
+
+- `backend/scripts/test_android_localization_override_delivery.py` passed;
+- form title override delivered to `/api/v1/forms/farmer_registration`;
+- option label override delivered to `/api/v1/forms/options/languages`;
+- bootstrap form/profile-form summaries delivered the overridden Kannada label;
+- cleanup deactivated smoke overrides after verification;
+- admin localization API smoke still passed.
