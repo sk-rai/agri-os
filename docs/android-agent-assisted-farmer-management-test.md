@@ -94,3 +94,41 @@ cd ~/projects/farmint/backend
 - Backend commit `a03913f` enforced assigned-agent farmer/parcel PATCH authorization.
 - Android follow-up verified assigned agent farmer PATCH `200`, assigned agent parcel PATCH `200`, unassigned farmer probe `403`, unassigned parcel probe `403`, primary agent worklist includes assisted farmer, and second agent worklist is empty.
 - This fixture now also covers `>1` assigned farmers for the primary/dual agent worklist. Android should avoid silently selecting the first farmer; it should show a selectable/searchable assigned-farmer list when more than one row is returned.
+
+## Android Flow 38 smoke evidence
+
+Android Flow 38 passed against backend commit `5e0e93c test: cover multi-assigned agent worklist`.
+
+Maestro flow: `maestro/38-agent-assisted-farmer-management.yaml`
+
+Evidence summary:
+
+- assigned dual agent `+919900001301` received `MODE_CHOOSER`;
+- `My farm` and `Assigned farmers` modes were visible;
+- assigned-agent worklist returned `agent_worklist_farmers=2`;
+- assisted farmer visible;
+- independent farmer absent from assigned worklist;
+- assigned farmer PATCH returned `200`;
+- assigned parcel PATCH returned `200`;
+- unassigned active agent `+919900001701` had assigned worklist count `0`;
+- unassigned direct farmer PATCH returned `403` with `FARMER_ASSIGNMENT_REQUIRED`;
+- unassigned direct parcel PATCH returned `403` with `FARMER_ASSIGNMENT_REQUIRED`;
+- Android showed clean authorization copy: `You are not assigned to manage this farmer.`;
+- stale-context, workflow-invalid, and manual-review conflict copy were absent.
+
+Backend verifier: `backend/scripts/verify_android_agent_assisted_farmer_management.py`
+
+Verifier confirmed:
+
+- primary agent `assigned_farmer_count=2`;
+- assigned farmer IDs:
+  - `0f7e0a6b-8472-5d6d-8a14-a9d000001402`
+  - `0f7e0a6b-8472-5d6d-8a14-a9d000001902`
+- `multi_assigned_farmer_visible=true`;
+- second agent worklist empty;
+- assigned PATCHes returned `200`;
+- unassigned PATCHes returned `403 FARMER_ASSIGNMENT_REQUIRED`.
+
+Caveat:
+
+- Current Android debug output asserts `agent_worklist_farmers=2`; backend verifier asserts the exact `multi_assigned_farmer_visible=true` field. A future Android smoke hardening can emit/assert the exact second farmer ID if needed.
