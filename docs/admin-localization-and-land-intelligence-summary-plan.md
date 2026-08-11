@@ -322,3 +322,27 @@ Smoke evidence:
 - bootstrap form/profile-form summaries delivered the overridden Kannada label;
 - cleanup deactivated smoke overrides after verification;
 - admin localization API smoke still passed.
+
+## Admin localization browser smoke — 2026-08-11
+
+Playwright browser smoke passed for `/localization`.
+
+Evidence:
+
+- loaded the admin Localization page with an authenticated `ENTERPRISE_ADMIN` smoke token;
+- searched for `profile_form.activity_log.title`;
+- confirmed Kannada starts from English fallback;
+- saved a published Kannada tenant override through the UI;
+- cross-checked API effective label changed to `TENANT_OVERRIDE`;
+- deactivated the effective override through the UI;
+- cross-checked API effective label returned to `EN_FALLBACK`;
+- screenshot captured at `web/smoke/screenshots/localization-admin.png`;
+- web lint remained clean.
+
+Smoke script:
+
+- `web/smoke/localization_admin_smoke.mjs`
+
+Lifecycle verified:
+
+- `EN_FALLBACK -> TENANT_OVERRIDE -> EN_FALLBACK`
