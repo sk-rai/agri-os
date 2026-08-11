@@ -3977,3 +3977,87 @@ export const localizationApi = {
       { method: "DELETE", body: { reason: reason || "Deactivated from admin localization page" } }
     ),
 };
+
+export interface LandIntelligenceSummaryOverrideDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  scope_type: string;
+  scope_code: string;
+  language_code: string;
+  summary_payload: Record<string, unknown>;
+  review_status: string;
+  review_notes?: string | null;
+  is_active: boolean;
+  updated_at?: string | null;
+}
+
+export interface LandIntelligenceSummaryResponse {
+  schema_version: string;
+  generated_at: string;
+  tenant_id: string;
+  project_id?: string | null;
+  language_code: string;
+  scope: { scope_type: string; scope_code: string };
+  filters: { season_code?: string | null; crop_code?: string | null };
+  summary_source: "DEFAULT_GENERATED" | "TENANT_OVERRIDE" | "PROJECT_OVERRIDE";
+  summary_payload: Record<string, unknown>;
+  effective_override?: LandIntelligenceSummaryOverrideDto | null;
+  android_contract: {
+    display_as_informational_only: boolean;
+    do_not_block_onboarding: boolean;
+    detail_clickthrough_deferred_to_v2: boolean;
+    backend_owned_company_editable: boolean;
+  };
+}
+
+export const landIntelligenceSummaryApi = {
+  effective: (params: {
+    scope_type: string;
+    scope_code: string;
+    language_code?: string;
+    project_id?: string;
+    season_code?: string;
+    crop_code?: string;
+  }) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    return api<LandIntelligenceSummaryResponse>(`/api/v1/admin/land-intelligence-summaries/effective?${query.toString()}`);
+  },
+  runtime: (params: {
+    pin_code?: string;
+    district_lgd_code?: string;
+    state_lgd_code?: string;
+    language_code?: string;
+    project_id?: string;
+    season_code?: string;
+    crop_code?: string;
+  }) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    return api<LandIntelligenceSummaryResponse>(`/api/v1/profile/land-intelligence-summary?${query.toString()}`);
+  },
+  upsertOverride: (body: {
+    project_id?: string | null;
+    scope_type: string;
+    scope_code: string;
+    language_code: string;
+    summary_payload: Record<string, unknown>;
+    review_status?: string;
+    review_notes?: string | null;
+    reason?: string;
+  }) =>
+    api<{ schema_version: string; action: string; override: LandIntelligenceSummaryOverrideDto; effective: LandIntelligenceSummaryResponse }>(
+      "/api/v1/admin/land-intelligence-summaries/overrides",
+      { method: "POST", body }
+    ),
+  deactivateOverride: (overrideId: string, reason?: string) =>
+    api<{ schema_version: string; override_id: string; status: string }>(
+      `/api/v1/admin/land-intelligence-summaries/overrides/${overrideId}`,
+      { method: "DELETE", body: { reason: reason || "Deactivated from land-intelligence summary admin page" } }
+    ),
+};

@@ -35,6 +35,7 @@ const navSections: NavSection[] = [
       { href: "/project-workflows", label: "Project Workflows", icon: "Flow" },
       { href: "/profile-forms", label: "Profile Forms", icon: "Form" },
       { href: "/localization", label: "Localization", icon: "Lang" },
+      { href: "/land-intelligence-summary", label: "Land Summary", icon: "Map" },
       { href: "/inputs", label: "Inputs", icon: "Input" },
       { href: "/products", label: "Products & Brands", icon: "Box" },
       { href: "/project-inputs", label: "Project Inputs", icon: "Tune" },

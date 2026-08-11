@@ -377,3 +377,29 @@ Smoke evidence:
 - lifecycle verified: `DEFAULT_GENERATED -> TENANT_OVERRIDE -> DEFAULT_GENERATED`;
 - no external calls made;
 - generated summary avoids duplicate selected crop entries.
+
+## Land-intelligence summary admin screen and Playwright smoke — 2026-08-11
+
+Implemented and browser-smoked the admin screen for Android informational land-intelligence summary cards.
+
+Admin screen:
+
+- `/land-intelligence-summary`
+
+Web behavior:
+
+- load generated default summary by PIN/district/state scope;
+- preview summary cards, main crops, alternate crops, and caveats;
+- edit Android-ready JSON payload;
+- save a published tenant/project/language override;
+- deactivate the effective override;
+- preserve the V1 contract that this screen is informational only.
+
+Playwright evidence:
+
+- `web/smoke/land_intelligence_summary_admin_smoke.mjs` passed;
+- verified lifecycle: `DEFAULT_GENERATED -> TENANT_OVERRIDE -> DEFAULT_GENERATED`;
+- cross-checked admin effective API after save;
+- cross-checked runtime Android endpoint after save;
+- screenshot captured at `web/smoke/screenshots/land-intelligence-summary-admin.png`;
+- web lint remained clean.
