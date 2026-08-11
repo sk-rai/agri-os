@@ -45,3 +45,31 @@ Expected:
 - parcel without centroid gets null centroid_digipin;
 - parcel geometry update recomputes centroid_digipin;
 - offline sync materialization computes/recomputes DigiPin.
+
+
+## Android Flow 39 evidence
+
+Android commit:
+
+    fe45f56 test: add land summary digipin maestro smoke
+
+Maestro flow:
+
+    maestro/39-land-summary-digipin-debug-smoke.yaml
+
+Validated behavior:
+
+- Android triggers PIN_DROP parcel geometry update.
+- Android sends centroid_lat=12.9716 and centroid_lng=77.5946.
+- Backend returns centroid_digipin=4P3JK852C9.
+- Android displays backend-returned DigiPin.
+- Android emits digipin_source=BACKEND_RESPONSE.
+- Android emits android_computed_digipin=false.
+- No local DigiPin computation.
+- No Room migration required for first debug/probe smoke.
+
+Evidence lines:
+
+    parcel_geometry_digipin=4P3JK852C9
+    digipin_source=BACKEND_RESPONSE
+    android_computed_digipin=false
