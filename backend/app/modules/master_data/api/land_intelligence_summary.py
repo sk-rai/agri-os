@@ -57,14 +57,22 @@ def _normalize_scope(scope_type: str, scope_code: str) -> tuple[str, str]:
     return normalized_type, normalized_code
 
 
-def _scope_from_query(pin_code: Optional[str], district_lgd_code: Optional[str], state_lgd_code: Optional[str]) -> tuple[str, str]:
+def _scope_from_query(
+    pin_code: Optional[str],
+    district_lgd_code: Optional[str],
+    state_lgd_code: Optional[str],
+    scope_type: Optional[str] = None,
+    scope_code: Optional[str] = None,
+) -> tuple[str, str]:
     if pin_code:
         return "PIN", str(pin_code).strip()
     if district_lgd_code:
         return "DISTRICT", str(district_lgd_code).strip()
     if state_lgd_code:
         return "STATE", str(state_lgd_code).strip()
-    raise HTTPException(400, "Provide pin_code, district_lgd_code, or state_lgd_code")
+    if scope_type and scope_code:
+        return _normalize_scope(scope_type, scope_code)
+    raise HTTPException(400, "Provide pin_code, district_lgd_code, state_lgd_code, or scope_type/scope_code")
 
 
 def _default_summary_payload(
@@ -231,6 +239,8 @@ def get_land_intelligence_summary(
     district_lgd_code: str | None = Query(None),
     state_lgd_code: str | None = Query(None),
     pin_code: str | None = Query(None),
+    scope_type: str | None = Query(None),
+    scope_code: str | None = Query(None),
     crop_code: str | None = Query(None),
     season_code: str | None = Query(None),
     language_code: str = Query("en", min_length=2, max_length=12),
@@ -238,7 +248,13 @@ def get_land_intelligence_summary(
     tenant_id: str = Header("default", alias="X-Tenant-ID"),
     db: Session = Depends(get_db),
 ):
-    scope_type, scope_code = _scope_from_query(pin_code, district_lgd_code, state_lgd_code)
+    scope_type, scope_code = _scope_from_query(
+        pin_code,
+        district_lgd_code,
+        state_lgd_code,
+        scope_type,
+        scope_code,
+    )
     return _summary_response(
         db,
         tenant_id=tenant_id,

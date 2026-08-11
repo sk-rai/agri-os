@@ -8,6 +8,10 @@ Runtime endpoint:
 
 Recommended Android smoke query:
 
+    pin_code=560001
+
+Compatible alias also accepted:
+
     scope_type=PIN
     scope_code=560001
     language_code=en
@@ -29,6 +33,8 @@ Android should not:
 - infer suitability locally;
 - call weather/location providers directly;
 - treat this as mandatory agronomist approval.
+
+Android should prefer pin_code for V1 because it maps directly to the current onboarding/location form. scope_type/scope_code is retained as a backend-compatible alias for admin/runtime symmetry.
 
 Backend verifier:
 
