@@ -24,6 +24,11 @@ from app.modules.master_data.models.crop import (
     CropClimateSuitabilityRule,
     CropClimateSuitabilityOverride,
 )
+from app.modules.master_data.models.localization import (
+    LocalizedContentKey,
+    LocalizedContentOverride,
+    LandIntelligenceSummaryOverride,
+)
 from app.modules.master_data.models.input import (
     InputCategory,
     Manufacturer,
@@ -67,6 +72,9 @@ __all__ = [
     "CropPropagationOption",
     "CropClimateSuitabilityRule",
     "CropClimateSuitabilityOverride",
+    "LocalizedContentKey",
+    "LocalizedContentOverride",
+    "LandIntelligenceSummaryOverride",
     "InputCategory",
     "Manufacturer",
     "AgriculturalInput",

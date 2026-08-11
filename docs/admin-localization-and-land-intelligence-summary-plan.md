@@ -238,3 +238,43 @@ Recommended first implementation tables:
 - later: `land_intelligence_summary_overrides`
 
 V1 admin localization should start with form/option/workflow-stage overrides because those sources already have complete English fallback and stable backend-owned key paths.
+
+## Localized content override table foundation
+
+Backend migration `053_add_localized_content_overrides.py` adds the first durable admin localization foundation.
+
+Tables:
+
+- `localized_content_keys`
+- `localized_content_overrides`
+- `land_intelligence_summary_overrides`
+
+Seed script:
+
+- `backend/scripts/seed_admin_localization_content_keys.py`
+
+Verifier:
+
+- `backend/scripts/verify_admin_localization_tables.py`
+
+Latest local verification:
+
+- migration applied: `true`
+- seeded content keys: `308`
+- missing English fallback labels: `0`
+- active localized overrides: `0`
+- active land-intelligence summary overrides: `0`
+- ready for admin API contract: `true`
+
+Seeded content-key sources:
+
+- profile forms: `15`
+- profile form fields: `104`
+- profile form field options: `98`
+- profile option sets: `11`
+- profile option set options: `60`
+- workflow stages: `20`
+
+V1 implication:
+
+Admin localization can now start with form, option, and workflow-stage content keys. Overrides should be tenant/project/language scoped and must not change workflow semantics, crop-stage codes, input codes, or traceability identifiers.
