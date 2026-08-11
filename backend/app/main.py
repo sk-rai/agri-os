@@ -26,6 +26,7 @@ from app.modules.master_data.api.crop_catalog_csv import router as crop_catalog_
 from app.modules.master_data.api.input_catalog import router as input_catalog_router
 from app.modules.master_data.api.input_catalog_csv import router as input_catalog_csv_router
 from app.modules.master_data.api.product_catalog import router as product_catalog_router
+from app.modules.master_data.api.localization import router as localization_router
 from app.modules.app_config import router as app_config_router
 from app.modules.media import broadcasts_router, field_events_router, query_threads_router, weather_router, router as media_router
 
@@ -72,6 +73,7 @@ app.include_router(crop_catalog_csv_router)
 app.include_router(input_catalog_router)
 app.include_router(input_catalog_csv_router)
 app.include_router(product_catalog_router)
+app.include_router(localization_router)
 app.include_router(app_config_router)
 app.include_router(media_router)
 app.include_router(field_events_router)

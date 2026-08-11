@@ -278,3 +278,26 @@ Seeded content-key sources:
 V1 implication:
 
 Admin localization can now start with form, option, and workflow-stage content keys. Overrides should be tenant/project/language scoped and must not change workflow semantics, crop-stage codes, input codes, or traceability identifiers.
+
+## Admin localization API and screen v1 — 2026-08-11
+
+Implemented first admin localization management slice:
+
+- backend admin API at `/api/v1/admin/localization`;
+- summary endpoint for seeded content-key/source counts;
+- searchable content-key listing with effective label resolution;
+- tenant/project/language scoped override upsert;
+- override deactivate path;
+- admin web screen at `/localization`;
+- sidebar entry under Configuration;
+- authenticated smoke test covering create, effective override, deactivate, and fallback behavior.
+
+Current scope is management and preview of localization overrides. The next backend step is to wire these effective overrides into Android-facing backend-driven form/option/workflow payloads so Android automatically receives tenant/project-specific labels.
+
+Smoke evidence:
+
+- `backend/scripts/test_admin_localization_api.py` passed;
+- `web` lint passed for localization page, API client, and sidebar;
+- seeded registry has 308 platform-owned content keys;
+- English fallback remains complete;
+- Kannada override smoke proved `EN_FALLBACK -> TENANT_OVERRIDE -> EN_FALLBACK` lifecycle.

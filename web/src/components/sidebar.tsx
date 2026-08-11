@@ -34,6 +34,7 @@ const navSections: NavSection[] = [
       { href: "/core-lgd-review", label: "CoRE LGD Review", icon: "Map" },
       { href: "/project-workflows", label: "Project Workflows", icon: "Flow" },
       { href: "/profile-forms", label: "Profile Forms", icon: "Form" },
+      { href: "/localization", label: "Localization", icon: "Lang" },
       { href: "/inputs", label: "Inputs", icon: "Input" },
       { href: "/products", label: "Products & Brands", icon: "Box" },
       { href: "/project-inputs", label: "Project Inputs", icon: "Tune" },

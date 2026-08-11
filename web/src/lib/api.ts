@@ -3888,3 +3888,92 @@ export const weatherApi = {
   },
 };
 
+
+export interface LocalizationEffectiveLabel {
+  text: string;
+  source: "PROJECT_OVERRIDE" | "TENANT_OVERRIDE" | "PLATFORM_DEFAULT" | "EN_FALLBACK";
+  override_id?: string | null;
+  review_status?: string | null;
+}
+
+export interface LocalizationOverrideDto {
+  id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  content_key_id: string;
+  language_code: string;
+  override_text: string;
+  review_status: string;
+  review_notes?: string | null;
+  is_active: boolean;
+  updated_at?: string | null;
+}
+
+export interface LocalizationContentKeyDto {
+  id: string;
+  content_key: string;
+  source: string;
+  content_kind: string;
+  default_labels: Record<string, string>;
+  metadata: Record<string, unknown>;
+  review_status: string;
+  effective: LocalizationEffectiveLabel;
+  overrides?: LocalizationOverrideDto[];
+  is_active: boolean;
+}
+
+export interface LocalizationContentKeysResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_id?: string | null;
+  language_code: string;
+  total: number;
+  count: number;
+  content_keys: LocalizationContentKeyDto[];
+}
+
+export interface LocalizationSummaryResponse {
+  schema_version: string;
+  tenant_id: string;
+  content_keys_by_source: Record<string, number>;
+  active_override_count: number;
+}
+
+export const localizationApi = {
+  summary: () => api<LocalizationSummaryResponse>("/api/v1/admin/localization/summary"),
+  contentKeys: (params: {
+    source?: string;
+    content_kind?: string;
+    q?: string;
+    language_code?: string;
+    project_id?: string;
+    include_overrides?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    return api<LocalizationContentKeysResponse>(`/api/v1/admin/localization/content-keys?${query.toString()}`);
+  },
+  upsertOverride: (
+    contentKeyId: string,
+    body: {
+      project_id?: string | null;
+      language_code: string;
+      override_text: string;
+      review_status?: string;
+      review_notes?: string | null;
+      reason?: string;
+    }
+  ) => api<{ schema_version: string; action: string; content_key: LocalizationContentKeyDto; override: LocalizationOverrideDto }>(
+    `/api/v1/admin/localization/content-keys/${contentKeyId}/overrides`,
+    { method: "POST", body }
+  ),
+  deactivateOverride: (overrideId: string, reason?: string) =>
+    api<{ schema_version: string; override_id: string; status: string }>(
+      `/api/v1/admin/localization/overrides/${overrideId}`,
+      { method: "DELETE", body: { reason: reason || "Deactivated from admin localization page" } }
+    ),
+};
