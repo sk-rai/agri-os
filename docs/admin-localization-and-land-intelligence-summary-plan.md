@@ -200,3 +200,41 @@ Agri-OS does not just collect farmer data. It lets organizations configure how a
 - irrigation-source plausibility using canal/groundwater datasets;
 - district/block/village-level summary overrides;
 - role-specific views for farmer, field agent, agronomist, and admin.
+
+## Read-only localization content source audit
+
+Script:
+
+- `backend/scripts/audit_admin_localization_content_sources.py`
+
+Latest audit summary:
+
+- mode: `READ_ONLY_AUDIT`
+- DB writes: `false`
+- external calls: `false`
+- content keys inventoried: `468`
+- English fallback complete: `true`
+- Hindi labels present: `462 / 468`
+- Kannada native labels present: `0 / 468`
+- Marathi native labels present: `0 / 468`
+- Punjabi native labels present: `0 / 468`
+- ready to design override tables: `true`
+
+Content sources currently included:
+
+- backend-driven profile forms;
+- backend-driven profile form fields;
+- backend-driven profile field options;
+- profile option sets;
+- profile option set options;
+- workflow stage names/descriptions.
+
+Input/product catalog content was intentionally reported as skipped for this first pass because the live column shapes differ from the audit assumptions. This can be added in a later hardening pass after inspecting the input/product catalog schema.
+
+Recommended first implementation tables:
+
+- `localized_content_keys`
+- `localized_content_overrides`
+- later: `land_intelligence_summary_overrides`
+
+V1 admin localization should start with form/option/workflow-stage overrides because those sources already have complete English fallback and stable backend-owned key paths.
