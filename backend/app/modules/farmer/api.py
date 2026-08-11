@@ -33,6 +33,83 @@ from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAudi
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
+
+def _parse_optional_actor_id(value: Optional[str]) -> Optional[uuid.UUID]:
+    if not value:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "X-Actor-ID must be a valid UUID")
+
+
+def _actor_can_manage_farmer(db: Session, tenant_id: str, farmer: Farmer, actor_id: Optional[uuid.UUID]) -> bool:
+    """Return whether actor may update farmer-scoped profile data.
+
+    Legacy/admin scripts in this module historically called PATCH with no actor
+    or a synthetic actor UUID. Keep those paths working, but enforce the
+    Android field-agent contract when the actor is a known active agent user:
+    assigned agents can manage assisted farmers; unassigned agents cannot
+    mutate by direct farmer/parcel ID.
+    """
+
+    if actor_id is None:
+        return True
+
+    if farmer.user_id and str(farmer.user_id) == str(actor_id):
+        return True
+
+    active_enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+        )
+        .all()
+    )
+
+    actor_text = str(actor_id)
+    for enrollment in active_enrollments:
+        assigned_user_ids = enrollment.assigned_user_ids or []
+        if actor_text in [str(value) for value in assigned_user_ids]:
+            return True
+
+    actor_user = db.query(User).filter(User.id == actor_id).first()
+    if not actor_user:
+        return True
+
+    active_agent_profile = db.execute(
+        text(
+            """
+            select 1
+            from agent_profiles
+            where tenant_id = :tenant_id
+              and user_id = cast(:actor_id as uuid)
+              and status = 'ACTIVE'
+              and coalesce(is_active, true) = true
+            limit 1
+            """
+        ),
+        {"tenant_id": tenant_id, "actor_id": actor_text},
+    ).first()
+    if active_agent_profile:
+        return False
+
+    return True
+
+
+def _require_actor_can_manage_farmer(db: Session, tenant_id: str, farmer: Farmer, actor_id: Optional[uuid.UUID]) -> None:
+    if not _actor_can_manage_farmer(db, tenant_id, farmer, actor_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "FARMER_ASSIGNMENT_REQUIRED",
+                "message": "Actor is not assigned to manage this farmer",
+                "farmer_id": str(farmer.id),
+            },
+        )
+
 COMPANY_DISCOVERY_CSV_COLUMNS = [
     "candidate_name",
     "company_type",
@@ -3238,11 +3315,14 @@ def update_farmer_profile(
     body: FarmerUpdate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Safely update mutable farmer profile fields for self-service or agent-mode maintenance."""
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
+    actor_id = _parse_optional_actor_id(x_actor_id)
+    _require_actor_can_manage_farmer(db, x_tenant_id, farmer, actor_id)
 
     values = _model_patch_values(body)
     if not values:
@@ -4076,6 +4156,7 @@ def update_parcel_profile(
     body: ParcelUpdate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Update parcel metadata; geometry remains handled by /parcels/{parcel_id}/geometry."""
     parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == x_tenant_id).first()
@@ -4085,6 +4166,8 @@ def update_parcel_profile(
     farmer = db.query(Farmer).filter(Farmer.id == parcel.farmer_id, Farmer.tenant_id == x_tenant_id).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
+    actor_id = _parse_optional_actor_id(x_actor_id)
+    _require_actor_can_manage_farmer(db, x_tenant_id, farmer, actor_id)
     _validate_parcel_location_scope(body, farmer)
 
     values = _model_patch_values(body)
