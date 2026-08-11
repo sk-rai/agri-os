@@ -28,6 +28,12 @@ Assisted farmer:
 - farmer: `0f7e0a6b-8472-5d6d-8a14-a9d000001402`
 - parcel: `0f7e0a6b-8472-5d6d-8a14-a9d000001403`
 
+Additional assigned farmer for multi-worklist coverage:
+
+- mobile: `+919900001901`
+- farmer: `0f7e0a6b-8472-5d6d-8a14-a9d000001902`
+- parcel: `0f7e0a6b-8472-5d6d-8a14-a9d000001903`
+
 ## WSL prepare and verify
 
 ```bash
@@ -48,6 +54,8 @@ python3 -m json.tool /tmp/agent-assisted-management.json | head -260
 {
   "assigned_agent_can_review_assisted_farmer": true,
   "assigned_agent_can_update_assisted_farmer_profile": true,
+  "assigned_agent_can_review_multiple_assigned_farmers": true,
+  "multi_assigned_farmer_visible": true,
   "assigned_only_worklist_excludes_independent_farmer": true,
   "unassigned_agent_hidden_from_assisted_farmer": true,
   "unassigned_agent_update_blocked": true,
@@ -60,7 +68,8 @@ python3 -m json.tool /tmp/agent-assisted-management.json | head -260
 
 Assigned field-agent mode should:
 
-- show the assisted farmer in assigned farmers/worklist;
+- show at least two assigned farmers in assigned farmers/worklist;
+- show the deterministic assisted farmer and additional multi-assigned farmer;
 - allow opening the assisted farmer profile;
 - allow updating farmer profile fields on behalf of the farmer;
 - allow updating parcel/profile information on behalf of the farmer.
@@ -79,3 +88,9 @@ cd ~/projects/farmint/backend
 ../venv/bin/python scripts/prepare_android_persona_lifecycle_extensions.py --reset --apply
 ../venv/bin/python scripts/verify_android_persona_lifecycle_extensions.py
 ```
+
+## Android evidence
+
+- Backend commit `a03913f` enforced assigned-agent farmer/parcel PATCH authorization.
+- Android follow-up verified assigned agent farmer PATCH `200`, assigned agent parcel PATCH `200`, unassigned farmer probe `403`, unassigned parcel probe `403`, primary agent worklist includes assisted farmer, and second agent worklist is empty.
+- This fixture now also covers `>1` assigned farmers for the primary/dual agent worklist. Android should avoid silently selecting the first farmer; it should show a selectable/searchable assigned-farmer list when more than one row is returned.

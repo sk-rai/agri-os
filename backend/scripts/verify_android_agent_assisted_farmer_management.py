@@ -34,6 +34,8 @@ PRIMARY_AGENT_USER_ID = PERSONAS["dual_agent"]["user_id"]
 SECOND_AGENT_USER_ID = EXT["second_agent"]["user_id"]
 ASSISTED_FARMER_ID = PERSONAS["assisted"]["farmer_id"]
 ASSISTED_PARCEL_ID = PERSONAS["assisted"]["parcel_id"]
+MULTI_ASSIGNED_FARMER_ID = EXT["multi_assigned"]["farmer_id"]
+MULTI_ASSIGNED_PARCEL_ID = EXT["multi_assigned"]["parcel_id"]
 INDEPENDENT_FARMER_ID = PERSONAS["independent"]["farmer_id"]
 
 
@@ -172,6 +174,8 @@ def main() -> int:
         "unassigned_second_agent_user_id": str(SECOND_AGENT_USER_ID),
         "assisted_farmer_id": str(ASSISTED_FARMER_ID),
         "assisted_parcel_id": str(ASSISTED_PARCEL_ID),
+        "multi_assigned_farmer_id": str(MULTI_ASSIGNED_FARMER_ID),
+        "multi_assigned_parcel_id": str(MULTI_ASSIGNED_PARCEL_ID),
         "independent_farmer_id": str(INDEPENDENT_FARMER_ID),
         "mode": "MUTATING_VERIFIER_WITH_RESTORE",
         "external_calls_made": False,
@@ -254,6 +258,8 @@ def main() -> int:
                 "status_code": primary_worklist["status_code"],
                 "farmer_ids": primary_worklist["farmer_ids"],
                 "assisted_farmer_visible": str(ASSISTED_FARMER_ID) in primary_worklist["farmer_ids"],
+                "multi_assigned_farmer_visible": str(MULTI_ASSIGNED_FARMER_ID) in primary_worklist["farmer_ids"],
+                "assigned_farmer_count": len(primary_worklist["farmer_ids"]),
                 "independent_farmer_visible": str(INDEPENDENT_FARMER_ID) in primary_worklist["farmer_ids"],
             },
             "second_agent": {
@@ -285,6 +291,8 @@ def main() -> int:
         }
 
         assigned_visible = result["worklists"]["primary_agent"]["assisted_farmer_visible"]
+        multi_assigned_visible = result["worklists"]["primary_agent"]["multi_assigned_farmer_visible"]
+        primary_has_multiple_assigned = result["worklists"]["primary_agent"]["assigned_farmer_count"] >= 2
         independent_hidden = not result["worklists"]["primary_agent"]["independent_farmer_visible"]
         second_hidden = not result["worklists"]["second_agent"]["assisted_farmer_visible"]
         assigned_update_supported = (
@@ -300,11 +308,13 @@ def main() -> int:
             "baseline_present": True,
             "assigned_agent_can_review_assisted_farmer": assigned_visible,
             "assigned_agent_can_update_assisted_farmer_profile": assigned_update_supported,
+            "assigned_agent_can_review_multiple_assigned_farmers": primary_has_multiple_assigned,
+            "multi_assigned_farmer_visible": multi_assigned_visible,
             "assigned_only_worklist_excludes_independent_farmer": independent_hidden,
             "unassigned_agent_hidden_from_assisted_farmer": second_hidden,
             "unassigned_agent_update_blocked": unassigned_blocked,
             "needs_assignment_authorization_hardening": not unassigned_blocked,
-            "ready_for_android_agent_assisted_maestro": assigned_visible and assigned_update_supported and independent_hidden and second_hidden and unassigned_blocked,
+            "ready_for_android_agent_assisted_maestro": assigned_visible and multi_assigned_visible and primary_has_multiple_assigned and assigned_update_supported and independent_hidden and second_hidden and unassigned_blocked,
         }
 
         print(json.dumps(result, indent=2, sort_keys=True, default=str))

@@ -56,6 +56,14 @@ EXT = {
     "duplicate_empty": {
         "farmer_id": uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000001805"),
     },
+    "multi_assigned": {
+        "mobile": "+919900001901",
+        "user_id": uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000001901"),
+        "farmer_id": uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000001902"),
+        "parcel_id": uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000001903"),
+        "soil_id": uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000001904"),
+        "enrollment_id": uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000001905"),
+    },
 }
 
 
@@ -87,10 +95,24 @@ def reset_extension_rows(db, result: dict, dry_run: bool) -> None:
             str(EXT["project_picker"]["farmer_id"]),
             str(EXT["duplicate_primary"]["farmer_id"]),
             str(EXT["duplicate_empty"]["farmer_id"]),
+            str(EXT["multi_assigned"]["farmer_id"]),
         ],
-        "parcel_ids": [str(EXT["project_picker"]["parcel_id"]), str(EXT["duplicate_primary"]["parcel_id"])],
-        "soil_ids": [str(EXT["project_picker"]["soil_id"]), str(EXT["duplicate_primary"]["soil_id"])],
-        "user_ids": [str(EXT["project_picker"]["user_id"]), str(EXT["second_agent"]["user_id"]), str(EXT["duplicate_primary"]["user_id"])],
+        "parcel_ids": [
+            str(EXT["project_picker"]["parcel_id"]),
+            str(EXT["duplicate_primary"]["parcel_id"]),
+            str(EXT["multi_assigned"]["parcel_id"]),
+        ],
+        "soil_ids": [
+            str(EXT["project_picker"]["soil_id"]),
+            str(EXT["duplicate_primary"]["soil_id"]),
+            str(EXT["multi_assigned"]["soil_id"]),
+        ],
+        "user_ids": [
+            str(EXT["project_picker"]["user_id"]),
+            str(EXT["second_agent"]["user_id"]),
+            str(EXT["duplicate_primary"]["user_id"]),
+            str(EXT["multi_assigned"]["user_id"]),
+        ],
     }
     deletes = [
         ("soil_profiles", "delete from soil_profiles where tenant_id = :tenant_id and id = any(cast(:soil_ids as uuid[]))"),
@@ -439,6 +461,15 @@ def result_template(dry_run: bool, reset: bool) -> dict:
                 "primary_agent_user_id": str(PERSONAS["dual_agent"]["user_id"]),
                 "second_agent_user_id": str(EXT["second_agent"]["user_id"]),
             },
+            "multi_assigned_worklist": {
+                "primary_agent_user_id": str(PERSONAS["dual_agent"]["user_id"]),
+                "farmer_ids": [
+                    str(PERSONAS["assisted"]["farmer_id"]),
+                    str(EXT["multi_assigned"]["farmer_id"]),
+                ],
+                "mobile": EXT["multi_assigned"]["mobile"],
+                "parcel_id": str(EXT["multi_assigned"]["parcel_id"]),
+            },
             "duplicate_cleanup": {
                 "mobile": EXT["duplicate_primary"]["mobile"],
                 "primary_farmer_id": str(EXT["duplicate_primary"]["farmer_id"]),
@@ -478,19 +509,23 @@ def main() -> int:
         upsert_user(db, "project_picker", role="FARMER", result=result, dry_run=dry_run)
         upsert_user(db, "second_agent", role="FIELD_AGENT", result=result, dry_run=dry_run)
         upsert_user(db, "duplicate_primary", role="FARMER", result=result, dry_run=dry_run)
+        upsert_user(db, "multi_assigned", role="FARMER", result=result, dry_run=dry_run)
         if not dry_run:
             db.flush()
 
         upsert_farmer(db, "project_picker", project_id=None, result=result, dry_run=dry_run)
         upsert_farmer(db, "duplicate_primary", project_id=None, result=result, dry_run=dry_run)
+        upsert_farmer(db, "multi_assigned", project_id=PROJECT_ID, result=result, dry_run=dry_run)
         upsert_duplicate_empty(db, result, dry_run)
         if not dry_run:
             db.flush()
 
         upsert_parcel_soil(db, "project_picker", project_id=None, result=result, dry_run=dry_run)
         upsert_parcel_soil(db, "duplicate_primary", project_id=None, result=result, dry_run=dry_run)
+        upsert_parcel_soil(db, "multi_assigned", project_id=PROJECT_ID, result=result, dry_run=dry_run)
         upsert_enrollment(db, "project_picker", EXT["project_picker"]["enrollment_1_id"], PROJECT_ID, [], result, dry_run)
         upsert_enrollment(db, "project_picker", EXT["project_picker"]["enrollment_2_id"], SECOND_PROJECT_ID, [], result, dry_run)
+        upsert_enrollment(db, "multi_assigned", EXT["multi_assigned"]["enrollment_id"], PROJECT_ID, [str(PERSONAS["dual_agent"]["user_id"])], result, dry_run)
         upsert_second_agent(db, result, dry_run)
 
         if dry_run:
