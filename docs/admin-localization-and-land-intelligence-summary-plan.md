@@ -1,0 +1,202 @@
+# Admin localization and land-intelligence summary plan
+
+Status: Proposed next backend/admin contract
+
+This plan combines two adjacent product capabilities:
+
+1. admin-managed multilingual label/content overrides;
+2. a backend-driven Android land-intelligence summary screen.
+
+The goal is to keep Android as a renderer while backend/admin remains the source of truth for labels, regional context, crop suitability, and project/company overrides.
+
+## Product rationale
+
+Agri-OS should support field operations across languages, crops, states, companies, and project types without requiring a new Android APK for every client.
+
+Two related needs are emerging:
+
+- organizations need control over translated labels/copy, especially for crop stages, inputs, form labels, and local terminology;
+- field users need a simple, trusted summary of local land/crop context before entering detailed workflows.
+
+## Admin localization surface
+
+### V1 scope
+
+Admin should be able to view backend-owned defaults and add tenant/project-specific overrides for:
+
+- backend-driven form labels;
+- option-set labels;
+- crop stage names;
+- crop stage descriptions;
+- input names/categories where locally relevant;
+- informational land-intelligence summary copy.
+
+Supported initial languages:
+
+- English: `en`
+- Hindi: `hi`
+- Kannada: `kn`
+- Marathi: `mr`
+- Punjabi: `pa`
+
+Future demo-expansion candidates:
+
+- Tamil: `ta`
+- Telugu: `te`
+- Bengali/Bangla: `bn`
+
+### Admin UX principles
+
+For each translatable item, admin should see:
+
+- stable key/path;
+- default English label;
+- existing default Hindi label when available;
+- current tenant/project override;
+- language code;
+- review status;
+- last updated by/at;
+- fallback preview.
+
+Admin should be able to:
+
+- add or edit override text;
+- mark override as reviewed;
+- hide/deactivate an override;
+- fall back to backend default;
+- export/import translation backlog for human review.
+
+### Important boundaries
+
+Translation overrides must not change business semantics.
+
+- changing a crop-stage label should not change stage code, lifecycle order, or workflow transition rules;
+- changing an input display name should not change input code, compatibility, or traceability;
+- missing regional labels must fall back to English;
+- Android must not hardcode translations for backend-driven content.
+
+## Land-intelligence summary screen
+
+### V1 scope
+
+Android should render a read-only informational screen from backend payload.
+
+The screen should summarize:
+
+- region/location context;
+- season context;
+- weather/climate context;
+- soil context;
+- water/irrigation context;
+- suitable main crops;
+- suitable alternate crops;
+- confidence/caveat text.
+
+The screen is informational only in V1. It should not block farmer onboarding, parcel creation, or crop-cycle creation.
+
+### Example Android sections
+
+- Region
+- Current/selected season
+- Climate/weather pattern
+- Soil suitability
+- Water/irrigation context
+- Suitable main crops
+- Suitable alternate crops
+- Notes/caveats
+
+### Backend-driven payload principle
+
+Backend should provide summarized display-ready content, not raw geometry or complex data layers.
+
+Android should render title, summary, cards, caveats, and source/last-updated labels.
+
+Android should not compute suitability locally.
+
+### Company/project override model
+
+Defaults can be prepopulated from platform master data.
+
+Tenant/project admins should later be able to override:
+
+- summary text;
+- crop lists;
+- confidence labels;
+- caveats;
+- language-specific copy;
+- whether the screen is enabled for a project.
+
+### Suggested V1 endpoint
+
+Existing land-intelligence context can be extended or paired with a summary endpoint:
+
+- `GET /api/v1/profile/land-intelligence-context?pin_code={pin_code}&crop_code={crop_code}&season_code={season_code}`
+- `GET /api/v1/profile/land-intelligence-summary?pin_code={pin_code}&season_code={season_code}&project_id={project_id}`
+
+Decision to be made during backend design:
+
+- extend the existing context endpoint; or
+- add a separate summary endpoint optimized for Android rendering.
+
+## V1 data model options
+
+Option A: JSON config in project/tenant config.
+
+Good for fastest demo iteration.
+
+Pros:
+
+- low migration cost;
+- flexible;
+- easy project override.
+
+Cons:
+
+- weaker audit/query/reporting;
+- can become messy as content grows.
+
+Option B: dedicated localization/content tables.
+
+Better long-term.
+
+Possible tables:
+
+- `localized_content_keys`
+- `localized_content_overrides`
+- `land_intelligence_summary_defaults`
+- `land_intelligence_summary_overrides`
+
+Pros:
+
+- auditable;
+- reviewable;
+- import/export friendly;
+- supports admin workflow.
+
+Cons:
+
+- more backend/admin work.
+
+Recommended path:
+
+- use a small dedicated table design for translation/content overrides;
+- keep land-intelligence summary payload simple and Android-ready;
+- avoid raw geometry or live-provider dependency in V1.
+
+## Demo positioning
+
+This feature supports a strong commercial message:
+
+Agri-OS does not just collect farmer data. It lets organizations configure how agricultural intelligence is localized, summarized, and delivered to field teams and farmers across projects and languages.
+
+## Deferred V2 ideas
+
+- clickable detail cards;
+- crop-specific detail pages;
+- source/evidence links;
+- native translations for Tamil, Telugu, Bengali/Bangla;
+- admin approval workflow;
+- live weather and soil-provider integration;
+- irrigation-source plausibility using canal/groundwater datasets;
+- district/block/village-level summary overrides;
+- role-specific views for farmer, field agent, agronomist, and admin.
