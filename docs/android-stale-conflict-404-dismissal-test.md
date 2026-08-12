@@ -71,3 +71,38 @@ Use this for stale-context materialization recovery checks:
 ## Completion criteria
 
 Mark this closed when Android Maestro evidence confirms that a locally cached pending conflict card disappears cleanly after backend 404, without fatal sync/error copy and without a retry loop.
+
+
+## Android Flow 40 evidence
+
+Android commit:
+
+    f7f842b test: cover stale conflict 404 dismissal
+
+Maestro flow:
+
+    maestro/40-stale-conflict-404-dismissal.yaml
+
+Validated behavior:
+
+- Android debug flow seeds a local CONFLICTED sync row with a fake backend conflict_id.
+- Android taps Use server version / ACK.
+- Android calls existing PATCH /api/v1/sync/conflicts/{conflict_id}.
+- Backend returns 404 because the conflict id does not exist.
+- Android maps 404 to SERVER_ALREADY_GONE.
+- Android deletes the stale local conflict row/card.
+- Non-404 errors still use the existing failure path.
+- Existing successful conflict ACK path remains unchanged.
+
+Evidence lines:
+
+    stale_conflict_ack_404_dismissed=true
+    stale_conflict_card_visible_after_404=false
+    stale_conflict_resolution=SERVER_ALREADY_GONE
+    stale_conflict_fatal_error_visible=false
+    stale_conflict_retry_loop=false
+
+Logcat evidence:
+
+    Stale conflict 404 test card queued: eventId=0f7e0a6b-8472-5d6d-8a14-a9d000000404, conflictId=0f7e0a6b-8472-5d6d-8a14-a9d000404404
+    Cleared stale local conflict row after 404 acknowledgement: eventId=0f7e0a6b-8472-5d6d-8a14-a9d000000404, conflictId=0f7e0a6b-8472-5d6d-8a14-a9d000404404

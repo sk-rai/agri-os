@@ -93,7 +93,7 @@ Provider credentials and product-source verification remain important, but they 
 
 - Held two low-margin Karnataka approved candidates, Chamarajanagar and Davanagere, for manual/map review before activation.
 
-| Android stale local conflict card after backend reset | Active next | Contract added for Android-only cleanup when a locally cached pending conflict card receives backend 404 during refresh/ACK because the conflict row is already gone. Android should dismiss/resolve locally as SERVER_ALREADY_GONE, avoid fatal sync copy, and avoid retry loops. | docs/android-stale-conflict-404-dismissal-test.md, Android commit 1b7ff1e, docs/android-maestro-sync-multilingual-evidence.md |
+| Android stale local conflict card after backend reset | Closed | Android Flow 40 passed: debug flow seeded a local CONFLICTED row with a fake backend conflict id, ACK received backend 404, Android mapped it to SERVER_ALREADY_GONE, deleted the stale local conflict card, avoided fatal sync copy, and avoided retry loops. | `docs/android-stale-conflict-404-dismissal-test.md`, Android commit `f7f842b`, `maestro/40-stale-conflict-404-dismissal.yaml` |
 
 - Shared Android sync fixture baseline documented after post-refactor Flow 15/16 smoke evidence survived shutdown. Canonical IDs now live in `backend/scripts/android_dynamic_sync_baseline.py`; Flow 15/16 use that helper, and reset behavior is documented in `docs/android-maestro-sync-multilingual-evidence.md`.
 
