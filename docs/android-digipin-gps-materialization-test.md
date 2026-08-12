@@ -73,3 +73,57 @@ Evidence lines:
     parcel_geometry_digipin=4P3JK852C9
     digipin_source=BACKEND_RESPONSE
     android_computed_digipin=false
+
+
+## Farmer home DigiPin follow-up contract
+
+This follow-up completes the Android DigiPin path for farmer home GPS.
+
+Backend already exposes these farmer response fields:
+
+    home_digipin
+    home_digipin_algorithm_version
+    home_digipin_generated_at
+
+Backend accepts farmer GPS update fields:
+
+    enrollment_gps_lat
+    enrollment_gps_lng
+
+Deterministic farmer GPS update:
+
+    enrollment_gps_lat=12.9716
+    enrollment_gps_lng=77.5946
+
+Expected backend-computed DigiPin:
+
+    home_digipin=4P3JK852C9
+
+Android first-pass behavior:
+
+- add farmer response DTO fields for home_digipin, home_digipin_algorithm_version, and home_digipin_generated_at;
+- send farmer GPS lat/lng to backend through create/update or a debug probe;
+- render backend-returned home_digipin;
+- emit evidence that the DigiPin came from backend response;
+- do not compute DigiPin locally;
+- do not require Room migration for first debug/probe smoke unless the UI persists the value across process death;
+- gracefully show null/empty DigiPin when farmer GPS is unavailable.
+
+Recommended Maestro evidence lines:
+
+    farmer_home_digipin=4P3JK852C9
+    farmer_home_digipin_source=BACKEND_RESPONSE
+    android_computed_farmer_digipin=false
+    farmer_home_digipin_null_without_gps=true
+
+Backend verifier:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/test_digipin_farmer_parcel_fields.py
+
+Backend evidence already covered by verifier:
+
+- farmer with GPS create returns valid home_digipin;
+- farmer without GPS returns null home_digipin;
+- farmer GPS update recomputes home_digipin;
+- PIN code remains separate from DigiPin.
