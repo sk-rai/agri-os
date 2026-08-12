@@ -216,3 +216,51 @@ Mark persona lifecycle extensions closed when Android provides Maestro evidence 
 - Flow D agent reassignment.
 
 Multi-village parcel and FPO-scale tests can remain separate follow-ups unless product/demo needs them immediately.
+
+## Android closure evidence
+
+Android implementation and Maestro closure passed in commit becfdae test: close persona extension android flows.
+
+Changed Android areas:
+
+- app/src/main/java/com/agrios/app/ui/home/HomeScreen.kt
+- maestro/33a-persona-transition-associated.yaml
+- maestro/33b-persona-transition-inactive.yaml
+- maestro/34-persona-project-picker.yaml
+- maestro/35a-persona-agent-reassignment-before.yaml
+- maestro/35b-persona-agent-reassignment-after.yaml
+- maestro/35c-persona-agent-reassignment-second-initial-empty.yaml
+- maestro/35d-persona-agent-reassignment-primary-after.yaml
+- maestro/36-persona-duplicate-profile.yaml
+- maestro/36b-persona-duplicate-cleanup-after.yaml
+
+Validation reported by Android:
+
+- ./gradlew.bat :app:assembleDebug passed.
+- Backend extension reset plus verifier passed.
+- Flow 34 project picker passed.
+- Flow 36 duplicate-before passed.
+- Flow 35a primary-before passed.
+- Flow 35c second-agent initial empty passed.
+- Backend transition-associated verifier passed.
+- Flow 33a transition-associated passed.
+- Backend transition-inactive verifier passed.
+- Flow 33b transition-inactive passed.
+- Backend reassignment verifier with --perform-reassignment passed.
+- Flow 35d primary-after passed.
+- Flow 35b second-after passed.
+- Backend archive duplicate after fresh reset passed.
+- Flow 36b duplicate-after passed.
+
+Closed Android-visible behavior:
+
+- project picker appears for two active project memberships and does not silently select a default project;
+- independent/project transition preserves the same farmer and does not create a duplicate;
+- duplicate profile detection selects the richer primary farmer and cleanup/archive removes the empty duplicate state;
+- agent reassignment before/after worklist visibility is covered for primary and second agents;
+- empty assigned-agent worklist copy remains No assigned farmers.
+
+Remaining optional follow-ups:
+
+- single farmer with parcels across multiple villages/PINs: backend-supported and regression-covered, but no named Android Maestro smoke yet;
+- FPO-scale affiliated farmer load: existing project enrollment mechanics are sufficient for MVP behavior, but a dedicated 25 to 100 farmer Android/admin smoke is recommended before a commercial FPO demo.
