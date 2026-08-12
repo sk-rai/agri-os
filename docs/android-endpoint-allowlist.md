@@ -22,6 +22,28 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - `GET /api/v1/forms/options/{option_set}`
 - `GET /api/v1/forms/profile-contract`
 
+### Farmer/profile DigiPin fields
+
+DigiPin is backend-owned and is delivered through existing farmer and parcel responses.
+
+Android may read and display:
+
+- `home_digipin`
+- `home_digipin_algorithm_version`
+- `home_digipin_generated_at`
+- `centroid_digipin`
+- `centroid_digipin_algorithm_version`
+- `centroid_digipin_generated_at`
+
+Android may send GPS/centroid inputs through existing farmer/parcel write paths:
+
+- `enrollment_gps_lat`
+- `enrollment_gps_lng`
+- `centroid_lat`
+- `centroid_lng`
+
+Android must not compute DigiPin locally, infer it from PIN/village/district, or replace PIN/village with DigiPin.
+
 ### Farmer/profile write paths
 
 - `POST /api/v1/farmers`
@@ -36,6 +58,7 @@ Android may call only endpoints in the allowed sections below. If Android needs 
 - `GET /api/v1/farmers/profile-readiness`
 - farmer/profile hydration endpoints already used by Android mode bootstrap/profile loading.
 - `GET /api/v1/profile/land-intelligence-context`
+- `GET /api/v1/profile/land-intelligence-summary`
 - `GET /api/v1/field-agent/worklist` when the user is acting as a field agent.
 
 ### Broadcast consumption
@@ -205,3 +228,37 @@ Read-only audit:
 Scenario plan:
 
     docs/android-multilingual-profile-form-test.md
+
+## Land intelligence summary
+
+`GET /api/v1/profile/land-intelligence-summary` returns an Android-safe informational summary for region, season/weather, soil-water, main crops, alternate crops, and caveats.
+
+Android may pass:
+
+- `pin_code`
+- optional `scope_type` and `scope_code` compatibility alias
+- optional `language_code`
+- optional `season_code`
+- optional `crop_code`
+- optional `project_id`
+
+Android should:
+
+- render this as informational only;
+- honor `android_contract.display_as_informational_only`;
+- honor `android_contract.do_not_block_onboarding`;
+- use backend labels and English fallback;
+- avoid direct weather/provider calls.
+
+Android must not:
+
+- block onboarding from this payload;
+- infer crop suitability locally;
+- treat this summary as mandatory agronomist approval.
+
+
+## Admin/deferred endpoint references in Android docs
+
+Some Android handoff documents mention admin, provider, CSV, worker, or operational endpoints for context. These remain backend/admin-only unless explicitly listed in the allowed Android sections above.
+
+If Android needs data from one of those surfaces, add a narrow Android-safe runtime endpoint rather than calling admin/provider/worker APIs directly.
