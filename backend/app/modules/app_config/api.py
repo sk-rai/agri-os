@@ -216,7 +216,7 @@ def _app_config_audit_payload(event: ProjectAppConfigAuditEvent) -> dict:
     }
 
 
-def _effective_config_payload(tenant: Tenant, project: Project) -> dict:
+def _effective_config_payload(db: Session, tenant: Tenant, project: Project) -> dict:
     tenant_config = tenant.config or {}
     project_config = project.config or {}
     effective_config = _deep_merge(DEFAULT_BOOTSTRAP_CONFIG, tenant_config)
@@ -501,7 +501,7 @@ def get_project_effective_app_config(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    return _effective_config_payload(tenant, project)
+    return _effective_config_payload(db, tenant, project)
 
 
 @router.patch("/projects/{project_id}/config")
@@ -551,7 +551,7 @@ def update_project_app_config(
     db.commit()
     db.refresh(project)
 
-    payload = _effective_config_payload(tenant, project)
+    payload = _effective_config_payload(db, tenant, project)
     payload["update"] = {
         "reason": request.reason,
         "patched_sections": sorted(request.config_patch.keys()),
