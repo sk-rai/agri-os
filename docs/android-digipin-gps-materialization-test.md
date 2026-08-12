@@ -127,3 +127,38 @@ Backend evidence already covered by verifier:
 - farmer without GPS returns null home_digipin;
 - farmer GPS update recomputes home_digipin;
 - PIN code remains separate from DigiPin.
+
+
+## Android farmer home DigiPin evidence
+
+Android commit:
+
+    46eb407 test: cover farmer home digipin smoke
+
+Maestro flow:
+
+    maestro/39-land-summary-digipin-debug-smoke.yaml
+
+Validated behavior:
+
+- Android extended farmer create/update DTO coverage for village_id, village_name_manual, pin_code, and enrollment_gps_lat/lng.
+- Android creates a throwaway farmer without GPS and verifies null home_digipin.
+- Android patches an existing dynamic farmer GPS to deterministic Bengaluru coordinates.
+- Backend returns home_digipin=4P3JK852C9.
+- Android displays backend-returned home_digipin.
+- Android emits farmer_home_digipin_source=BACKEND_RESPONSE.
+- Android emits android_computed_farmer_digipin=false.
+- Parcel centroid DigiPin remains covered in the same flow.
+- No local DigiPin computation.
+- No Room migration required for this smoke.
+
+Evidence lines:
+
+    digipin_smoke=farmer:4P3JK852C9 farmer_null_without_gps:true parcel:4P3JK852C9 source:BACKEND_RESPONSE android:false
+    farmer_home_digipin=4P3JK852C9
+    farmer_home_digipin_source=BACKEND_RESPONSE
+    android_computed_farmer_digipin=false
+    farmer_home_digipin_null_without_gps=true
+    parcel_geometry_digipin=4P3JK852C9
+    digipin_source=BACKEND_RESPONSE
+    android_computed_digipin=false
