@@ -165,6 +165,11 @@ def reset_fixture(db, result: dict, dry_run: bool) -> None:
         "user_ids": [str(user_id(row[0])) for row in FARMERS] + [str(ADMIN_USER_ID)],
     }
     deletes = [
+        ("broadcast_audit_events", "delete from broadcast_audit_events where tenant_id = :tenant_id and campaign_id in (select id from broadcast_campaigns where tenant_id = :tenant_id and project_id = cast(:project_id as uuid))"),
+        ("broadcast_deliveries", "delete from broadcast_deliveries where tenant_id = :tenant_id and campaign_id in (select id from broadcast_campaigns where tenant_id = :tenant_id and project_id = cast(:project_id as uuid))"),
+        ("broadcast_audience_rules", "delete from broadcast_audience_rules where tenant_id = :tenant_id and campaign_id in (select id from broadcast_campaigns where tenant_id = :tenant_id and project_id = cast(:project_id as uuid))"),
+        ("broadcast_contents", "delete from broadcast_contents where tenant_id = :tenant_id and campaign_id in (select id from broadcast_campaigns where tenant_id = :tenant_id and project_id = cast(:project_id as uuid))"),
+        ("broadcast_campaigns", "delete from broadcast_campaigns where tenant_id = :tenant_id and project_id = cast(:project_id as uuid)"),
         ("crop_activities", "delete from crop_activities where tenant_id = :tenant_id and crop_cycle_id = any(cast(:cycle_ids as uuid[]))"),
         ("crop_stage_instances", "delete from crop_stage_instances where tenant_id = :tenant_id and crop_cycle_id = any(cast(:cycle_ids as uuid[]))"),
         ("crop_cycles", "delete from crop_cycles where tenant_id = :tenant_id and id = any(cast(:cycle_ids as uuid[]))"),
