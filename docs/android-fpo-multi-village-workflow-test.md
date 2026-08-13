@@ -148,4 +148,31 @@ Suggested Android evidence lines:
     fpo_trace_completed_wheat_cycle_count=1
     fpo_drilldown_farmer_crop=MAIZE
     fpo_drilldown_active_stage_visible=true
+## Web admin search smoke
 
+Playwright smoke:
+
+    cd ~/projects/farmint
+    node web/smoke/fpo_project_enrollment_search_smoke.mjs
+
+Playwright PASS evidence recorded on 2026-08-13. This verifies the admin UI can consume the same FPO search and drill-down contract:
+
+- project enrollment page opens the FPO project;
+- Rampur search renders the three Rampur farmers;
+- Rice search renders the four Rice farmers;
+- mobile search opens FPO Farmer 06 Maize;
+- project trace renders Rice cycle count 4;
+- project trace renders completed Wheat cycle count 1;
+- farmer drill-down renders FPO Farmer 06 Maize and MAIZE: 1 cycles;
+- each UI check is cross-checked against the backend API response.
+
+Expected Playwright evidence:
+
+    fpo_affiliated_farmer_count=12
+    fpo_search_village_rampur_count=3
+    fpo_search_crop_rice_count=4
+    fpo_search_mobile_maize_farmer=true
+    fpo_trace_rice_cycle_count=4
+    fpo_trace_completed_wheat_cycle_count=1
+    fpo_drilldown_farmer_crop=MAIZE
+    fpo_drilldown_active_stage_visible=true
