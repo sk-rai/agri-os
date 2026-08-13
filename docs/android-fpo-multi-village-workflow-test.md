@@ -89,3 +89,36 @@ This closes the earlier commercial question more strongly than the persona fixtu
 - admin trace/filter APIs can summarize and filter the project.
 
 This is still a compact smoke, not a load test. A later scale test can raise the farmer count to 100 or 1,000 after the UI flow is stable.
+
+## Android closure evidence
+
+Android implementation and Maestro smoke passed in commit 888fbe0 test: add fpo multi-village workflow smoke.
+
+Evidence reported by Android:
+
+    fpo_affiliated_farmer_count=12
+    fpo_village_count=4
+    fpo_crop_codes=MAIZE,RICE,SUGARCANE,WHEAT
+    fpo_stage_statuses=ACTIVE,COMPLETED,PARTIALLY_COMPLETED,PENDING
+    fpo_project_enrollment_api_count=12
+    fpo_project_trace_farmer_count=12
+    fpo_project_trace_crop_cycle_count=12
+    fpo_android_farmer_hydration_project_context=true
+    fpo_android_crop_cycles_rendered=true
+    fpo_android_multi_village_filter_visible=true
+
+Backend verifier evidence:
+
+- 12 active project enrollments;
+- 12 active farmers;
+- 12 parcels;
+- 12 crop cycles;
+- crop distribution: MAIZE=2, RICE=4, SUGARCANE=3, WHEAT=3;
+- village distribution: FPO Chikkapura=3, FPO Harohalli=3, FPO Nelamangala=3, FPO Rampur=3;
+- stage status distribution includes ACTIVE, COMPLETED, PARTIALLY_COMPLETED, and PENDING;
+- no orphan project enrollments;
+- no orphan crop cycles.
+
+Closed assessment:
+
+This smoke is now sufficient to demonstrate the MVP commercial claim that one FPO/project can manage many affiliated farmers across multiple villages, crops, and crop workflow stages, with Android consuming backend-owned project enrollment, hydration, crop-cycle, and trace summary data.
