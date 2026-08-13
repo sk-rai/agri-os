@@ -80,3 +80,27 @@ Admin lifecycle mutation used by verifier:
 ## Product note
 
 This is intentionally framed as a migration/continuation notice, not a hard conversion wizard. The backend owns the trigger and audit trail. Android V1 only needs to display the notice and route the farmer to a safe self-service context after the project enrollment is completed/cancelled. A later V2 can add explicit farmer acknowledgement, consent capture, or a richer guided migration screen.
+## Stateful Android Maestro prepare
+
+Android Flow 43 needs the backend state to remain observable after setup. Use this stateful prepare command before running Maestro:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/prepare_android_fpo_multi_village_workflow.py --reset --apply
+    ../venv/bin/python scripts/prepare_android_fpo_project_closure_migration_notice.py --reset --apply
+
+This leaves:
+
+- campaign published;
+- 12 farmer deliveries generated;
+- selected farmer feed count equals 1;
+- selected enrollment status equals COMPLETED;
+- selected farmer hydration mode equals SELF_SERVICE.
+
+After Android smoke, restore reusable baseline with:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/prepare_android_fpo_project_closure_migration_notice.py --restore
+
+The regression verifier remains restore-safe and can still be used for backend-only validation:
+
+    ../venv/bin/python scripts/verify_android_fpo_project_closure_migration_notice.py
