@@ -104,3 +104,25 @@ After Android smoke, restore reusable baseline with:
 The regression verifier remains restore-safe and can still be used for backend-only validation:
 
     ../venv/bin/python scripts/verify_android_fpo_project_closure_migration_notice.py
+## Android closure evidence
+
+Android Flow 43 passed in commit 1dc778a test: add fpo closure migration notice smoke.
+
+Evidence reported by Android:
+
+    fpo_closure_notice_delivery_count=1
+    fpo_closure_notice_selected_farmer_visible=true
+    fpo_closure_notice_event_type=PROJECT_CLOSURE_MIGRATION_NOTICE
+    fpo_closure_notice_cta=Continue as independent farmer
+    fpo_closure_notice_deeplink=agrios://project-closure/continue-independent
+    fpo_before_closure_context=PROJECT
+    fpo_after_closure_context=SELF_SERVICE
+    fpo_after_closure_can_continue_independently=true
+    fpo_after_closure_active_project_count=0
+    fpo_after_closure_farmer_data_preserved=true
+
+Backend restore was run after the flow and selected farmer returned to PROJECT context with active enrollment.
+
+Closed assessment:
+
+Project closure now has an end-to-end V1 path: backend-triggered closure notice, Android-visible continuation CTA, enrollment completion, self-service hydration, data preservation, and fixture restore. This is sufficient for MVP demo and Android regression coverage. A later V2 can add explicit consent capture, acknowledgement analytics, and richer guided migration UX.
