@@ -122,3 +122,30 @@ Backend verifier evidence:
 Closed assessment:
 
 This smoke is now sufficient to demonstrate the MVP commercial claim that one FPO/project can manage many affiliated farmers across multiple villages, crops, and crop workflow stages, with Android consuming backend-owned project enrollment, hydration, crop-cycle, and trace summary data.
+
+## Search and drill-down follow-up
+
+Backend verifier:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/verify_android_fpo_search_drilldown.py
+
+This verifies:
+
+- project enrollment report search by village, farmer/crop label, source, and mobile;
+- project trace crop drill-down for RICE equals 4 crop cycles;
+- project trace crop plus status drill-down for completed WHEAT equals 1 crop cycle;
+- farmer drill-down for FPO Farmer 06 Maize;
+- Android-visible hydration and crop-cycle drill-down for the selected farmer;
+- DB-backed stage status distribution includes ACTIVE, COMPLETED, PARTIALLY_COMPLETED, and PENDING.
+
+Suggested Android evidence lines:
+
+    fpo_search_village_rampur_count=3
+    fpo_search_crop_rice_count=4
+    fpo_search_mobile_maize_farmer=true
+    fpo_trace_rice_cycle_count=4
+    fpo_trace_completed_wheat_cycle_count=1
+    fpo_drilldown_farmer_crop=MAIZE
+    fpo_drilldown_active_stage_visible=true
+
