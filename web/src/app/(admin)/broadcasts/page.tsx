@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { broadcastsApi, type BroadcastAuditResponse, type BroadcastAudiencePreviewResponse, type BroadcastCampaignDto, type BroadcastCampaignListResponse, type BroadcastDeliveriesResponse } from "@/lib/api";
 
-const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "ARCHIVED"];
+const STATUSES = ["", "DRAFT", "PUBLISHED", "EXPIRED", "CANCELLED", "ARCHIVED"];
 const PRIORITIES = ["", "LOW", "NORMAL", "HIGH", "URGENT"];
 const CATEGORIES = ["", "GENERAL", "ADVISORY", "WEATHER", "MARKET", "INPUT", "EMERGENCY"];
 const RULE_TYPES = ["ALL", "PROJECT", "FARMER", "CROP", "STAGE", "LOCATION", "WEATHER", "FIELD_EVENT", "INPUT", "PRODUCT", "ROLE", "LANGUAGE"];
