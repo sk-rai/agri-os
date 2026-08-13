@@ -67,6 +67,33 @@ Unread-only feed check:
     broadcast_audit_mark_read=true
     broadcast_audit_acknowledge=true
 
+## Android closure evidence
+
+Android Flow 44 passed and was pushed in Android commit `6cce124 test: add broadcast read ack lifecycle smoke`.
+
+Observed evidence:
+
+    broadcast_read_ack_initial_status=PENDING
+    broadcast_read_status=DELIVERED
+    broadcast_read_at_set=true
+    broadcast_ack_status=ACKNOWLEDGED
+    broadcast_acknowledged_at_set=true
+    broadcast_unread_feed_count_after_read=0
+    broadcast_feed_status_after_ack=ACKNOWLEDGED
+    broadcast_audit_mark_read=true
+    broadcast_audit_acknowledge=true
+
+The backend restore was run after the Android smoke and confirmed the selected farmer returned to PROJECT context with an active enrollment.
+
+Closed assessment:
+
+- Android consumes backend-triggered farmer communication records from the farmer broadcast feed.
+- Android marks a broadcast delivery read through the backend endpoint.
+- Android acknowledges the same delivery through the backend endpoint.
+- The unread-only feed no longer shows the read delivery.
+- The full feed reflects the acknowledged delivery state.
+- Backend audit coverage exists for both read and acknowledgement actions.
+
 ## Restore
 
 After Android smoke, restore fixture baseline:
