@@ -176,3 +176,28 @@ Expected Playwright evidence:
     fpo_trace_completed_wheat_cycle_count=1
     fpo_drilldown_farmer_crop=MAIZE
     fpo_drilldown_active_stage_visible=true
+## Android search and drill-down closure evidence
+
+Android Flow 42 passed in commit c9edd79 test: add fpo search drilldown smoke.
+
+Evidence reported by Android:
+
+    fpo_affiliated_farmer_count=12
+    fpo_search_village_rampur_count=3
+    fpo_search_crop_rice_count=4
+    fpo_search_mobile_maize_farmer=true
+    fpo_trace_rice_cycle_count=4
+    fpo_trace_completed_wheat_cycle_count=1
+    fpo_drilldown_farmer_crop=MAIZE
+    fpo_drilldown_active_stage_visible=true
+
+Selected drill-down farmer:
+
+    mobile=+919900002106
+    farmer_id=0f7e0a6b-8472-5d6d-8a14-a9d000002106
+    crop=MAIZE
+    cycle_id=0f7e0a6b-8472-5d6d-8a14-a9d000002306
+
+Closed assessment:
+
+The FPO workflow smoke now has broad project proof and search/drill-down proof across backend verifier, web Playwright, and Android Maestro. This is sufficient for the MVP commercial claim that an FPO/company can manage many affiliated farmers across villages, crops, and workflow stages, and that operators/field users can search and drill into the right farmer/crop context.
