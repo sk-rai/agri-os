@@ -19,6 +19,8 @@ AgriFabric is an offline-first field evidence and operations fabric for agricult
 
 It helps farmers, field agents, FPOs, enterprises, and program administrators capture trusted field data, coordinate project workflows, send targeted advisories, recover from offline sync conflicts, and build an auditable operational record that can later support insurance, subsidy, credit, and risk-review use cases.
 
+The deeper platform idea is a relationship graph: farmers, agents, companies, FPOs, projects, parcels, crop cycles, activities, field events, media, advisories, and audit trails are connected through typed relationships. This graph is what makes operational analytics, commercial matching, agent benchmarking, and future risk review possible.
+
 ## Hero headline options
 
 1. Agriculture operations, evidence, and advisories — built for the field.

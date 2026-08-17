@@ -143,7 +143,42 @@ Foundation for insurance, subsidy, credit, weather, soil, and satellite evidence
 
 Icon grid with one proof screenshot per pillar available on hover/click in later implementation.
 
-## Section 4: How the field evidence fabric works
+## Section 4: Relationship graph
+
+### Purpose
+
+Explain the deeper system model: AgriFabric is not just forms and dashboards; it is a connected graph of farmers, agents, companies, projects, parcels, crop cycles, media, advisories, and audit events.
+
+### Layout
+
+Show this as a graph-style relationship map:
+
+- Company/FPO runs a project.
+- Project enrolls farmers and assigns field agents.
+- Farmers are assisted by field agents.
+- Farmers operate parcels.
+- Parcels connect to crop cycles, stages, and activities.
+- Field events connect to media and targeted advisories.
+- Sync events and audit trails record the operational history.
+
+### Copy intent
+
+Each interaction creates typed relationships. Those relationships enable project traceability today and future analytics such as field-agent performance, assignment planning, fraud/waste/abuse review, and claim evidence bundles.
+
+### Visual slot
+
+Graph-style node map with highlighted paths:
+
+- FPO -> project -> farmer cohort;
+- agent -> assigned farmers -> completed work;
+- parcel -> crop cycle -> activity/media;
+- field event -> advisory -> read/ack audit.
+
+### Claim boundary
+
+Field-agent performance analytics and fraud/risk scoring should be marked as roadmap unless implemented separately.
+
+## Section 5: How the field evidence fabric works
 
 ### Purpose
 
@@ -177,7 +212,7 @@ Android → Sync Queue → Backend Evidence Graph → Admin/FPO Operations → F
 
 “Future Risk Intelligence” should be visually marked as roadmap/future, not current operational scoring.
 
-## Section 5: Use-case grid
+## Section 6: Use-case grid
 
 ### Purpose
 
@@ -237,7 +272,7 @@ Insurance and subsidy integrity:
 
 Future risk review from parcel, crop, media, sync, weather, and satellite evidence.
 
-## Section 6: Demo video strip
+## Section 7: Demo video strip
 
 ### Purpose
 
@@ -271,7 +306,7 @@ Each card should include:
 
 Risk/insurance video must be marked “roadmap concept built on implemented evidence foundation.”
 
-## Section 7: Proof strip
+## Section 8: Proof strip
 
 ### Purpose
 
@@ -298,7 +333,7 @@ Give confidence that the platform is not speculative.
 
 Small “evidence cards” with links to docs or eventual demo clips.
 
-## Section 8: Buyer/persona sections
+## Section 9: Buyer/persona sections
 
 ### Purpose
 
@@ -331,7 +366,7 @@ Use the field evidence foundation for future review-assistive risk flags and cla
 
 Insurance/lender/program section must say “future risk-review modules” or “foundation for”, not operational underwriting/claim decisioning.
 
-## Section 9: Geography and location intelligence
+## Section 10: Geography and location intelligence
 
 ### Purpose
 
@@ -363,7 +398,7 @@ Village/PIN → parcel point/polygon → DigiPin → land-intelligence card.
 
 Do not claim live village geocoding or global geography coverage yet.
 
-## Section 10: Roadmap with boundaries
+## Section 11: Roadmap with boundaries
 
 ### Purpose
 
@@ -402,7 +437,7 @@ Roadmap:
 
 This section should be explicit and confidence-building: “We know what is implemented, what is gated, and what is roadmap.”
 
-## Section 11: Final CTA
+## Section 12: Final CTA
 
 ### Purpose
 
