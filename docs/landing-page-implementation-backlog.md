@@ -438,6 +438,26 @@ Acceptance criteria:
 | Geography/DigiPin visual | Geography section | Available: `docs/assets/geography-digipin-overview.svg`, `docs/assets/geography-digipin-layered-model.svg`, `docs/assets/geography-global-extension-layer.svg` |
 | Insurance roadmap graphic | Extend/Roadmap | Available: `docs/assets/insurance-risk-roadmap.svg`, `docs/assets/insurance-risk-roadmap-compact.svg` |
 
+## Landing page draft checkpoint
+
+Status date: 2026-08-20
+
+The first public AgriFabric landing-page draft is implemented at `/agrifabric`.
+
+Implemented:
+
+- tabbed story structure: Overview, Product, Evidence graph, Operations, Geography, Roadmap;
+- committed static SVG assets copied into `web/public/landing-assets`;
+- claim-bounded roadmap sections for insurance/risk, NDVI, live providers, and global geography;
+- admin root behavior remains unchanged because `/` still redirects to `/login`;
+- Playwright smoke `web/smoke/agrifabric_landing_smoke.mjs` verifies page load, all six tabs, landing assets, mobile rendering, and roadmap claim boundary.
+
+Current next work:
+
+- visual/copy polish as needed;
+- demo capture planning and eventual video/thumbnails;
+- future landing-page hosting/deployment decision when ready.
+
 ## Suggested implementation phases
 
 ### Phase 1 — Static landing page without final video assets
