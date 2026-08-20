@@ -34,3 +34,19 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## AgriFabric public landing route
+
+The web app includes a public landing-page draft at `/agrifabric`.
+
+Run locally with: `npm run dev -- --port 3000`
+
+Then open: http://localhost:3000/agrifabric
+
+Smoke test: `WEB_BASE_URL=http://localhost:3000 node web/smoke/agrifabric_landing_smoke.mjs`
+
+Notes:
+
+- `/` still redirects to `/login`.
+- `/agrifabric` is public and does not require admin auth.
+- Static SVG assets are served from `web/public/landing-assets`.

@@ -32,3 +32,17 @@ docs/
 - **sources/** = historical reference (how we got here)
 - If sources and reconciliation conflict → reconciliation wins
 - Changes to reconciliation require explicit decision + version bump
+
+## AgriFabric landing and demo planning
+
+Current landing/demo planning docs:
+
+- `android-mvp-readiness-summary.md` — MVP-ready Android capability summary.
+- `landing-page-content-brief.md` — positioning, claims, and boundaries.
+- `landing-page-wireframe.md` — section-by-section page blueprint.
+- `landing-page-implementation-backlog.md` — implementation and asset status.
+- `demo-script-pack.md` — demo narrative scripts.
+- `demo-asset-inventory.md` — proof assets and capture inventory.
+- `agrifabric-demo-video-capture-matrix.md` — future video capture matrix by landing tab and capture mode.
+
+The current web draft is implemented at `/agrifabric` and smoke-tested by `web/smoke/agrifabric_landing_smoke.mjs`.
