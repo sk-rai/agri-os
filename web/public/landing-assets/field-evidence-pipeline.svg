@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="860" viewBox="0 0 1600 860">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb1{fill:#0f3a42;opacity:.52}
+      .orb2{fill:#0d3b5a;opacity:.38}
+      .title{font:700 42px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 22px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .label{font:700 14px Arial,Helvetica,sans-serif;letter-spacing:3px;fill:#9dc4e8}
+      .stageTitle{font:700 23px Arial,Helvetica,sans-serif;fill:#fff}
+      .stageSub{font:400 15px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .item{font:400 14px Arial,Helvetica,sans-serif;fill:#dbeafe}
+      .lane{fill:#071d2d;stroke:#173044;stroke-width:1.2;opacity:.94}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:4;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:4;fill:none}
+      .linePurple{stroke:#a78bfa;stroke-width:4;fill:none}
+      .lineGray{stroke:#9aa8bd;stroke-width:4;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+      .chip{font:700 12px Arial,Helvetica,sans-serif;fill:#fff}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="860"/>
+  <circle class="orb1" cx="1340" cy="105" r="310"/>
+  <circle class="orb2" cx="150" cy="780" r="280"/>
+
+  <text x="48" y="58" class="title">Field evidence pipeline</text>
+  <text x="48" y="94" class="subtitle">Android captures field reality. Backend turns it into governed evidence, operations, and future intelligence.</text>
+
+  <rect x="42" y="135" width="1516" height="545" rx="28" class="lane"/>
+  <text x="68" y="172" class="label">IMPLEMENTED FOUNDATION</text>
+
+  <rect x="80" y="235" width="240" height="255" rx="26" class="blue"/>
+  <text x="200" y="275" text-anchor="middle" class="stageTitle">Android field app</text>
+  <text x="200" y="305" text-anchor="middle" class="stageSub">captures and displays</text>
+  <text x="112" y="350" class="item">• farmer identity</text>
+  <text x="112" y="378" class="item">• parcel / GPS</text>
+  <text x="112" y="406" class="item">• crop cycle + stage</text>
+  <text x="112" y="434" class="item">• activity + cost</text>
+  <text x="112" y="462" class="item">• media + field event</text>
+
+  <path d="M320 362 H405" class="lineBlue"/>
+  <rect x="405" y="235" width="240" height="255" rx="26" class="green"/>
+  <text x="525" y="275" text-anchor="middle" class="stageTitle">Offline sync queue</text>
+  <text x="525" y="305" text-anchor="middle" class="stageSub">survives field conditions</text>
+  <text x="437" y="350" class="item">• persistence</text>
+  <text x="437" y="378" class="item">• replay</text>
+  <text x="437" y="406" class="item">• idempotency</text>
+  <text x="437" y="434" class="item">• conflict cards</text>
+  <text x="437" y="462" class="item">• backlog draining</text>
+
+  <path d="M645 362 H730" class="lineGreen"/>
+  <rect x="730" y="235" width="240" height="255" rx="26" class="gray"/>
+  <text x="850" y="275" text-anchor="middle" class="stageTitle">Backend contracts</text>
+  <text x="850" y="305" text-anchor="middle" class="stageSub">owns interpretation</text>
+  <text x="762" y="350" class="item">• validation</text>
+  <text x="762" y="378" class="item">• labels + options</text>
+  <text x="762" y="406" class="item">• workflow rules</text>
+  <text x="762" y="434" class="item">• targeting</text>
+  <text x="762" y="462" class="item">• audit history</text>
+
+  <path d="M970 362 H1055" class="lineGray"/>
+  <rect x="1055" y="235" width="240" height="255" rx="26" class="purple"/>
+  <text x="1175" y="275" text-anchor="middle" class="stageTitle">Admin / FPO ops</text>
+  <text x="1175" y="305" text-anchor="middle" class="stageSub">coordinates programs</text>
+  <text x="1087" y="350" class="item">• project trace</text>
+  <text x="1087" y="378" class="item">• farmer cohorts</text>
+  <text x="1087" y="406" class="item">• advisories</text>
+  <text x="1087" y="434" class="item">• read/ack analytics</text>
+  <text x="1087" y="462" class="item">• field-agent work</text>
+
+  <path d="M1295 362 H1375" class="linePurple"/>
+  <rect x="1375" y="235" width="145" height="255" rx="26" class="amber"/>
+  <text x="1447" y="275" text-anchor="middle" class="stageTitle">Roadmap</text>
+  <text x="1447" y="305" text-anchor="middle" class="stageSub">future review</text>
+  <text x="1398" y="350" class="item">• risk</text>
+  <text x="1398" y="378" class="item">• NDVI</text>
+  <text x="1398" y="406" class="item">• claims</text>
+  <text x="1398" y="434" class="item">• weather</text>
+  <text x="1398" y="462" class="item">• soil</text>
+
+  <rect x="142" y="560" width="1190" height="72" rx="24" class="gray"/>
+  <text x="737" y="589" text-anchor="middle" class="stageSub">Claim boundary: implemented modules create governed field evidence and audit trails.</text>
+  <text x="737" y="616" text-anchor="middle" class="stageSub">Scoring, NDVI, live providers, and insurance decisions are roadmap or approval-gated.</text>
+
+  <rect x="1375" y="560" width="145" height="72" rx="24" class="amber"/>
+  <text x="1447" y="590" text-anchor="middle" class="chip">ROADMAP</text>
+  <text x="1447" y="616" text-anchor="middle" class="stageSub">not live scoring</text>
+
+  <path d="M1447 490 C1447 520 1447 535 1447 560" class="lineAmber"/>
+</svg>

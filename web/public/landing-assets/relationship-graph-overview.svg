@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="760" viewBox="0 0 1500 760" role="img" aria-labelledby="title desc">
+<title id="title">AgriFabric relationship graph overview</title>
+<desc id="desc">Clean two-row AgriFabric relationship graph showing primary traceability from Company/FPO to Project, Farmer, Parcel, Crop cycle, Activity, Sync event and Audit trail, plus a separate advisory action path from Field event to Advisory, Read acknowledgement and Audit trail.</desc>
+<style>
+.bg{fill:#061827}.t{fill:#f8fafc;font:700 36px sans-serif}.s{fill:#cbd5e1;font:500 19px sans-serif}
+.n{stroke-width:1.8;rx:20}.o{fill:#0f2f4a;stroke:#38bdf8}.f{fill:#103b2d;stroke:#22c55e}.c{fill:#2e244b;stroke:#a78bfa}.a{fill:#263244;stroke:#94a3b8}
+.l{fill:#f8fafc;font:700 18px sans-serif;text-anchor:middle}.m{fill:#cbd5e1;font:500 13px sans-serif;text-anchor:middle}.k{fill:#94a3b8;font:700 12px sans-serif;letter-spacing:.12em;text-transform:uppercase}
+.e1{fill:none;stroke:#38bdf8;stroke-width:3.2}.e2{fill:none;stroke:#22c55e;stroke-width:3.2}.e3{fill:none;stroke:#a78bfa;stroke-width:3.2}.e4{fill:none;stroke:#94a3b8;stroke-width:3.2}
+</style>
+
+<rect width="1500" height="760" class="bg"/>
+<circle cx="1280" cy="130" r="230" fill="#22c55e" opacity=".07"/>
+<circle cx="175" cy="650" r="240" fill="#38bdf8" opacity=".08"/>
+
+<text x="70" y="64" class="t">Relationship graph overview</text>
+<text x="70" y="98" class="s">A clean view of the implemented evidence graph: project traceability, crop evidence, advisory lifecycle, sync, and audit.</text>
+
+<text x="80" y="165" class="k">Primary traceability path</text>
+
+<!-- primary row connectors -->
+<path class="e1" d="M250 230 H375"/>
+<path class="e1" d="M545 230 H670"/>
+<path class="e2" d="M840 230 H965"/>
+<path class="e2" d="M1135 230 H1260"/>
+
+<!-- primary row nodes -->
+<g><rect x="90" y="190" width="170" height="80" class="n o"/><text x="175" y="223" class="l">Company / FPO</text><text x="175" y="248" class="m">runs programs</text></g>
+<g><rect x="375" y="190" width="170" height="80" class="n o"/><text x="460" y="223" class="l">Project</text><text x="460" y="248" class="m">scope + cohort</text></g>
+<g><rect x="670" y="190" width="170" height="80" class="n o"/><text x="755" y="223" class="l">Farmer</text><text x="755" y="248" class="m">identity persists</text></g>
+<g><rect x="965" y="190" width="170" height="80" class="n f"/><text x="1050" y="223" class="l">Parcel</text><text x="1050" y="248" class="m">land evidence</text></g>
+<g><rect x="1260" y="190" width="170" height="80" class="n f"/><text x="1345" y="223" class="l">Crop cycle</text><text x="1345" y="248" class="m">season record</text></g>
+
+<!-- crop/activity/sync/audit row -->
+<text x="80" y="370" class="k">Crop activity, sync, and audit</text>
+<path class="e2" d="M250 435 H395"/>
+<path class="e2" d="M565 435 H710"/>
+<path class="e4" d="M880 435 H1025"/>
+<path class="e4" d="M1195 435 H1340"/>
+<path class="e2" d="M1345 270 V395"/>
+
+<g><rect x="90" y="395" width="170" height="80" class="n f"/><text x="175" y="428" class="l">GPS / DigiPin</text><text x="175" y="453" class="m">coordinate precision</text></g>
+<g><rect x="395" y="395" width="170" height="80" class="n f"/><text x="480" y="428" class="l">Activity</text><text x="480" y="453" class="m">work + cost trail</text></g>
+<g><rect x="710" y="395" width="170" height="80" class="n a"/><text x="795" y="428" class="l">Sync event</text><text x="795" y="453" class="m">offline replay</text></g>
+<g><rect x="1025" y="395" width="170" height="80" class="n c"/><text x="1110" y="428" class="l">Read / ack</text><text x="1110" y="453" class="m">delivery lifecycle</text></g>
+<g><rect x="1340" y="395" width="140" height="80" class="n a"/><text x="1410" y="428" class="l">Audit trail</text><text x="1410" y="453" class="m">history</text></g>
+
+<!-- advisory row -->
+<text x="80" y="575" class="k">Advisory action path</text>
+<path class="e2" d="M250 640 H395"/>
+<path class="e3" d="M565 640 H710"/>
+<path class="e3" d="M880 640 H1025"/>
+<path class="e4" d="M1195 640 H1340"/>
+<path class="e2" d="M755 270 V600"/>
+
+<g><rect x="90" y="600" width="170" height="80" class="n o"/><text x="175" y="633" class="l">Field agent</text><text x="175" y="658" class="m">assisted work</text></g>
+<g><rect x="395" y="600" width="170" height="80" class="n f"/><text x="480" y="633" class="l">Field event</text><text x="480" y="658" class="m">media evidence</text></g>
+<g><rect x="710" y="600" width="170" height="80" class="n c"/><text x="795" y="633" class="l">Advisory</text><text x="795" y="658" class="m">targeted message</text></g>
+<g><rect x="1025" y="600" width="170" height="80" class="n c"/><text x="1110" y="633" class="l">Read / ack</text><text x="1110" y="658" class="m">farmer response</text></g>
+<g><rect x="1340" y="600" width="140" height="80" class="n a"/><text x="1410" y="633" class="l">Audit trail</text><text x="1410" y="658" class="m">history</text></g>
+
+<!-- subtle vertical bridge from parcel to GPS -->
+<path class="e2" d="M1050 270 C900 330 540 360 175 395"/>
+</svg>

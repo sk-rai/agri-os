@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420">
+
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .title{font:700 28px Arial,Helvetica,sans-serif;fill:#fff}
+      .sub{font:400 16px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:4}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:4}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:4}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:4}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:4;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineGreen{stroke:#20d66d;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .linePurple{stroke:#a78bfa;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineGray{stroke:#9aa8bd;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineAmber{stroke:#f59e0b;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:10 8}
+      .white{fill:#fff}
+    </style>
+  </defs>
+
+  <rect class="bg" width="420" height="420" rx="36"/>
+  <rect x="92" y="62" width="236" height="190" rx="42" class="gray"/>
+  <path d="M158 118 H262 M158 162 H262 M158 206 H230" class="lineGray"/>
+  <path d="M142 104 L122 124 L142 144 M142 148 L122 168 L142 188 M142 192 L122 212 L142 232" class="lineGray"/>
+  <text x="210" y="320" text-anchor="middle" class="title">Govern</text>
+  <text x="210" y="352" text-anchor="middle" class="sub">contracts and audit</text>
+</svg>

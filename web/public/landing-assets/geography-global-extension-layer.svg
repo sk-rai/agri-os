@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="760" viewBox="0 0 1500 760">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb{fill:#0f3a42;opacity:.5}
+      .title{font:700 42px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 22px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .label{font:700 14px Arial,Helvetica,sans-serif;letter-spacing:3px;fill:#9dc4e8}
+      .nodeTitle{font:700 21px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 15px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:4;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:4;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1500" height="760"/>
+  <circle class="orb" cx="1240" cy="105" r="280"/>
+
+  <text x="48" y="58" class="title">Global geography extension layer</text>
+  <text x="48" y="94" class="subtitle">The current India geography model can generalize through country-specific profiles.</text>
+
+  <text x="70" y="160" class="label">CURRENT FOUNDATION</text>
+  <rect x="80" y="195" width="255" height="92" rx="22" class="green"/>
+  <text x="207" y="230" text-anchor="middle" class="nodeTitle">India profile</text>
+  <text x="207" y="258" text-anchor="middle" class="nodeSub">LGD • PIN • DigiPin • parcels</text>
+
+  <text x="70" y="380" class="label">EXTENSION PATH</text>
+  <rect x="80" y="415" width="255" height="92" rx="22" class="amber"/>
+  <text x="207" y="450" text-anchor="middle" class="nodeTitle">Other countries</text>
+  <text x="207" y="478" text-anchor="middle" class="nodeSub">country profile required</text>
+
+  <path d="M335 241 C430 241 450 330 535 350" class="lineGreen"/>
+  <path d="M335 461 C430 461 450 370 535 350" class="lineAmber"/>
+
+  <rect x="535" y="295" width="300" height="110" rx="26" class="blue"/>
+  <text x="685" y="335" text-anchor="middle" class="nodeTitle">Generic geography core</text>
+  <text x="685" y="365" text-anchor="middle" class="nodeSub">country → admin levels → localities</text>
+  <text x="685" y="390" text-anchor="middle" class="nodeSub">postal/context + parcel evidence</text>
+
+  <path d="M835 350 H960" class="lineBlue"/>
+
+  <rect x="960" y="145" width="360" height="82" rx="22" class="gray"/>
+  <text x="1140" y="178" text-anchor="middle" class="nodeTitle">Admin-level profile</text>
+  <text x="1140" y="205" text-anchor="middle" class="nodeSub">state/district equivalents by country</text>
+
+  <rect x="960" y="260" width="360" height="82" rx="22" class="gray"/>
+  <text x="1140" y="293" text-anchor="middle" class="nodeTitle">Postal + locality links</text>
+  <text x="1140" y="320" text-anchor="middle" class="nodeSub">PIN/postcode mapping as context</text>
+
+  <rect x="960" y="375" width="360" height="82" rx="22" class="gray"/>
+  <text x="1140" y="408" text-anchor="middle" class="nodeTitle">Aliases + languages</text>
+  <text x="1140" y="435" text-anchor="middle" class="nodeSub">native names and fallback labels</text>
+
+  <rect x="960" y="490" width="360" height="82" rx="22" class="gray"/>
+  <text x="1140" y="523" text-anchor="middle" class="nodeTitle">Operational groups</text>
+  <text x="1140" y="550" text-anchor="middle" class="nodeSub">FPO/co-op/project-specific regions</text>
+
+  <path d="M835 350 C900 350 900 186 960 186" class="lineBlue"/>
+  <path d="M835 350 C900 350 900 301 960 301" class="lineBlue"/>
+  <path d="M835 350 C900 350 900 416 960 416" class="lineBlue"/>
+  <path d="M835 350 C900 350 900 531 960 531" class="lineBlue"/>
+
+  <rect x="390" y="645" width="720" height="70" rx="26" class="amber"/>
+  <text x="750" y="674" text-anchor="middle" class="nodeTitle">Claim boundary</text>
+  <text x="750" y="700" text-anchor="middle" class="nodeSub">Architecture path only. Global rollout is not implemented or demo-live-safe yet.</text>
+</svg>

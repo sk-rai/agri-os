@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="380" viewBox="0 0 1600 380">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb{fill:#0f3a42;opacity:.45}
+      .title{font:700 34px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 18px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .label{font:700 12px Arial,Helvetica,sans-serif;letter-spacing:2px;fill:#9dc4e8}
+      .nodeTitle{font:700 19px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 14px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:4;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:4;fill:none}
+      .linePurple{stroke:#a78bfa;stroke-width:4;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="380"/>
+  <circle class="orb" cx="1350" cy="35" r="250"/>
+
+  <text x="42" y="55" class="title">Insurance and subsidy integrity roadmap</text>
+  <text x="42" y="84" class="subtitle">Implemented evidence today. Review-assistive risk intelligence later.</text>
+
+  <text x="60" y="134" class="label">IMPLEMENTED EVIDENCE</text>
+
+  <rect x="60" y="165" width="190" height="82" rx="22" class="blue"/>
+  <text x="155" y="198" text-anchor="middle" class="nodeTitle">Identity</text>
+  <text x="155" y="224" text-anchor="middle" class="nodeSub">farmer + project</text>
+
+  <path d="M250 206 H310" class="lineBlue"/>
+  <rect x="310" y="165" width="190" height="82" rx="22" class="green"/>
+  <text x="405" y="198" text-anchor="middle" class="nodeTitle">Parcel</text>
+  <text x="405" y="224" text-anchor="middle" class="nodeSub">GPS • polygon • DigiPin</text>
+
+  <path d="M500 206 H560" class="lineGreen"/>
+  <rect x="560" y="165" width="190" height="82" rx="22" class="green"/>
+  <text x="655" y="198" text-anchor="middle" class="nodeTitle">Crop ledger</text>
+  <text x="655" y="224" text-anchor="middle" class="nodeSub">stage • activity • cost</text>
+
+  <path d="M750 206 H810" class="lineGreen"/>
+  <rect x="810" y="165" width="190" height="82" rx="22" class="purple"/>
+  <text x="905" y="198" text-anchor="middle" class="nodeTitle">Media + audit</text>
+  <text x="905" y="224" text-anchor="middle" class="nodeSub">events • sync • read/ack</text>
+
+  <path d="M1000 206 H1075" class="lineAmber"/>
+  <text x="1100" y="134" class="label">ROADMAP REVIEW</text>
+
+  <rect x="1075" y="165" width="210" height="82" rx="22" class="amber"/>
+  <text x="1180" y="198" text-anchor="middle" class="nodeTitle">Risk flags</text>
+  <text x="1180" y="224" text-anchor="middle" class="nodeSub">duplicates • anomalies</text>
+
+  <path d="M1285 206 H1345" class="lineAmber"/>
+  <rect x="1345" y="165" width="205" height="82" rx="22" class="amber"/>
+  <text x="1447" y="198" text-anchor="middle" class="nodeTitle">Human review</text>
+  <text x="1447" y="224" text-anchor="middle" class="nodeSub">not automated decisions</text>
+
+  <rect x="365" y="292" width="870" height="48" rx="22" class="gray"/>
+  <text x="800" y="322" text-anchor="middle" class="nodeSub">Roadmap boundary: no live fraud score, automated claim decision, or NDVI engine is claimed.</text>
+</svg>
