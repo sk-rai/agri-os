@@ -1,5 +1,15 @@
 # AgriFabric demo asset inventory
 
+## Available static SVG assets
+
+These assets are now available for landing-page sections, explainer slides, and demo-video overlays.
+
+| Asset pack | Files | Use |
+| --- | --- | --- |
+| Relationship graph | `docs/assets/relationship-graph.svg`, `docs/assets/relationship-graph-overview.svg`, `docs/assets/relationship-graph-roadmap-layer.svg` | Explain AgriFabric as a connected evidence graph across farmers, agents, projects, parcels, advisories, sync, and audit. |
+| Geography and DigiPin | `docs/assets/geography-digipin-overview.svg`, `docs/assets/geography-digipin-layered-model.svg`, `docs/assets/geography-global-extension-layer.svg` | Explain PIN context, GPS/parcel precision, backend-generated DigiPin, land intelligence, and global geography roadmap boundaries. |
+
+
 Status date: 2026-08-17
 
 This inventory maps landing-page and demo-pack claims to concrete clips, screenshots, fixture commands, and proof docs. It is meant to keep the future landing page honest: every visible claim should either point to an implemented proof asset or be clearly marked as roadmap.

@@ -426,7 +426,7 @@ Acceptance criteria:
 | --- | --- | --- |
 | Hero composite | Hero | Needed |
 | Product pillar icons | Product pillars | Needed |
-| Relationship graph SVG | Relationship graph | Needed |
+| Relationship graph SVG | Relationship graph | Available: `docs/assets/relationship-graph.svg`, `docs/assets/relationship-graph-overview.svg`, `docs/assets/relationship-graph-roadmap-layer.svg` |
 | Field evidence pipeline visual | Pipeline | Needed |
 | Demo video thumbnails | Demo strip | Needed after capture |
 | Android onboarding clip | Demo strip / Capture pillar | Needed |
@@ -435,7 +435,7 @@ Acceptance criteria:
 | Broadcast analytics clip | Demo strip / Advise pillar | Needed |
 | Field-event advisory clip | Demo strip / Advise/graph | Needed |
 | Localization/land-intelligence clip | Demo strip / Govern pillar | Needed |
-| Geography/DigiPin visual | Geography section | Needed |
+| Geography/DigiPin visual | Geography section | Available: `docs/assets/geography-digipin-overview.svg`, `docs/assets/geography-digipin-layered-model.svg`, `docs/assets/geography-global-extension-layer.svg` |
 | Insurance roadmap graphic | Extend/Roadmap | Needed |
 
 ## Suggested implementation phases
