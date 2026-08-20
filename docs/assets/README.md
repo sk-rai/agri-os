@@ -31,3 +31,8 @@ Guidelines:
 
 - `field-evidence-pipeline.svg` — main landing-page/product explainer visual for Android capture → offline sync → backend contracts → admin operations → roadmap intelligence.
 - `field-evidence-pipeline-compact.svg` — compact strip version for demo overlays, thumbnails, and carousel-style sections.
+
+## Insurance and subsidy integrity roadmap assets
+
+- `insurance-risk-roadmap.svg` — main roadmap visual showing how implemented field evidence can support future fraud/waste/abuse review, claim evidence bundles, and human review queues.
+- `insurance-risk-roadmap-compact.svg` — compact version for demo overlays, thumbnails, and carousel-style sections.

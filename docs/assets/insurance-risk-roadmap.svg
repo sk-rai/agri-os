@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb1{fill:#0f3a42;opacity:.52}
+      .orb2{fill:#0d3b5a;opacity:.38}
+      .title{font:700 42px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 22px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .label{font:700 14px Arial,Helvetica,sans-serif;letter-spacing:3px;fill:#9dc4e8}
+      .nodeTitle{font:700 21px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 15px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .item{font:400 14px Arial,Helvetica,sans-serif;fill:#dbeafe}
+      .zone{fill:#071d2d;stroke:#173044;stroke-width:1.2;opacity:.94}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:3.5;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:3.5;fill:none}
+      .linePurple{stroke:#a78bfa;stroke-width:3.5;fill:none}
+      .lineGray{stroke:#9aa8bd;stroke-width:3.5;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+      .boundary{fill:#111827;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+  <circle class="orb1" cx="1330" cy="120" r="315"/>
+  <circle class="orb2" cx="145" cy="790" r="285"/>
+
+  <text x="48" y="58" class="title">Insurance and subsidy integrity roadmap</text>
+  <text x="48" y="94" class="subtitle">Implemented field evidence can support future review queues without automating claim decisions.</text>
+
+  <rect x="42" y="135" width="700" height="590" rx="28" class="zone"/>
+  <text x="70" y="172" class="label">IMPLEMENTED FIELD EVIDENCE FOUNDATION</text>
+
+  <rect x="95" y="220" width="245" height="82" rx="22" class="blue"/>
+  <text x="217" y="253" text-anchor="middle" class="nodeTitle">Farmer identity</text>
+  <text x="217" y="280" text-anchor="middle" class="nodeSub">registered profile + project context</text>
+
+  <rect x="400" y="220" width="245" height="82" rx="22" class="green"/>
+  <text x="522" y="253" text-anchor="middle" class="nodeTitle">Parcel precision</text>
+  <text x="522" y="280" text-anchor="middle" class="nodeSub">GPS • polygon • DigiPin</text>
+
+  <path d="M340 261 H400" class="lineBlue"/>
+
+  <rect x="95" y="350" width="245" height="82" rx="22" class="green"/>
+  <text x="217" y="383" text-anchor="middle" class="nodeTitle">Crop ledger</text>
+  <text x="217" y="410" text-anchor="middle" class="nodeSub">cycle • stage • activity • cost</text>
+
+  <rect x="400" y="350" width="245" height="82" rx="22" class="purple"/>
+  <text x="522" y="383" text-anchor="middle" class="nodeTitle">Field media</text>
+  <text x="522" y="410" text-anchor="middle" class="nodeSub">event photo/video evidence</text>
+
+  <path d="M340 391 H400" class="lineGreen"/>
+  <path d="M522 302 V350" class="lineGreen"/>
+
+  <rect x="95" y="480" width="245" height="82" rx="22" class="gray"/>
+  <text x="217" y="513" text-anchor="middle" class="nodeTitle">Sync and audit</text>
+  <text x="217" y="540" text-anchor="middle" class="nodeSub">durable replay + history</text>
+
+  <rect x="400" y="480" width="245" height="82" rx="22" class="purple"/>
+  <text x="522" y="513" text-anchor="middle" class="nodeTitle">Advisory lifecycle</text>
+  <text x="522" y="540" text-anchor="middle" class="nodeSub">targeting • read • ack</text>
+
+  <path d="M217 432 V480" class="lineGray"/>
+  <path d="M340 521 H400" class="linePurple"/>
+
+  <rect x="130" y="625" width="480" height="56" rx="22" class="gray"/>
+  <text x="370" y="649" text-anchor="middle" class="nodeSub">Evidence is captured, validated, replayed, and audited.</text>
+  <text x="370" y="672" text-anchor="middle" class="nodeSub">It does not automatically decide claims.</text>
+
+  <rect x="858" y="135" width="700" height="590" rx="28" class="zone"/>
+  <text x="886" y="172" class="label">ROADMAP REVIEW INTELLIGENCE</text>
+
+  <rect x="910" y="220" width="270" height="82" rx="22" class="amber"/>
+  <text x="1045" y="253" text-anchor="middle" class="nodeTitle">Duplicate parcel flag</text>
+  <text x="1045" y="280" text-anchor="middle" class="nodeSub">same parcel claimed by multiple actors</text>
+
+  <rect x="1230" y="220" width="270" height="82" rx="22" class="amber"/>
+  <text x="1365" y="253" text-anchor="middle" class="nodeTitle">Claim evidence bundle</text>
+  <text x="1365" y="280" text-anchor="middle" class="nodeSub">identity • parcel • crop • media</text>
+
+  <path d="M1180 261 H1230" class="lineAmber"/>
+
+  <rect x="910" y="350" width="270" height="82" rx="22" class="amber"/>
+  <text x="1045" y="383" text-anchor="middle" class="nodeTitle">Agent task signal</text>
+  <text x="1045" y="410" text-anchor="middle" class="nodeSub">coverage • timeliness • quality</text>
+
+  <rect x="1230" y="350" width="270" height="82" rx="22" class="amber"/>
+  <text x="1365" y="383" text-anchor="middle" class="nodeTitle">NDVI plausibility</text>
+  <text x="1365" y="410" text-anchor="middle" class="nodeSub">future satellite time series</text>
+
+  <path d="M1180 391 H1230" class="lineAmber"/>
+
+  <rect x="910" y="480" width="270" height="82" rx="22" class="amber"/>
+  <text x="1045" y="513" text-anchor="middle" class="nodeTitle">Weather / soil context</text>
+  <text x="1045" y="540" text-anchor="middle" class="nodeSub">future live-provider evidence</text>
+
+  <rect x="1230" y="480" width="270" height="82" rx="22" class="amber"/>
+  <text x="1365" y="513" text-anchor="middle" class="nodeTitle">Human review queue</text>
+  <text x="1365" y="540" text-anchor="middle" class="nodeSub">flags for reviewer judgment</text>
+
+  <path d="M1180 521 H1230" class="lineAmber"/>
+
+  <rect x="955" y="625" width="500" height="56" rx="22" class="boundary"/>
+  <text x="1205" y="649" text-anchor="middle" class="nodeSub">Roadmap boundary: review-assistive only.</text>
+  <text x="1205" y="672" text-anchor="middle" class="nodeSub">No automated approval, rejection, or operational fraud score.</text>
+
+  <path d="M645 391 C745 391 790 261 910 261" class="lineAmber"/>
+  <path d="M645 521 C755 521 805 391 910 391" class="lineAmber"/>
+  <path d="M645 521 C755 580 810 521 910 521" class="lineAmber"/>
+</svg>
