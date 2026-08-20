@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+<title id="title">AgriFabric roadmap analytics layer</title>
+<desc id="desc">Roadmap analytics visual showing implemented evidence sources feeding future agent performance, assignment planning, risk review, and claim evidence modules.</desc>
+<style>
+.bg{fill:#071927}.t{fill:#f8fafc;font:700 34px sans-serif}.s{fill:#cbd5e1;font:500 18px sans-serif}
+.n{stroke-width:1.6;rx:22}.src{fill:#0f2f4a;stroke:#38bdf8}.ev{fill:#103b2d;stroke:#22c55e}.road{fill:#3a2608;stroke:#f59e0b;stroke-dasharray:9 7}.bound{fill:#0f172a;stroke:#f59e0b}
+.l{fill:#f8fafc;font:700 17px sans-serif;text-anchor:middle}.m{fill:#cbd5e1;font:500 12px sans-serif;text-anchor:middle}.b{fill:#fbbf24;font:700 11px sans-serif;text-anchor:middle}
+.e{fill:none;stroke:#f59e0b;stroke-width:3;stroke-dasharray:9 7}.g{fill:none;stroke:#22c55e;stroke-width:3;opacity:.55}
+</style>
+<rect width="1200" height="720" class="bg"/>
+<text x="70" y="64" class="t">Roadmap analytics layer</text>
+<text x="70" y="96" class="s">Future review-assistive modules built on the implemented field evidence graph.</text>
+
+<g><rect x="80" y="150" width="230" height="74" class="n src"/><text x="195" y="181" class="l">Identity graph</text><text x="195" y="203" class="m">farmer • agent • company • project</text></g>
+<g><rect x="80" y="270" width="230" height="74" class="n ev"/><text x="195" y="301" class="l">Parcel evidence</text><text x="195" y="323" class="m">GPS • DigiPin • geometry</text></g>
+<g><rect x="80" y="390" width="230" height="74" class="n ev"/><text x="195" y="421" class="l">Crop ledger</text><text x="195" y="443" class="m">cycle • stage • activity • cost</text></g>
+<g><rect x="80" y="510" width="230" height="74" class="n ev"/><text x="195" y="541" class="l">Media + advisories</text><text x="195" y="563" class="m">field event • read/ack • audit</text></g>
+
+<g><rect x="420" y="260" width="260" height="150" class="n src"/><text x="550" y="302" class="l">Implemented evidence graph</text><text x="550" y="328" class="m">connected operational records</text><text x="550" y="352" class="m">backend-owned contracts</text><text x="550" y="376" class="m">sync/conflict/audit history</text></g>
+
+<path class="g" d="M310 187 C355 210 392 245 420 292"/><path class="g" d="M310 307 L420 330"/><path class="g" d="M310 427 C360 410 395 386 420 360"/><path class="g" d="M310 547 C370 500 405 442 420 386"/>
+
+<g><rect x="820" y="118" width="245" height="84" class="n road"/><text x="942" y="150" class="l">Agent performance</text><text x="942" y="174" class="m">coverage • timeliness • quality</text><text x="942" y="194" class="b">Roadmap</text></g>
+<g><rect x="820" y="248" width="245" height="84" class="n road"/><text x="942" y="280" class="l">Assignment planning</text><text x="942" y="304" class="m">matching • workload • geography</text><text x="942" y="324" class="b">Roadmap</text></g>
+<g><rect x="820" y="378" width="245" height="84" class="n road"/><text x="942" y="410" class="l">Risk review</text><text x="942" y="434" class="m">flags • anomalies • human review</text><text x="942" y="454" class="b">Roadmap</text></g>
+<g><rect x="820" y="508" width="245" height="84" class="n road"/><text x="942" y="540" class="l">Claim evidence bundle</text><text x="942" y="564" class="m">identity • parcel • crop • media</text><text x="942" y="584" class="b">Roadmap</text></g>
+
+<path class="e" d="M680 300 C735 235 775 175 820 160"/><path class="e" d="M680 325 C735 302 775 290 820 290"/><path class="e" d="M680 352 C735 396 775 418 820 420"/><path class="e" d="M680 385 C740 472 780 540 820 548"/>
+
+<g><rect x="390" y="586" width="430" height="90" class="n bound"/><text x="605" y="620" class="l">Claim boundary</text><text x="605" y="644" class="m">Traceability is implemented today.</text><text x="605" y="664" class="m">Scoring, matching, NDVI, and claim decisions are not live modules.</text></g>
+</svg>
