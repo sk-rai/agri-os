@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="860" viewBox="0 0 1500 860">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb{fill:#0f3a42;opacity:.48}
+      .title{font:700 42px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 22px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .caption{font:700 14px Arial,Helvetica,sans-serif;letter-spacing:3px;fill:#9dc4e8}
+      .small{font:400 14px Arial,Helvetica,sans-serif;fill:#dcecff}
+      .nodeTitle{font:700 21px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 15px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .boundary{fill:#082236;stroke:#34546d;stroke-width:2;stroke-dasharray:8 8;opacity:.75}
+      .pinzone{fill:#132b31;stroke:#32bfff;stroke-width:2;opacity:.65}
+      .parcel{fill:#0e432f;stroke:#20d66d;stroke-width:3}
+      .cell{fill:#31210a;stroke:#f59e0b;stroke-width:2;stroke-dasharray:8 6}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:3;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:3;fill:none}
+      .lineGray{stroke:#9aa8bd;stroke-width:3;fill:none}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1500" height="860"/>
+  <circle class="orb" cx="1260" cy="85" r="280"/>
+  <circle class="orb" cx="110" cy="760" r="245"/>
+
+  <text x="48" y="58" class="title">Layered geography model</text>
+  <text x="48" y="94" class="subtitle">Administrative identity, postal context, parcel precision, and backend-owned intelligence stay separate.</text>
+
+  <rect x="70" y="155" width="790" height="570" rx="30" class="boundary"/>
+  <text x="100" y="192" class="caption">LGD / ADMIN BOUNDARY</text>
+  <text x="100" y="220" class="small">State → district → subdistrict/block → village/locality identity</text>
+
+  <rect x="160" y="270" width="570" height="355" rx="32" class="pinzone"/>
+  <text x="190" y="305" class="caption">PIN / POSTAL CONTEXT</text>
+  <text x="190" y="332" class="small">Broad delivery area and lookup context; not parcel precision</text>
+
+  <circle cx="190" cy="362" r="6" fill="#f8fafc"/>
+  <text x="205" y="367" class="small">GPS capture point</text>
+
+  <polygon points="300,445 440,390 595,455 548,565 360,585" class="parcel"/>
+  <text x="448" y="485" text-anchor="middle" class="nodeTitle">Parcel shape</text>
+  <text x="448" y="513" text-anchor="middle" class="nodeSub">GPS polygon / plot evidence</text>
+
+  <circle cx="392" cy="532" r="8" fill="#f8fafc"/>
+
+  <rect x="505" y="520" width="150" height="76" rx="18" class="cell"/>
+  <text x="580" y="552" text-anchor="middle" class="nodeTitle">DigiPin cell</text>
+  <text x="580" y="579" text-anchor="middle" class="nodeSub">from coordinates</text>
+
+  <rect x="965" y="145" width="395" height="92" rx="22" class="blue"/>
+  <text x="1162" y="180" text-anchor="middle" class="nodeTitle">Admin geography</text>
+  <text x="1162" y="209" text-anchor="middle" class="nodeSub">canonical region labels and hierarchy</text>
+
+  <rect x="965" y="270" width="395" height="92" rx="22" class="blue"/>
+  <text x="1162" y="305" text-anchor="middle" class="nodeTitle">PIN / locality guardrails</text>
+  <text x="1162" y="334" text-anchor="middle" class="nodeSub">postal context and candidate filtering</text>
+
+  <rect x="965" y="395" width="395" height="92" rx="22" class="green"/>
+  <text x="1162" y="430" text-anchor="middle" class="nodeTitle">GPS and parcel evidence</text>
+  <text x="1162" y="459" text-anchor="middle" class="nodeSub">point, polygon, accuracy, source metadata</text>
+
+  <rect x="965" y="520" width="395" height="92" rx="22" class="green"/>
+  <text x="1162" y="555" text-anchor="middle" class="nodeTitle">Backend-generated DigiPin</text>
+  <text x="1162" y="584" text-anchor="middle" class="nodeSub">Android displays; backend owns generation</text>
+
+  <rect x="965" y="645" width="395" height="92" rx="22" class="purple"/>
+  <text x="1162" y="680" text-anchor="middle" class="nodeTitle">Land intelligence summary</text>
+  <text x="1162" y="709" text-anchor="middle" class="nodeSub">informational, non-blocking project guidance</text>
+
+  <path d="M860 190 H965" class="lineBlue"/>
+  <path d="M730 315 H965" class="lineBlue"/>
+  <path d="M610 455 C760 455 805 441 965 441" class="lineGreen"/>
+  <path d="M655 558 H965" class="lineGreen"/>
+  <path d="M655 595 C760 690 845 690 965 690" class="lineGray"/>
+
+  <rect x="250" y="770" width="1000" height="56" rx="24" class="amber"/>
+  <text x="750" y="793" text-anchor="middle" class="nodeTitle">Future enrichment layer</text>
+  <text x="750" y="817" text-anchor="middle" class="nodeSub">live weather • soil providers • village geocoding • global profiles • NDVI time series</text>
+</svg>

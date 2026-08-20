@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="760" viewBox="0 0 1500 760">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb1{fill:#0f3a42;opacity:.55}
+      .orb2{fill:#0d3b5a;opacity:.42}
+      .title{font:700 42px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 22px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .lane{fill:#071d2d;stroke:#173044;stroke-width:1.2;opacity:.92}
+      .label{font:700 14px Arial,Helvetica,sans-serif;letter-spacing:3px;fill:#9dc4e8}
+      .nodeTitle{font:700 21px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 15px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:4;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:4;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1500" height="760"/>
+  <circle class="orb1" cx="1270" cy="95" r="285"/>
+  <circle class="orb2" cx="120" cy="700" r="260"/>
+
+  <text x="48" y="58" class="title">Geography and DigiPin overview</text>
+  <text x="48" y="94" class="subtitle">PIN is context. GPS and DigiPin are precision evidence.</text>
+
+  <rect x="32" y="135" width="1436" height="230" rx="24" class="lane"/>
+  <text x="56" y="168" class="label">ADDRESS AND ADMIN CONTEXT</text>
+
+  <rect x="85" y="205" width="230" height="82" rx="20" class="blue"/>
+  <text x="200" y="238" text-anchor="middle" class="nodeTitle">LGD hierarchy</text>
+  <text x="200" y="266" text-anchor="middle" class="nodeSub">state • district • village</text>
+
+  <path d="M315 246 H430" class="lineBlue"/>
+  <rect x="430" y="205" width="230" height="82" rx="20" class="blue"/>
+  <text x="545" y="238" text-anchor="middle" class="nodeTitle">PIN reference</text>
+  <text x="545" y="266" text-anchor="middle" class="nodeSub">postal context</text>
+
+  <path d="M660 246 H775" class="lineBlue"/>
+  <rect x="775" y="205" width="245" height="82" rx="20" class="blue"/>
+  <text x="897" y="238" text-anchor="middle" class="nodeTitle">Candidate locality</text>
+  <text x="897" y="266" text-anchor="middle" class="nodeSub">backend lookup + guardrails</text><text x="1245" y="232" text-anchor="middle" class="nodeTitle">Context only</text>
+  <text x="1245" y="260" text-anchor="middle" class="nodeSub">PIN does not resolve parcel precision</text>
+
+  <rect x="32" y="395" width="1436" height="255" rx="24" class="lane"/>
+  <text x="56" y="428" class="label">FIELD PRECISION AND OPERATIONAL EVIDENCE</text>
+
+  <rect x="85" y="475" width="230" height="82" rx="20" class="green"/>
+  <text x="200" y="508" text-anchor="middle" class="nodeTitle">GPS capture</text>
+  <text x="200" y="536" text-anchor="middle" class="nodeSub">field coordinate</text>
+
+  <path d="M315 516 H430" class="lineGreen"/>
+  <rect x="430" y="475" width="230" height="82" rx="20" class="green"/>
+  <text x="545" y="508" text-anchor="middle" class="nodeTitle">Parcel evidence</text>
+  <text x="545" y="536" text-anchor="middle" class="nodeSub">point or polygon</text>
+
+  <path d="M660 516 H775" class="lineGreen"/>
+  <rect x="775" y="475" width="230" height="82" rx="20" class="green"/>
+  <text x="890" y="508" text-anchor="middle" class="nodeTitle">DigiPin</text>
+  <text x="890" y="536" text-anchor="middle" class="nodeSub">backend-generated</text>
+
+  <path d="M1005 516 H1120" class="lineGreen"/>
+  <rect x="1120" y="475" width="260" height="82" rx="20" class="purple"/>
+  <text x="1250" y="508" text-anchor="middle" class="nodeTitle">Land intelligence</text>
+  <text x="1250" y="536" text-anchor="middle" class="nodeSub">informational only</text><text x="270" y="705" text-anchor="middle" class="nodeSub">Android captures and displays.</text>
+  <text x="270" y="726" text-anchor="middle" class="nodeSub">Backend validates/generates precision evidence.</text>
+  <rect x="80" y="666" width="455" height="66" rx="24" class="gray"/>
+  <text x="307" y="692" text-anchor="middle" class="nodeSub">Android captures and displays.</text>
+  <text x="307" y="716" text-anchor="middle" class="nodeSub">Backend validates/generates precision evidence.</text>
+
+  <rect x="735" y="648" width="430" height="62" rx="22" class="amber"/>
+  <text x="950" y="674" text-anchor="middle" class="nodeTitle">Roadmap / approval-gated</text>
+  <text x="950" y="697" text-anchor="middle" class="nodeSub">live providers • global rollout • NDVI time series</text>
+
+  <path d="M890 557 C940 600 950 625 950 648" class="lineAmber"/>
+
+</svg>

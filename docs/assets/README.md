@@ -21,3 +21,8 @@ Guidelines:
 - Prefer editable SVG for diagrams and product visuals.
 - Use raster screenshots/videos only for captured demo evidence.
 
+## Geography and DigiPin assets
+
+- `geography-digipin-overview.svg` — simplified geography/DigiPin landing-page overview.
+- `geography-digipin-layered-model.svg` — fuller layered geography model for explainers/slides.
+- `geography-global-extension-layer.svg` — roadmap visual for country-specific/global geography generalization.
