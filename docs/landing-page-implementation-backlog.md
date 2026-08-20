@@ -458,6 +458,25 @@ Current next work:
 - demo capture planning and eventual video/thumbnails;
 - future landing-page hosting/deployment decision when ready.
 
+## README and discoverability checkpoint
+
+Status date: 2026-08-20
+
+Repository entry-point documentation now points reviewers to the AgriFabric landing route, smoke test, capture helper, demo planning docs, and claim boundaries.
+
+Implemented:
+
+- root `README.md` explains repo structure, backend/web startup, landing route, useful checks, and claim boundaries;
+- `web/README.md` documents `/agrifabric`, local web startup, build, smoke test, and capture helper;
+- `docs/README.md` links the static demo capture runbook and landing capture helper.
+
+Current remaining landing work:
+
+- visual and copy refinement as needed;
+- demo video and thumbnail production;
+- future hosting/deployment decision;
+- optional performance polish for landing SVG rendering if needed.
+
 ## Demo capture planning checkpoint
 
 Status date: 2026-08-20
