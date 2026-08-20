@@ -14,6 +14,12 @@ These assets are now available for landing-page sections, explainer slides, and 
 | Hero composite | `docs/assets/hero-composite.svg`, `docs/assets/hero-composite-compact.svg` | Main landing-page and demo opener visual for Android capture, backend evidence fabric, admin/FPO operations, and bounded roadmap intelligence. |
 
 
+## Demo video capture matrix
+
+The capture plan is now organized in `docs/agrifabric-demo-video-capture-matrix.md`.
+
+It maps future videos to `/agrifabric` tabs, capture mode, evidence source, and claim boundaries. The recommended first batch is static/web-led so the visual narrative can stabilize before fragile Android/Maestro capture.
+
 Status date: 2026-08-17
 
 This inventory maps landing-page and demo-pack claims to concrete clips, screenshots, fixture commands, and proof docs. It is meant to keep the future landing page honest: every visible claim should either point to an implemented proof asset or be clearly marked as roadmap.

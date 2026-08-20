@@ -458,6 +458,14 @@ Current next work:
 - demo capture planning and eventual video/thumbnails;
 - future landing-page hosting/deployment decision when ready.
 
+## Demo capture planning checkpoint
+
+Status date: 2026-08-20
+
+Demo-video planning is now captured in `docs/agrifabric-demo-video-capture-matrix.md`.
+
+The matrix maps videos to landing tabs and separates Web/static-only, Android-only, and mixed Android+web capture modes. Actual video assets and thumbnails remain future production work.
+
 ## Suggested implementation phases
 
 ### Phase 1 — Static landing page without final video assets
