@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb1{fill:#0f3a42;opacity:.55}
+      .orb2{fill:#0d3b5a;opacity:.38}
+      .title{font:700 46px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 23px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .label{font:700 13px Arial,Helvetica,sans-serif;letter-spacing:3px;fill:#9dc4e8}
+      .nodeTitle{font:700 24px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 15px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .item{font:400 14px Arial,Helvetica,sans-serif;fill:#dbeafe}
+      .panel{fill:#071d2d;stroke:#173044;stroke-width:1.2;opacity:.95}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:4;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:4;fill:none}
+      .linePurple{stroke:#a78bfa;stroke-width:4;fill:none}
+      .lineGray{stroke:#9aa8bd;stroke-width:4;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+      .screen{fill:#0b2033;stroke:#32bfff;stroke-width:3}
+      .white{fill:#fff}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="920"/>
+  <circle class="orb1" cx="1320" cy="90" r="330"/>
+  <circle class="orb2" cx="135" cy="820" r="300"/>
+
+  <text x="55" y="70" class="title">AgriFabric</text>
+  <text x="55" y="108" class="subtitle">One field evidence fabric for capture, coordination, sync, advisories, governance, and future risk intelligence.</text>
+
+  <rect x="45" y="150" width="1510" height="650" rx="32" class="panel"/>
+
+  <!-- Android capture panel -->
+  <text x="92" y="198" class="label">ANDROID FIELD CAPTURE</text>
+  <rect x="95" y="235" width="275" height="450" rx="34" class="screen"/>
+  <rect x="125" y="275" width="215" height="58" rx="18" class="blue"/>
+  <text x="232" y="311" text-anchor="middle" class="nodeSub">Farmer profile</text>
+  <rect x="125" y="355" width="215" height="58" rx="18" class="green"/>
+  <text x="232" y="391" text-anchor="middle" class="nodeSub">Parcel + GPS/DigiPin</text>
+  <rect x="125" y="435" width="215" height="58" rx="18" class="green"/>
+  <text x="232" y="471" text-anchor="middle" class="nodeSub">Crop cycle + activity</text>
+  <rect x="125" y="515" width="215" height="58" rx="18" class="purple"/>
+  <text x="232" y="551" text-anchor="middle" class="nodeSub">Media + field event</text>
+  <rect x="125" y="595" width="215" height="58" rx="18" class="gray"/>
+  <text x="232" y="631" text-anchor="middle" class="nodeSub">Offline queue</text>
+
+  <!-- Backend fabric -->
+  <path d="M370 460 C455 460 455 460 520 460" class="lineBlue"/>
+  <text x="505" y="198" class="label">BACKEND EVIDENCE FABRIC</text>
+  <rect x="520" y="265" width="400" height="330" rx="34" class="gray"/>
+  <text x="720" y="316" text-anchor="middle" class="nodeTitle">Backend contracts</text>
+  <text x="720" y="350" text-anchor="middle" class="nodeSub">validation • labels • workflow rules</text>
+  <text x="720" y="378" text-anchor="middle" class="nodeSub">targeting • conflict interpretation • audit</text>
+
+  <rect x="575" y="425" width="290" height="64" rx="22" class="green"/>
+  <text x="720" y="464" text-anchor="middle" class="nodeSub">typed evidence relationships</text>
+
+  <rect x="575" y="515" width="290" height="50" rx="20" class="blue"/>
+  <text x="720" y="546" text-anchor="middle" class="nodeSub">project + farmer + parcel graph</text>
+
+  <!-- Admin ops -->
+  <path d="M920 460 C990 460 990 460 1045 460" class="lineGray"/>
+  <text x="1058" y="198" class="label">ADMIN / FPO OPERATIONS</text>
+  <rect x="1045" y="245" width="245" height="100" rx="24" class="purple"/>
+  <text x="1167" y="282" text-anchor="middle" class="nodeTitle">Project trace</text>
+  <text x="1167" y="312" text-anchor="middle" class="nodeSub">cohorts and field work</text>
+
+  <rect x="1045" y="385" width="245" height="100" rx="24" class="purple"/>
+  <text x="1167" y="422" text-anchor="middle" class="nodeTitle">Advisories</text>
+  <text x="1167" y="452" text-anchor="middle" class="nodeSub">media, targeting, read/ack</text>
+
+  <rect x="1045" y="525" width="245" height="100" rx="24" class="purple"/>
+  <text x="1167" y="562" text-anchor="middle" class="nodeTitle">Governance</text>
+  <text x="1167" y="592" text-anchor="middle" class="nodeSub">localization, summaries, audit</text>
+
+  <!-- Roadmap -->
+  <path d="M1290 435 C1340 435 1355 435 1390 435" class="lineAmber"/>
+  <rect x="1390" y="335" width="125" height="200" rx="26" class="amber"/>
+  <text x="1452" y="385" text-anchor="middle" class="nodeTitle">Roadmap</text>
+  <text x="1452" y="420" text-anchor="middle" class="nodeSub">risk review</text>
+  <text x="1452" y="448" text-anchor="middle" class="nodeSub">NDVI</text>
+  <text x="1452" y="476" text-anchor="middle" class="nodeSub">claims</text>
+  <text x="1452" y="504" text-anchor="middle" class="nodeSub">providers</text>
+
+  <!-- bottom proof strip -->
+  <rect x="95" y="720" width="360" height="48" rx="22" class="blue"/>
+  <text x="275" y="750" text-anchor="middle" class="nodeSub">Offline-first Android MVP verified</text>
+
+  <rect x="485" y="720" width="360" height="48" rx="22" class="green"/>
+  <text x="665" y="750" text-anchor="middle" class="nodeSub">Backend-owned contracts and evidence</text>
+
+  <rect x="875" y="720" width="360" height="48" rx="22" class="purple"/>
+  <text x="1055" y="750" text-anchor="middle" class="nodeSub">Admin operations and advisory lifecycle</text>
+
+  <rect x="1265" y="720" width="250" height="48" rx="22" class="amber"/>
+  <text x="1390" y="750" text-anchor="middle" class="nodeSub">Roadmap clearly bounded</text>
+</svg>

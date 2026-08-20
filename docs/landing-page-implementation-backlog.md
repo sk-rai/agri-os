@@ -424,7 +424,7 @@ Acceptance criteria:
 
 | Asset | Required for | Status |
 | --- | --- | --- |
-| Hero composite | Hero | Needed |
+| Hero composite | Hero | Available: `docs/assets/hero-composite.svg`, `docs/assets/hero-composite-compact.svg` |
 | Product pillar icons | Product pillars | Available: `docs/assets/product-pillars.svg` plus individual `docs/assets/product-pillar-*.svg` icons |
 | Relationship graph SVG | Relationship graph | Available: `docs/assets/relationship-graph.svg`, `docs/assets/relationship-graph-overview.svg`, `docs/assets/relationship-graph-roadmap-layer.svg` |
 | Field evidence pipeline visual | Pipeline | Available: `docs/assets/field-evidence-pipeline.svg`, `docs/assets/field-evidence-pipeline-compact.svg` |

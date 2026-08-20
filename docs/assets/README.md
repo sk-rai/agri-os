@@ -46,3 +46,8 @@ Guidelines:
 - `product-pillar-advise.svg` — Advise pillar icon.
 - `product-pillar-govern.svg` — Govern pillar icon.
 - `product-pillar-extend.svg` — Extend pillar icon with roadmap styling.
+
+## Hero composite assets
+
+- `hero-composite.svg` — main landing-page hero visual combining Android field capture, backend evidence fabric, admin/FPO operations, and bounded roadmap intelligence.
+- `hero-composite-compact.svg` — compact banner version for demo openers, social previews, and slide title cards.

@@ -11,6 +11,7 @@ These assets are now available for landing-page sections, explainer slides, and 
 | Field evidence pipeline | `docs/assets/field-evidence-pipeline.svg`, `docs/assets/field-evidence-pipeline-compact.svg` | Explain Android capture, offline sync, backend contracts, admin operations, and bounded roadmap intelligence. |
 | Insurance and subsidy integrity roadmap | `docs/assets/insurance-risk-roadmap.svg`, `docs/assets/insurance-risk-roadmap-compact.svg` | Claim-safe roadmap graphic for future risk flags, duplicate parcel review, evidence bundles, NDVI/provider context, and human review queues. |
 | Product pillar icons | `docs/assets/product-pillars.svg`, `docs/assets/product-pillar-*.svg` | Six-pillar visual vocabulary for Capture, Coordinate, Sync, Advise, Govern, and Extend. |
+| Hero composite | `docs/assets/hero-composite.svg`, `docs/assets/hero-composite-compact.svg` | Main landing-page and demo opener visual for Android capture, backend evidence fabric, admin/FPO operations, and bounded roadmap intelligence. |
 
 
 Status date: 2026-08-17
