@@ -6,6 +6,39 @@ This runbook defines the first low-risk demo capture batch for `/agrifabric`. Th
 
 Source matrix: `docs/agrifabric-demo-video-capture-matrix.md`
 
+## Screenshot capture helper
+
+A Playwright helper is available at `web/smoke/agrifabric_landing_capture_helper.mjs`.
+
+It opens `/agrifabric`, selects a tab, and writes a screenshot under `web/smoke/screenshots/agrifabric/`.
+
+Environment variables:
+
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| `WEB_BASE_URL` | Web app base URL. | `http://localhost:3000` |
+| `AGRIFABRIC_TAB` | Landing tab to capture. | `product`, `graph`, `geography`, `roadmap` |
+| `AGRIFABRIC_VIEWPORT` | Capture viewport. | `desktop`, `thumbnail`, `square`, `mobile` |
+| `AGRIFABRIC_OUTPUT` | Output filename. | `agrifabric-v02-product-pillars-thumb.png` |
+| `AGRIFABRIC_FULL_PAGE` | Capture full page instead of viewport crop. | `true` |
+
+Example thumbnail capture:
+
+`WEB_BASE_URL=http://localhost:3000 AGRIFABRIC_TAB=product AGRIFABRIC_VIEWPORT=thumbnail AGRIFABRIC_OUTPUT=agrifabric-v02-product-pillars-thumb.png node web/smoke/agrifabric_landing_capture_helper.mjs`
+
+Example full-page source capture:
+
+`WEB_BASE_URL=http://localhost:3000 AGRIFABRIC_TAB=product AGRIFABRIC_VIEWPORT=thumbnail AGRIFABRIC_FULL_PAGE=true AGRIFABRIC_OUTPUT=agrifabric-v02-product-pillars-full.png node web/smoke/agrifabric_landing_capture_helper.mjs`
+
+First static batch commands:
+
+- `WEB_BASE_URL=http://localhost:3000 AGRIFABRIC_TAB=product AGRIFABRIC_VIEWPORT=thumbnail AGRIFABRIC_OUTPUT=agrifabric-v02-product-pillars-thumb.png node web/smoke/agrifabric_landing_capture_helper.mjs`
+- `WEB_BASE_URL=http://localhost:3000 AGRIFABRIC_TAB=graph AGRIFABRIC_VIEWPORT=thumbnail AGRIFABRIC_OUTPUT=agrifabric-v10-relationship-graph-thumb.png node web/smoke/agrifabric_landing_capture_helper.mjs`
+- `WEB_BASE_URL=http://localhost:3000 AGRIFABRIC_TAB=geography AGRIFABRIC_VIEWPORT=thumbnail AGRIFABRIC_OUTPUT=agrifabric-v08-geography-digipin-thumb.png node web/smoke/agrifabric_landing_capture_helper.mjs`
+- `WEB_BASE_URL=http://localhost:3000 AGRIFABRIC_TAB=roadmap AGRIFABRIC_VIEWPORT=thumbnail AGRIFABRIC_OUTPUT=agrifabric-v11-insurance-roadmap-thumb.png node web/smoke/agrifabric_landing_capture_helper.mjs`
+
+Keep generated PNGs untracked unless selected final thumbnails are intentionally versioned later.
+
 ## Capture setup
 
 Frontend:
