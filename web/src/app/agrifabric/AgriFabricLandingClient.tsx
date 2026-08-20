@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useMemo, useState } from "react";
 
 type TabId = "overview" | "product" | "graph" | "operations" | "geography" | "roadmap";
@@ -182,7 +184,7 @@ function OverviewTab({ setActiveTab }: { setActiveTab: (tab: TabId) => void }) {
           ))}
         </div>
       </div>
-      <VisualCard src="/landing-assets/hero-composite.svg" alt="AgriFabric hero composite" />
+      <VisualCard src="/landing-assets/hero-composite-compact.svg" alt="AgriFabric hero composite" />
     </div>
   );
 }
@@ -328,7 +330,7 @@ export function AgriFabricLandingClient() {
   const activeMeta = useMemo(() => tabs.find((tab) => tab.id === activeTab) ?? tabs[0], [activeTab]);
 
   return (
-    <main className="min-h-screen bg-[#061826] text-white">
+    <main className="agrifabric-landing min-h-screen bg-[#061826] text-white">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -right-36 -top-44 h-[34rem] w-[34rem] rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="absolute -bottom-44 -left-32 h-[30rem] w-[30rem] rounded-full bg-sky-500/10 blur-3xl" />
@@ -374,7 +376,7 @@ export function AgriFabricLandingClient() {
           ))}
         </div>
 
-        <div className="rounded-[2.5rem] border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-slate-950/30 md:p-8">
+        <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 shadow-2xl shadow-slate-950/30 md:p-6">
           <ActivePanel activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       </section>

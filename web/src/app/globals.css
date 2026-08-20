@@ -23,3 +23,22 @@ input, select, textarea {
     text-wrap: balance;
   }
 }
+
+
+/* AgriFabric public landing page safety styles */
+.agrifabric-landing {
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(16, 185, 129, 0.12), transparent 32rem),
+    radial-gradient(circle at 0% 100%, rgba(14, 165, 233, 0.10), transparent 28rem),
+    #061826;
+}
+
+.agrifabric-landing img {
+  display: block;
+}
+
+.agrifabric-landing button,
+.agrifabric-landing a {
+  font-family: inherit;
+}
