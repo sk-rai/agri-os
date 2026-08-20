@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420">
+
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .title{font:700 28px Arial,Helvetica,sans-serif;fill:#fff}
+      .sub{font:400 16px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:4}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:4}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:4}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:4}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:4;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineGreen{stroke:#20d66d;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .linePurple{stroke:#a78bfa;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineGray{stroke:#9aa8bd;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineAmber{stroke:#f59e0b;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:10 8}
+      .white{fill:#fff}
+    </style>
+  </defs>
+
+  <rect class="bg" width="420" height="420" rx="36"/>
+  <rect x="92" y="62" width="236" height="190" rx="42" class="purple"/>
+  <path d="M150 130 H260 C278 130 292 144 292 162 V190 C292 208 278 222 260 222 H215 L175 250 V222 H150 C132 222 118 208 118 190 V162 C118 144 132 130 150 130Z" class="linePurple"/>
+  <circle cx="278" cy="116" r="16" fill="#a78bfa"/>
+  <text x="210" y="320" text-anchor="middle" class="title">Advise</text>
+  <text x="210" y="352" text-anchor="middle" class="sub">targeted guidance</text>
+</svg>

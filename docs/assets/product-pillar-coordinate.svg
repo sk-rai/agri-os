@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420">
+
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .title{font:700 28px Arial,Helvetica,sans-serif;fill:#fff}
+      .sub{font:400 16px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:4}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:4}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:4}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:4}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:4;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineGreen{stroke:#20d66d;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .linePurple{stroke:#a78bfa;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineGray{stroke:#9aa8bd;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+      .lineAmber{stroke:#f59e0b;stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:10 8}
+      .white{fill:#fff}
+    </style>
+  </defs>
+
+  <rect class="bg" width="420" height="420" rx="36"/>
+  <rect x="92" y="62" width="236" height="190" rx="42" class="green"/>
+  <circle cx="210" cy="112" r="28" fill="#20d66d"/>
+  <circle cx="166" cy="188" r="22" fill="#20d66d"/>
+  <circle cx="254" cy="188" r="22" fill="#20d66d"/>
+  <path d="M210 140 V165 M188 188 H232" class="lineGreen"/>
+  <text x="210" y="320" text-anchor="middle" class="title">Coordinate</text>
+  <text x="210" y="352" text-anchor="middle" class="sub">projects and agents</text>
+</svg>

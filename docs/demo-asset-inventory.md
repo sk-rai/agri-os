@@ -10,6 +10,7 @@ These assets are now available for landing-page sections, explainer slides, and 
 | Geography and DigiPin | `docs/assets/geography-digipin-overview.svg`, `docs/assets/geography-digipin-layered-model.svg`, `docs/assets/geography-global-extension-layer.svg` | Explain PIN context, GPS/parcel precision, backend-generated DigiPin, land intelligence, and global geography roadmap boundaries. |
 | Field evidence pipeline | `docs/assets/field-evidence-pipeline.svg`, `docs/assets/field-evidence-pipeline-compact.svg` | Explain Android capture, offline sync, backend contracts, admin operations, and bounded roadmap intelligence. |
 | Insurance and subsidy integrity roadmap | `docs/assets/insurance-risk-roadmap.svg`, `docs/assets/insurance-risk-roadmap-compact.svg` | Claim-safe roadmap graphic for future risk flags, duplicate parcel review, evidence bundles, NDVI/provider context, and human review queues. |
+| Product pillar icons | `docs/assets/product-pillars.svg`, `docs/assets/product-pillar-*.svg` | Six-pillar visual vocabulary for Capture, Coordinate, Sync, Advise, Govern, and Extend. |
 
 
 Status date: 2026-08-17

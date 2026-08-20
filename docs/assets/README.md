@@ -36,3 +36,13 @@ Guidelines:
 
 - `insurance-risk-roadmap.svg` — main roadmap visual showing how implemented field evidence can support future fraud/waste/abuse review, claim evidence bundles, and human review queues.
 - `insurance-risk-roadmap-compact.svg` — compact version for demo overlays, thumbnails, and carousel-style sections.
+
+## Product pillar icon assets
+
+- `product-pillars.svg` — combined six-pillar icon grid for landing-page and one-pager use.
+- `product-pillar-capture.svg` — Capture pillar icon.
+- `product-pillar-coordinate.svg` — Coordinate pillar icon.
+- `product-pillar-sync.svg` — Sync pillar icon.
+- `product-pillar-advise.svg` — Advise pillar icon.
+- `product-pillar-govern.svg` — Govern pillar icon.
+- `product-pillar-extend.svg` — Extend pillar icon with roadmap styling.
