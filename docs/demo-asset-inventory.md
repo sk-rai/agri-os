@@ -8,6 +8,7 @@ These assets are now available for landing-page sections, explainer slides, and 
 | --- | --- | --- |
 | Relationship graph | `docs/assets/relationship-graph.svg`, `docs/assets/relationship-graph-overview.svg`, `docs/assets/relationship-graph-roadmap-layer.svg` | Explain AgriFabric as a connected evidence graph across farmers, agents, projects, parcels, advisories, sync, and audit. |
 | Geography and DigiPin | `docs/assets/geography-digipin-overview.svg`, `docs/assets/geography-digipin-layered-model.svg`, `docs/assets/geography-global-extension-layer.svg` | Explain PIN context, GPS/parcel precision, backend-generated DigiPin, land intelligence, and global geography roadmap boundaries. |
+| Field evidence pipeline | `docs/assets/field-evidence-pipeline.svg`, `docs/assets/field-evidence-pipeline-compact.svg` | Explain Android capture, offline sync, backend contracts, admin operations, and bounded roadmap intelligence. |
 
 
 Status date: 2026-08-17

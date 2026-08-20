@@ -427,7 +427,7 @@ Acceptance criteria:
 | Hero composite | Hero | Needed |
 | Product pillar icons | Product pillars | Needed |
 | Relationship graph SVG | Relationship graph | Available: `docs/assets/relationship-graph.svg`, `docs/assets/relationship-graph-overview.svg`, `docs/assets/relationship-graph-roadmap-layer.svg` |
-| Field evidence pipeline visual | Pipeline | Needed |
+| Field evidence pipeline visual | Pipeline | Available: `docs/assets/field-evidence-pipeline.svg`, `docs/assets/field-evidence-pipeline-compact.svg` |
 | Demo video thumbnails | Demo strip | Needed after capture |
 | Android onboarding clip | Demo strip / Capture pillar | Needed |
 | FPO web/admin clip | Demo strip / Coordinate pillar | Needed |

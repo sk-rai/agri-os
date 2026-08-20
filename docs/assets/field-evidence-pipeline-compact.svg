@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="360" viewBox="0 0 1600 360">
+  <defs>
+    <style>
+      .bg{fill:#061826}
+      .orb{fill:#0f3a42;opacity:.45}
+      .title{font:700 34px Arial,Helvetica,sans-serif;fill:#fff}
+      .subtitle{font:400 18px Arial,Helvetica,sans-serif;fill:#d9ecff}
+      .nodeTitle{font:700 20px Arial,Helvetica,sans-serif;fill:#fff}
+      .nodeSub{font:400 14px Arial,Helvetica,sans-serif;fill:#e7f3ff}
+      .chip{font:700 12px Arial,Helvetica,sans-serif;letter-spacing:2px;fill:#9dc4e8}
+      .blue{fill:#103654;stroke:#32bfff;stroke-width:2}
+      .green{fill:#0e432f;stroke:#20d66d;stroke-width:2}
+      .purple{fill:#302353;stroke:#a78bfa;stroke-width:2}
+      .gray{fill:#263449;stroke:#9aa8bd;stroke-width:2}
+      .amber{fill:#3a2807;stroke:#f59e0b;stroke-width:2;stroke-dasharray:10 8}
+      .lineBlue{stroke:#32bfff;stroke-width:4;fill:none}
+      .lineGreen{stroke:#20d66d;stroke-width:4;fill:none}
+      .lineGray{stroke:#9aa8bd;stroke-width:4;fill:none}
+      .linePurple{stroke:#a78bfa;stroke-width:4;fill:none}
+      .lineAmber{stroke:#f59e0b;stroke-width:3;fill:none;stroke-dasharray:9 8}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="360"/>
+  <circle class="orb" cx="1370" cy="40" r="245"/>
+
+  <text x="42" y="55" class="title">Field evidence pipeline</text>
+  <text x="42" y="84" class="subtitle">Capture → sync → contracts → operations → bounded roadmap intelligence.</text>
+
+  <text x="60" y="132" class="chip">IMPLEMENTED FOUNDATION</text>
+
+  <rect x="60" y="165" width="205" height="86" rx="22" class="blue"/>
+  <text x="162" y="199" text-anchor="middle" class="nodeTitle">Android capture</text>
+  <text x="162" y="225" text-anchor="middle" class="nodeSub">farmer • parcel • media</text>
+
+  <path d="M265 208 H345" class="lineBlue"/>
+  <rect x="345" y="165" width="205" height="86" rx="22" class="green"/>
+  <text x="447" y="199" text-anchor="middle" class="nodeTitle">Offline sync</text>
+  <text x="447" y="225" text-anchor="middle" class="nodeSub">queue • replay • conflicts</text>
+
+  <path d="M550 208 H630" class="lineGreen"/>
+  <rect x="630" y="165" width="215" height="86" rx="22" class="gray"/>
+  <text x="737" y="199" text-anchor="middle" class="nodeTitle">Backend contracts</text>
+  <text x="737" y="225" text-anchor="middle" class="nodeSub">validate • label • audit</text>
+
+  <path d="M845 208 H925" class="lineGray"/>
+  <rect x="925" y="165" width="215" height="86" rx="22" class="purple"/>
+  <text x="1032" y="199" text-anchor="middle" class="nodeTitle">Admin operations</text>
+  <text x="1032" y="225" text-anchor="middle" class="nodeSub">projects • advisories • read/ack</text>
+
+  <path d="M1140 208 H1220" class="linePurple"/>
+  <rect x="1220" y="165" width="250" height="86" rx="22" class="amber"/>
+  <text x="1345" y="199" text-anchor="middle" class="nodeTitle">Roadmap intelligence</text>
+  <text x="1345" y="225" text-anchor="middle" class="nodeSub">risk • NDVI • claim evidence</text>
+
+  <rect x="430" y="285" width="740" height="44" rx="20" class="gray"/>
+  <text x="800" y="313" text-anchor="middle" class="nodeSub">Implemented evidence foundation today. Scoring and live-provider intelligence remain approval-gated.</text>
+</svg>

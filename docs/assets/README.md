@@ -26,3 +26,8 @@ Guidelines:
 - `geography-digipin-overview.svg` — simplified geography/DigiPin landing-page overview.
 - `geography-digipin-layered-model.svg` — fuller layered geography model for explainers/slides.
 - `geography-global-extension-layer.svg` — roadmap visual for country-specific/global geography generalization.
+
+## Field evidence pipeline assets
+
+- `field-evidence-pipeline.svg` — main landing-page/product explainer visual for Android capture → offline sync → backend contracts → admin operations → roadmap intelligence.
+- `field-evidence-pipeline-compact.svg` — compact strip version for demo overlays, thumbnails, and carousel-style sections.
