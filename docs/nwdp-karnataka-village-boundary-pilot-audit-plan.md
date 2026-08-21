@@ -199,9 +199,28 @@ Next step: classify the unmatched records before deciding whether a reviewed cro
 
 The unmatched-name audit showed that only 15.3364% of unmatched records can be recovered by normalized name matching.
 
-This means the remaining mismatch is not mostly simple spelling variation. The likely causes include source vintage mismatch, parent-code drift, administrative reorganization, Census/SOI settlement records, and special non-village features.
+This means the remaining mismatch is not mostly simple spelling variation. The likely causes include source vintage mismatch, village-code drift, administrative reorganization, Census/SOI settlement records, and special non-village features.
 
 Next step: parent-code drift audit using `dtcode`, `sdcode`, and `bkcode`.
+
+## Parent-code drift checkpoint
+
+The parent-code drift audit showed strong parent alignment:
+
+- 30 of 30 distinct NWDP `dtcode` values matched backend district codes;
+- 227 of 228 distinct NWDP `sdcode` values matched backend block codes;
+- 173 of 177 distinct NWDP `bkcode` values matched backend block codes;
+- all 5,425 unmatched village features still had matching district and `sdcode` parent codes;
+- 5,166 unmatched village features also had matching `bkcode`;
+- 0 unmatched village features lacked parent-code coverage entirely.
+
+This narrows the problem. The unresolved issue is not that NWDP is floating outside the backend parent geography hierarchy; it is that a material number of village-level `vlcode` values do not match current backend LGD village codes.
+
+Next steps:
+
+- inspect the SHP `.prj` or source metadata to identify CRS;
+- compare unmatched `vlcode` values against backend `census_village_code`;
+- design a reviewed boundary-crosswalk queue with buckets for direct code match, parent-scoped name match, special non-village features, and unresolved records.
 
 ## Recommended next implementation step
 

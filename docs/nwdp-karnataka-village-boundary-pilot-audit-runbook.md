@@ -95,7 +95,25 @@ Decision:
 
 The mismatch is more serious than spelling variation. NWDP Karnataka requires a reviewed reconciliation workflow before ingestion.
 
-Next audit should compare parent `dtcode`, `sdcode`, and `bkcode` values against backend geography codes.
+## Latest parent-code drift finding
+
+The parent-code drift audit compared NWDP `dtcode`, `sdcode`, and `bkcode` values with backend district/block LGD codes.
+
+Results:
+
+- all 30 distinct NWDP district `dtcode` values matched backend district codes;
+- 227 of 228 distinct NWDP `sdcode` values matched backend block codes;
+- 173 of 177 distinct NWDP `bkcode` values matched backend block codes;
+- all 5,425 unmatched village features had matching district and `sdcode` parent codes;
+- 5,166 of 5,425 unmatched village features also had matching `bkcode`;
+- 259 unmatched village features had matching district and `sdcode` but missing/non-matching `bkcode`;
+- no unmatched village feature lacked parent-code coverage entirely.
+
+Decision:
+
+The unresolved Karnataka issue is village-level reconciliation, not broad district/subdistrict mismatch. Parent codes are strong enough to scope a review queue, but they are not sufficient to auto-link unmatched `vlcode` records.
+
+Next audit should identify the source CRS from the SHP `.prj` or source metadata, then compare unmatched `vlcode` values against backend `census_village_code` where available.
 
 ## Crosswalk interpretation
 

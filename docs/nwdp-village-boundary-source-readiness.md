@@ -274,9 +274,50 @@ Do not ingest automatically. Use a reviewed crosswalk workflow that separates:
 - special non-village features;
 - unresolved records requiring manual/source review.
 
-Next technical audit:
+## Karnataka parent-code drift audit finding
 
-Compare NWDP `dtcode`, `sdcode`, and `bkcode` against backend district/block LGD codes to determine whether unmatched `vlcode` records are failing because of village-code drift alone or because parent district/subdistrict/block codes also differ.
+Read-only parent-code drift audit:
+
+- `backend/scripts/audit_nwdp_karnataka_village_boundary_pilot.py --parent-code-drift`
+
+Latest observed result:
+
+- distinct NWDP `dtcode` values: 30;
+- backend district-code matches for NWDP `dtcode`: 30;
+- unmatched NWDP `dtcode` values: 0;
+- distinct NWDP `sdcode` values: 228;
+- backend block-code matches for NWDP `sdcode`: 227;
+- unmatched NWDP `sdcode` values: 1;
+- distinct NWDP `bkcode` values: 177;
+- backend block-code matches for NWDP `bkcode`: 173;
+- unmatched NWDP `bkcode` values: 4;
+- unmatched village features checked: 5,425;
+- unmatched village features with matching district code: 5,425;
+- unmatched village features with matching `sdcode`: 5,425;
+- unmatched village features with matching `bkcode`: 5,166;
+- unmatched village features with district and `sdcode` match but `bkcode` missing: 259;
+- unmatched village features with no parent-code match: 0.
+
+Interpretation:
+
+The remaining Karnataka mismatch is not primarily a parent-geography problem. District and subdistrict/block parent codes align strongly with the backend geography model. The difficult part is concentrated at the village `vlcode` and settlement-feature layer.
+
+This is better than a fully ambiguous shape source: parent codes can still provide a high-confidence review scope. However, the 5,371 unmatched distinct `vlcode` values cannot be auto-linked just because their district and subdistrict parents match.
+
+Current decision:
+
+- use direct `vlcode` matches as the first high-confidence candidate bucket;
+- use parent-code matches to scope review and reduce false positives;
+- keep unmatched `vlcode` records in a reconciliation queue;
+- treat `vlcode=999999` and river/reservoir-style features as special non-village/reference geometry candidates;
+- do not run automatic ingestion or runtime point-in-polygon until CRS and crosswalk policy are resolved.
+
+Next technical audits:
+
+- identify the NWDP/SOI coordinate reference system from the SHP ZIP `.prj` or source metadata;
+- classify unmatched `vlcode` values by code range and source vintage;
+- compare unmatched rows against backend `census_village_code` where available;
+- design a reviewed boundary crosswalk table before any persisted ingestion.
 
 
 ## Suggested backend model boundary
