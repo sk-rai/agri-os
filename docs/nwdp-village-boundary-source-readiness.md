@@ -127,6 +127,55 @@ All-India ingestion boundary:
 
 Do not proceed to all-India boundary ingestion until the manifest issue is resolved, excluded by policy, or handled through a reviewed override in the acquisition manifest.
 
+## Karnataka pilot audit finding
+
+Read-only pilot script:
+
+- `backend/scripts/audit_nwdp_karnataka_village_boundary_pilot.py`
+
+Latest Karnataka GeoJSON pilot result:
+
+- NWDP resource page resolved to a ZIP download: `vb_soi_ka_geojson.zip`;
+- script extracted the GeoJSON from the ZIP;
+- feature count: 29,789;
+- geometry type: 29,789 MultiPolygon features;
+- source agency inside feature attributes: Survey of India (SOI);
+- state fields include `stcode=29`, `state=KA`, and `state_name=Karnataka`;
+- district fields include `dtcode` and `district`;
+- subdistrict/taluk/block candidates include `sdcode`, `subdistric`, `bkcode`, and `block`;
+- village fields include `vlcode` and `village`;
+- exact LGD/code candidate field detected: `vlcode`;
+- optional read-only DB crosswalk executed successfully after script hardening;
+- sampled `vlcode` to `geography_villages.lgd_code` match result: 2 matched out of 5 sampled values.
+
+Interpretation:
+
+The Karnataka file is more promising than pure fuzzy SOI alignment because it has structured code fields, especially `vlcode`. However, the sample DB crosswalk is only partial. It is not yet safe to assume automatic LGD linkage across the full state.
+
+Spatial caution:
+
+The raw coordinate bbox is `[180.0, 90.0, 3847351.8078999966, 3402551.8718999997]`, which indicates projected/non-WGS84 coordinates. CRS must be identified and geometry transformed before GPS point-in-polygon or parcel-overlap use.
+
+Current decision:
+
+- good candidate for deeper full-code coverage audit;
+- not ready for ingestion;
+- not ready for runtime spatial matching;
+- not ready for all-India rollout.
+
+Next required audit:
+
+Run a full Karnataka `vlcode` coverage audit against `geography_villages.lgd_code` to calculate:
+
+- total features;
+- distinct `vlcode` count;
+- blank/null `vlcode` count;
+- matched `vlcode` count;
+- unmatched `vlcode` count;
+- duplicate `vlcode` count;
+- sample unmatched values with village/district/subdistrict names;
+- whether unmatched values correspond to missing LGD data, Census-only settlements, forest beats, hamlets, deleted/merged villages, or code-system mismatch.
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:

@@ -57,6 +57,29 @@ Only run this if the backend DB is available and loaded with geography tables:
 
 This is still read-only. It samples candidate LGD/code fields and checks whether those values match `geography_villages.lgd_code`.
 
+## Latest pilot finding
+
+The Karnataka pilot successfully extracted GeoJSON from the NWDP ZIP resource and inspected 29,789 MultiPolygon features.
+
+Important fields found:
+
+- `vlcode`;
+- `village`;
+- `dtcode`;
+- `district`;
+- `sdcode`;
+- `subdistric`;
+- `bkcode`;
+- `block`;
+- `stcode`;
+- `state`.
+
+Read-only sample DB crosswalk found that `vlcode` partially matches `geography_villages.lgd_code`: 2 of 5 sampled values matched.
+
+This is promising, but not ingestion-ready. The next step is full-state `vlcode` coverage analysis.
+
+Also, coordinates appear projected/non-WGS84, so CRS identification is mandatory before any spatial runtime use.
+
 ## Crosswalk interpretation
 
 ### Case A or B: code candidates present

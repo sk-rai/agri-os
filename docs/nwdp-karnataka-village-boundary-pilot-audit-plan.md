@@ -167,6 +167,21 @@ Suggested schema names for future scripts:
 - `nwdp_village_boundary_karnataka_pilot_audit.v1`
 - `nwdp_village_boundary_crosswalk_readiness.v1`
 
+## Pilot result checkpoint
+
+The first Karnataka audit confirmed that the downloaded GeoJSON is inside a ZIP resource and contains 29,789 MultiPolygon features.
+
+Structured attributes include `vlcode`, `village`, `dtcode`, `district`, `sdcode`, `subdistric`, `bkcode`, `block`, `stcode`, and `state`.
+
+The initial DB sample crosswalk matched 2 of 5 sampled `vlcode` values against `geography_villages.lgd_code`.
+
+Decision:
+
+- continue to full `vlcode` coverage audit;
+- do not ingest yet;
+- identify CRS before any spatial matching;
+- treat unmatched codes as a reconciliation question, not an Android/runtime blocker.
+
 ## Recommended next implementation step
 
 Create a read-only pilot script that downloads only the Karnataka GeoJSON or accepts a locally downloaded file, then reports:
