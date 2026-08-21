@@ -320,6 +320,42 @@ Next technical audits:
 - design a reviewed boundary crosswalk table before any persisted ingestion.
 
 
+## Karnataka SHP CRS audit finding
+
+Read-only CRS audit script:
+
+- `backend/scripts/audit_nwdp_karnataka_shp_crs.py`
+
+Latest observed result:
+
+- Karnataka SHP resource resolved to `vb_soi_ka_shp.zip`;
+- ZIP size: 14,941,558 bytes;
+- ZIP SHA-256: `fa7f7dabd7c55e59a5e8c4e916f556294969c8a993057a574bc67a9d11f9c3e7`;
+- archive members: `vb_soi_ka.dbf`, `vb_soi_ka.prj`, `vb_soi_ka.shp`, `vb_soi_ka.shx`;
+- `.prj` file present: `vb_soi_ka.prj`;
+- `.prj` SHA-256: `d27ca1c7705221fea351dd7713fd0d98b169f2eb0201d4a2a81e69c6d1e08629`;
+- projected CRS name: `WGS_1984_India_NSF_LCC`;
+- projection: `Lambert_Conformal_Conic`;
+- geographic base: `GCS_WGS_1984`;
+- datum: `D_WGS_1984`;
+- unit: meter.
+
+Interpretation:
+
+The raw coordinates in the NWDP Karnataka GeoJSON/SHP are projected coordinates, not longitude/latitude. This explains the earlier raw bbox `[180.0, 90.0, 3847351.8078999966, 3402551.8718999997]`.
+
+Current decision:
+
+- CRS metadata is good enough for transform planning;
+- source is still not ready for runtime spatial matching;
+- geometry must be transformed to WGS84 and spot-checked against Karnataka lon/lat bounds before any point-in-polygon use;
+- CRS readiness and `vlcode` crosswalk readiness should stay separate: CRS is solvable, while village-code reconciliation remains review-gated.
+
+Next technical audit:
+
+Use pyproj/GDAL/Fiona or equivalent geospatial tooling to transform a small sample of Karnataka SHP geometry from `WGS_1984_India_NSF_LCC` to WGS84, then verify transformed bounds and sample village locations.
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:

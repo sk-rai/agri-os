@@ -222,6 +222,20 @@ Next steps:
 - compare unmatched `vlcode` values against backend `census_village_code`;
 - design a reviewed boundary-crosswalk queue with buckets for direct code match, parent-scoped name match, special non-village features, and unresolved records.
 
+## CRS checkpoint
+
+The SHP CRS audit found a valid `.prj` file and identified the source CRS as `WGS_1984_India_NSF_LCC`, a Lambert Conformal Conic projected CRS using WGS 1984 as the geographic base.
+
+This resolves the earlier bbox warning: the Karnataka boundary coordinates are projected meters, not WGS84 lon/lat.
+
+Next step: run a transform sample audit before spatial use. The transform audit should prove:
+
+- source CRS can be parsed by pyproj/GDAL;
+- transformed bbox falls within plausible Karnataka lon/lat bounds;
+- a small set of transformed feature centroids lands in expected districts;
+- geometry remains valid enough for reference-boundary use after transformation.
+
+
 ## Recommended next implementation step
 
 Create a read-only pilot script that downloads only the Karnataka GeoJSON or accepts a locally downloaded file, then reports:
