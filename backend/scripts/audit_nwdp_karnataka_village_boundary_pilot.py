@@ -402,6 +402,7 @@ def _load_nwdp_vlcode_rows(source_path: Path) -> list[dict[str, str]]:
             "block": str(props.get("block") or "").strip(),
             "bkcode": str(props.get("bkcode") or "").strip(),
             "src_agency": str(props.get("src_agency") or "").strip(),
+            "_raw": props,
         })
     return rows
 
@@ -499,6 +500,99 @@ def _soi_reference_overlap(vlcodes: set[str]) -> dict[str, Any]:
     }
 
 
+
+def _float_value(value: Any) -> float | None:
+    try:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        return float(text)
+    except Exception:
+        return None
+
+
+def _classify_unmatched_rows(rows: list[dict[str, str]], unmatched_codes: set[str], sample_limit: int) -> dict[str, Any]:
+    unmatched_rows = [row for row in rows if row["vlcode"] in unmatched_codes]
+
+    by_district = Counter(row["district"] or "UNKNOWN" for row in unmatched_rows)
+    by_subdistrict = Counter(
+        f'{row["district"] or "UNKNOWN"} / {row["subdistrict"] or "UNKNOWN"}'
+        for row in unmatched_rows
+    )
+    by_bkcode = Counter(row["bkcode"] or "BLANK" for row in unmatched_rows)
+
+    bkcode_zero = [row for row in unmatched_rows if row["bkcode"] in {"0", "0.0"}]
+    bkcode_blank = [row for row in unmatched_rows if not row["bkcode"] or row["bkcode"].strip() == ""]
+
+    population_zero = []
+    population_nonzero = []
+    rural_urban = Counter()
+    name_equals_subdistrict = []
+    forest_or_beat = []
+    town_like = []
+
+    for row in unmatched_rows:
+        raw = row.get("_raw") or {}
+        pop = _float_value(raw.get("total_population_village\n"))
+        if pop == 0:
+            population_zero.append(row)
+        elif pop is not None and pop > 0:
+            population_nonzero.append(row)
+
+        rural_urban[str(raw.get("total_urban_rural") or "UNKNOWN").strip() or "UNKNOWN"] += 1
+
+        village_norm = _norm(row["village"])
+        subdistrict_norm = _norm(row["subdistrict"])
+        block_norm = _norm(row["block"])
+
+        if village_norm and village_norm in {subdistrict_norm, block_norm}:
+            name_equals_subdistrict.append(row)
+
+        if re.search(r"\b(beat|forest|rf|reserve|range)\b", row["village"], flags=re.IGNORECASE):
+            forest_or_beat.append(row)
+
+        if row["bkcode"] in {"0", "0.0"} or village_norm in {subdistrict_norm, block_norm}:
+            town_like.append(row)
+
+    duplicate_unmatched = [
+        row for row in unmatched_rows
+        if sum(1 for candidate in unmatched_rows if candidate["vlcode"] == row["vlcode"]) > 1
+    ]
+
+    def samples(items: list[dict[str, str]]) -> list[dict[str, str]]:
+        return [
+            {key: value for key, value in item.items() if key != "_raw"}
+            for item in items[:sample_limit]
+        ]
+
+    return {
+        "unmatched_feature_count": len(unmatched_rows),
+        "unmatched_distinct_vlcode_count": len(unmatched_codes),
+        "top_unmatched_districts": [{"district": key, "count": value} for key, value in by_district.most_common(20)],
+        "top_unmatched_subdistricts": [{"district_subdistrict": key, "count": value} for key, value in by_subdistrict.most_common(25)],
+        "top_unmatched_bkcodes": [{"bkcode": key, "count": value} for key, value in by_bkcode.most_common(20)],
+        "bkcode_zero_count": len(bkcode_zero),
+        "bkcode_blank_count": len(bkcode_blank),
+        "population_zero_count": len(population_zero),
+        "population_nonzero_count": len(population_nonzero),
+        "rural_urban_counts": dict(sorted(rural_urban.items())),
+        "name_equals_subdistrict_or_block_count": len(name_equals_subdistrict),
+        "forest_or_beat_name_count": len(forest_or_beat),
+        "town_like_or_bkcode_zero_count": len(town_like),
+        "duplicate_unmatched_feature_count": len(duplicate_unmatched),
+        "samples": {
+            "bkcode_zero": samples(bkcode_zero),
+            "population_zero": samples(population_zero),
+            "population_nonzero": samples(population_nonzero),
+            "name_equals_subdistrict_or_block": samples(name_equals_subdistrict),
+            "forest_or_beat": samples(forest_or_beat),
+            "duplicate_unmatched": samples(duplicate_unmatched),
+            "general_unmatched": samples(unmatched_rows),
+        },
+    }
+
+
+
 def _db_full_vlcode_coverage(source_path: Path, sample_limit: int) -> dict[str, Any]:
     rows = _load_nwdp_vlcode_rows(source_path)
     vlcodes = [row["vlcode"] for row in rows if row["vlcode"]]
@@ -562,6 +656,8 @@ def _db_full_vlcode_coverage(source_path: Path, sample_limit: int) -> dict[str, 
         if len(matched_rows) >= sample_limit:
             break
 
+    unmatched_classification = _classify_unmatched_rows(rows, set(unmatched), sample_limit)
+
     return {
         "attempted": True,
         "healthy": True,
@@ -578,6 +674,7 @@ def _db_full_vlcode_coverage(source_path: Path, sample_limit: int) -> dict[str, 
         "matched_samples": matched_rows[:sample_limit],
         "unmatched_samples": unmatched_rows[:sample_limit],
         "soi_reference_overlap": _soi_reference_overlap(vlcode_set),
+        "unmatched_classification": unmatched_classification,
     }
 
 
