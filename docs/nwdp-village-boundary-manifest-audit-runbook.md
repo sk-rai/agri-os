@@ -91,6 +91,8 @@ That pilot should validate:
 - license/source metadata;
 - reviewed crosswalk readiness.
 
+Karnataka pilot planning note: `docs/nwdp-karnataka-village-boundary-pilot-audit-plan.md`.
+
 ## Product boundary
 
 Village boundaries are reference locality context.
