@@ -51,3 +51,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 ## Geography source readiness
 
 - `nwdp-village-boundary-source-readiness.md` — NWDP/GSI village boundary source-readiness note and claim boundaries.
+- `nwdp-village-boundary-manifest-audit-runbook.md` — read-only manifest audit for NWDP/GSI village boundary resources.

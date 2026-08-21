@@ -142,3 +142,4 @@ This source strengthens the geography/DigiPin story, but should remain a future 
 Suggested copy:
 
 AgriFabric separates administrative identity, postal context, village boundary context, and parcel-level precision evidence. Village boundary layers can support project planning, cohort validation, and future risk review, while GPS, plot geometry, and backend-generated DigiPin remain the precision evidence for field records.
+Related runbook: `docs/nwdp-village-boundary-manifest-audit-runbook.md`.
