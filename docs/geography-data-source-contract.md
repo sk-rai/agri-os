@@ -122,6 +122,32 @@ Next-phase India/global model should add generic entities:
 - Census enrichment may be attached as reference metadata but cannot override LGD canonical identity.
 - PIN-code refresh should reconcile candidates rather than blindly replacing village identity.
 
+## NWDP / GSI village boundary polygon source
+
+NWDP/GSI village boundary resources are a candidate future polygon reference layer for village-scale spatial context.
+
+This layer should be treated separately from existing LGD, PIN/postal, Census/reference, parcel geometry, and DigiPin layers.
+
+Intended use:
+
+- project service-area planning;
+- GPS-to-village candidate validation;
+- village-boundary cohorting;
+- advisory targeting support;
+- future review-assistive insurance/subsidy evidence workflows.
+
+Boundary:
+
+- village boundary is not cadastral parcel truth;
+- village boundary is not land ownership proof;
+- GPS parcel point or polygon remains the field precision evidence;
+- DigiPin remains backend-generated from coordinates;
+- Android should not ship or compute canonical boundary matching locally.
+
+Before ingestion, create a source manifest and pilot-state audit covering resource URLs, formats, license labels, checksums, CRS, geometry validity, attributes, and LGD crosswalk readiness.
+
+Detailed source-readiness note: `docs/nwdp-village-boundary-source-readiness.md`.
+
 ## OGD geography operational runbook
 
 The local development database has been populated from the OGD all-India geography snapshot. Cloud or Render environments must not assume this local data exists. They should reproduce the load from source snapshots using the same staged-data workflow.

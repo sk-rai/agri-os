@@ -47,3 +47,7 @@ Current landing/demo planning docs:
 - `agrifabric-static-demo-capture-runbook.md` — static landing-page capture order, scripts, and claim boundaries.
 
 The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smoke/agrifabric_landing_smoke.mjs`, and screenshot-assisted by `web/smoke/agrifabric_landing_capture_helper.mjs`.
+
+## Geography source readiness
+
+- `nwdp-village-boundary-source-readiness.md` — NWDP/GSI village boundary source-readiness note and claim boundaries.
