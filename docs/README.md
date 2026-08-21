@@ -53,3 +53,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `nwdp-village-boundary-source-readiness.md` — NWDP/GSI village boundary source-readiness note and claim boundaries.
 - `nwdp-village-boundary-manifest-audit-runbook.md` — read-only manifest audit for NWDP/GSI village boundary resources.
 - `nwdp-karnataka-village-boundary-pilot-audit-plan.md` — one-state pilot plan to test NWDP/GSI boundary attributes, geometry validity, and LGD crosswalk feasibility.
+- `nwdp-karnataka-village-boundary-pilot-audit-runbook.md` — runbook for Karnataka GeoJSON attribute and LGD-crosswalk pilot audit.

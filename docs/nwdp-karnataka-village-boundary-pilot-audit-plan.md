@@ -180,3 +180,5 @@ Create a read-only pilot script that downloads only the Karnataka GeoJSON or acc
 - name-based crosswalk risk.
 
 The script should not write to the database.
+
+Related runbook and script: `docs/nwdp-karnataka-village-boundary-pilot-audit-runbook.md`, `backend/scripts/audit_nwdp_karnataka_village_boundary_pilot.py`.
