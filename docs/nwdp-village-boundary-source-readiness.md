@@ -176,6 +176,62 @@ Run a full Karnataka `vlcode` coverage audit against `geography_villages.lgd_cod
 - sample unmatched values with village/district/subdistrict names;
 - whether unmatched values correspond to missing LGD data, Census-only settlements, forest beats, hamlets, deleted/merged villages, or code-system mismatch.
 
+## Karnataka full `vlcode` coverage audit finding
+
+Read-only full coverage audit:
+
+- script: `backend/scripts/audit_nwdp_karnataka_village_boundary_pilot.py`
+- mode: `--full-vlcode-coverage`
+- database writes: none
+- geometry ingestion: none
+
+Latest observed result:
+
+- total features: 29,789;
+- geometry type: 29,789 MultiPolygon features;
+- non-blank `vlcode` features: 29,789;
+- distinct `vlcode` count: 29,732;
+- duplicate `vlcode` count: 2;
+- backend `geography_villages.lgd_code` count: 576,082;
+- matched distinct `vlcode` count: 24,361;
+- unmatched distinct `vlcode` count: 5,371;
+- distinct-code match rate: 81.9353%;
+- lightweight local SOI reference overlap: 0 matched tokens from available staged reference files.
+
+Interpretation:
+
+The NWDP Karnataka boundary file is materially useful because most distinct `vlcode` values match backend LGD village codes directly. This makes it a stronger boundary-to-LGD candidate than the previously available local SOI reference files.
+
+However, the match is not complete enough for automatic ingestion. The 5,371 unmatched distinct `vlcode` values must be classified before any reviewed ingestion design.
+
+Known blockers:
+
+- CRS remains unidentified and coordinates are projected/non-WGS84;
+- unmatched codes require classification;
+- duplicate `vlcode` values require inspection;
+- local SOI reference overlap did not help in the lightweight comparison;
+- all-India ingestion remains blocked by the NWDP manifest caveat and state-level reconciliation requirements.
+
+Next required audit:
+
+Classify unmatched Karnataka `vlcode` records by:
+
+- district;
+- subdistrict;
+- block code;
+- `bkcode=0` versus populated block codes;
+- population zero versus non-zero;
+- rural/urban marker;
+- village names that equal subdistrict/taluk/town names;
+- forest beat / special settlement naming patterns;
+- whether unmatched names can be scoped-name matched to backend LGD records;
+- duplicate `vlcode` examples.
+
+Current decision:
+
+Karnataka should proceed to unmatched-classification audit, not ingestion.
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:

@@ -96,6 +96,19 @@ If village and district names are present but LGD codes are absent, match only i
 
 If attribute fields do not carry usable code or name hierarchy, keep the layer as standalone reference geometry until a reviewed crosswalk is built.
 
+## Latest full coverage finding
+
+The full Karnataka `vlcode` coverage audit matched 24,361 of 29,732 distinct NWDP `vlcode` values to backend `geography_villages.lgd_code`.
+
+This is an 81.9353% distinct-code match rate.
+
+Decision:
+
+- promising source for reviewed boundary-to-LGD linkage;
+- not complete enough for automatic ingestion;
+- next audit should classify the 5,371 unmatched codes;
+- CRS must be identified before any spatial use.
+
 ## Geometry caution
 
 This script performs only lightweight GeoJSON inspection. Before ingestion, run a proper geospatial validation step with geometry libraries to check:

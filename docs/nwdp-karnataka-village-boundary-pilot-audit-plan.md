@@ -182,6 +182,19 @@ Decision:
 - identify CRS before any spatial matching;
 - treat unmatched codes as a reconciliation question, not an Android/runtime blocker.
 
+## Full coverage checkpoint
+
+The full Karnataka `vlcode` coverage audit produced the first meaningful source-confidence number:
+
+- 29,732 distinct NWDP `vlcode` values;
+- 24,361 matched backend LGD village codes;
+- 5,371 unmatched distinct codes;
+- 81.9353% match rate.
+
+This means the source is promising but not ingestion-ready.
+
+Next step: classify the unmatched records before deciding whether a reviewed crosswalk table, manual review queue, or source-specific exception strategy is needed.
+
 ## Recommended next implementation step
 
 Create a read-only pilot script that downloads only the Karnataka GeoJSON or accepts a locally downloaded file, then reports:
