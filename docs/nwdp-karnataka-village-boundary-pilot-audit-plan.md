@@ -236,6 +236,21 @@ Next step: run a transform sample audit before spatial use. The transform audit 
 - geometry remains valid enough for reference-boundary use after transformation.
 
 
+## Geometry/topology checkpoint
+
+The geometry/topology audit transformed all 29,789 feature centers from EPSG:7755 to EPSG:4326 and found every center inside a buffered Karnataka lon/lat envelope.
+
+It also found:
+
+- zero empty-point shapes;
+- zero zero-area shapes;
+- zero duplicate bbox signatures.
+
+This means coarse geometry plausibility is strong. The remaining gate is no longer CRS or gross spatial placement; it is crosswalk governance and ingestion design.
+
+Next step: design the boundary ingestion and crosswalk workflow before any DB write path is implemented.
+
+
 ## Recommended next implementation step
 
 Create a read-only pilot script that downloads only the Karnataka GeoJSON or accepts a locally downloaded file, then reports:

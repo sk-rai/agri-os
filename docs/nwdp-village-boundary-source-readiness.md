@@ -356,6 +356,55 @@ Next technical audit:
 Use pyproj/GDAL/Fiona or equivalent geospatial tooling to transform a small sample of Karnataka SHP geometry from `WGS_1984_India_NSF_LCC` to WGS84, then verify transformed bounds and sample village locations.
 
 
+## Karnataka SHP geometry/topology audit finding
+
+Read-only geometry/topology audit script:
+
+- `backend/scripts/audit_nwdp_karnataka_shp_geometry_topology.py`
+
+Latest observed result:
+
+- record count: 29,789;
+- shape type counts: `POLYGON`: 29,789;
+- source CRS: EPSG:7755, `WGS 84 / India NSF LCC`;
+- target CRS for audit: EPSG:4326;
+- transformed dataset corner bbox: lon/lat `[73.895883, 11.511405, 78.604372, 18.497884]`;
+- all transformed dataset bbox corners were inside the buffered Karnataka envelope;
+- transformed feature centers inside buffered Karnataka envelope: 29,789;
+- transformed feature centers outside buffered Karnataka envelope: 0;
+- zero-area shapes: 0;
+- empty-point shapes: 0;
+- duplicate bbox signatures: 0;
+- projected area summary in square metres:
+  - min: 9,384.58;
+  - p05: 700,765.058;
+  - median: 3,748,660.537;
+  - p95: 19,719,736.41;
+  - max: 1,625,874,306.052;
+- point count summary:
+  - min: 4;
+  - median: 34;
+  - max: 3,552;
+- part count summary:
+  - min: 1;
+  - median: 1;
+  - max: 63.
+
+Interpretation:
+
+The Karnataka SHP geometry looks spatially plausible after CRS transform. The full transformed centroid audit found no out-of-envelope feature centers, and the lightweight topology checks found no empty, zero-area, or duplicate-bbox records.
+
+Current decision:
+
+- CRS and coarse geometry plausibility are strong enough for deeper ingestion planning;
+- boundary-to-LGD crosswalk is still the gating issue;
+- runtime spatial matching remains blocked until a reviewed crosswalk policy, transformed storage model, and full geometry validation approach are designed.
+
+Next technical audit:
+
+Design the boundary ingestion model and reviewed crosswalk workflow before writing any geometry to the database. The first ingestion design should separate direct `vlcode` matches, unmatched `vlcode` records, special non-village features, and records requiring manual/source review.
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:
