@@ -623,6 +623,162 @@ def _first_existing(columns: set[str], candidates: list[str]) -> str | None:
     return None
 
 
+
+def _parent_code_drift_audit(source_path: Path, sample_limit: int) -> dict[str, Any]:
+    rows = _load_nwdp_vlcode_rows(source_path)
+
+    try:
+        from sqlalchemy import create_engine, text
+    except Exception as exc:
+        return {"attempted": True, "healthy": False, "error": exc.__class__.__name__, "message": str(exc)}
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        try:
+            if str(BACKEND_ROOT) not in sys.path:
+                sys.path.insert(0, str(BACKEND_ROOT))
+            from app.core.config import settings
+            database_url = getattr(settings, "database_url", None) or getattr(settings, "DATABASE_URL", None)
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "healthy": False,
+                "error": "DATABASE_URL_MISSING",
+                "settings_import_error": exc.__class__.__name__,
+                "settings_import_message": str(exc),
+            }
+
+    engine = create_engine(database_url)
+    with engine.connect() as conn:
+        district_columns = set(_db_name_columns(conn, "geography_districts"))
+        block_columns = set(_db_name_columns(conn, "geography_blocks"))
+        village_columns = set(_db_name_columns(conn, "geography_villages"))
+
+        district_lgd_col = _first_existing(district_columns, ["lgd_code"])
+        district_name_col = _first_existing(district_columns, ["canonical_name", "census_name", "name", "district_name"])
+        block_lgd_col = _first_existing(block_columns, ["lgd_code"])
+        block_name_col = _first_existing(block_columns, ["canonical_name", "census_name", "name", "block_name"])
+        village_lgd_col = _first_existing(village_columns, ["lgd_code"])
+
+        if not district_lgd_col or not block_lgd_col or not village_lgd_col:
+            return {
+                "attempted": True,
+                "healthy": False,
+                "error": "REQUIRED_CODE_COLUMNS_MISSING",
+                "columns": {
+                    "geography_districts": sorted(district_columns),
+                    "geography_blocks": sorted(block_columns),
+                    "geography_villages": sorted(village_columns),
+                },
+            }
+
+        district_db_rows = conn.execute(
+            text(f"select cast({district_lgd_col} as text) as code, {district_name_col or district_lgd_col} as name from geography_districts where {district_lgd_col} is not null")
+        ).mappings().all()
+        block_db_rows = conn.execute(
+            text(f"select cast({block_lgd_col} as text) as code, {block_name_col or block_lgd_col} as name from geography_blocks where {block_lgd_col} is not null")
+        ).mappings().all()
+        village_db_rows = conn.execute(
+            text(f"select cast({village_lgd_col} as text) as code from geography_villages where {village_lgd_col} is not null")
+        ).mappings().all()
+
+    db_district_codes = {str(row["code"]) for row in district_db_rows if row.get("code")}
+    db_block_codes = {str(row["code"]) for row in block_db_rows if row.get("code")}
+    db_village_codes = {str(row["code"]) for row in village_db_rows if row.get("code")}
+
+    nwdp_dt_codes = {row["dtcode"] for row in rows if row["dtcode"]}
+    nwdp_sd_codes = {row["sdcode"] for row in rows if row["sdcode"]}
+    nwdp_bk_codes = {row["bkcode"] for row in rows if row["bkcode"]}
+    nwdp_vl_codes = {row["vlcode"] for row in rows if row["vlcode"]}
+
+    unmatched_rows = [row for row in rows if row["vlcode"] and row["vlcode"] not in db_village_codes]
+
+    unmatched_parent_patterns = Counter()
+    unmatched_by_parent_match = {
+        "district_code_matches": 0,
+        "district_code_missing": 0,
+        "sdcode_matches_block": 0,
+        "sdcode_missing_block": 0,
+        "bkcode_matches_block": 0,
+        "bkcode_missing_block": 0,
+        "both_sdcode_or_bkcode_match_block": 0,
+        "neither_sdcode_nor_bkcode_match_block": 0,
+    }
+
+    samples = {
+        "district_matches_block_missing": [],
+        "district_missing": [],
+        "block_code_matches": [],
+        "no_parent_code_match": [],
+    }
+
+    for row in unmatched_rows:
+        district_match = row["dtcode"] in db_district_codes
+        sd_match = row["sdcode"] in db_block_codes
+        bk_match = row["bkcode"] in db_block_codes
+
+        if district_match:
+            unmatched_by_parent_match["district_code_matches"] += 1
+        else:
+            unmatched_by_parent_match["district_code_missing"] += 1
+
+        if sd_match:
+            unmatched_by_parent_match["sdcode_matches_block"] += 1
+        else:
+            unmatched_by_parent_match["sdcode_missing_block"] += 1
+
+        if bk_match:
+            unmatched_by_parent_match["bkcode_matches_block"] += 1
+        else:
+            unmatched_by_parent_match["bkcode_missing_block"] += 1
+
+        if sd_match or bk_match:
+            unmatched_by_parent_match["both_sdcode_or_bkcode_match_block"] += 1
+        else:
+            unmatched_by_parent_match["neither_sdcode_nor_bkcode_match_block"] += 1
+
+        pattern = f"dtcode={'Y' if district_match else 'N'}|sdcode={'Y' if sd_match else 'N'}|bkcode={'Y' if bk_match else 'N'}"
+        unmatched_parent_patterns[pattern] += 1
+
+        public = {key: value for key, value in row.items() if key != "_raw"}
+        if district_match and not (sd_match or bk_match) and len(samples["district_matches_block_missing"]) < sample_limit:
+            samples["district_matches_block_missing"].append(public)
+        if not district_match and len(samples["district_missing"]) < sample_limit:
+            samples["district_missing"].append(public)
+        if (sd_match or bk_match) and len(samples["block_code_matches"]) < sample_limit:
+            samples["block_code_matches"].append(public)
+        if not district_match and not sd_match and not bk_match and len(samples["no_parent_code_match"]) < sample_limit:
+            samples["no_parent_code_match"].append(public)
+
+    return {
+        "attempted": True,
+        "healthy": True,
+        "total_features": len(rows),
+        "distinct_nwdp_dtcode_count": len(nwdp_dt_codes),
+        "distinct_nwdp_sdcode_count": len(nwdp_sd_codes),
+        "distinct_nwdp_bkcode_count": len(nwdp_bk_codes),
+        "distinct_nwdp_vlcode_count": len(nwdp_vl_codes),
+        "backend_district_code_count": len(db_district_codes),
+        "backend_block_code_count": len(db_block_codes),
+        "backend_village_code_count": len(db_village_codes),
+        "district_code_match_count": len(nwdp_dt_codes & db_district_codes),
+        "district_code_unmatched_count": len(nwdp_dt_codes - db_district_codes),
+        "sdcode_as_block_match_count": len(nwdp_sd_codes & db_block_codes),
+        "sdcode_as_block_unmatched_count": len(nwdp_sd_codes - db_block_codes),
+        "bkcode_as_block_match_count": len(nwdp_bk_codes & db_block_codes),
+        "bkcode_as_block_unmatched_count": len(nwdp_bk_codes - db_block_codes),
+        "unmatched_village_feature_count": len(unmatched_rows),
+        "unmatched_by_parent_match": unmatched_by_parent_match,
+        "unmatched_parent_patterns": [
+            {"pattern": key, "count": value}
+            for key, value in unmatched_parent_patterns.most_common()
+        ],
+        "samples": samples,
+        "interpretation_hint": "If dtcode mostly matches but sdcode/bkcode do not, village failures are likely under recognized districts but incompatible subdistrict/block code systems or vintages.",
+    }
+
+
+
 def _scoped_name_match_unmatched(source_path: Path, sample_limit: int) -> dict[str, Any]:
     from sqlalchemy import text
 
@@ -1011,6 +1167,7 @@ def main() -> int:
     parser.add_argument("--with-db-crosswalk", action="store_true", help="Attempt optional read-only sample crosswalk against geography_villages.")
     parser.add_argument("--full-vlcode-coverage", action="store_true", help="Run read-only full Karnataka vlcode coverage against backend LGD codes and local SOI references.")
     parser.add_argument("--unmatched-name-match", action="store_true", help="For unmatched vlcodes, try read-only scoped normalized name matching against backend geography.")
+    parser.add_argument("--parent-code-drift", action="store_true", help="Compare NWDP dtcode/sdcode/bkcode parent codes with backend district/block LGD codes.")
     parser.add_argument("--output", help="Optional path to write JSON result.")
     args = parser.parse_args()
 
@@ -1053,6 +1210,10 @@ def main() -> int:
     if args.unmatched_name_match and audit.get("healthy"):
         unmatched_name_match = _scoped_name_match_unmatched(geojson_path, args.sample_limit)
 
+    parent_code_drift = {"attempted": False}
+    if args.parent_code_drift and audit.get("healthy"):
+        parent_code_drift = _parent_code_drift_audit(geojson_path, args.sample_limit)
+
     candidate_fields = audit.get("candidate_fields") or {}
     readiness = {
         "safe_read_only": True,
@@ -1081,6 +1242,7 @@ def main() -> int:
         "db_crosswalk": db_crosswalk,
         "full_vlcode_coverage": full_vlcode_coverage,
         "unmatched_name_match": unmatched_name_match,
+        "parent_code_drift": parent_code_drift,
         "readiness": readiness,
         "next_actions": [
             "Review candidate identifier fields for LGD compatibility.",
