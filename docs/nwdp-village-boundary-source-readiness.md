@@ -405,6 +405,22 @@ Next technical audit:
 Design the boundary ingestion model and reviewed crosswalk workflow before writing any geometry to the database. The first ingestion design should separate direct `vlcode` matches, unmatched `vlcode` records, special non-village features, and records requiring manual/source review.
 
 
+## Ingestion and crosswalk design checkpoint
+
+The conservative ingestion/crosswalk design is tracked in:
+
+- `docs/nwdp-village-boundary-ingestion-crosswalk-plan.md`
+
+The design follows the same pattern used for CoRE/LGD climate, ecological, and biospheric region mapping:
+
+- generate inactive candidate rows;
+- allow high-confidence direct-code candidates;
+- route non-resolution and ambiguity to manual review;
+- allow gated district/subdistrict assignment where parent codes match;
+- block village assignment unless direct code or reviewed scoped match is accepted;
+- promote only through explicit reviewed activation.
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:
