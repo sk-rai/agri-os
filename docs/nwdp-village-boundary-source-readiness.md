@@ -232,6 +232,53 @@ Current decision:
 Karnataka should proceed to unmatched-classification audit, not ingestion.
 
 
+## Karnataka unmatched name-match audit finding
+
+Read-only unmatched name-match audit:
+
+- script: `backend/scripts/audit_nwdp_karnataka_village_boundary_pilot.py`
+- mode: `--unmatched-name-match`
+- database writes: none
+- geometry ingestion: none
+
+Latest observed result:
+
+- unmatched input records checked: 5,425;
+- scoped district + subdistrict/block + village name matches: 252;
+- district + village-only matches: 580;
+- records with no normalized name match: 4,593;
+- name-match recovery rate among unmatched records: 15.3364%.
+
+Interpretation:
+
+The unmatched set is not mainly a spelling-variation problem.
+
+Some records can be explained by alias/name/admin drift, for example:
+
+- `Shimoga` versus `Shivamogga`;
+- `Linga Pura` versus `Lingapura`;
+- same village name found under a different backend block;
+- duplicate common names within a district.
+
+However, most unmatched records did not match by normalized backend names either. This points to deeper reconciliation issues such as source vintage mismatch, code-system drift, district/subdistrict/block reorganization, Census/SOI-style settlement records not present in current LGD, and special non-village features such as rivers/reservoirs.
+
+Current decision:
+
+NWDP Karnataka village boundaries are promising but reconciliation-gated.
+
+Do not ingest automatically. Use a reviewed crosswalk workflow that separates:
+
+- direct `vlcode` matches;
+- scoped name matches;
+- ambiguous district-only matches;
+- special non-village features;
+- unresolved records requiring manual/source review.
+
+Next technical audit:
+
+Compare NWDP `dtcode`, `sdcode`, and `bkcode` against backend district/block LGD codes to determine whether unmatched `vlcode` records are failing because of village-code drift alone or because parent district/subdistrict/block codes also differ.
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:

@@ -195,6 +195,14 @@ This means the source is promising but not ingestion-ready.
 
 Next step: classify the unmatched records before deciding whether a reviewed crosswalk table, manual review queue, or source-specific exception strategy is needed.
 
+## Unmatched name-match checkpoint
+
+The unmatched-name audit showed that only 15.3364% of unmatched records can be recovered by normalized name matching.
+
+This means the remaining mismatch is not mostly simple spelling variation. The likely causes include source vintage mismatch, parent-code drift, administrative reorganization, Census/SOI settlement records, and special non-village features.
+
+Next step: parent-code drift audit using `dtcode`, `sdcode`, and `bkcode`.
+
 ## Recommended next implementation step
 
 Create a read-only pilot script that downloads only the Karnataka GeoJSON or accepts a locally downloaded file, then reports:

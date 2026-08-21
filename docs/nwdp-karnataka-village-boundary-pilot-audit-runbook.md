@@ -80,6 +80,23 @@ This is promising, but not ingestion-ready. The next step is full-state `vlcode`
 
 Also, coordinates appear projected/non-WGS84, so CRS identification is mandatory before any spatial runtime use.
 
+## Latest unmatched name-match finding
+
+The unmatched name-match audit checked 5,425 unmatched NWDP records.
+
+Results:
+
+- 252 matched by scoped district + subdistrict/block + village name;
+- 580 matched by district + village name only;
+- 4,593 had no normalized backend name match;
+- name-match recovery rate was 15.3364%.
+
+Decision:
+
+The mismatch is more serious than spelling variation. NWDP Karnataka requires a reviewed reconciliation workflow before ingestion.
+
+Next audit should compare parent `dtcode`, `sdcode`, and `bkcode` values against backend geography codes.
+
 ## Crosswalk interpretation
 
 ### Case A or B: code candidates present
