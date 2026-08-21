@@ -421,6 +421,34 @@ The design follows the same pattern used for CoRE/LGD climate, ecological, and b
 - promote only through explicit reviewed activation.
 
 
+## Karnataka crosswalk candidate planning finding
+
+Read-only candidate planner:
+
+- `backend/scripts/plan_nwdp_karnataka_boundary_crosswalk_candidates.py`
+
+Latest observed result:
+
+- total candidate rows: 29,789;
+- `AUTO_CANDIDATE`: 23,196;
+- `MANUAL_REVIEW`: 6,593;
+- clean direct `vlcode` matches: 23,196;
+- direct `vlcode` matches with parent mismatch: 1,063;
+- parent-matched but village-unresolved rows: 4,388;
+- district-scoped ambiguous rows: 626;
+- parent-scoped name-match rows: 233;
+- parent-scoped ambiguous name rows: 28;
+- special reference features: 255.
+
+Interpretation:
+
+The source is suitable for a reviewed candidate workflow. It is not suitable for automatic ingestion. The candidate planner follows the same pattern as the CoRE/LGD mapping work: high-confidence candidates may be staged inactive, while unresolved rows remain manual-review gated.
+
+Detailed plan:
+
+- `docs/nwdp-karnataka-boundary-crosswalk-candidate-plan.md`
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:
