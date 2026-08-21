@@ -220,3 +220,32 @@ Planned review statuses:
 Interpretation:
 
 The candidate file is mechanically safe for guarded importer design. It is not approved for DB writes yet. The correct next step is to design the actual staging tables/importer with all rows inactive by default and no runtime lookup effect.
+
+## Staging schema guard checkpoint
+
+Status date: 2026-08-21
+
+Staging migration:
+
+    backend/alembic/versions/054_add_nwdp_boundary_review_staging.py
+
+Schema guard:
+
+    backend/scripts/verify_nwdp_boundary_staging_schema_guard.py
+
+Latest schema guard result:
+
+- healthy: true;
+- required tables detected:
+  - `geography_boundary_import_batches`;
+  - `geography_boundary_source_features`;
+  - `geography_boundary_crosswalk_candidates`;
+- required review/promotion fields detected;
+- candidate inactive-by-default check detected;
+- no runtime boundary lookup table creation detected;
+- migration was not applied;
+- no DB writes were attempted.
+
+Current decision:
+
+The staging schema is ready for code review, not runtime use. Do not run Alembic upgrade or importer writes until we explicitly decide to activate the DB staging path.
