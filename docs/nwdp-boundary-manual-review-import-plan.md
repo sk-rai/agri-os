@@ -179,3 +179,44 @@ After future promotion:
 Do not implement DB writes yet.
 
 Next implementation should be a dry-run import planner/verifier that reads the candidate CSV and reports exactly what would be staged, excluded, blocked, and held for manual review.
+
+## Dry-run verifier checkpoint
+
+Status date: 2026-08-21
+
+Dry-run verifier:
+
+    backend/scripts/verify_nwdp_boundary_manual_review_import_dry_run.py
+
+Latest Karnataka candidate dry-run result:
+
+- input rows: 29,789;
+- rows eligible for staging: 29,789;
+- rows planned inactive: 29,789;
+- rows effective in runtime: 0;
+- unknown buckets: 0;
+- duplicate source feature indexes: 0;
+- duplicate source keys: 0;
+- unsafe counts: none.
+
+Planned import actions:
+
+| Planned action | Count |
+| --- | ---: |
+| `STAGE_INACTIVE_AUTO_CANDIDATE` | 23,196 |
+| `STAGE_INACTIVE_MANUAL_REVIEW` | 1,324 |
+| `STAGE_INACTIVE_PARENT_SCOPE_ONLY` | 4,388 |
+| `STAGE_INACTIVE_DISTRICT_REVIEW` | 626 |
+| `STAGE_BLOCKED_REFERENCE_ONLY` | 255 |
+
+Planned review statuses:
+
+| Planned review status | Count |
+| --- | ---: |
+| `AUTO_CANDIDATE` | 23,196 |
+| `MANUAL_REVIEW` | 6,338 |
+| `BLOCKED` | 255 |
+
+Interpretation:
+
+The candidate file is mechanically safe for guarded importer design. It is not approved for DB writes yet. The correct next step is to design the actual staging tables/importer with all rows inactive by default and no runtime lookup effect.
