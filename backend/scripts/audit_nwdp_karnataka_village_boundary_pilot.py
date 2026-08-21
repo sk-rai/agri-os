@@ -16,6 +16,7 @@ Safety:
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import io
 import json
@@ -384,6 +385,203 @@ def _audit_geojson(path: Path, sample_limit: int) -> dict[str, Any]:
     }
 
 
+
+def _load_nwdp_vlcode_rows(source_path: Path) -> list[dict[str, str]]:
+    features = _load_geojson(source_path).get("features") or []
+    rows: list[dict[str, str]] = []
+    for feature in features:
+        props = _properties(feature)
+        vlcode = str(props.get("vlcode") or "").strip()
+        rows.append({
+            "vlcode": vlcode,
+            "village": str(props.get("village") or "").strip(),
+            "district": str(props.get("district") or "").strip(),
+            "dtcode": str(props.get("dtcode") or "").strip(),
+            "subdistrict": str(props.get("subdistric") or "").strip(),
+            "sdcode": str(props.get("sdcode") or "").strip(),
+            "block": str(props.get("block") or "").strip(),
+            "bkcode": str(props.get("bkcode") or "").strip(),
+            "src_agency": str(props.get("src_agency") or "").strip(),
+        })
+    return rows
+
+
+def _find_soi_reference_files() -> list[Path]:
+    roots = [
+        BACKEND_ROOT.parent / "data" / "staged" / "boundaries" / "survey_of_india",
+        BACKEND_ROOT.parent / "data" / "staged" / "core_stack" / "soi_crosswalk",
+    ]
+    files: list[Path] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file() and path.suffix.lower() in {".csv", ".json", ".html", ".txt", ".xlsx"}:
+                files.append(path)
+    return sorted(files)
+
+
+def _extract_soi_code_tokens(path: Path) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "path": str(path),
+        "suffix": path.suffix.lower(),
+        "size_bytes": path.stat().st_size,
+        "tokens": [],
+        "token_count": 0,
+        "note": None,
+    }
+
+    tokens: set[str] = set()
+
+    if path.suffix.lower() == ".csv":
+        try:
+            with path.open("r", encoding="utf-8-sig", newline="", errors="replace") as handle:
+                reader = csv.DictReader(handle)
+                headers = reader.fieldnames or []
+                code_headers = [
+                    header for header in headers
+                    if any(hint in _norm(header) for hint in ["lgd", "vlcode", "villagecode", "dtcode", "sdcode", "code"])
+                ]
+                for row in reader:
+                    for header in code_headers:
+                        value = str(row.get(header) or "").strip()
+                        if value.isdigit():
+                            tokens.add(value)
+            result["code_headers"] = code_headers
+        except Exception as exc:
+            result["error"] = exc.__class__.__name__
+            result["message"] = str(exc)
+
+    elif path.suffix.lower() == ".json":
+        try:
+            text_payload = path.read_text(encoding="utf-8", errors="replace")
+            payload = json.loads(text_payload)
+            compact = json.dumps(payload)
+            tokens.update(re.findall(r'"(?:lgd_code|vlcode|village_code|dtcode|sdcode|code)"\s*:\s*"?(\d+)"?', compact, flags=re.IGNORECASE))
+        except Exception as exc:
+            result["error"] = exc.__class__.__name__
+            result["message"] = str(exc)
+
+    else:
+        # Do not parse XLSX binary deeply here. This is an inventory-level probe.
+        try:
+            text_payload = path.read_text(encoding="utf-8", errors="ignore")
+            tokens.update(re.findall(r"\b\d{5,6}\b", text_payload))
+        except Exception:
+            result["note"] = "Binary or unsupported text parse; token extraction skipped."
+
+    result["tokens"] = sorted(tokens)[:200]
+    result["token_count"] = len(tokens)
+    return result
+
+
+def _soi_reference_overlap(vlcodes: set[str]) -> dict[str, Any]:
+    files = _find_soi_reference_files()
+    file_results = []
+    union_tokens: set[str] = set()
+
+    for path in files:
+        item = _extract_soi_code_tokens(path)
+        tokens = set(item.get("tokens") or [])
+        union_tokens.update(tokens)
+        item["overlap_with_nwdp_vlcode_count_capped"] = len(tokens & vlcodes)
+        item["overlap_samples"] = sorted(tokens & vlcodes)[:20]
+        file_results.append(item)
+
+    return {
+        "attempted": True,
+        "reference_file_count": len(files),
+        "reference_files": file_results,
+        "union_token_count_capped_by_file_samples": len(union_tokens),
+        "overlap_with_nwdp_vlcode_count_capped": len(union_tokens & vlcodes),
+        "overlap_samples": sorted(union_tokens & vlcodes)[:40],
+        "note": "SOI comparison is a lightweight local-reference token overlap, not a full geometry or authoritative code crosswalk.",
+    }
+
+
+def _db_full_vlcode_coverage(source_path: Path, sample_limit: int) -> dict[str, Any]:
+    rows = _load_nwdp_vlcode_rows(source_path)
+    vlcodes = [row["vlcode"] for row in rows if row["vlcode"]]
+    vlcode_set = set(vlcodes)
+    duplicate_vlcodes = sorted([code for code, count in Counter(vlcodes).items() if count > 1])
+
+    try:
+        from sqlalchemy import create_engine, text
+    except Exception as exc:
+        return {
+            "attempted": True,
+            "healthy": False,
+            "error": exc.__class__.__name__,
+            "message": str(exc),
+            "note": "Full coverage requires SQLAlchemy.",
+        }
+
+    database_url = os.getenv("DATABASE_URL")
+    settings_import = {"attempted": False}
+    if not database_url:
+        settings_import["attempted"] = True
+        try:
+            if str(BACKEND_ROOT) not in sys.path:
+                sys.path.insert(0, str(BACKEND_ROOT))
+            from app.core.config import settings
+            database_url = getattr(settings, "database_url", None) or getattr(settings, "DATABASE_URL", None)
+            settings_import["healthy"] = True
+        except Exception as exc:
+            settings_import.update({"healthy": False, "error": exc.__class__.__name__, "message": str(exc)})
+
+    if not database_url:
+        return {"attempted": True, "healthy": False, "error": "DATABASE_URL_MISSING", "settings_import": settings_import}
+
+    engine = create_engine(database_url)
+    with engine.connect() as conn:
+        db_rows = conn.execute(
+            text("""
+                select cast(lgd_code as text) as lgd_code
+                from geography_villages
+                where lgd_code is not null
+            """)
+        ).mappings().all()
+
+    db_codes = {str(row["lgd_code"]) for row in db_rows if row.get("lgd_code")}
+    matched = sorted(vlcode_set & db_codes)
+    unmatched = sorted(vlcode_set - db_codes)
+
+    unmatched_rows = []
+    unmatched_set = set(unmatched[: max(sample_limit * 5, sample_limit)])
+    for row in rows:
+        if row["vlcode"] in unmatched_set:
+            unmatched_rows.append(row)
+        if len(unmatched_rows) >= sample_limit:
+            break
+
+    matched_rows = []
+    matched_set = set(matched[: max(sample_limit * 5, sample_limit)])
+    for row in rows:
+        if row["vlcode"] in matched_set:
+            matched_rows.append(row)
+        if len(matched_rows) >= sample_limit:
+            break
+
+    return {
+        "attempted": True,
+        "healthy": True,
+        "total_features": len(rows),
+        "non_blank_vlcode_features": len(vlcodes),
+        "blank_vlcode_features": len(rows) - len(vlcodes),
+        "distinct_vlcode_count": len(vlcode_set),
+        "duplicate_vlcode_count": len(duplicate_vlcodes),
+        "duplicate_vlcode_samples": duplicate_vlcodes[:sample_limit],
+        "backend_lgd_code_count": len(db_codes),
+        "matched_vlcode_count": len(matched),
+        "unmatched_vlcode_count": len(unmatched),
+        "match_rate_distinct_vlcode": round(len(matched) / len(vlcode_set), 6) if vlcode_set else None,
+        "matched_samples": matched_rows[:sample_limit],
+        "unmatched_samples": unmatched_rows[:sample_limit],
+        "soi_reference_overlap": _soi_reference_overlap(vlcode_set),
+    }
+
+
+
 def _db_crosswalk_summary(audit: dict[str, Any], source_path: Path, sample_limit: int) -> dict[str, Any]:
     try:
         from sqlalchemy import create_engine, text
@@ -526,6 +724,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--sample-limit", type=int, default=5)
     parser.add_argument("--with-db-crosswalk", action="store_true", help="Attempt optional read-only sample crosswalk against geography_villages.")
+    parser.add_argument("--full-vlcode-coverage", action="store_true", help="Run read-only full Karnataka vlcode coverage against backend LGD codes and local SOI references.")
     parser.add_argument("--output", help="Optional path to write JSON result.")
     args = parser.parse_args()
 
@@ -560,6 +759,10 @@ def main() -> int:
     if args.with_db_crosswalk and audit.get("healthy"):
         db_crosswalk = _db_crosswalk_summary(audit, geojson_path, args.sample_limit)
 
+    full_vlcode_coverage = {"attempted": False}
+    if args.full_vlcode_coverage and audit.get("healthy"):
+        full_vlcode_coverage = _db_full_vlcode_coverage(geojson_path, args.sample_limit)
+
     candidate_fields = audit.get("candidate_fields") or {}
     readiness = {
         "safe_read_only": True,
@@ -586,6 +789,7 @@ def main() -> int:
         "file": file_summary,
         "geojson_audit": audit,
         "db_crosswalk": db_crosswalk,
+        "full_vlcode_coverage": full_vlcode_coverage,
         "readiness": readiness,
         "next_actions": [
             "Review candidate identifier fields for LGD compatibility.",
