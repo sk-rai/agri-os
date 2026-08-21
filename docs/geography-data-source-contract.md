@@ -144,7 +144,7 @@ Boundary:
 - DigiPin remains backend-generated from coordinates;
 - Android should not ship or compute canonical boundary matching locally.
 
-Before ingestion, create a source manifest and pilot-state audit covering resource URLs, formats, license labels, checksums, CRS, geometry validity, attributes, and LGD crosswalk readiness.
+Before ingestion, create a source manifest and pilot-state audit covering resource URLs, formats, license labels, checksums, CRS, geometry validity, attributes, and LGD crosswalk readiness. The first NWDP manifest audit found a portal caveat: Uttarakhand SHP is missing from the expected matrix while Telangana SHP appears twice, so all-India ingestion should remain blocked until reviewed.
 
 Detailed source-readiness note: `docs/nwdp-village-boundary-source-readiness.md`.
 

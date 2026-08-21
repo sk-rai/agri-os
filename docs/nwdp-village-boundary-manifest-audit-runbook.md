@@ -59,6 +59,19 @@ It does not mean:
 - the data is cadastral;
 - the data proves land ownership.
 
+## Latest known manifest caveat
+
+The first audit run found a useful but imperfect matrix:
+
+- 108 visible resources;
+- 107 unique expected state-format pairs;
+- Uttarakhand SHP missing from the expected matrix;
+- Telangana SHP duplicated;
+- all observed rows had discoverable URLs;
+- no downloads or database writes were attempted.
+
+This means selected clean states can be considered for pilot download/audit, but all-India ingestion should remain blocked until the manifest caveat is resolved or explicitly reviewed.
+
 ## Next safe step after manifest audit
 
 If the manifest is clean enough, the next step is a pilot download audit for one state, preferably Karnataka.

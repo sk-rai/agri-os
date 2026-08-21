@@ -94,6 +94,39 @@ The visible portal listing appears to have minor labeling inconsistency around t
 
 This may be a portal display issue, but it reinforces the need for a manifest audit before relying on the resource list programmatically.
 
+## Manifest audit finding
+
+Read-only manifest audit script:
+
+- `backend/scripts/audit_nwdp_village_boundary_resources.py`
+
+Latest observed result:
+
+- expected state/UT count: 36;
+- expected formats: KML, GeoJSON, SHP;
+- expected resource matrix: 108 state-format pairs;
+- observed resources: 108;
+- observed unique expected pairs: 107;
+- GeoJSON rows: 36;
+- KML rows: 36;
+- SHP rows: 36;
+- missing expected pair: Uttarakhand SHP;
+- duplicate observed pair: Telangana SHP appears twice;
+- resource URLs were discovered for all observed rows;
+- no downloads or database writes were attempted.
+
+Interpretation:
+
+The portal appears broadly useful, but the visible resource matrix is not clean enough for automatic all-India ingestion. The Uttarakhand/Telangana SHP inconsistency should be treated as a source caveat until resolved or intentionally handled.
+
+Pilot recommendation:
+
+Karnataka is a clean candidate for a first pilot download and geometry audit because the manifest shows one KML, one GeoJSON, and one SHP resource for Karnataka.
+
+All-India ingestion boundary:
+
+Do not proceed to all-India boundary ingestion until the manifest issue is resolved, excluded by policy, or handled through a reviewed override in the acquisition manifest.
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:
