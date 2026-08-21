@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -29,7 +30,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-MANIFEST_SCRIPT = Path(__file__).resolve().parent / "audit_nwdp_village_boundary_resources.py"
+SCRIPT_DIR = Path(__file__).resolve().parent
+BACKEND_ROOT = SCRIPT_DIR.parent
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+MANIFEST_SCRIPT = SCRIPT_DIR / "audit_nwdp_village_boundary_resources.py"
 DEFAULT_CACHE = Path("/tmp/nwdp-karnataka-village-boundary.geojson")
 
 CODE_HINTS = [
@@ -363,7 +369,8 @@ def _audit_geojson(path: Path, sample_limit: int) -> dict[str, Any]:
         "property_fields": all_keys,
         "geometry_type_counts": dict(sorted(geom_types.items())),
         "empty_geometry_count": empty_geometry_count,
-        "computed_bbox_lng_lat": bbox,
+        "computed_bbox_raw_coordinates": bbox,
+        "coordinate_system_warning": "Coordinates appear projected/non-WGS84 if bbox exceeds lon/lat ranges; identify CRS before point-in-polygon use." if bbox and (bbox[0] < -180 or bbox[2] > 180 or bbox[1] < -90 or bbox[3] > 90) else None,
         "candidate_fields": {
             "code_fields": code_fields,
             "exact_lgd_candidate_fields": exact_lgd_candidate_fields,
@@ -380,19 +387,41 @@ def _audit_geojson(path: Path, sample_limit: int) -> dict[str, Any]:
 def _db_crosswalk_summary(audit: dict[str, Any], source_path: Path, sample_limit: int) -> dict[str, Any]:
     try:
         from sqlalchemy import create_engine, text
-        from app.core.config import settings
     except Exception as exc:
         return {
             "attempted": True,
             "healthy": False,
             "error": exc.__class__.__name__,
             "message": str(exc),
-            "note": "Optional DB read crosswalk requires backend dependencies and app settings.",
+            "note": "Optional DB read crosswalk requires SQLAlchemy.",
         }
 
-    database_url = getattr(settings, "database_url", None) or getattr(settings, "DATABASE_URL", None)
+    database_url = os.getenv("DATABASE_URL")
+    settings_import = {"attempted": False}
+
     if not database_url:
-        return {"attempted": True, "healthy": False, "error": "DATABASE_URL_MISSING"}
+        settings_import["attempted"] = True
+        try:
+            if str(BACKEND_ROOT) not in sys.path:
+                sys.path.insert(0, str(BACKEND_ROOT))
+            from app.core.config import settings
+            database_url = getattr(settings, "database_url", None) or getattr(settings, "DATABASE_URL", None)
+            settings_import["healthy"] = True
+        except Exception as exc:
+            settings_import.update({
+                "healthy": False,
+                "error": exc.__class__.__name__,
+                "message": str(exc),
+            })
+
+    if not database_url:
+        return {
+            "attempted": True,
+            "healthy": False,
+            "error": "DATABASE_URL_MISSING",
+            "settings_import": settings_import,
+            "note": "Set DATABASE_URL or run from an environment where app.core.config is importable.",
+        }
 
     fields = audit.get("candidate_fields") or {}
     candidate = next(iter(fields.get("exact_lgd_candidate_fields") or []), None)
@@ -418,10 +447,47 @@ def _db_crosswalk_summary(audit: dict[str, Any], source_path: Path, sample_limit
     matched = 0
     rows = []
     with engine.connect() as conn:
+        columns = conn.execute(
+            text("""
+                select column_name
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'geography_villages'
+            """)
+        ).scalars().all()
+        column_set = {str(column) for column in columns}
+
+        wanted = [
+            "id",
+            "lgd_code",
+            "name",
+            "village_name",
+            "village_name_english",
+            "display_name",
+            "district_id",
+            "block_id",
+            "sub_district_id",
+            "subdistrict_id",
+            "state_id",
+        ]
+        selected_columns = [column for column in wanted if column in column_set]
+        if "lgd_code" not in column_set:
+            return {
+                "attempted": True,
+                "healthy": False,
+                "crosswalk_attempted": False,
+                "error": "LGD_CODE_COLUMN_MISSING",
+                "available_columns": sorted(column_set),
+            }
+
+        if not selected_columns:
+            selected_columns = ["lgd_code"]
+
+        select_sql = ", ".join(selected_columns)
         for value in values:
             result = conn.execute(
-                text("""
-                    select id, name, lgd_code, district_id, block_id
+                text(f"""
+                    select {select_sql}
                     from geography_villages
                     where cast(lgd_code as text) = :value
                     limit 3
@@ -430,13 +496,22 @@ def _db_crosswalk_summary(audit: dict[str, Any], source_path: Path, sample_limit
             ).mappings().all()
             if result:
                 matched += 1
-            rows.append({"value": value, "match_count": len(result), "matches": [dict(row) for row in result]})
+            rows.append({
+                "value": value,
+                "match_count": len(result),
+                "matches": [
+                    {str(key): (None if row[key] is None else str(row[key])) for key in row.keys()}
+                    for row in result
+                ],
+            })
 
     return {
         "attempted": True,
         "healthy": True,
         "crosswalk_attempted": True,
         "candidate_field": candidate,
+        "available_columns": sorted(column_set),
+        "selected_columns": selected_columns,
         "sample_value_count": len(values),
         "matched_sample_values": matched,
         "sample_matches": rows,
