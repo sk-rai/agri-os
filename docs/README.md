@@ -58,3 +58,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `nwdp-karnataka-boundary-crosswalk-candidate-plan.md` — read-only Karnataka NWDP boundary crosswalk candidate counts, buckets, and review policy.
 - `nwdp-boundary-manual-review-import-plan.md` — design for inactive/manual-review NWDP village-boundary candidate import and promotion gating.
 - `nwdp-boundary-manual-review-import-plan.md` — conservative inactive/manual-review import plan and dry-run verifier for NWDP boundary crosswalk candidates.
+- `nwdp-boundary-admin-review-ui-spec.md` — admin UI spec for inactive/manual-review NWDP boundary candidate batches and promotion gating.
