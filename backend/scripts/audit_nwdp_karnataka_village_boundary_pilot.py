@@ -593,6 +593,194 @@ def _classify_unmatched_rows(rows: list[dict[str, str]], unmatched_codes: set[st
 
 
 
+
+def _name_key(value: Any) -> str:
+    text = str(value or "").lower()
+    text = text.replace("&", "and")
+    text = re.sub(r"\b(taluk|taluka|tehsil|hobli|village|grama|gram|gp|tq|dist|district)\b", " ", text)
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def _db_name_columns(conn: Any, table_name: str) -> list[str]:
+    from sqlalchemy import text
+
+    rows = conn.execute(
+        text("""
+            select column_name
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = :table_name
+        """),
+        {"table_name": table_name},
+    ).scalars().all()
+    return [str(row) for row in rows]
+
+
+def _first_existing(columns: set[str], candidates: list[str]) -> str | None:
+    for candidate in candidates:
+        if candidate in columns:
+            return candidate
+    return None
+
+
+def _scoped_name_match_unmatched(source_path: Path, sample_limit: int) -> dict[str, Any]:
+    from sqlalchemy import text
+
+    rows = _load_nwdp_vlcode_rows(source_path)
+    vlcodes = {row["vlcode"] for row in rows if row["vlcode"]}
+
+    try:
+        from sqlalchemy import create_engine, text
+    except Exception as exc:
+        return {"attempted": True, "healthy": False, "error": exc.__class__.__name__, "message": str(exc)}
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        try:
+            if str(BACKEND_ROOT) not in sys.path:
+                sys.path.insert(0, str(BACKEND_ROOT))
+            from app.core.config import settings
+            database_url = getattr(settings, "database_url", None) or getattr(settings, "DATABASE_URL", None)
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "healthy": False,
+                "error": "DATABASE_URL_MISSING",
+                "settings_import_error": exc.__class__.__name__,
+                "settings_import_message": str(exc),
+            }
+
+    engine = create_engine(database_url)
+    with engine.connect() as conn:
+        village_columns = set(_db_name_columns(conn, "geography_villages"))
+        district_columns = set(_db_name_columns(conn, "geography_districts"))
+        block_columns = set(_db_name_columns(conn, "geography_blocks"))
+
+        village_name_col = _first_existing(village_columns, ["canonical_name", "census_name", "name", "village_name", "display_name", "name_en", "name_english"])
+        village_lgd_col = _first_existing(village_columns, ["lgd_code"])
+        village_district_col = _first_existing(village_columns, ["district_id"])
+        village_block_col = _first_existing(village_columns, ["block_id", "sub_district_id", "subdistrict_id"])
+
+        district_name_col = _first_existing(district_columns, ["canonical_name", "census_name", "name", "district_name", "display_name", "name_en", "name_english"])
+        district_id_col = _first_existing(district_columns, ["id"])
+        district_lgd_col = _first_existing(district_columns, ["lgd_code"])
+
+        block_name_col = _first_existing(block_columns, ["canonical_name", "census_name", "name", "block_name", "subdistrict_name", "display_name", "name_en", "name_english"])
+        block_id_col = _first_existing(block_columns, ["id"])
+        block_lgd_col = _first_existing(block_columns, ["lgd_code"])
+
+        required = {
+            "village_name_col": village_name_col,
+            "village_lgd_col": village_lgd_col,
+            "village_district_col": village_district_col,
+            "district_name_col": district_name_col,
+            "district_id_col": district_id_col,
+        }
+        missing_required = [key for key, value in required.items() if not value]
+        if missing_required:
+            return {
+                "attempted": True,
+                "healthy": False,
+                "error": "REQUIRED_COLUMNS_MISSING",
+                "missing_required": missing_required,
+                "available_columns": {
+                    "geography_villages": sorted(village_columns),
+                    "geography_districts": sorted(district_columns),
+                    "geography_blocks": sorted(block_columns),
+                },
+            }
+
+        db_code_rows = conn.execute(
+            text(f"select cast({village_lgd_col} as text) as lgd_code from geography_villages where {village_lgd_col} is not null")
+        ).mappings().all()
+        db_codes = {str(row["lgd_code"]) for row in db_code_rows if row.get("lgd_code")}
+        unmatched_rows = [row for row in rows if row["vlcode"] and row["vlcode"] not in db_codes]
+
+        select_parts = [
+            f"v.id as village_id",
+            f"cast(v.{village_lgd_col} as text) as village_lgd_code",
+            f"v.{village_name_col} as village_name",
+            f"d.{district_name_col} as district_name",
+        ]
+        join_parts = [f"join geography_districts d on d.{district_id_col} = v.{village_district_col}"]
+
+        if village_block_col and block_id_col and block_name_col:
+            select_parts.append(f"b.{block_name_col} as block_name")
+            join_parts.append(f"left join geography_blocks b on b.{block_id_col} = v.{village_block_col}")
+        else:
+            select_parts.append("null as block_name")
+
+        query = f"""
+            select {", ".join(select_parts)}
+            from geography_villages v
+            {' '.join(join_parts)}
+        """
+        db_rows = conn.execute(text(query)).mappings().all()
+
+    index_by_district_village: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    index_by_district_block_village: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+
+    for row in db_rows:
+        item = {key: (None if row[key] is None else str(row[key])) for key in row.keys()}
+        district_key = _name_key(item.get("district_name"))
+        block_key = _name_key(item.get("block_name"))
+        village_key = _name_key(item.get("village_name"))
+
+        if district_key and village_key:
+            index_by_district_village.setdefault((district_key, village_key), []).append(item)
+        if district_key and block_key and village_key:
+            index_by_district_block_village.setdefault((district_key, block_key, village_key), []).append(item)
+
+    exact_scoped_matches = []
+    district_village_matches = []
+    no_name_matches = []
+
+    for row in unmatched_rows:
+        district_key = _name_key(row["district"])
+        subdistrict_key = _name_key(row["subdistrict"])
+        block_key = _name_key(row["block"])
+        village_key = _name_key(row["village"])
+
+        scoped_candidates = []
+        for scope_key in [subdistrict_key, block_key]:
+            if scope_key:
+                scoped_candidates.extend(index_by_district_block_village.get((district_key, scope_key, village_key), []))
+
+        district_candidates = index_by_district_village.get((district_key, village_key), [])
+
+        row_public = {key: value for key, value in row.items() if key != "_raw"}
+        if scoped_candidates:
+            exact_scoped_matches.append({"nwdp": row_public, "matches": scoped_candidates[:5]})
+        elif district_candidates:
+            district_village_matches.append({"nwdp": row_public, "matches": district_candidates[:5]})
+        else:
+            no_name_matches.append(row_public)
+
+    return {
+        "attempted": True,
+        "healthy": True,
+        "unmatched_input_count": len(unmatched_rows),
+        "scoped_district_subdistrict_village_match_count": len(exact_scoped_matches),
+        "district_village_match_count": len(district_village_matches),
+        "no_name_match_count": len(no_name_matches),
+        "name_match_rate_of_unmatched": round((len(exact_scoped_matches) + len(district_village_matches)) / len(unmatched_rows), 6) if unmatched_rows else None,
+        "columns": {
+            "village_name_col": village_name_col,
+            "village_lgd_col": village_lgd_col,
+            "village_district_col": village_district_col,
+            "village_block_col": village_block_col,
+            "district_name_col": district_name_col,
+            "block_name_col": block_name_col,
+        },
+        "samples": {
+            "scoped_matches": exact_scoped_matches[:sample_limit],
+            "district_village_matches": district_village_matches[:sample_limit],
+            "no_name_matches": no_name_matches[:sample_limit],
+        },
+    }
+
+
+
 def _db_full_vlcode_coverage(source_path: Path, sample_limit: int) -> dict[str, Any]:
     rows = _load_nwdp_vlcode_rows(source_path)
     vlcodes = [row["vlcode"] for row in rows if row["vlcode"]]
@@ -822,6 +1010,7 @@ def main() -> int:
     parser.add_argument("--sample-limit", type=int, default=5)
     parser.add_argument("--with-db-crosswalk", action="store_true", help="Attempt optional read-only sample crosswalk against geography_villages.")
     parser.add_argument("--full-vlcode-coverage", action="store_true", help="Run read-only full Karnataka vlcode coverage against backend LGD codes and local SOI references.")
+    parser.add_argument("--unmatched-name-match", action="store_true", help="For unmatched vlcodes, try read-only scoped normalized name matching against backend geography.")
     parser.add_argument("--output", help="Optional path to write JSON result.")
     args = parser.parse_args()
 
@@ -860,6 +1049,10 @@ def main() -> int:
     if args.full_vlcode_coverage and audit.get("healthy"):
         full_vlcode_coverage = _db_full_vlcode_coverage(geojson_path, args.sample_limit)
 
+    unmatched_name_match = {"attempted": False}
+    if args.unmatched_name_match and audit.get("healthy"):
+        unmatched_name_match = _scoped_name_match_unmatched(geojson_path, args.sample_limit)
+
     candidate_fields = audit.get("candidate_fields") or {}
     readiness = {
         "safe_read_only": True,
@@ -887,6 +1080,7 @@ def main() -> int:
         "geojson_audit": audit,
         "db_crosswalk": db_crosswalk,
         "full_vlcode_coverage": full_vlcode_coverage,
+        "unmatched_name_match": unmatched_name_match,
         "readiness": readiness,
         "next_actions": [
             "Review candidate identifier fields for LGD compatibility.",
