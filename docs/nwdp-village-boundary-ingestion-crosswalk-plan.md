@@ -312,6 +312,13 @@ A future admin review view should show:
 - reviewer note;
 - audit history.
 
+## Related import plan
+
+Manual-review candidate import and promotion design is tracked separately in:
+
+- `docs/nwdp-boundary-manual-review-import-plan.md`
+
+
 ## MVP decision
 
 NWDP Karnataka is ready for ingestion-design planning, not DB ingestion.

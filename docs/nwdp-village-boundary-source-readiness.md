@@ -449,6 +449,21 @@ Detailed plan:
 - `docs/nwdp-karnataka-boundary-crosswalk-candidate-plan.md`
 
 
+## Manual-review import planning checkpoint
+
+The conservative import/promotion design is tracked in:
+
+- `docs/nwdp-boundary-manual-review-import-plan.md`
+
+The plan mirrors the CoRE/LGD manual-review import approach:
+
+- candidate rows can be staged inactive;
+- direct-code rows can be `AUTO_CANDIDATE` but still ineffective;
+- all ambiguous, unresolved, parent-mismatch, and special-reference rows remain `MANUAL_REVIEW` or `BLOCKED`;
+- promotion is a separate reviewed workflow;
+- no runtime point-in-polygon or village assignment changes happen until explicit promotion.
+
+
 ## Suggested backend model boundary
 
 Future table family, if implemented:
