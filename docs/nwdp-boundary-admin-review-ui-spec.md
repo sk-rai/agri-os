@@ -408,3 +408,30 @@ Latest observed smoke result:
 - rows seen: 100;
 - runtime spatial matching expected: disabled;
 - match evidence panel remains observational.
+
+## Review guard hint checkpoint
+
+Status date: 2026-08-22
+
+Latest UI behavior:
+
+- non-pending review decisions show a notes requirement;
+- save is disabled when non-pending decisions have missing/too-short notes;
+- `Reference only` on a non-special/reference row shows a guard hint;
+- approve-style decisions on special/reference rows show a guard hint;
+- guard hints are advisory/client-side only; backend validation remains authoritative.
+
+Regression coverage:
+
+- `web/smoke/nwdp_boundary_review_smoke.mjs` now covers:
+  - review decision shortcut buttons;
+  - notes guidance;
+  - reference-only mismatch hint;
+  - stable candidate/detail rendering;
+  - runtime spatial matching remains disabled.
+
+Governance remains unchanged:
+
+- review saves affect metadata only;
+- candidates remain inactive unless a future reviewed promotion workflow is separately designed;
+- no runtime spatial lookup table or active geometry path is enabled by this UI.
