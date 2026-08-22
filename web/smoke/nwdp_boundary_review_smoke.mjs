@@ -76,6 +76,9 @@ await page.getByRole("button", { name: "Reject mismatch" }).waitFor({ timeout: 1
 await page.getByRole("button", { name: "Block review" }).waitFor({ timeout: 15000 });
 await page.getByText("Notes are required for non-pending decisions").waitFor({ timeout: 15000 });
 
+await page.getByRole("button", { name: "Reference only" }).click();
+await page.getByText("Reference-only is intended for special/reference features").waitFor({ timeout: 15000 });
+
 await page.waitForFunction(() => {
   const text = document.body.innerText;
   return text.includes("PARENT_MATCH_VILLAGE_UNRESOLVED")
