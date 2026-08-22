@@ -376,3 +376,35 @@ Governance remains unchanged:
 - review metadata changes do not promote candidates;
 - runtime spatial matching remains disabled;
 - Android behavior remains unchanged.
+
+## Review decision shortcut checkpoint
+
+Status date: 2026-08-22
+
+Latest UI behavior:
+
+- review metadata form includes shortcut buttons for common reviewer actions:
+  - keep pending;
+  - reference only;
+  - reject mismatch;
+  - block review;
+- shortcuts prefill the reviewer decision and, where useful, suggested notes;
+- UI explicitly reminds reviewers that notes are required for non-pending decisions;
+- saving review metadata does not activate geometry, promote candidates, or change runtime spatial matching.
+
+Regression coverage:
+
+- `web/smoke/nwdp_boundary_review_smoke.mjs` now asserts:
+  - queue shortcut buttons;
+  - review decision shortcut buttons;
+  - notes guidance;
+  - stable detail panels;
+  - candidate rows render;
+  - runtime spatial matching remains disabled.
+
+Latest observed smoke result:
+
+- status: passed;
+- rows seen: 100;
+- runtime spatial matching expected: disabled;
+- match evidence panel remains observational.
