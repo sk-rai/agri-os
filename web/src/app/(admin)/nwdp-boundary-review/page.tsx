@@ -13,7 +13,8 @@ type Governance = {
 };
 
 type BoundaryBatch = {
-  id: string;
+  id?: string;
+  batch_id?: string;
   source_system: string;
   state_or_ut: string;
   source_format: string;
@@ -150,6 +151,10 @@ function statusTone(status: string) {
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
+function getBatchId(batch: BoundaryBatch) {
+  return batch.batch_id || batch.id || "";
+}
+
 function sourceLabel(row: CandidateRow | null) {
   if (!row) return "No candidate selected";
   const names = row.source_names || {};
@@ -201,7 +206,7 @@ export default function NwdpBoundaryReviewPage() {
   const loadBatches = useCallback(async () => {
     const response = await api<BatchListResponse>("/api/v1/master-data/geography/nwdp-boundary-batches?limit=25");
     setBatches(response.items);
-    if (!batchId && response.items.length > 0) setBatchId(response.items[0].id);
+    if (!batchId && response.items.length > 0) setBatchId(getBatchId(response.items[0]));
   }, [batchId]);
 
   const loadCandidates = useCallback(async () => {
@@ -304,7 +309,7 @@ export default function NwdpBoundaryReviewPage() {
         </div>
 
         <form onSubmit={applyFilters} className="grid gap-3 md:grid-cols-4">
-          <Select label="Batch" value={batchId} onChange={setBatchId} options={batches.map((batch) => ({ value: batch.id, label: `${batch.state_or_ut} / ${batch.status}` }))} />
+          <Select label="Batch" value={batchId} onChange={setBatchId} options={batches.map((batch) => ({ value: getBatchId(batch), label: `${batch.state_or_ut} / ${batch.status}` }))} />
           <Select label="Bucket" value={bucket} onChange={setBucket} options={BUCKETS.map((value) => ({ value, label: value || "All buckets" }))} />
           <Select label="Review status" value={reviewStatus} onChange={setReviewStatus} options={REVIEW_STATUSES.map((value) => ({ value, label: value || "All statuses" }))} />
           <Select label="Scope" value={scope} onChange={setScope} options={SCOPES.map((value) => ({ value, label: value || "All scopes" }))} />
@@ -450,7 +455,7 @@ function Select({ label, value, onChange, options }: { label: string; value: str
     <label className="block text-sm">
       <span className="font-medium text-gray-700">{label}</span>
       <select className="mt-1 w-full rounded border border-gray-300 px-3 py-2" value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        {options.map((option, index) => <option key={`${option.value}-${index}`} value={option.value}>{option.label}</option>)}
       </select>
     </label>
   );
