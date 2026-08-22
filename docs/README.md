@@ -64,3 +64,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `nwdp-boundary-guarded-importer-design.md` — guarded dry-run-first importer design for inactive NWDP boundary staging rows.
 - `nwdp-boundary-migration-application-checklist.md` — pre/post checklist for applying NWDP boundary staging migration 054 in local/dev only.
 - `verify_nwdp_boundary_review_staging_import.py` — read-only verifier for inactive NWDP boundary staging import counts and safety invariants.
+- `run_nwdp_boundary_regressions.py` — compact runner for NWDP boundary staging import, admin read endpoint, and admin review endpoint regressions.
