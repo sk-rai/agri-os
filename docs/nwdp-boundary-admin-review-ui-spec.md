@@ -319,3 +319,30 @@ Current decision:
 - candidate rows remain inactive and unpromoted;
 - runtime point-in-polygon behavior remains unchanged;
 - screenshots remain local smoke artifacts and are not committed by default.
+
+## Auto-detail smoke checkpoint
+
+Status date: 2026-08-22
+
+Latest observed smoke:
+
+- script: `web/smoke/nwdp_boundary_review_smoke.mjs`;
+- status: passed;
+- rows seen: 100;
+- stable detail panels asserted:
+  - source codes;
+  - source names;
+  - source feature;
+- match evidence panel is treated as optional in smoke because the first auto-selected row/detail payload may not always expose renderable match evidence;
+- latest observed `match_evidence_panel_seen`: false.
+
+Implementation note:
+
+The auto-detail behavior now loads the first visible candidate after candidate data is available. This avoids the earlier runtime initialization issue where `loadDetail` was referenced before initialization.
+
+Governance remains unchanged:
+
+- candidates remain inactive;
+- promotion remains unsupported from this UI;
+- runtime spatial matching remains disabled;
+- Android behavior remains unchanged.
