@@ -70,6 +70,11 @@ await page.getByRole("button", { name: "Special/reference" }).waitFor({ timeout:
 await page.getByRole("button", { name: "Direct code candidates" }).waitFor({ timeout: 15000 });
 await page.getByRole("heading", { name: "Candidates" }).waitFor({ timeout: 15000 });
 await page.getByRole("heading", { name: "Selected candidate" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Keep pending" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Reference only" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Reject mismatch" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Block review" }).waitFor({ timeout: 15000 });
+await page.getByText("Notes are required for non-pending decisions").waitFor({ timeout: 15000 });
 
 await page.waitForFunction(() => {
   const text = document.body.innerText;
