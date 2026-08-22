@@ -249,3 +249,7 @@ Latest schema guard result:
 Current decision:
 
 The staging schema is ready for code review, not runtime use. Do not run Alembic upgrade or importer writes until we explicitly decide to activate the DB staging path.
+
+## Related guarded importer design
+
+The dry-run-first importer design is specified in `docs/nwdp-boundary-guarded-importer-design.md`.
