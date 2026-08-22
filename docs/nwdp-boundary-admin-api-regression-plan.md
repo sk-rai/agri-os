@@ -157,3 +157,28 @@ Implemented regression:
     backend/scripts/test_nwdp_boundary_admin_review_endpoint.py
 
 The regression passed and confirmed review metadata updates do not activate or promote NWDP boundary candidates.
+
+## Compact regression runner checkpoint
+
+Status date: 2026-08-22
+
+Runner:
+
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Latest observed result:
+
+- staging import verifier passed;
+- admin read endpoint regression passed;
+- admin review endpoint regression passed;
+- candidate count remained 29,789;
+- active candidate count remained 0;
+- promoted candidate count remained 0;
+- runtime spatial matching remained disabled;
+- Android behavior remained unchanged.
+
+Current decision:
+
+- backend staging/admin-review loop is green for inactive NWDP boundary review;
+- promotion/runtime spatial matching is still intentionally blocked;
+- next implementation step is a read-only admin UI page, similar to the CoRE/LGD admin review structure.
