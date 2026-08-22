@@ -169,7 +169,497 @@ class CoreLgdMappingReviewDecisionRequest(BaseModel):
     review_notes: str = Field(..., min_length=3, max_length=1000)
 
 
+class NwdpBoundaryBatchListResponse(BaseModel):
+    schema_version: str
+    mode: str
+    governance: dict
+    filters: dict
+    summary: dict
+    items: list[dict]
+    total: int
+    offset: int
+    limit: int
+
+
+class NwdpBoundaryBatchDetailResponse(BaseModel):
+    schema_version: str
+    mode: str
+    governance: dict
+    batch: dict
+    audit_evidence: dict
+    candidate_summary: dict
+
+
+class NwdpBoundaryCandidateListResponse(BaseModel):
+    schema_version: str
+    mode: str
+    governance: dict
+    filters: dict
+    summary: dict
+    items: list[dict]
+    total: int
+    offset: int
+    limit: int
+
+
+class NwdpBoundaryCandidateDetailResponse(BaseModel):
+    schema_version: str
+    mode: str
+    governance: dict
+    candidate: dict
+    source_feature: dict
+    proposed_match: dict
+    audit_evidence: dict
+    review_history: list[dict]
+    allowed_review_decisions: list[str]
+
+
 # --- Endpoints ---
+
+def _nwdp_boundary_governance(db_write_scope: str = "NONE") -> dict:
+    return {
+        "read_only_runtime": True,
+        "promotion_supported": False,
+        "runtime_spatial_matching_changed": False,
+        "android_behavior_changed": False,
+        "db_write_scope": db_write_scope,
+        "claim_boundary": "NWDP boundary review endpoints expose inactive staging rows only and do not enable runtime point-in-polygon.",
+    }
+
+
+def _jsonish(value):
+    return value if value is not None else {}
+
+
+@router.get("/nwdp-boundary-batches", response_model=NwdpBoundaryBatchListResponse)
+def list_nwdp_boundary_batches(
+    state_or_ut: Optional[str] = Query(None),
+    source_system: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    review_status: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    where = ["1=1"]
+    params = {"offset": offset, "limit": limit}
+
+    if state_or_ut:
+        where.append("b.state_or_ut = :state_or_ut")
+        params["state_or_ut"] = state_or_ut
+    if source_system:
+        where.append("b.source_system = :source_system")
+        params["source_system"] = source_system
+    if status:
+        where.append("b.status = :status")
+        params["status"] = status
+    if review_status:
+        where.append("b.review_status = :review_status")
+        params["review_status"] = review_status
+
+    where_sql = " and ".join(where)
+
+    total = db.execute(text(f"""
+        select count(*)
+        from geography_boundary_import_batches b
+        where {where_sql}
+    """), params).scalar() or 0
+
+    rows = db.execute(text(f"""
+        select
+          b.id::text as batch_id,
+          b.source_system,
+          b.source_dataset,
+          b.source_producer_agency,
+          b.state_or_ut,
+          b.source_format,
+          b.source_crs,
+          b.source_epsg,
+          b.target_crs,
+          b.source_file_sha256,
+          b.status,
+          b.review_status,
+          b.is_active,
+          b.created_at,
+          b.reviewed_at,
+          coalesce(sf.feature_count, 0) as feature_count,
+          coalesce(cc.candidate_count, 0) as candidate_count,
+          coalesce(cc.auto_candidate_count, 0) as auto_candidate_count,
+          coalesce(cc.manual_review_count, 0) as manual_review_count,
+          coalesce(cc.blocked_count, 0) as blocked_count
+        from geography_boundary_import_batches b
+        left join (
+          select import_batch_id, count(*) as feature_count
+          from geography_boundary_source_features
+          group by import_batch_id
+        ) sf on sf.import_batch_id = b.id
+        left join (
+          select
+            import_batch_id,
+            count(*) as candidate_count,
+            sum(case when review_status = 'AUTO_CANDIDATE' then 1 else 0 end) as auto_candidate_count,
+            sum(case when review_status = 'MANUAL_REVIEW' then 1 else 0 end) as manual_review_count,
+            sum(case when review_status = 'BLOCKED' then 1 else 0 end) as blocked_count
+          from geography_boundary_crosswalk_candidates
+          group by import_batch_id
+        ) cc on cc.import_batch_id = b.id
+        where {where_sql}
+        order by b.created_at desc
+        offset :offset limit :limit
+    """), params).mappings().all()
+
+    items = [dict(row) for row in rows]
+
+    return {
+        "schema_version": "nwdp_boundary_admin_batches.v1",
+        "mode": "READ_ONLY_ADMIN_REVIEW",
+        "governance": _nwdp_boundary_governance(),
+        "filters": {
+            "state_or_ut": state_or_ut,
+            "source_system": source_system,
+            "status": status,
+            "review_status": review_status,
+        },
+        "summary": {
+            "total_batches": total,
+            "runtime_spatial_matching_changed": False,
+            "android_behavior_changed": False,
+        },
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+@router.get("/nwdp-boundary-batches/{batch_id}", response_model=NwdpBoundaryBatchDetailResponse)
+def get_nwdp_boundary_batch(
+    batch_id: UUID,
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    batch = db.execute(text("""
+        select
+          id::text as batch_id,
+          source_system,
+          source_dataset,
+          source_producer_agency,
+          state_or_ut,
+          source_format,
+          source_resource_url,
+          source_download_url,
+          source_file_sha256,
+          source_file_size_bytes,
+          source_crs,
+          source_epsg,
+          target_crs,
+          status,
+          review_status,
+          is_active,
+          reviewed_at,
+          review_notes,
+          created_at,
+          manifest_audit,
+          geometry_audit,
+          crosswalk_audit,
+          metadata
+        from geography_boundary_import_batches
+        where id = :batch_id
+    """), {"batch_id": str(batch_id)}).mappings().first()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="NWDP boundary batch not found")
+
+    summary = db.execute(text("""
+        select
+          count(*) as candidate_count,
+          sum(case when review_status = 'AUTO_CANDIDATE' then 1 else 0 end) as auto_candidate_count,
+          sum(case when review_status = 'MANUAL_REVIEW' then 1 else 0 end) as manual_review_count,
+          sum(case when review_status = 'BLOCKED' then 1 else 0 end) as blocked_count,
+          sum(case when is_active then 1 else 0 end) as active_candidate_count,
+          sum(case when promotion_status <> 'NOT_PROMOTED' then 1 else 0 end) as promoted_candidate_count
+        from geography_boundary_crosswalk_candidates
+        where import_batch_id = :batch_id
+    """), {"batch_id": str(batch_id)}).mappings().one()
+
+    row = dict(batch)
+    audit_evidence = {
+        "manifest_audit": _jsonish(row.pop("manifest_audit")),
+        "geometry_audit": _jsonish(row.pop("geometry_audit")),
+        "crosswalk_audit": _jsonish(row.pop("crosswalk_audit")),
+        "metadata": _jsonish(row.pop("metadata")),
+    }
+
+    return {
+        "schema_version": "nwdp_boundary_admin_batch_detail.v1",
+        "mode": "READ_ONLY_ADMIN_REVIEW",
+        "governance": _nwdp_boundary_governance(),
+        "batch": row,
+        "audit_evidence": audit_evidence,
+        "candidate_summary": dict(summary),
+    }
+
+
+@router.get("/nwdp-boundary-batches/{batch_id}/candidates", response_model=NwdpBoundaryCandidateListResponse)
+def list_nwdp_boundary_candidates(
+    batch_id: UUID,
+    candidate_bucket: Optional[str] = Query(None),
+    review_status: Optional[str] = Query(None),
+    promotion_status: Optional[str] = Query(None),
+    proposed_scope: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
+    subdistrict: Optional[str] = Query(None),
+    block: Optional[str] = Query(None),
+    vlcode: Optional[str] = Query(None),
+    backend_village_lgd_code: Optional[str] = Query(None),
+    parent_mismatch_only: bool = Query(False),
+    unresolved_only: bool = Query(False),
+    special_reference_only: bool = Query(False),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    if not db.execute(text("select 1 from geography_boundary_import_batches where id = :batch_id"), {"batch_id": str(batch_id)}).first():
+        raise HTTPException(status_code=404, detail="NWDP boundary batch not found")
+
+    where = ["c.import_batch_id = :batch_id"]
+    params = {"batch_id": str(batch_id), "offset": offset, "limit": limit}
+
+    if candidate_bucket:
+        where.append("c.candidate_bucket = :candidate_bucket")
+        params["candidate_bucket"] = candidate_bucket
+    if review_status:
+        where.append("c.review_status = :review_status")
+        params["review_status"] = review_status
+    if promotion_status:
+        where.append("c.promotion_status = :promotion_status")
+        params["promotion_status"] = promotion_status
+    if proposed_scope:
+        where.append("c.proposed_scope = :proposed_scope")
+        params["proposed_scope"] = proposed_scope
+    if district:
+        where.append("f.source_district_name ilike :district")
+        params["district"] = f"%{district}%"
+    if subdistrict:
+        where.append("f.source_subdistrict_name ilike :subdistrict")
+        params["subdistrict"] = f"%{subdistrict}%"
+    if block:
+        where.append("f.source_block_name ilike :block")
+        params["block"] = f"%{block}%"
+    if vlcode:
+        where.append("f.source_vlcode = :vlcode")
+        params["vlcode"] = vlcode
+    if backend_village_lgd_code:
+        where.append("c.proposed_village_lgd_code = :backend_village_lgd_code")
+        params["backend_village_lgd_code"] = backend_village_lgd_code
+    if parent_mismatch_only:
+        where.append("c.candidate_bucket = 'DIRECT_VLCODE_PARENT_MISMATCH'")
+    if unresolved_only:
+        where.append("c.candidate_bucket in ('PARENT_MATCH_VILLAGE_UNRESOLVED', 'DISTRICT_SCOPED_AMBIGUOUS')")
+    if special_reference_only:
+        where.append("c.candidate_bucket = 'SPECIAL_REFERENCE_FEATURE'")
+
+    where_sql = " and ".join(where)
+
+    total = db.execute(text(f"""
+        select count(*)
+        from geography_boundary_crosswalk_candidates c
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        where {where_sql}
+    """), params).scalar() or 0
+
+    rows = db.execute(text(f"""
+        select
+          c.id::text as candidate_id,
+          c.source_feature_id::text,
+          c.source_feature_index,
+          c.candidate_bucket,
+          c.confidence,
+          c.review_status,
+          c.promotion_status,
+          c.proposed_scope,
+          c.source_codes,
+          c.source_names,
+          c.proposed_state_lgd_code,
+          c.proposed_district_lgd_code,
+          c.proposed_block_lgd_code,
+          c.proposed_village_lgd_code,
+          c.proposed_state_id::text,
+          c.proposed_district_id::text,
+          c.proposed_block_id::text,
+          c.proposed_village_id::text,
+          c.match_evidence,
+          c.updated_at,
+          f.source_district_name,
+          f.source_subdistrict_name,
+          f.source_block_name,
+          f.source_village_name,
+          f.source_vlcode
+        from geography_boundary_crosswalk_candidates c
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        where {where_sql}
+        order by c.source_feature_index
+        offset :offset limit :limit
+    """), params).mappings().all()
+
+    summary = db.execute(text("""
+        select
+          count(*) as total,
+          sum(case when review_status = 'AUTO_CANDIDATE' then 1 else 0 end) as auto_candidate_count,
+          sum(case when review_status = 'MANUAL_REVIEW' then 1 else 0 end) as manual_review_count,
+          sum(case when review_status = 'BLOCKED' then 1 else 0 end) as blocked_count,
+          sum(case when is_active then 1 else 0 end) as active_candidate_count,
+          sum(case when promotion_status <> 'NOT_PROMOTED' then 1 else 0 end) as promoted_candidate_count
+        from geography_boundary_crosswalk_candidates
+        where import_batch_id = :batch_id
+    """), {"batch_id": str(batch_id)}).mappings().one()
+
+    return {
+        "schema_version": "nwdp_boundary_admin_candidates.v1",
+        "mode": "READ_ONLY_ADMIN_REVIEW",
+        "governance": _nwdp_boundary_governance(),
+        "filters": {
+            "candidate_bucket": candidate_bucket,
+            "review_status": review_status,
+            "promotion_status": promotion_status,
+            "proposed_scope": proposed_scope,
+            "district": district,
+            "subdistrict": subdistrict,
+            "block": block,
+            "vlcode": vlcode,
+            "backend_village_lgd_code": backend_village_lgd_code,
+            "parent_mismatch_only": parent_mismatch_only,
+            "unresolved_only": unresolved_only,
+            "special_reference_only": special_reference_only,
+        },
+        "summary": {**dict(summary), "runtime_spatial_matching_changed": False},
+        "items": [dict(row) for row in rows],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+@router.get("/nwdp-boundary-candidates/{candidate_id}", response_model=NwdpBoundaryCandidateDetailResponse)
+def get_nwdp_boundary_candidate(
+    candidate_id: UUID,
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    row = db.execute(text("""
+        select
+          c.id::text as candidate_id,
+          c.import_batch_id::text as batch_id,
+          c.source_feature_id::text,
+          c.source_feature_index,
+          c.candidate_bucket,
+          c.confidence,
+          c.review_status,
+          c.proposed_scope,
+          c.proposed_state_id::text,
+          c.proposed_district_id::text,
+          c.proposed_block_id::text,
+          c.proposed_village_id::text,
+          c.proposed_state_lgd_code,
+          c.proposed_district_lgd_code,
+          c.proposed_block_lgd_code,
+          c.proposed_village_lgd_code,
+          c.source_codes,
+          c.source_names,
+          c.match_evidence,
+          c.reviewer_decision,
+          c.reviewer_id,
+          c.reviewed_at,
+          c.reviewer_notes,
+          c.promotion_status,
+          c.is_active,
+          c.metadata as candidate_metadata,
+          f.source_stcode,
+          f.source_dtcode,
+          f.source_sdcode,
+          f.source_bkcode,
+          f.source_vlcode,
+          f.source_state_name,
+          f.source_district_name,
+          f.source_subdistrict_name,
+          f.source_block_name,
+          f.source_village_name,
+          f.source_agency,
+          f.feature_category,
+          f.source_properties,
+          f.source_geometry_hash,
+          f.source_bbox,
+          f.transformed_bbox,
+          f.transformed_centroid,
+          f.geometry_validation_status,
+          b.manifest_audit,
+          b.geometry_audit,
+          b.crosswalk_audit
+        from geography_boundary_crosswalk_candidates c
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        join geography_boundary_import_batches b on b.id = c.import_batch_id
+        where c.id = :candidate_id
+    """), {"candidate_id": str(candidate_id)}).mappings().first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="NWDP boundary candidate not found")
+
+    data = dict(row)
+    candidate = {
+        key: data.get(key)
+        for key in [
+            "candidate_id", "batch_id", "source_feature_id", "source_feature_index",
+            "candidate_bucket", "confidence", "review_status", "proposed_scope",
+            "reviewer_decision", "reviewer_id", "reviewed_at", "reviewer_notes",
+            "promotion_status", "is_active",
+        ]
+    }
+    source_feature = {
+        key: data.get(key)
+        for key in [
+            "source_stcode", "source_dtcode", "source_sdcode", "source_bkcode", "source_vlcode",
+            "source_state_name", "source_district_name", "source_subdistrict_name",
+            "source_block_name", "source_village_name", "source_agency", "feature_category",
+            "source_properties", "source_geometry_hash", "source_bbox", "transformed_bbox",
+            "transformed_centroid", "geometry_validation_status",
+        ]
+    }
+    proposed_match = {
+        key: data.get(key)
+        for key in [
+            "proposed_state_id", "proposed_district_id", "proposed_block_id", "proposed_village_id",
+            "proposed_state_lgd_code", "proposed_district_lgd_code",
+            "proposed_block_lgd_code", "proposed_village_lgd_code",
+            "source_codes", "source_names", "match_evidence",
+        ]
+    }
+
+    return {
+        "schema_version": "nwdp_boundary_admin_candidate_detail.v1",
+        "mode": "READ_ONLY_ADMIN_REVIEW",
+        "governance": _nwdp_boundary_governance(),
+        "candidate": candidate,
+        "source_feature": source_feature,
+        "proposed_match": proposed_match,
+        "audit_evidence": {
+            "manifest_audit": _jsonish(data.get("manifest_audit")),
+            "geometry_audit": _jsonish(data.get("geometry_audit")),
+            "crosswalk_audit": _jsonish(data.get("crosswalk_audit")),
+        },
+        "review_history": list((data.get("candidate_metadata") or {}).get("review_history") or []),
+        "allowed_review_decisions": [
+            "KEEP_PENDING",
+            "ACCEPT_DIRECT_CODE_MATCH",
+            "ACCEPT_REVIEWED_NAME_MATCH",
+            "MARK_REFERENCE_ONLY",
+            "REJECT_SOURCE_MISMATCH",
+            "REJECT_SPECIAL_FEATURE",
+            "BLOCK_PENDING_SOURCE_REVIEW",
+        ],
+    }
+
 
 @router.get("/hierarchy-profile")
 def geography_hierarchy_profile():
