@@ -303,3 +303,34 @@ Candidate bucket counts:
 Current decision:
 
 The Karnataka NWDP/GSI boundary candidate rows are staged locally as inactive review rows. They are not active, not promoted, and not available to runtime spatial matching.
+
+## Post-import verifier checkpoint
+
+Status date: 2026-08-22
+
+Reusable verifier:
+
+    backend/scripts/verify_nwdp_boundary_review_staging_import.py
+
+Latest verification result:
+
+- healthy: true;
+- batch id: `38c31776-9683-5b36-bb79-0438864b9f3f`;
+- batch status: `IMPORTED_INACTIVE`;
+- batch review status: `MANUAL_REVIEW`;
+- batch active: false;
+- source feature count: 29,789;
+- candidate count: 29,789;
+- active candidate count: 0;
+- promoted candidate count: 0;
+- orphan candidate count: 0;
+- inactive staging verified: true;
+- ready for admin review endpoint: true;
+- ready for runtime spatial matching: false.
+
+Feature category counts:
+
+| Feature category | Count |
+| --- | ---: |
+| `VILLAGE_BOUNDARY` | 29,534 |
+| `SPECIAL_FEATURE` | 255 |

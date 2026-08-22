@@ -372,3 +372,20 @@ They do not:
 Implement read and review endpoints only after the staging migration is reviewed and intentionally applied locally.
 
 Do not implement promotion endpoints in the first API pass.
+
+## Staging verification prerequisite
+
+Before implementing or testing admin review endpoints, run:
+
+    backend/scripts/verify_nwdp_boundary_review_staging_import.py
+
+The endpoint implementation should assume only verified inactive staging batches are eligible for admin review.
+
+Current verified Karnataka batch:
+
+- batch id: `38c31776-9683-5b36-bb79-0438864b9f3f`;
+- source features: 29,789;
+- candidates: 29,789;
+- active candidates: 0;
+- promoted candidates: 0;
+- orphan candidates: 0.
