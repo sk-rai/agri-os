@@ -423,3 +423,34 @@ Latest result:
 Current decision:
 
 The NWDP boundary admin read API is ready for a future admin UI. Review mutation endpoints are still separate and should preserve the same no-activation/no-promotion guardrails.
+
+## Candidate review endpoint implementation checkpoint
+
+Status date: 2026-08-22
+
+Implemented review endpoint:
+
+- `PATCH /api/v1/master-data/geography/nwdp-boundary-candidates/{candidate_id}/review`
+
+Regression:
+
+    backend/scripts/test_nwdp_boundary_admin_review_endpoint.py
+
+Latest result:
+
+- unauthenticated review denied;
+- `ADMIN_EDITOR` can update review metadata;
+- non-pending decisions require reviewer notes;
+- `SPECIAL_REFERENCE_FEATURE` cannot be approved for promotion;
+- special/reference feature can be marked `REFERENCE_ONLY`;
+- review endpoint keeps `is_active=false`;
+- review endpoint keeps `promotion_status=NOT_PROMOTED`;
+- runtime spatial matching changed: false;
+- Android behavior changed: false;
+- candidates remained: 29,789;
+- active candidates remained: 0;
+- promoted candidates remained: 0.
+
+Current decision:
+
+The NWDP boundary admin review endpoint is ready for admin UI integration. Promotion and runtime spatial matching remain explicitly out of scope.
