@@ -253,3 +253,53 @@ After applying migration 054 locally, the dry-run importer detected all staging 
 The dry-run still performed no DB writes and kept `ready_for_db_write_import=false`.
 
 Next implementation step: add the guarded `--apply` path only for inactive staging rows, with idempotency and post-import verification.
+
+## Guarded inactive import checkpoint
+
+Status date: 2026-08-22
+
+Importer apply command was run locally/dev with:
+
+    --apply
+    --source-file-sha256 fa7f7dabd7c55e59a5e8c4e916f556294969c8a993057a574bc67a9d11f9c3e7
+    --source-file-size-bytes 14941558
+
+Observed apply result:
+
+- healthy: true;
+- database writes attempted: true;
+- safe post apply: true;
+- batch id: `38c31776-9683-5b36-bb79-0438864b9f3f`;
+- batch existed before: false;
+- batch exists after: true;
+- inserted source features: 29,789;
+- inserted candidates: 29,789;
+- existing source features: 0;
+- existing candidates: 0;
+- active candidates: 0;
+- promoted candidates: 0;
+- orphan candidates: 0.
+
+Review status counts:
+
+| Review status | Count |
+| --- | ---: |
+| `AUTO_CANDIDATE` | 23,196 |
+| `MANUAL_REVIEW` | 6,338 |
+| `BLOCKED` | 255 |
+
+Candidate bucket counts:
+
+| Candidate bucket | Count |
+| --- | ---: |
+| `DIRECT_VLCODE_MATCH` | 23,196 |
+| `DIRECT_VLCODE_PARENT_MISMATCH` | 1,063 |
+| `DISTRICT_SCOPED_AMBIGUOUS` | 626 |
+| `PARENT_MATCH_VILLAGE_UNRESOLVED` | 4,388 |
+| `PARENT_SCOPED_NAME_AMBIGUOUS` | 28 |
+| `PARENT_SCOPED_NAME_MATCH` | 233 |
+| `SPECIAL_REFERENCE_FEATURE` | 255 |
+
+Current decision:
+
+The Karnataka NWDP/GSI boundary candidate rows are staged locally as inactive review rows. They are not active, not promoted, and not available to runtime spatial matching.

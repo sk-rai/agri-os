@@ -155,3 +155,18 @@ Post-migration dry-run importer result:
 Current decision:
 
 The local/dev schema is ready for guarded importer implementation. The importer apply path remains intentionally disabled.
+
+## Local/dev inactive staging import checkpoint
+
+Status date: 2026-08-22
+
+After migration 054, the guarded importer inserted one inactive Karnataka NWDP boundary review batch:
+
+- batch id: `38c31776-9683-5b36-bb79-0438864b9f3f`;
+- source features: 29,789;
+- crosswalk candidates: 29,789;
+- active candidates: 0;
+- promoted candidates: 0;
+- orphan candidates: 0.
+
+Runtime spatial matching remains disabled.
