@@ -273,6 +273,13 @@ export default function NwdpBoundaryReviewPage() {
     void loadCandidates();
   }
 
+  function chooseReviewDecision(decision: string, suggestedNotes = "") {
+    setReviewDecision(decision);
+    if (suggestedNotes && !reviewNotes.trim()) {
+      setReviewNotes(suggestedNotes);
+    }
+  }
+
   async function submitReview(event: FormEvent) {
     event.preventDefault();
     if (!selectedCandidate) return;
@@ -458,8 +465,25 @@ export default function NwdpBoundaryReviewPage() {
           <form onSubmit={submitReview} className="rounded-xl border bg-white p-5 shadow-sm">
             <h2 className="font-semibold text-gray-900">Review metadata</h2>
             <p className="mt-1 text-sm text-gray-500">Updates review fields only. Promotion and runtime lookup remain unsupported.</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" className="rounded border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50" onClick={() => chooseReviewDecision("KEEP_PENDING")}>
+                Keep pending
+              </button>
+              <button type="button" className="rounded border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100" onClick={() => chooseReviewDecision("MARK_REFERENCE_ONLY", "Marked reference-only after manual review. No runtime use approved.")}>
+                Reference only
+              </button>
+              <button type="button" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => chooseReviewDecision("REJECT_SOURCE_MISMATCH", "Rejected because source boundary candidate does not safely match the backend geography record.")}>
+                Reject mismatch
+              </button>
+              <button type="button" className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100" onClick={() => chooseReviewDecision("BLOCK_PENDING_SOURCE_REVIEW", "Blocked pending source-system or crosswalk review.")}>
+                Block review
+              </button>
+            </div>
             <div className="mt-4 space-y-3">
               <Select label="Decision" value={reviewDecision} onChange={setReviewDecision} options={DECISIONS.map((value) => ({ value, label: value }))} />
+              <p className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                Notes are required for non-pending decisions. Saving review metadata never activates geometry or changes runtime spatial matching.
+              </p>
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Notes</span>
                 <textarea
