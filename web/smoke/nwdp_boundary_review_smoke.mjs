@@ -96,6 +96,11 @@ for (let attempt = 0; attempt < 30; attempt += 1) {
   await page.waitForTimeout(1000);
 }
 
+await page.getByText("Source codes").waitFor({ timeout: 15000 });
+await page.getByText("Source names").waitFor({ timeout: 15000 });
+await page.getByText("Source feature").waitFor({ timeout: 15000 });
+await page.getByText("Match evidence").waitFor({ timeout: 15000 });
+
 if (rows <= 0) {
   const bodyText = await page.locator("body").innerText();
   await page.screenshot({
