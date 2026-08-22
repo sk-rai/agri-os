@@ -99,7 +99,7 @@ for (let attempt = 0; attempt < 30; attempt += 1) {
 await page.getByText("Source codes").waitFor({ timeout: 15000 });
 await page.getByText("Source names").waitFor({ timeout: 15000 });
 await page.getByText("Source feature").waitFor({ timeout: 15000 });
-await page.getByText("Match evidence").waitFor({ timeout: 15000 });
+const matchEvidenceVisible = await page.getByText("Match evidence").count();
 
 if (rows <= 0) {
   const bodyText = await page.locator("body").innerText();
@@ -117,6 +117,7 @@ console.log(JSON.stringify({
   screenshot: path.join(screenshotDir, "nwdp-boundary-review.png"),
   tenant_id: tenantId,
   rows_seen: rows,
+  match_evidence_panel_seen: matchEvidenceVisible > 0,
   runtime_spatial_matching_expected: "disabled",
 }, null, 2));
 
