@@ -195,3 +195,43 @@ Implement the importer in two steps:
 Do not implement DB writes yet.
 
 Next implementation should be a dry-run importer skeleton that validates candidate CSV plus staging-table availability, and exits safely if migration 054 has not been applied.
+
+## Dry-run importer skeleton checkpoint
+
+Status date: 2026-08-22
+
+Dry-run importer skeleton:
+
+    backend/scripts/import_nwdp_boundary_review_staging.py
+
+Latest dry-run result:
+
+- healthy candidate import plan: true;
+- apply mode: false;
+- database writes attempted: false;
+- staging tables available: false;
+- missing tables:
+  - `geography_boundary_import_batches`;
+  - `geography_boundary_source_features`;
+  - `geography_boundary_crosswalk_candidates`;
+- input candidate count: 29,789;
+- planned batch insert count: 1;
+- planned source feature insert count: 29,789;
+- planned candidate insert count: 29,789;
+- rows planned inactive: 29,789;
+- rows effective in runtime: 0;
+- unsafe counts: none.
+
+Planned actions:
+
+| Planned action | Count |
+| --- | ---: |
+| `STAGE_INACTIVE_AUTO_CANDIDATE` | 23,196 |
+| `STAGE_INACTIVE_MANUAL_REVIEW` | 1,324 |
+| `STAGE_INACTIVE_PARENT_SCOPE_ONLY` | 4,388 |
+| `STAGE_INACTIVE_DISTRICT_REVIEW` | 626 |
+| `STAGE_BLOCKED_REFERENCE_ONLY` | 255 |
+
+Interpretation:
+
+The importer skeleton is safe and correctly blocks the write path because migration 054 has not been applied. The next implementation step is local migration review/application in a controlled dev environment, followed by a table-existence verifier and still-dry-run importer repeat.
