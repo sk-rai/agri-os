@@ -48,9 +48,19 @@ await page.addInitScript(({ token, tenantId, actorId }) => {
   window.localStorage.setItem("agrios_user_id", actorId);
 }, { token, tenantId, actorId });
 
-await page.goto(reviewUrl, { waitUntil: "networkidle" });
+await page.goto(reviewUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+await page.waitForTimeout(3000);
 
-await page.getByRole("heading", { name: "NWDP Boundary Review" }).waitFor({ timeout: 15000 });
+try {
+  await page.getByRole("heading", { name: "NWDP Boundary Review" }).waitFor({ timeout: 30000 });
+} catch (error) {
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  await page.screenshot({
+    path: `${screenshotDir}/nwdp-boundary-review-heading-failed.png`,
+    fullPage: true,
+  });
+  throw new Error(`NWDP heading not visible. Current URL: ${page.url()}. Browser events: ${JSON.stringify(browserEvents, null, 2)} Page text excerpt: ${bodyText.slice(0, 3000)}`);
+}
 await page.getByText("Runtime matching: disabled").waitFor({ timeout: 15000 });
 await page.getByText("Governance fence").waitFor({ timeout: 15000 });
 await page.getByRole("button", { name: "Unresolved parent scope" }).waitFor({ timeout: 15000 });

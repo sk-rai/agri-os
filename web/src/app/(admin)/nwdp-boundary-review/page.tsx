@@ -230,16 +230,12 @@ export default function NwdpBoundaryReviewPage() {
       const response = await api<CandidateListResponse>(queryPath);
       setData(response);
       setDetail(null);
-      const firstCandidateId = response.items[0]?.candidate_id;
-      if (firstCandidateId) {
-        void loadDetail(firstCandidateId);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load NWDP boundary candidates");
     } finally {
       setLoading(false);
     }
-  }, [loadDetail, queryPath]);
+  }, [queryPath]);
 
   const loadDetail = useCallback(async (candidateId: string) => {
     setDetailLoading(true);
@@ -259,6 +255,13 @@ export default function NwdpBoundaryReviewPage() {
   useEffect(() => {
     void loadBatches().catch((err) => setError(err instanceof Error ? err.message : "Failed to load NWDP boundary batches"));
   }, [loadBatches]);
+
+  useEffect(() => {
+    const firstCandidateId = data?.items[0]?.candidate_id;
+    if (!detail && firstCandidateId) {
+      void loadDetail(firstCandidateId);
+    }
+  }, [data, detail, loadDetail]);
 
   useEffect(() => { void loadCandidates(); }, [loadCandidates]);
 
