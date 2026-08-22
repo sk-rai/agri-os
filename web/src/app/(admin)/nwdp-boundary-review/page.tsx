@@ -230,12 +230,16 @@ export default function NwdpBoundaryReviewPage() {
       const response = await api<CandidateListResponse>(queryPath);
       setData(response);
       setDetail(null);
+      const firstCandidateId = response.items[0]?.candidate_id;
+      if (firstCandidateId) {
+        void loadDetail(firstCandidateId);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load NWDP boundary candidates");
     } finally {
       setLoading(false);
     }
-  }, [queryPath]);
+  }, [loadDetail, queryPath]);
 
   const loadDetail = useCallback(async (candidateId: string) => {
     setDetailLoading(true);
