@@ -200,6 +200,7 @@ export default function NwdpBoundaryReviewPage() {
   const limit = 100;
 
   const selectedCandidate = detail?.candidate ?? data?.items[0] ?? null;
+  const selectedMatchEvidence = detail?.candidate?.match_evidence ?? selectedCandidate?.match_evidence ?? null;
 
   const queryPath = useMemo(() => {
     if (!batchId) return null;
@@ -443,10 +444,10 @@ export default function NwdpBoundaryReviewPage() {
                   </div>
                 ) : null}
 
-                {detail?.candidate?.match_evidence ? (
+                {selectedMatchEvidence ? (
                   <div className="rounded-lg border bg-gray-50 p-3">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Match evidence</h3>
-                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(detail.candidate.match_evidence, null, 2)}</pre>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(selectedMatchEvidence, null, 2)}</pre>
                   </div>
                 ) : null}
               </div>
