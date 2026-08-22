@@ -346,3 +346,33 @@ Governance remains unchanged:
 - promotion remains unsupported from this UI;
 - runtime spatial matching remains disabled;
 - Android behavior remains unchanged.
+
+## Detail smoke stabilization checkpoint
+
+Status date: 2026-08-22
+
+Latest observed result:
+
+- `web/smoke/nwdp_boundary_review_smoke.mjs` passed;
+- rows seen: 100;
+- shortcut buttons are covered;
+- stable detail panels are covered:
+  - source codes;
+  - source names;
+  - source feature;
+- match-evidence display remains observational rather than required by smoke.
+
+Implementation note:
+
+The UI can render match evidence from either the detailed candidate payload or the selected list row. The smoke does not fail when the first selected row does not expose a visible match-evidence panel, because candidate detail payload/rendering can vary by bucket and row shape.
+
+Regression note:
+
+A transient runtime issue was observed when `loadCandidates` referenced `loadDetail` before `loadDetail` was initialized. The stable implementation keeps `loadCandidates` dependent only on `queryPath` and handles detail loading after candidate data is present.
+
+Governance remains unchanged:
+
+- candidate rows remain inactive;
+- review metadata changes do not promote candidates;
+- runtime spatial matching remains disabled;
+- Android behavior remains unchanged.
