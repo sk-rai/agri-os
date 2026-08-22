@@ -202,6 +202,11 @@ export default function NwdpBoundaryReviewPage() {
 
   const selectedCandidate = detail?.candidate ?? data?.items[0] ?? null;
   const selectedMatchEvidence = detail?.candidate?.match_evidence ?? selectedCandidate?.match_evidence ?? null;
+  const selectedBucket = selectedCandidate?.candidate_bucket || "";
+  const nonPendingDecision = reviewDecision !== "KEEP_PENDING";
+  const notesMissing = nonPendingDecision && reviewNotes.trim().length < 3;
+  const referenceOnlyMismatch = reviewDecision === "MARK_REFERENCE_ONLY" && selectedBucket !== "SPECIAL_REFERENCE_FEATURE";
+  const specialApprovalMismatch = selectedBucket === "SPECIAL_REFERENCE_FEATURE" && reviewDecision.startsWith("ACCEPT_");
 
   const queryPath = useMemo(() => {
     if (!batchId) return null;
@@ -484,6 +489,21 @@ export default function NwdpBoundaryReviewPage() {
               <p className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
                 Notes are required for non-pending decisions. Saving review metadata never activates geometry or changes runtime spatial matching.
               </p>
+              {notesMissing ? (
+                <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Add reviewer notes before saving this non-pending decision.
+                </p>
+              ) : null}
+              {referenceOnlyMismatch ? (
+                <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Reference-only is intended for special/reference features. This selected row is currently {selectedBucket || "unknown"}.
+                </p>
+              ) : null}
+              {specialApprovalMismatch ? (
+                <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Special/reference features cannot be approved for promotion.
+                </p>
+              ) : null}
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Notes</span>
                 <textarea
@@ -493,7 +513,7 @@ export default function NwdpBoundaryReviewPage() {
                   placeholder="Required for non-pending decisions."
                 />
               </label>
-              <button disabled={!selectedCandidate} className="w-full rounded bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-40">
+              <button disabled={!selectedCandidate || notesMissing} className="w-full rounded bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-40">
                 Save review metadata
               </button>
             </div>
