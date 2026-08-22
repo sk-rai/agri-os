@@ -239,3 +239,17 @@ The importer skeleton is safe and correctly blocks the write path because migrat
 ## Related migration application checklist
 
 Migration 054 application guardrails are specified in `docs/nwdp-boundary-migration-application-checklist.md`.
+
+## Post-migration dry-run checkpoint
+
+Status date: 2026-08-22
+
+After applying migration 054 locally, the dry-run importer detected all staging tables:
+
+- `geography_boundary_import_batches`;
+- `geography_boundary_source_features`;
+- `geography_boundary_crosswalk_candidates`.
+
+The dry-run still performed no DB writes and kept `ready_for_db_write_import=false`.
+
+Next implementation step: add the guarded `--apply` path only for inactive staging rows, with idempotency and post-import verification.

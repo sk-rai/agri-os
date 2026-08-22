@@ -122,3 +122,36 @@ No-go if:
 - dry-run importer has unsafe counts;
 - candidate CSV is missing or has unknown buckets;
 - runtime feature flags are mixed into the same change.
+
+## Local/dev migration applied checkpoint
+
+Status date: 2026-08-22
+
+Local/dev command run:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/alembic upgrade 054
+
+Observed result:
+
+- Alembic upgraded `053 -> 054`;
+- PostgreSQL transactional DDL was used;
+- NWDP boundary staging tables now exist locally.
+
+Post-migration dry-run importer result:
+
+- target table check healthy: true;
+- `geography_boundary_import_batches`: present;
+- `geography_boundary_source_features`: present;
+- `geography_boundary_crosswalk_candidates`: present;
+- candidate plan healthy: true;
+- database writes attempted by importer: false;
+- ready for DB write import: false;
+- ready for runtime spatial matching: false;
+- rows planned inactive: 29,789;
+- rows effective in runtime: 0;
+- unsafe counts: none.
+
+Current decision:
+
+The local/dev schema is ready for guarded importer implementation. The importer apply path remains intentionally disabled.
