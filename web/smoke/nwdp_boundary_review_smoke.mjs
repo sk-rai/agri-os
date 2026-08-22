@@ -53,6 +53,11 @@ await page.goto(reviewUrl, { waitUntil: "networkidle" });
 await page.getByRole("heading", { name: "NWDP Boundary Review" }).waitFor({ timeout: 15000 });
 await page.getByText("Runtime matching: disabled").waitFor({ timeout: 15000 });
 await page.getByText("Governance fence").waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Unresolved parent scope" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Parent mismatch" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Name-match review" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Special/reference" }).waitFor({ timeout: 15000 });
+await page.getByRole("button", { name: "Direct code candidates" }).waitFor({ timeout: 15000 });
 await page.getByRole("heading", { name: "Candidates" }).waitFor({ timeout: 15000 });
 await page.getByRole("heading", { name: "Selected candidate" }).waitFor({ timeout: 15000 });
 
