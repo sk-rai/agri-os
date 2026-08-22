@@ -192,6 +192,7 @@ export default function NwdpBoundaryReviewPage() {
     setSpecialOnly(Boolean(options?.specialOnly));
     setUnresolvedOnly(Boolean(options?.unresolvedOnly));
     setParentMismatchOnly(Boolean(options?.parentMismatchOnly));
+    setDetail(null);
     setOffset(0);
   }
 
