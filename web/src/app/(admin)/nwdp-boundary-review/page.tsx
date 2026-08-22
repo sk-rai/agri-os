@@ -182,6 +182,19 @@ export default function NwdpBoundaryReviewPage() {
   const [parentMismatchOnly, setParentMismatchOnly] = useState(false);
   const [offset, setOffset] = useState(0);
 
+  function showQueue(nextBucket: string, nextReviewStatus = "", options?: { specialOnly?: boolean; unresolvedOnly?: boolean; parentMismatchOnly?: boolean }) {
+    setBucket(nextBucket);
+    setReviewStatus(nextReviewStatus);
+    setScope("");
+    setDistrict("");
+    setSubdistrict("");
+    setVlcode("");
+    setSpecialOnly(Boolean(options?.specialOnly));
+    setUnresolvedOnly(Boolean(options?.unresolvedOnly));
+    setParentMismatchOnly(Boolean(options?.parentMismatchOnly));
+    setOffset(0);
+  }
+
   const [reviewDecision, setReviewDecision] = useState("KEEP_PENDING");
   const [reviewNotes, setReviewNotes] = useState("");
   const limit = 100;
@@ -308,6 +321,24 @@ export default function NwdpBoundaryReviewPage() {
           </span>
         </div>
 
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700" onClick={() => showQueue("PARENT_MATCH_VILLAGE_UNRESOLVED", "MANUAL_REVIEW", { unresolvedOnly: true })}>
+            Unresolved parent scope
+          </button>
+          <button type="button" className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800" onClick={() => showQueue("DIRECT_VLCODE_PARENT_MISMATCH", "MANUAL_REVIEW", { parentMismatchOnly: true })}>
+            Parent mismatch
+          </button>
+          <button type="button" className="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700" onClick={() => showQueue("PARENT_SCOPED_NAME_MATCH", "MANUAL_REVIEW")}>
+            Name-match review
+          </button>
+          <button type="button" className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700" onClick={() => showQueue("SPECIAL_REFERENCE_FEATURE", "BLOCKED", { specialOnly: true })}>
+            Special/reference
+          </button>
+          <button type="button" className="rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700" onClick={() => showQueue("DIRECT_VLCODE_MATCH", "AUTO_CANDIDATE")}>
+            Direct code candidates
+          </button>
+        </div>
+
         <form onSubmit={applyFilters} className="grid gap-3 md:grid-cols-4">
           <Select label="Batch" value={batchId} onChange={setBatchId} options={batches.map((batch) => ({ value: getBatchId(batch), label: `${batch.state_or_ut} / ${batch.status}` }))} />
           <Select label="Bucket" value={bucket} onChange={setBucket} options={BUCKETS.map((value) => ({ value, label: value || "All buckets" }))} />
@@ -378,14 +409,40 @@ export default function NwdpBoundaryReviewPage() {
             <h2 className="font-semibold text-gray-900">Selected candidate</h2>
             <p className="mt-1 text-sm text-gray-500">{detailLoading ? "Loading detail…" : sourceLabel(selectedCandidate)}</p>
             {selectedCandidate ? (
-              <dl className="mt-4 space-y-3 text-sm">
-                <Detail label="Bucket" value={selectedCandidate.candidate_bucket} />
-                <Detail label="Confidence" value={selectedCandidate.confidence} />
-                <Detail label="Review status" value={selectedCandidate.review_status} />
-                <Detail label="Promotion status" value={selectedCandidate.promotion_status} />
-                <Detail label="Scope" value={selectedCandidate.proposed_scope} />
-                <Detail label="Active" value={String(selectedCandidate.is_active ?? false)} />
-              </dl>
+              <div className="mt-4 space-y-4">
+                <dl className="space-y-3 text-sm">
+                  <Detail label="Bucket" value={selectedCandidate.candidate_bucket} />
+                  <Detail label="Confidence" value={selectedCandidate.confidence} />
+                  <Detail label="Review status" value={selectedCandidate.review_status} />
+                  <Detail label="Promotion status" value={selectedCandidate.promotion_status} />
+                  <Detail label="Scope" value={selectedCandidate.proposed_scope} />
+                  <Detail label="Active" value={String(selectedCandidate.is_active ?? false)} />
+                </dl>
+
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Source codes</h3>
+                  <pre className="mt-2 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(selectedCandidate.source_codes, null, 2)}</pre>
+                </div>
+
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Source names</h3>
+                  <pre className="mt-2 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(selectedCandidate.source_names, null, 2)}</pre>
+                </div>
+
+                {detail?.source_feature ? (
+                  <div className="rounded-lg border bg-gray-50 p-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Source feature</h3>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(detail.source_feature, null, 2)}</pre>
+                  </div>
+                ) : null}
+
+                {detail?.candidate?.match_evidence ? (
+                  <div className="rounded-lg border bg-gray-50 p-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Match evidence</h3>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(detail.candidate.match_evidence, null, 2)}</pre>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
 
