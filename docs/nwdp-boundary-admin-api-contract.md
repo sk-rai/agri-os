@@ -389,3 +389,37 @@ Current verified Karnataka batch:
 - active candidates: 0;
 - promoted candidates: 0;
 - orphan candidates: 0.
+
+## Read-only endpoint implementation checkpoint
+
+Status date: 2026-08-22
+
+Implemented read-only endpoints:
+
+- `GET /api/v1/master-data/geography/nwdp-boundary-batches`
+- `GET /api/v1/master-data/geography/nwdp-boundary-batches/{batch_id}`
+- `GET /api/v1/master-data/geography/nwdp-boundary-batches/{batch_id}/candidates`
+- `GET /api/v1/master-data/geography/nwdp-boundary-candidates/{candidate_id}`
+
+Regression:
+
+    backend/scripts/test_nwdp_boundary_admin_read_endpoints.py
+
+Latest result:
+
+- unauthenticated read denied;
+- `ADMIN_VIEWER` can list batches;
+- `ADMIN_VIEWER` can read batch detail;
+- `ADMIN_VIEWER` can list candidates;
+- `ADMIN_VIEWER` can read candidate detail;
+- endpoint mode: `READ_ONLY_ADMIN_REVIEW`;
+- promotion supported: false;
+- runtime spatial matching changed: false;
+- Android behavior changed: false;
+- candidates remained: 29,789;
+- active candidates remained: 0;
+- promoted candidates remained: 0.
+
+Current decision:
+
+The NWDP boundary admin read API is ready for a future admin UI. Review mutation endpoints are still separate and should preserve the same no-activation/no-promotion guardrails.

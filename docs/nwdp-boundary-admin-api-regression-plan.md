@@ -137,3 +137,13 @@ The regression passes only if:
 - zero runtime lookup rows are created;
 - Android behavior is unchanged;
 - blocked/reference-only safety rules are enforced.
+
+## Read-only endpoint regression checkpoint
+
+Status date: 2026-08-22
+
+Implemented regression:
+
+    backend/scripts/test_nwdp_boundary_admin_read_endpoints.py
+
+The regression passed and confirmed read-only access does not activate or promote NWDP boundary candidates.
