@@ -60,3 +60,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `nwdp-boundary-manual-review-import-plan.md` — conservative inactive/manual-review import plan and dry-run verifier for NWDP boundary crosswalk candidates.
 - `nwdp-boundary-admin-review-ui-spec.md` — admin UI spec for inactive/manual-review NWDP boundary candidate batches and promotion gating.
 - `nwdp-boundary-admin-api-contract.md` — backend admin API contract for NWDP boundary batch/candidate review, aligned with CoRE/LGD review governance.
+- `nwdp-boundary-admin-api-regression-plan.md` — planned regression coverage for future NWDP boundary admin review endpoints.
