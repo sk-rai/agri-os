@@ -214,6 +214,19 @@ class NwdpBoundaryCandidateDetailResponse(BaseModel):
     allowed_review_decisions: list[str]
 
 
+class NwdpBoundaryCandidateReviewRequest(BaseModel):
+    reviewer_decision: str = Field(
+        ...,
+        pattern="^(KEEP_PENDING|ACCEPT_DIRECT_CODE_MATCH|ACCEPT_REVIEWED_NAME_MATCH|MARK_REFERENCE_ONLY|REJECT_SOURCE_MISMATCH|REJECT_SPECIAL_FEATURE|BLOCK_PENDING_SOURCE_REVIEW)$",
+    )
+    review_status: str = Field(
+        ...,
+        pattern="^(MANUAL_REVIEW|APPROVED_FOR_PROMOTION|REFERENCE_ONLY|REJECTED|BLOCKED)$",
+    )
+    reviewer_notes: str = Field("", max_length=2000)
+    evidence_summary: dict = Field(default_factory=dict)
+
+
 # --- Endpoints ---
 
 def _nwdp_boundary_governance(db_write_scope: str = "NONE") -> dict:
@@ -658,6 +671,150 @@ def get_nwdp_boundary_candidate(
             "REJECT_SPECIAL_FEATURE",
             "BLOCK_PENDING_SOURCE_REVIEW",
         ],
+    }
+
+
+@router.patch("/nwdp-boundary-candidates/{candidate_id}/review")
+def update_nwdp_boundary_candidate_review(
+    candidate_id: UUID,
+    payload: NwdpBoundaryCandidateReviewRequest,
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    row = db.execute(text("""
+        select
+          id::text as candidate_id,
+          candidate_bucket,
+          review_status,
+          reviewer_decision,
+          promotion_status,
+          is_active,
+          metadata
+        from geography_boundary_crosswalk_candidates
+        where id = :candidate_id
+    """), {"candidate_id": str(candidate_id)}).mappings().first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="NWDP boundary candidate not found")
+
+    if row["is_active"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ACTIVE_BOUNDARY_CANDIDATE_NOT_REVIEW_EDITABLE",
+                "message": "Active candidates cannot be changed through the review endpoint.",
+            },
+        )
+
+    if row["promotion_status"] != "NOT_PROMOTED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROMOTED_BOUNDARY_CANDIDATE_NOT_REVIEW_EDITABLE",
+                "message": "Promoted candidates require a separate supersession workflow.",
+            },
+        )
+
+    notes = (payload.reviewer_notes or "").strip()
+    if payload.reviewer_decision != "KEEP_PENDING" and len(notes) < 3:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "REVIEW_NOTES_REQUIRED",
+                "message": "Reviewer notes are required for non-pending NWDP boundary decisions.",
+            },
+        )
+
+    if row["candidate_bucket"] == "SPECIAL_REFERENCE_FEATURE" and payload.review_status == "APPROVED_FOR_PROMOTION":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "SPECIAL_REFERENCE_FEATURE_CANNOT_BE_APPROVED_FOR_PROMOTION",
+                "message": "Special/reference features may be marked reference-only, rejected, or blocked, but not approved for promotion.",
+            },
+        )
+
+    if payload.reviewer_decision == "MARK_REFERENCE_ONLY" and payload.review_status != "REFERENCE_ONLY":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "REFERENCE_ONLY_STATUS_REQUIRED",
+                "message": "MARK_REFERENCE_ONLY requires review_status=REFERENCE_ONLY.",
+            },
+        )
+
+    if payload.reviewer_decision == "REJECT_SPECIAL_FEATURE" and payload.review_status != "REJECTED":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "REJECTED_STATUS_REQUIRED",
+                "message": "REJECT_SPECIAL_FEATURE requires review_status=REJECTED.",
+            },
+        )
+
+    previous_status = row["review_status"]
+    previous_decision = row["reviewer_decision"]
+    metadata = dict(row["metadata"] or {})
+    history = list(metadata.get("review_history") or [])
+    event = {
+        "changed_at": datetime.now(timezone.utc).isoformat(),
+        "changed_by": str(principal.user_id),
+        "from_review_status": previous_status,
+        "to_review_status": payload.review_status,
+        "from_reviewer_decision": previous_decision,
+        "to_reviewer_decision": payload.reviewer_decision,
+        "reviewer_notes": notes,
+        "evidence_summary": payload.evidence_summary,
+        "action": "NWDP_BOUNDARY_REVIEW_METADATA_ONLY_NO_ACTIVATION",
+    }
+    history.append(event)
+    metadata["review_history"] = history
+    metadata["latest_review_event"] = event
+    metadata["review_guardrail"] = {
+        "is_active_remains_false": True,
+        "promotion_status_remains_not_promoted": True,
+        "runtime_spatial_matching_changed": False,
+        "android_behavior_changed": False,
+    }
+
+    db.execute(text("""
+        update geography_boundary_crosswalk_candidates
+        set
+          review_status = :review_status,
+          reviewer_decision = :reviewer_decision,
+          reviewer_id = :reviewer_id,
+          reviewed_at = :reviewed_at,
+          reviewer_notes = :reviewer_notes,
+          metadata = cast(:metadata as jsonb),
+          updated_at = :updated_at
+        where id = :candidate_id
+          and is_active = false
+          and promotion_status = 'NOT_PROMOTED'
+    """), {
+        "candidate_id": str(candidate_id),
+        "review_status": payload.review_status,
+        "reviewer_decision": payload.reviewer_decision,
+        "reviewer_id": str(principal.user_id),
+        "reviewed_at": datetime.now(timezone.utc),
+        "reviewer_notes": notes,
+        "metadata": json.dumps(metadata),
+        "updated_at": datetime.now(timezone.utc),
+    })
+    db.commit()
+
+    return {
+        "schema_version": "nwdp_boundary_admin_candidate_review.v1",
+        "candidate_id": str(candidate_id),
+        "previous_review_status": previous_status,
+        "review_status": payload.review_status,
+        "previous_reviewer_decision": previous_decision,
+        "reviewer_decision": payload.reviewer_decision,
+        "is_active": False,
+        "promotion_status": "NOT_PROMOTED",
+        "runtime_spatial_matching_changed": False,
+        "android_behavior_changed": False,
+        "promotion_supported": False,
+        "latest_review_event": event,
     }
 
 
