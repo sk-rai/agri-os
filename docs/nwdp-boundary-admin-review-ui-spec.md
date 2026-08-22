@@ -292,3 +292,30 @@ Build this as an admin review workflow after staging-table migration is reviewed
 ## Related backend contract
 
 Backend endpoint and response contracts are specified in `docs/nwdp-boundary-admin-api-contract.md`.
+
+## UI smoke checkpoint
+
+Status date: 2026-08-22
+
+Smoke script:
+
+- `web/smoke/nwdp_boundary_review_smoke.mjs`
+
+Latest observed result:
+
+- status: passed;
+- page URL: `/nwdp-boundary-review`;
+- rows seen: 100;
+- screenshot: `web/smoke/screenshots/nwdp-boundary-review.png`;
+- runtime spatial matching expected state: disabled.
+
+Implementation note:
+
+The first UI smoke found a frontend/backend field-name mismatch: the batch list API returns `batch_id`, while the first UI implementation expected `id`. The UI now accepts `batch_id` and uses it for candidate-list loading.
+
+Current decision:
+
+- NWDP boundary admin review UI is usable for inactive staging review;
+- candidate rows remain inactive and unpromoted;
+- runtime point-in-polygon behavior remains unchanged;
+- screenshots remain local smoke artifacts and are not committed by default.
