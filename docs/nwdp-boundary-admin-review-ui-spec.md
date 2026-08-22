@@ -288,3 +288,7 @@ Promotion endpoints should remain unimplemented until the staging import and rev
 ## Current decision
 
 Build this as an admin review workflow after staging-table migration is reviewed. Do not implement promotion or runtime spatial matching in the first UI pass.
+
+## Related backend contract
+
+Backend endpoint and response contracts are specified in `docs/nwdp-boundary-admin-api-contract.md`.
