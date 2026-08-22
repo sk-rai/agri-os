@@ -235,3 +235,7 @@ Planned actions:
 Interpretation:
 
 The importer skeleton is safe and correctly blocks the write path because migration 054 has not been applied. The next implementation step is local migration review/application in a controlled dev environment, followed by a table-existence verifier and still-dry-run importer repeat.
+
+## Related migration application checklist
+
+Migration 054 application guardrails are specified in `docs/nwdp-boundary-migration-application-checklist.md`.

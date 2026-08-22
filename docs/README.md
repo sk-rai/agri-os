@@ -62,3 +62,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `nwdp-boundary-admin-api-contract.md` — backend admin API contract for NWDP boundary batch/candidate review, aligned with CoRE/LGD review governance.
 - `nwdp-boundary-admin-api-regression-plan.md` — planned regression coverage for future NWDP boundary admin review endpoints.
 - `nwdp-boundary-guarded-importer-design.md` — guarded dry-run-first importer design for inactive NWDP boundary staging rows.
+- `nwdp-boundary-migration-application-checklist.md` — pre/post checklist for applying NWDP boundary staging migration 054 in local/dev only.
