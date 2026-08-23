@@ -66,3 +66,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `verify_nwdp_boundary_review_staging_import.py` — read-only verifier for inactive NWDP boundary staging import counts and safety invariants.
 - `run_nwdp_boundary_regressions.py` — compact runner for NWDP boundary staging import, admin read endpoint, and admin review endpoint regressions.
 - `nwdp_boundary_review_smoke.mjs` — Playwright smoke for the inactive NWDP boundary admin review page.
+- `run_nwdp_boundary_review_smokes.mjs` — compact runner for NWDP boundary admin review web smokes.
