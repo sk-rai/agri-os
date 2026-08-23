@@ -549,3 +549,46 @@ Current decision:
 - backend and frontend review flows remain metadata-only;
 - review saves do not promote or activate boundary candidates;
 - runtime point-in-polygon behavior remains unchanged.
+
+## Operational handoff
+
+Status date: 2026-08-23
+
+Backend server:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+Frontend server:
+
+    cd ~/projects/farmint/web
+    npm run dev -- --port 3000
+
+If port 3000 is already in use, the frontend server is likely already running.
+
+Create admin smoke session:
+
+    cd ~/projects/farmint
+    ./venv/bin/python backend/scripts/create_web_ui_smoke_session.py > /tmp/web-ui-smoke-session.json
+
+Run backend NWDP boundary regressions:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/python scripts/run_nwdp_boundary_regressions.py
+
+Run frontend NWDP boundary web smokes:
+
+    cd ~/projects/farmint
+    node web/smoke/run_nwdp_boundary_review_smokes.mjs
+
+Admin UI URL:
+
+- `http://localhost:3000/nwdp-boundary-review`
+
+Guardrail summary:
+
+- staging rows are inactive;
+- review saves are metadata-only;
+- promotion is unsupported from the UI;
+- runtime spatial matching remains disabled;
+- Android behavior remains unchanged.
