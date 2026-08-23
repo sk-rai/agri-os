@@ -460,3 +460,42 @@ Governance remains unchanged:
 - candidate rows remain inactive;
 - promotion remains unsupported from this UI;
 - Android behavior remains unchanged.
+
+## Review save smoke checkpoint
+
+Status date: 2026-08-23
+
+Latest UI behavior:
+
+- review metadata save path is exercised through browser smoke;
+- UI sends both `reviewer_decision` and backend-required `review_status`;
+- safe `KEEP_PENDING` review save succeeds;
+- success message confirms the candidate remains inactive and unpromoted;
+- runtime spatial matching remains disabled.
+
+Smoke script:
+
+- `web/smoke/nwdp_boundary_review_save_smoke.mjs`
+
+Latest observed result:
+
+- status: passed;
+- rows seen: 100;
+- screenshot: `web/smoke/screenshots/nwdp-boundary-review-save.png`;
+- runtime spatial matching expected: disabled.
+
+Implementation note:
+
+The first save smoke exposed a UI/backend contract gap: the backend requires `review_status`, while the UI initially sent only `reviewer_decision`. The UI now derives a guarded review status from the selected decision:
+- `KEEP_PENDING` -> `MANUAL_REVIEW`;
+- `MARK_REFERENCE_ONLY` -> `REFERENCE_ONLY`;
+- reject decisions -> `REJECTED`;
+- block decision -> `BLOCKED`;
+- accept decisions -> `APPROVED_FOR_PROMOTION`.
+
+Governance remains unchanged:
+
+- the tested save path updates review metadata only;
+- candidates remain inactive;
+- promotion remains unsupported from the UI;
+- no runtime spatial lookup path is enabled.
