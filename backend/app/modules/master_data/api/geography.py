@@ -429,6 +429,7 @@ def list_nwdp_boundary_candidates(
     parent_mismatch_only: bool = Query(False),
     unresolved_only: bool = Query(False),
     special_reference_only: bool = Query(False),
+    has_review_history: bool | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -473,6 +474,10 @@ def list_nwdp_boundary_candidates(
         where.append("c.candidate_bucket in ('PARENT_MATCH_VILLAGE_UNRESOLVED', 'DISTRICT_SCOPED_AMBIGUOUS')")
     if special_reference_only:
         where.append("c.candidate_bucket = 'SPECIAL_REFERENCE_FEATURE'")
+    if has_review_history is True:
+        where.append("jsonb_array_length(coalesce(c.metadata->'review_history', '[]'::jsonb)) > 0")
+    elif has_review_history is False:
+        where.append("jsonb_array_length(coalesce(c.metadata->'review_history', '[]'::jsonb)) = 0")
 
     where_sql = " and ".join(where)
 
@@ -546,6 +551,7 @@ def list_nwdp_boundary_candidates(
             "parent_mismatch_only": parent_mismatch_only,
             "unresolved_only": unresolved_only,
             "special_reference_only": special_reference_only,
+          "has_review_history": has_review_history,
         },
         "summary": {**dict(summary), "runtime_spatial_matching_changed": False},
         "items": [dict(row) for row in rows],

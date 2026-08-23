@@ -184,6 +184,7 @@ export default function NwdpBoundaryReviewPage() {
   const [specialOnly, setSpecialOnly] = useState(false);
   const [unresolvedOnly, setUnresolvedOnly] = useState(false);
   const [parentMismatchOnly, setParentMismatchOnly] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState("");
   const [offset, setOffset] = useState(0);
 
   function showQueue(nextBucket: string, nextReviewStatus = "", options?: { specialOnly?: boolean; unresolvedOnly?: boolean; parentMismatchOnly?: boolean }) {
@@ -196,6 +197,7 @@ export default function NwdpBoundaryReviewPage() {
     setSpecialOnly(Boolean(options?.specialOnly));
     setUnresolvedOnly(Boolean(options?.unresolvedOnly));
     setParentMismatchOnly(Boolean(options?.parentMismatchOnly));
+    setHistoryFilter("");
     setDetail(null);
     setOffset(0);
   }
@@ -224,8 +226,10 @@ export default function NwdpBoundaryReviewPage() {
     if (specialOnly) params.set("special_reference_only", "true");
     if (unresolvedOnly) params.set("unresolved_only", "true");
     if (parentMismatchOnly) params.set("parent_mismatch_only", "true");
+    if (historyFilter === "has_history") params.set("has_review_history", "true");
+    if (historyFilter === "no_history") params.set("has_review_history", "false");
     return `/api/v1/master-data/geography/nwdp-boundary-batches/${batchId}/candidates?${params.toString()}`;
-  }, [batchId, bucket, district, offset, parentMismatchOnly, reviewStatus, scope, specialOnly, subdistrict, unresolvedOnly, vlcode]);
+  }, [batchId, bucket, district, historyFilter, offset, parentMismatchOnly, reviewStatus, scope, specialOnly, subdistrict, unresolvedOnly, vlcode]);
 
   const loadBatches = useCallback(async () => {
     const response = await api<BatchListResponse>("/api/v1/master-data/geography/nwdp-boundary-batches?limit=25");
@@ -381,6 +385,11 @@ export default function NwdpBoundaryReviewPage() {
           <Input label="District" value={district} onChange={setDistrict} placeholder="e.g. Hassan" />
           <Input label="Subdistrict" value={subdistrict} onChange={setSubdistrict} placeholder="e.g. Arsikere" />
           <Input label="VL code" value={vlcode} onChange={setVlcode} placeholder="e.g. 619107" />
+          <Select label="Review history" value={historyFilter} onChange={setHistoryFilter} options={[
+            { value: "", label: "Any history" },
+            { value: "has_history", label: "Has review history" },
+            { value: "no_history", label: "No review history" },
+          ]} />
           <div className="flex items-end gap-3">
             <button className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800" type="submit">Apply</button>
             <button className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" type="button" onClick={() => void loadCandidates()}>Refresh</button>
