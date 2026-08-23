@@ -289,6 +289,14 @@ export default function NwdpBoundaryReviewPage() {
     }
   }
 
+  function reviewStatusForDecision(decision: string) {
+    if (decision === "MARK_REFERENCE_ONLY") return "REFERENCE_ONLY";
+    if (decision === "REJECT_SOURCE_MISMATCH" || decision === "REJECT_SPECIAL_FEATURE") return "REJECTED";
+    if (decision === "BLOCK_PENDING_SOURCE_REVIEW") return "BLOCKED";
+    if (decision.startsWith("ACCEPT_")) return "APPROVED_FOR_PROMOTION";
+    return "MANUAL_REVIEW";
+  }
+
   async function submitReview(event: FormEvent) {
     event.preventDefault();
     if (!selectedCandidate) return;
@@ -299,6 +307,7 @@ export default function NwdpBoundaryReviewPage() {
         method: "PATCH",
         body: {
           reviewer_decision: reviewDecision,
+          review_status: reviewStatusForDecision(reviewDecision),
           review_notes: reviewNotes,
           evidence_summary: { source: "nwdp-boundary-review-ui", guarded_runtime: true },
         },
