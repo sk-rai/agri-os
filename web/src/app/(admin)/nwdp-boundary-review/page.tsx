@@ -81,6 +81,10 @@ type CandidateDetailResponse = {
     is_active: boolean;
   };
   source_feature: Record<string, unknown>;
+  proposed_match?: Record<string, unknown> | null;
+  audit_evidence?: Record<string, unknown> | null;
+  review_history?: Array<Record<string, unknown>>;
+  allowed_review_decisions?: string[];
 };
 
 type ReviewResponse = {
@@ -463,6 +467,27 @@ export default function NwdpBoundaryReviewPage() {
                     <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-gray-700">{JSON.stringify(selectedMatchEvidence, null, 2)}</pre>
                   </div>
                 ) : null}
+
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Review history</h3>
+                  {detail?.review_history?.length ? (
+                    <div className="mt-2 space-y-2">
+                      {detail.review_history.slice().reverse().map((event, index) => (
+                        <div key={index} className="rounded border bg-white p-2 text-xs text-gray-700">
+                          <div className="font-semibold text-gray-900">
+                            {String(event.to_reviewer_decision || event.to_review_status || event.action || "Review event")}
+                          </div>
+                          <div className="mt-1 text-gray-500">
+                            {String(event.changed_at || "time unknown")} by {String(event.changed_by || "unknown reviewer")}
+                          </div>
+                          {event.reviewer_notes ? <div className="mt-1">{String(event.reviewer_notes)}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-gray-500">No review history yet.</p>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
