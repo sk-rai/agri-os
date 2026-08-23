@@ -592,3 +592,29 @@ Guardrail summary:
 - promotion is unsupported from the UI;
 - runtime spatial matching remains disabled;
 - Android behavior remains unchanged.
+
+## CSV export checkpoint
+
+Status date: 2026-08-23
+
+The NWDP boundary review UI now supports filtered CSV export for the current candidate queue.
+
+Backend endpoint:
+
+    GET /api/v1/master-data/geography/nwdp-boundary-batches/{batch_id}/candidates/export.csv
+
+Export behavior:
+
+- honors the same admin queue filters, including bucket, review status, scope, location fields, review-history state, unresolved-only, parent-mismatch-only, and special-reference-only;
+- returns inactive staging/review rows only;
+- includes review metadata and proposed LGD linkage fields;
+- sends `X-NWDP-Boundary-Export-Mode: READ_ONLY_ADMIN_REVIEW`;
+- sends `X-NWDP-Boundary-Runtime-Spatial-Matching-Changed: false`;
+- does not activate, promote, or write runtime boundary rows.
+
+Latest observed smoke/check:
+
+- export endpoint returned HTTP 200;
+- CSV contained direct-code AUTO_CANDIDATE rows;
+- exported rows remained `NOT_PROMOTED` and `is_active=False`;
+- runtime spatial matching remained disabled.
