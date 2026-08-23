@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiDownload } from "@/lib/api";
 
 type Governance = {
   read_only_runtime: boolean;
@@ -286,6 +286,28 @@ export default function NwdpBoundaryReviewPage() {
     void loadCandidates();
   }
 
+  function exportCurrentQueue() {
+    if (!batchId) return;
+    const params = new URLSearchParams({ limit: "5000" });
+    if (bucket) params.set("candidate_bucket", bucket);
+    if (reviewStatus) params.set("review_status", reviewStatus);
+    if (scope) params.set("proposed_scope", scope);
+    if (district.trim()) params.set("district", district.trim());
+    if (subdistrict.trim()) params.set("subdistrict", subdistrict.trim());
+    if (vlcode.trim()) params.set("vlcode", vlcode.trim());
+    if (specialOnly) params.set("special_reference_only", "true");
+    if (unresolvedOnly) params.set("unresolved_only", "true");
+    if (parentMismatchOnly) params.set("parent_mismatch_only", "true");
+    if (historyFilter === "has_history") params.set("has_review_history", "true");
+    if (historyFilter === "no_history") params.set("has_review_history", "false");
+    void apiDownload(
+      `/api/v1/master-data/geography/nwdp-boundary-batches/${batchId}/candidates/export.csv?${params.toString()}`,
+      "nwdp-boundary-candidates.csv",
+    ).catch((err) => setError(err instanceof Error ? err.message : "Failed to export review queue"));
+  }
+
+
+
   function chooseReviewDecision(decision: string, suggestedNotes = "") {
     setReviewDecision(decision);
     if (suggestedNotes && !reviewNotes.trim()) {
@@ -393,6 +415,7 @@ export default function NwdpBoundaryReviewPage() {
           <div className="flex items-end gap-3">
             <button className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800" type="submit">Apply</button>
             <button className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" type="button" onClick={() => void loadCandidates()}>Refresh</button>
+            <button className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" type="button" onClick={exportCurrentQueue}>Export CSV</button>
           </div>
           <Checkbox label="Special/reference only" checked={specialOnly} onChange={setSpecialOnly} />
           <Checkbox label="Unresolved only" checked={unresolvedOnly} onChange={setUnresolvedOnly} />

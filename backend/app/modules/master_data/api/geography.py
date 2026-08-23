@@ -8,11 +8,14 @@ GET /api/v1/master-data/geography/villages?district_id=  (district-wide, for off
 GET /api/v1/master-data/geography/villages/search?q=&district_id=  (fuzzy, optionally scoped)
 """
 
+import csv
+import io
 import json
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from fastapi.responses import StreamingResponse
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -559,6 +562,120 @@ def list_nwdp_boundary_candidates(
         "offset": offset,
         "limit": limit,
     }
+
+
+
+@router.get("/nwdp-boundary-batches/{batch_id}/candidates/export.csv")
+def export_nwdp_boundary_candidates_csv(
+    batch_id: UUID,
+    candidate_bucket: str | None = Query(None),
+    review_status: str | None = Query(None),
+    promotion_status: str | None = Query(None),
+    proposed_scope: str | None = Query(None),
+    district: str | None = Query(None),
+    subdistrict: str | None = Query(None),
+    block: str | None = Query(None),
+    vlcode: str | None = Query(None),
+    backend_village_lgd_code: str | None = Query(None),
+    parent_mismatch_only: bool = Query(False),
+    unresolved_only: bool = Query(False),
+    special_reference_only: bool = Query(False),
+    has_review_history: bool | None = Query(None),
+    limit: int = Query(5000, ge=1, le=50000),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    if not db.execute(text("select 1 from geography_boundary_import_batches where id = :batch_id"), {"batch_id": str(batch_id)}).first():
+        raise HTTPException(status_code=404, detail="NWDP boundary batch not found")
+
+    where = ["c.import_batch_id = :batch_id"]
+    params = {"batch_id": str(batch_id), "limit": limit}
+
+    if candidate_bucket:
+        where.append("c.candidate_bucket = :candidate_bucket")
+        params["candidate_bucket"] = candidate_bucket
+    if review_status:
+        where.append("c.review_status = :review_status")
+        params["review_status"] = review_status
+    if promotion_status:
+        where.append("c.promotion_status = :promotion_status")
+        params["promotion_status"] = promotion_status
+    if proposed_scope:
+        where.append("c.proposed_scope = :proposed_scope")
+        params["proposed_scope"] = proposed_scope
+    if district:
+        where.append("f.source_district_name ilike :district")
+        params["district"] = f"%{district}%"
+    if subdistrict:
+        where.append("f.source_subdistrict_name ilike :subdistrict")
+        params["subdistrict"] = f"%{subdistrict}%"
+    if block:
+        where.append("f.source_block_name ilike :block")
+        params["block"] = f"%{block}%"
+    if vlcode:
+        where.append("f.source_vlcode = :vlcode")
+        params["vlcode"] = vlcode
+    if backend_village_lgd_code:
+        where.append("c.proposed_village_lgd_code = :backend_village_lgd_code")
+        params["backend_village_lgd_code"] = backend_village_lgd_code
+    if parent_mismatch_only:
+        where.append("c.candidate_bucket = 'DIRECT_VLCODE_PARENT_MISMATCH'")
+    if unresolved_only:
+        where.append("c.candidate_bucket in ('PARENT_MATCH_VILLAGE_UNRESOLVED', 'DISTRICT_SCOPED_AMBIGUOUS')")
+    if special_reference_only:
+        where.append("c.candidate_bucket = 'SPECIAL_REFERENCE_FEATURE'")
+    if has_review_history is True:
+        where.append("jsonb_array_length(coalesce(c.metadata->'review_history', '[]'::jsonb)) > 0")
+    elif has_review_history is False:
+        where.append("jsonb_array_length(coalesce(c.metadata->'review_history', '[]'::jsonb)) = 0")
+
+    where_sql = " and ".join(where)
+
+    rows = db.execute(text(f"""
+        select
+          c.source_feature_index,
+          c.candidate_bucket,
+          c.confidence,
+          c.review_status,
+          c.reviewer_decision,
+          c.promotion_status,
+          c.proposed_scope,
+          f.source_district_name,
+          f.source_subdistrict_name,
+          f.source_block_name,
+          f.source_village_name,
+          f.source_vlcode,
+          c.proposed_village_lgd_code,
+          c.proposed_village_id::text,
+          jsonb_array_length(coalesce(c.metadata->'review_history', '[]'::jsonb)) as review_history_count,
+          c.is_active
+        from geography_boundary_crosswalk_candidates c
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        where {where_sql}
+        order by c.source_feature_index
+        limit :limit
+    """), params).mappings().all()
+
+    output = io.StringIO()
+    fieldnames = [
+        "source_feature_index", "candidate_bucket", "confidence", "review_status",
+        "reviewer_decision", "promotion_status", "proposed_scope",
+        "source_district_name", "source_subdistrict_name", "source_block_name",
+        "source_village_name", "source_vlcode", "proposed_village_lgd_code",
+        "proposed_village_id", "review_history_count", "is_active",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row.get(key) for key in fieldnames})
+
+    output.seek(0)
+    headers = {
+        "Content-Disposition": "attachment; filename=nwdp-boundary-candidates.csv",
+        "X-NWDP-Boundary-Export-Mode": "READ_ONLY_ADMIN_REVIEW",
+        "X-NWDP-Boundary-Runtime-Spatial-Matching-Changed": "false",
+    }
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
 
 
 @router.get("/nwdp-boundary-candidates/{candidate_id}", response_model=NwdpBoundaryCandidateDetailResponse)
