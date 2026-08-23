@@ -286,3 +286,33 @@ Current decision:
 - no staging candidate is activated or promoted;
 - no lookup API is enabled;
 - Android behavior remains unchanged.
+
+## Local runtime migration checkpoint
+
+Status date: 2026-08-23
+
+Local command completed:
+
+    cd ~/projects/farmint/backend
+    ../venv/bin/alembic upgrade 055
+
+Observed local verification:
+
+- geography_boundary_runtime_sets exists: true, count: 0;
+- geography_boundary_runtime_features exists: true, count: 0;
+- geography_boundary_runtime_crosswalks exists: true, count: 0;
+- geography_boundary_runtime_promotion_events exists: true, count: 0.
+
+Readiness:
+
+- migration_applied: true;
+- runtime_rows_loaded: false;
+- ready_for_runtime_spatial_matching: false;
+- android_behavior_changed: false.
+
+Current decision:
+
+- runtime schema is now available locally;
+- tables are intentionally empty;
+- the next implementation should be a guarded runtime promotion importer with dry-run-first behavior;
+- no runtime lookup API should be added until runtime promotion has a passing dry-run and explicit apply checkpoint.
