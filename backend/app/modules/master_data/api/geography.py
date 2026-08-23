@@ -217,6 +217,19 @@ class NwdpBoundaryCandidateDetailResponse(BaseModel):
     allowed_review_decisions: list[str]
 
 
+class NwdpBoundaryRuntimePromotionDryRunResponse(BaseModel):
+    schema_version: str
+    mode: str
+    governance: dict
+    filters: dict
+    summary: dict
+    eligibility_counts: list[dict]
+    exclusion_counts: list[dict]
+    promotable_samples: list[dict]
+    excluded_samples: list[dict]
+    readiness: dict
+
+
 class NwdpBoundaryCandidateReviewRequest(BaseModel):
     reviewer_decision: str = Field(
         ...,
@@ -245,6 +258,155 @@ def _nwdp_boundary_governance(db_write_scope: str = "NONE") -> dict:
 
 def _jsonish(value):
     return value if value is not None else {}
+
+
+@router.get("/boundary-runtime-promotion/dry-run", response_model=NwdpBoundaryRuntimePromotionDryRunResponse)
+def get_nwdp_boundary_runtime_promotion_dry_run(
+    state_or_ut: Optional[str] = Query(None),
+    source_system: Optional[str] = Query(None),
+    import_batch_id: Optional[UUID] = Query(None),
+    candidate_bucket: Optional[str] = Query(None),
+    review_status: Optional[str] = Query(None),
+    proposed_scope: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=200),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    where = ["c.is_active = false", "c.promotion_status = 'NOT_PROMOTED'"]
+    params = {"limit": limit}
+
+    if state_or_ut:
+        where.append("b.state_or_ut = :state_or_ut")
+        params["state_or_ut"] = state_or_ut
+    if source_system:
+        where.append("b.source_system = :source_system")
+        params["source_system"] = source_system
+    if import_batch_id:
+        where.append("c.import_batch_id = :import_batch_id")
+        params["import_batch_id"] = str(import_batch_id)
+    if candidate_bucket:
+        where.append("c.candidate_bucket = :candidate_bucket")
+        params["candidate_bucket"] = candidate_bucket
+    if review_status:
+        where.append("c.review_status = :review_status")
+        params["review_status"] = review_status
+    if proposed_scope:
+        where.append("c.proposed_scope = :proposed_scope")
+        params["proposed_scope"] = proposed_scope
+
+    where_sql = " and ".join(where)
+
+    base_sql = f"""
+        from geography_boundary_crosswalk_candidates c
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        join geography_boundary_import_batches b on b.id = c.import_batch_id
+        where {where_sql}
+    """
+
+    total = db.execute(text(f"select count(*) {base_sql}"), params).scalar() or 0
+
+    eligibility_rows = db.execute(text(f"""
+        select
+          case
+            when c.review_status <> 'APPROVED_FOR_PROMOTION' then 'NOT_REVIEW_APPROVED'
+            when c.reviewer_decision not in ('ACCEPT_DIRECT_CODE_MATCH', 'ACCEPT_REVIEWED_NAME_MATCH') then 'REVIEW_DECISION_NOT_PROMOTABLE'
+            when c.candidate_bucket in ('SPECIAL_REFERENCE_FEATURE', 'DISTRICT_SCOPED_AMBIGUOUS', 'PARENT_SCOPED_NAME_AMBIGUOUS', 'PARENT_MATCH_VILLAGE_UNRESOLVED') then 'BUCKET_NOT_PROMOTABLE'
+            when c.proposed_scope not in ('village', 'village_review') then 'SCOPE_NOT_RUNTIME_ELIGIBLE'
+            when c.proposed_village_id is null then 'MISSING_PROPOSED_VILLAGE'
+            when f.geometry_validation_status not in ('VALID', 'VALIDATED') then 'GEOMETRY_NOT_VALIDATED'
+            else 'PROMOTABLE'
+          end as eligibility,
+          count(*) as count
+        {base_sql}
+        group by eligibility
+        order by eligibility
+    """), params).mappings().all()
+
+    promotable_count = sum(int(row["count"]) for row in eligibility_rows if row["eligibility"] == "PROMOTABLE")
+    excluded_count = total - promotable_count
+
+    sample_select = f"""
+        select
+          c.id::text as candidate_id,
+          c.import_batch_id::text as batch_id,
+          c.source_feature_index,
+          c.candidate_bucket,
+          c.review_status,
+          c.reviewer_decision,
+          c.promotion_status,
+          c.proposed_scope,
+          c.proposed_village_lgd_code,
+          c.proposed_village_id::text,
+          f.source_district_name,
+          f.source_subdistrict_name,
+          f.source_village_name,
+          f.source_vlcode,
+          f.geometry_validation_status,
+          case
+            when c.review_status <> 'APPROVED_FOR_PROMOTION' then 'NOT_REVIEW_APPROVED'
+            when c.reviewer_decision not in ('ACCEPT_DIRECT_CODE_MATCH', 'ACCEPT_REVIEWED_NAME_MATCH') then 'REVIEW_DECISION_NOT_PROMOTABLE'
+            when c.candidate_bucket in ('SPECIAL_REFERENCE_FEATURE', 'DISTRICT_SCOPED_AMBIGUOUS', 'PARENT_SCOPED_NAME_AMBIGUOUS', 'PARENT_MATCH_VILLAGE_UNRESOLVED') then 'BUCKET_NOT_PROMOTABLE'
+            when c.proposed_scope not in ('village', 'village_review') then 'SCOPE_NOT_RUNTIME_ELIGIBLE'
+            when c.proposed_village_id is null then 'MISSING_PROPOSED_VILLAGE'
+            when f.geometry_validation_status not in ('VALID', 'VALIDATED') then 'GEOMETRY_NOT_VALIDATED'
+            else 'PROMOTABLE'
+          end as eligibility
+        {base_sql}
+    """
+
+    promotable_samples = db.execute(text(f"""
+        {sample_select}
+        and c.review_status = 'APPROVED_FOR_PROMOTION'
+        and c.reviewer_decision in ('ACCEPT_DIRECT_CODE_MATCH', 'ACCEPT_REVIEWED_NAME_MATCH')
+        and c.candidate_bucket not in ('SPECIAL_REFERENCE_FEATURE', 'DISTRICT_SCOPED_AMBIGUOUS', 'PARENT_SCOPED_NAME_AMBIGUOUS', 'PARENT_MATCH_VILLAGE_UNRESOLVED')
+        and c.proposed_scope in ('village', 'village_review')
+        and c.proposed_village_id is not null
+        and f.geometry_validation_status in ('VALID', 'VALIDATED')
+        order by c.source_feature_index
+        limit :limit
+    """), params).mappings().all()
+
+    excluded_samples = db.execute(text(f"""
+        select * from ({sample_select}) q
+        where eligibility <> 'PROMOTABLE'
+        order by source_feature_index
+        limit :limit
+    """), params).mappings().all()
+
+    return {
+        "schema_version": "nwdp_boundary_runtime_promotion_dry_run.v1",
+        "mode": "DRY_RUN_READ_ONLY",
+        "governance": _nwdp_boundary_governance(),
+        "filters": {
+            "state_or_ut": state_or_ut,
+            "source_system": source_system,
+            "import_batch_id": str(import_batch_id) if import_batch_id else None,
+            "candidate_bucket": candidate_bucket,
+            "review_status": review_status,
+            "proposed_scope": proposed_scope,
+            "limit": limit,
+        },
+        "summary": {
+            "candidate_count": total,
+            "promotable_candidate_count": promotable_count,
+            "excluded_candidate_count": excluded_count,
+            "db_writes_attempted": False,
+            "runtime_tables_written": False,
+            "runtime_spatial_matching_changed": False,
+            "android_behavior_changed": False,
+        },
+        "eligibility_counts": [dict(row) for row in eligibility_rows],
+        "exclusion_counts": [dict(row) for row in eligibility_rows if row["eligibility"] != "PROMOTABLE"],
+        "promotable_samples": [dict(row) for row in promotable_samples],
+        "excluded_samples": [dict(row) for row in excluded_samples],
+        "readiness": {
+            "safe_read_only": True,
+            "ready_for_runtime_spatial_matching": False,
+            "android_behavior_changed": False,
+            "runtime_tables_required": True,
+            "promotion_supported_by_this_endpoint": False,
+        },
+    }
 
 
 @router.get("/nwdp-boundary-batches", response_model=NwdpBoundaryBatchListResponse)
