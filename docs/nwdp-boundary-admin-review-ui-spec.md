@@ -435,3 +435,28 @@ Governance remains unchanged:
 - review saves affect metadata only;
 - candidates remain inactive unless a future reviewed promotion workflow is separately designed;
 - no runtime spatial lookup table or active geometry path is enabled by this UI.
+
+## Review history panel checkpoint
+
+Status date: 2026-08-23
+
+Latest UI behavior:
+
+- selected candidate detail panel shows review history from the backend candidate detail payload;
+- newest review events are shown first;
+- each event can show decision/status, timestamp, reviewer id, and notes when present;
+- empty history is displayed as `No review history yet.`;
+- review history is read-only display context and does not enable promotion or runtime spatial matching.
+
+Regression coverage:
+
+- `web/smoke/nwdp_boundary_review_smoke.mjs` now asserts the Review history panel is present;
+- latest observed smoke result passed with 100 candidate rows rendered;
+- runtime spatial matching remains disabled.
+
+Governance remains unchanged:
+
+- review endpoint updates metadata only;
+- candidate rows remain inactive;
+- promotion remains unsupported from this UI;
+- Android behavior remains unchanged.
