@@ -217,3 +217,36 @@ It should calculate promotable candidates from current staging rows but keep:
 - ready_for_runtime_spatial_matching = false;
 - android_behavior_changed = false;
 - runtime_tables_required = true.
+
+## Stage 1 dry-run API checkpoint
+
+Status date: 2026-08-23
+
+Implemented endpoint:
+
+    GET /api/v1/master-data/geography/boundary-runtime-promotion/dry-run
+
+Current observed Karnataka result:
+
+- candidate_count: 29,789;
+- promotable_candidate_count: 0;
+- excluded_candidate_count: 29,789;
+- eligibility_counts: NOT_REVIEW_APPROVED = 29,789;
+- db_writes_attempted: false;
+- runtime_tables_written: false;
+- ready_for_runtime_spatial_matching: false;
+- android_behavior_changed: false;
+- runtime_tables_required: true.
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_runtime_promotion_dry_run.py`;
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`.
+
+Current decision:
+
+- the dry-run can calculate eligibility from inactive staging rows;
+- it does not create runtime rows;
+- it does not activate or promote candidates;
+- it does not enable Android or runtime spatial lookup;
+- next runtime work should design and migrate separate runtime tables before any lookup API is enabled.
