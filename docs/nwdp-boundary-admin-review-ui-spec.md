@@ -499,3 +499,53 @@ Governance remains unchanged:
 - candidates remain inactive;
 - promotion remains unsupported from the UI;
 - no runtime spatial lookup path is enabled.
+
+## Combined web smoke runner checkpoint
+
+Status date: 2026-08-23
+
+Runner:
+
+- `web/smoke/run_nwdp_boundary_review_smokes.mjs`
+
+Covered smokes:
+
+- `web/smoke/nwdp_boundary_review_smoke.mjs`;
+- `web/smoke/nwdp_boundary_review_save_smoke.mjs`.
+
+Latest observed result:
+
+- status: passed;
+- review smoke rows seen: 100;
+- save smoke rows seen: 100;
+- runtime spatial matching expected: disabled;
+- screenshots generated locally under `web/smoke/screenshots/`.
+
+Current decision:
+
+- NWDP boundary admin UI has a compact web smoke runner for read/detail/guard-hint and safe metadata-save coverage;
+- screenshots remain local smoke artifacts and are not committed by default;
+- backend and frontend review flows remain metadata-only and do not promote or activate boundary candidates.
+
+## Combined web smoke runner checkpoint
+
+Status date: 2026-08-23
+
+Runner:
+
+- `web/smoke/run_nwdp_boundary_review_smokes.mjs`
+
+Latest observed result:
+
+- `nwdp_boundary_review_smoke.mjs`: passed;
+- `nwdp_boundary_review_save_smoke.mjs`: passed;
+- rows seen: 100 in each smoke;
+- runtime spatial matching expected state: disabled;
+- screenshots are written under `web/smoke/screenshots/` and remain local smoke artifacts.
+
+Current decision:
+
+- NWDP boundary admin UI has a compact web smoke runner;
+- backend and frontend review flows remain metadata-only;
+- review saves do not promote or activate boundary candidates;
+- runtime point-in-polygon behavior remains unchanged.
