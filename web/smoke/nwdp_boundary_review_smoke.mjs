@@ -107,6 +107,7 @@ for (let attempt = 0; attempt < 30; attempt += 1) {
 await page.getByText("Source codes").waitFor({ timeout: 15000 });
 await page.getByText("Source names").waitFor({ timeout: 15000 });
 await page.getByText("Source feature").waitFor({ timeout: 15000 });
+await page.getByText("Review history").waitFor({ timeout: 15000 });
 
 await page.getByRole("button", { name: "Direct code candidates" }).click();
 await page.waitForFunction(() => {
