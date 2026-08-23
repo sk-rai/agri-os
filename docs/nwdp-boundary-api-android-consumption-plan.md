@@ -250,3 +250,39 @@ Current decision:
 - it does not activate or promote candidates;
 - it does not enable Android or runtime spatial lookup;
 - next runtime work should design and migrate separate runtime tables before any lookup API is enabled.
+
+## Runtime table schema checkpoint
+
+Status date: 2026-08-23
+
+Migration added:
+
+- `backend/alembic/versions/055_add_nwdp_boundary_runtime_tables.py`
+
+Runtime table family:
+
+- geography_boundary_runtime_sets
+- geography_boundary_runtime_features
+- geography_boundary_runtime_crosswalks
+- geography_boundary_runtime_promotion_events
+
+Schema guard:
+
+- `backend/scripts/test_nwdp_boundary_runtime_schema_guard.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Latest observed guard result:
+
+- healthy: true;
+- migration_applied: false;
+- db_writes_attempted: false;
+- ready_for_runtime_spatial_matching: false;
+- android_behavior_changed: false.
+
+Current decision:
+
+- runtime tables are schema-only at this checkpoint;
+- no runtime rows are loaded;
+- no staging candidate is activated or promoted;
+- no lookup API is enabled;
+- Android behavior remains unchanged.
