@@ -383,3 +383,52 @@ The future runtime apply implementation should be a separate checkpoint and shou
 Current decision:
 
 Do not remove the apply block in-place as a small edit. The next implementation should add an explicit runtime apply policy gate and regression around the tiny pilot write shape before any runtime lookup endpoint is introduced.
+
+## Tiny pilot runtime apply checkpoint
+
+Status date: 2026-08-24.
+
+The runtime importer now supports an explicit tiny-pilot policy gate:
+
+- script: `backend/scripts/promote_nwdp_boundary_runtime.py`;
+- policy flag: `--allow-tiny-pilot-runtime-write`;
+- regression: `backend/scripts/test_nwdp_boundary_runtime_tiny_pilot_apply.py`;
+- runner: `backend/scripts/run_nwdp_boundary_regressions.py`.
+
+Observed applied runtime row shape:
+
+- geography_boundary_runtime_sets: 1;
+- geography_boundary_runtime_features: 10;
+- geography_boundary_runtime_crosswalks: 10;
+- geography_boundary_runtime_promotion_events: 1.
+
+Observed inactive guardrails:
+
+- runtime active counts are zero for sets, features, crosswalks, and promotion events;
+- runtime set status: `PILOT_IMPORTED_INACTIVE`;
+- runtime set activation_status: `INACTIVE`;
+- promotion event mode: `TINY_PILOT_REVIEWED_BATCH`;
+- promotion event status: `APPLIED`;
+- promotion event is_active: false;
+- candidate_count: 10;
+- runtime_feature_count: 10;
+- runtime_crosswalk_count: 10.
+
+Observed staging guardrails:
+
+- pilot staging candidates remain inactive: 10/10;
+- pilot staging candidates remain NOT_PROMOTED: 10/10;
+- pilot staging candidates remain APPROVED_FOR_PROMOTION: 10/10;
+- pilot staging candidates retain ACCEPT_DIRECT_CODE_MATCH: 10/10.
+
+Repeat apply guard:
+
+- repeat apply exits non-zero;
+- repeat apply error: `RUNTIME_TABLES_NOT_EMPTY_TINY_PILOT_APPLY_REQUIRES_EMPTY_RUNTIME_TABLES`;
+- repeat apply reports `db_writes_attempted = false`;
+- repeat apply reports `runtime_rows_effective = 0`;
+- existing runtime counts remain 1/10/10/1.
+
+Current decision:
+
+The tiny pilot runtime rows exist only as inactive runtime materialization. Runtime spatial matching is still not ready, no runtime lookup API is enabled, and Android behavior remains unchanged. The next checkpoint should verify read-only inspection/reporting for inactive runtime rows before any activation or lookup work is considered.
