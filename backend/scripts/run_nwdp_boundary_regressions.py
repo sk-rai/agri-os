@@ -17,6 +17,7 @@ CHECKS = [
     ("admin read endpoints", [str(PYTHON), "scripts/test_nwdp_boundary_admin_read_endpoints.py"]),
     ("admin review endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_admin_review_endpoint.py"]),
     ("runtime tiny pilot apply", [str(PYTHON), "scripts/test_nwdp_boundary_runtime_tiny_pilot_apply.py"]),
+    ("runtime pilot inspection", [str(PYTHON), "scripts/test_nwdp_boundary_runtime_pilot_inspection.py"]),
 ]
 
 
