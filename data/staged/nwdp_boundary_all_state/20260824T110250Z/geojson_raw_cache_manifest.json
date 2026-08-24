@@ -1,0 +1,581 @@
+{
+  "files": [
+    {
+      "feature_count": 669,
+      "geometry_type_counts": {
+        "MultiPolygon": 669
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/andaman_and_nicobar_islands.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/8ecd1271-1838-4413-9d9a-599b122a2e8a/download/vb_soi_an_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/8ecd1271-1838-4413-9d9a-599b122a2e8a",
+      "sha256": "46236e51de89a034b99863600b9f46d24a4ed3e01905362fc90ac4b73de20591",
+      "size_bytes": 7925657,
+      "state_or_ut": "Andaman and Nicobar Islands"
+    },
+    {
+      "feature_count": 18100,
+      "geometry_type_counts": {
+        "MultiPolygon": 18100
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/andhra_pradesh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/80335829-b05e-4b0f-a920-91971a93bce1/download/vb_soi_ap_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/80335829-b05e-4b0f-a920-91971a93bce1",
+      "sha256": "a2b5634461e30391dfe5614243d3fca755c68e6fff3b3ef5f316b52ae95b0497",
+      "size_bytes": 114219837,
+      "state_or_ut": "Andhra Pradesh"
+    },
+    {
+      "feature_count": 5803,
+      "geometry_type_counts": {
+        "MultiPolygon": 5803
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/arunachal_pradesh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/e47e23ab-7f6a-432a-8218-aa7e778e170c/download/vb_soi_ar_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/e47e23ab-7f6a-432a-8218-aa7e778e170c",
+      "sha256": "ae3f4fdfa82bb93f7714ce1b18096658caa2c1c1e870d3da72c731ed616f512a",
+      "size_bytes": 26838096,
+      "state_or_ut": "Arunachal Pradesh"
+    },
+    {
+      "feature_count": 26662,
+      "geometry_type_counts": {
+        "MultiPolygon": 26662
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/assam.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/bd9571d5-4874-4cfd-a78e-9d1fdddbe0b2/download/vb_soi_as_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/bd9571d5-4874-4cfd-a78e-9d1fdddbe0b2",
+      "sha256": "97bc2ba707ecc5a4e2953afc89c45e0a8aa1f604bb4d29b0c929305d5101c363",
+      "size_bytes": 107673533,
+      "state_or_ut": "Assam"
+    },
+    {
+      "feature_count": 45063,
+      "geometry_type_counts": {
+        "MultiPolygon": 45063
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/bihar.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/6f68ad30-a395-4037-a64a-ff42b3fd5a25/download/vb_soi_br_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/6f68ad30-a395-4037-a64a-ff42b3fd5a25",
+      "sha256": "885d34349a3e16fb2ea8706256d3882a5580115ab3af1408a4c9116eb7317912",
+      "size_bytes": 217482473,
+      "state_or_ut": "Bihar"
+    },
+    {
+      "feature_count": 13,
+      "geometry_type_counts": {
+        "MultiPolygon": 13
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/chandigarh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/f7c76b46-75a6-4ab8-a64e-fe0764f20c55/download/vb_soi_ch_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/f7c76b46-75a6-4ab8-a64e-fe0764f20c55",
+      "sha256": "4a397db68f5c15703b4e64e3fc3d01f39ece30b448c567bb9710582d837fa47b",
+      "size_bytes": 120901,
+      "state_or_ut": "Chandigarh"
+    },
+    {
+      "feature_count": 20811,
+      "geometry_type_counts": {
+        "MultiPolygon": 20811
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/chhattisgarh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/f91bf1e3-b973-46ae-9c5e-1a815a366f61/download/vb_soi_cg_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/f91bf1e3-b973-46ae-9c5e-1a815a366f61",
+      "sha256": "476581b755bc853029d29cd9508861238cb33abebcf2a176dea636c333d84a93",
+      "size_bytes": 132757646,
+      "state_or_ut": "Chhattisgarh"
+    },
+    {
+      "feature_count": 101,
+      "geometry_type_counts": {
+        "MultiPolygon": 101
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/dadra_and_nagar_haveli_and_daman_diu.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/2f408b46-6b7b-4cd1-95e6-95b4101b0041/download/vb_soi_dh_dd_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/2f408b46-6b7b-4cd1-95e6-95b4101b0041",
+      "sha256": "776b266101c56d27cf605b9c80d341dcd9b0ec6f8026730484229855021dbc4e",
+      "size_bytes": 699271,
+      "state_or_ut": "Dadra and Nagar Haveli and Daman & Diu"
+    },
+    {
+      "feature_count": 254,
+      "geometry_type_counts": {
+        "MultiPolygon": 254
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/delhi.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/634ff8c6-03e6-45d1-b1a1-fcc9cc4a6842/download/vb_soi_dl_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/634ff8c6-03e6-45d1-b1a1-fcc9cc4a6842",
+      "sha256": "0411a0da45bb021ef95c82572a9d7966a0f11bd2ca45dbc7eb9cf909e0e507a9",
+      "size_bytes": 1908468,
+      "state_or_ut": "Delhi"
+    },
+    {
+      "feature_count": 412,
+      "geometry_type_counts": {
+        "MultiPolygon": 412
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/goa.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/1e2bab81-768d-475b-884c-3409d2b5dbd8/download/vb_soi_ga_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/1e2bab81-768d-475b-884c-3409d2b5dbd8",
+      "sha256": "60f6f8062b3bb81373b33b6cc434f5bea9bc1e40e34f1ab6ac99cb836868bf9a",
+      "size_bytes": 4348216,
+      "state_or_ut": "Goa"
+    },
+    {
+      "feature_count": 18838,
+      "geometry_type_counts": {
+        "MultiPolygon": 18838
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/gujarat.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/4ce4dc83-fe99-4394-b4db-55b51554828c/download/vb_soi_gj_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/4ce4dc83-fe99-4394-b4db-55b51554828c",
+      "sha256": "876fe8a5c6394c1704be74a610811f9f580d28858e950606e98e5ef6339d7676",
+      "size_bytes": 162296399,
+      "state_or_ut": "Gujarat"
+    },
+    {
+      "feature_count": 7010,
+      "geometry_type_counts": {
+        "MultiPolygon": 7010
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/haryana.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/534d7cd1-357e-4919-a672-a2eb77265f72/download/vb_soi_hr_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/534d7cd1-357e-4919-a672-a2eb77265f72",
+      "sha256": "d39dda744162fec3e20943ea6a5d67bbeddad82d102ee68f0567994ab7fdc54f",
+      "size_bytes": 32005605,
+      "state_or_ut": "Haryana"
+    },
+    {
+      "feature_count": 20773,
+      "geometry_type_counts": {
+        "MultiPolygon": 20773
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/himachal_pradesh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/5e83ba19-b3bc-4dbc-be5f-33b0d229b1b3/download/vb_soi_hp_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/5e83ba19-b3bc-4dbc-be5f-33b0d229b1b3",
+      "sha256": "ef14c3c18e41a631ddb7014db938595996c3836f65250f67d4a4cbd6b335bf5a",
+      "size_bytes": 87012925,
+      "state_or_ut": "Himachal Pradesh"
+    },
+    {
+      "feature_count": 6593,
+      "geometry_type_counts": {
+        "MultiPolygon": 6593
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/jammu_kashmir.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/c65985c9-8e44-45e1-9ade-a54e9c747b63/download/vb_soi_jk_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/c65985c9-8e44-45e1-9ade-a54e9c747b63",
+      "sha256": "bd1bcd4cec614cca521f09dc1160a75254f3120bee5dd0ad7f521280c3d9a155",
+      "size_bytes": 29096085,
+      "state_or_ut": "Jammu & Kashmir"
+    },
+    {
+      "feature_count": 32678,
+      "geometry_type_counts": {
+        "MultiPolygon": 32678
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/jharkhand.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/fb3b2f75-430c-4830-abec-5cec058b777d/download/vb_soi_jh_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/fb3b2f75-430c-4830-abec-5cec058b777d",
+      "sha256": "4b0103e3d524413b5da8161ecfef070155b16541022bb9b4588136272b4f1809",
+      "size_bytes": 154224507,
+      "state_or_ut": "Jharkhand"
+    },
+    {
+      "feature_count": 29789,
+      "geometry_type_counts": {
+        "MultiPolygon": 29789
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/karnataka.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/1fd9b5a0-2a73-4404-9e45-7c1f3968e545/download/vb_soi_ka_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/1fd9b5a0-2a73-4404-9e45-7c1f3968e545",
+      "sha256": "025495a467a88833c40c2417e4b730ab9b16d6f2b8d67a3651aec8053bad125c",
+      "size_bytes": 144011808,
+      "state_or_ut": "Karnataka"
+    },
+    {
+      "feature_count": 1556,
+      "geometry_type_counts": {
+        "MultiPolygon": 1556
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/kerala.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/e7968f1b-b9dc-4d30-9f55-6dbefba9fff6/download/vb_soi_kl_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/e7968f1b-b9dc-4d30-9f55-6dbefba9fff6",
+      "sha256": "0d9251c561f220bbc3d26608a1482f1559e328fae5b17db9176237c14bbf37bb",
+      "size_bytes": 20448456,
+      "state_or_ut": "Kerala"
+    },
+    {
+      "feature_count": 250,
+      "geometry_type_counts": {
+        "MultiPolygon": 250
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/ladakh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/72cbc4f1-acb2-46d6-87b9-9496572318d4/download/vb_soi_lk_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/72cbc4f1-acb2-46d6-87b9-9496572318d4",
+      "sha256": "29a230f5a27e2ed423896272c540456b9c405b3e33f288f0b81c2249c2f233e5",
+      "size_bytes": 1859677,
+      "state_or_ut": "Ladakh"
+    },
+    {
+      "feature_count": 34,
+      "geometry_type_counts": {
+        "MultiPolygon": 34
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/lakshadweep.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/d9e5840a-76cc-4456-88e6-b5d5c4bbab6d/download/vb_soi_ld_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/d9e5840a-76cc-4456-88e6-b5d5c4bbab6d",
+      "sha256": "d365a503bbe12f9f9ec4422b6ec637eb6b3fd4ac9c670888c74e07357c56b116",
+      "size_bytes": 182242,
+      "state_or_ut": "Lakshadweep"
+    },
+    {
+      "feature_count": 55937,
+      "geometry_type_counts": {
+        "MultiPolygon": 55937
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/madhya_pradesh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/6312f443-cbb0-4bad-b889-daf09d45d39f/download/vb_soi_mp_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/6312f443-cbb0-4bad-b889-daf09d45d39f",
+      "sha256": "53a72dc740fec9f080131a7e0b91ef4ac359cbf3f950ab93dc1d8c9634d71b84",
+      "size_bytes": 241484657,
+      "state_or_ut": "Madhya Pradesh"
+    },
+    {
+      "feature_count": 44468,
+      "geometry_type_counts": {
+        "MultiPolygon": 44468
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/maharashtra.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/41bc7681-d90c-4338-8fdc-35f5f98bc417/download/vb_soi_mh_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/41bc7681-d90c-4338-8fdc-35f5f98bc417",
+      "sha256": "bf5c06c30ef903e126d38a3331fd3cbac350ecb9ba2010ed3a1d0ae46f7e3726",
+      "size_bytes": 247004903,
+      "state_or_ut": "Maharashtra"
+    },
+    {
+      "feature_count": 2674,
+      "geometry_type_counts": {
+        "MultiPolygon": 2674
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/manipur.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/dcb99b37-d358-481c-af8e-42ae64723511/download/vb_soi_mn_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/dcb99b37-d358-481c-af8e-42ae64723511",
+      "sha256": "8b8ef8ed8c9aa0626ed5c4b2034496965be855a4fd111c0b8a16aa2f8538b1d4",
+      "size_bytes": 12049371,
+      "state_or_ut": "Manipur"
+    },
+    {
+      "feature_count": 6897,
+      "geometry_type_counts": {
+        "MultiPolygon": 6897
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/meghalaya.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/b11b4193-c185-477c-8eab-7e365f0bf751/download/vb_soi_ml_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/b11b4193-c185-477c-8eab-7e365f0bf751",
+      "sha256": "f43058e120afd280335268053f5c2aa46fccbb4f5064a307a71c882d7a98a731",
+      "size_bytes": 30757657,
+      "state_or_ut": "Meghalaya"
+    },
+    {
+      "feature_count": 881,
+      "geometry_type_counts": {
+        "MultiPolygon": 881
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/mizoram.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/d6c6f0f1-981b-4f31-8708-0c01e95637ed/download/vb_soi_mz_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/d6c6f0f1-981b-4f31-8708-0c01e95637ed",
+      "sha256": "ce2ba5067a79002e0606e9fc62e1d31e71318971c655a8f5df9de5f998da70a4",
+      "size_bytes": 5886052,
+      "state_or_ut": "Mizoram"
+    },
+    {
+      "feature_count": 1564,
+      "geometry_type_counts": {
+        "MultiPolygon": 1564
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/nagaland.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/41739322-d899-4471-ba51-adf8cb44c622/download/vb_soi_nl_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/41739322-d899-4471-ba51-adf8cb44c622",
+      "sha256": "2ec08b0d228a35b7bcc2ea677ab121a27cf6a5fff88a4aa581d9bd2a5b376bfa",
+      "size_bytes": 9122742,
+      "state_or_ut": "Nagaland"
+    },
+    {
+      "feature_count": 53320,
+      "geometry_type_counts": {
+        "MultiPolygon": 53320
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/odisha.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/8b78c6a6-1e58-485f-bb37-c7812fb93d18/download/vb_soi_or_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/8b78c6a6-1e58-485f-bb37-c7812fb93d18",
+      "sha256": "39d8ca7d4a640aa91b18ba98b6e77c1e4340e5fbfe60736d19d3355294b6eb81",
+      "size_bytes": 317069945,
+      "state_or_ut": "Odisha"
+    },
+    {
+      "feature_count": 101,
+      "geometry_type_counts": {
+        "MultiPolygon": 101
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/puducherry.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/dd9cd307-f03a-49e1-8409-bad2d5568afc/download/vb_soi_py_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/dd9cd307-f03a-49e1-8409-bad2d5568afc",
+      "sha256": "0f63c4f440acba5a86f3e43ecb03e5c967758baf9eb5b8105ccbf2ee83db28fa",
+      "size_bytes": 681875,
+      "state_or_ut": "Puducherry"
+    },
+    {
+      "feature_count": 12860,
+      "geometry_type_counts": {
+        "MultiPolygon": 12860
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/punjab.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/2d014771-e5ff-4ee4-8b3d-730daa2e0d88/download/vb_soi_pb_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/2d014771-e5ff-4ee4-8b3d-730daa2e0d88",
+      "sha256": "37abcedd638eb93ad5c55b4a3b5600482f0b9834a7779021b92c9e5749393424",
+      "size_bytes": 70387459,
+      "state_or_ut": "Punjab"
+    },
+    {
+      "feature_count": 45012,
+      "geometry_type_counts": {
+        "MultiPolygon": 45012
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/rajasthan.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/fac4d409-954a-477d-8124-6607fcbd5a74/download/vb_soi_rj_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/fac4d409-954a-477d-8124-6607fcbd5a74",
+      "sha256": "fbfffeba1d6918adf882f95964bf25cd55e3adaf886138a044a4f1ad7dbd9364",
+      "size_bytes": 184908295,
+      "state_or_ut": "Rajasthan"
+    },
+    {
+      "feature_count": 484,
+      "geometry_type_counts": {
+        "MultiPolygon": 484
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/sikkim.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/53071bb3-7403-4963-ace9-4f08ca1954ee/download/vb_soi_sk_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/53071bb3-7403-4963-ace9-4f08ca1954ee",
+      "sha256": "733ed5ca145e5d65320c6f464fff8879558c54a6184f44f94139a4fd1b113c48",
+      "size_bytes": 4224198,
+      "state_or_ut": "Sikkim"
+    },
+    {
+      "feature_count": 17119,
+      "geometry_type_counts": {
+        "MultiPolygon": 17119
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/tamil_nadu.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/6ffc418d-317b-42e7-9191-26612a05f1ad/download/vb_soi_tn_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/6ffc418d-317b-42e7-9191-26612a05f1ad",
+      "sha256": "9981d9e045880069a0689e798598497c0f19026b9fd8f087d8fc732864044fb2",
+      "size_bytes": 108237707,
+      "state_or_ut": "Tamil Nadu"
+    },
+    {
+      "feature_count": 10718,
+      "geometry_type_counts": {
+        "MultiPolygon": 10718
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/telangana.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/4e8ef6b2-d503-4258-b843-c342895d97de/download/vb_soi_ts_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/4e8ef6b2-d503-4258-b843-c342895d97de",
+      "sha256": "1f4180d6ec56c7e4a1f626859c3a00a759e6a9318d1d6063c565f57dece087e5",
+      "size_bytes": 56777298,
+      "state_or_ut": "Telangana"
+    },
+    {
+      "feature_count": 917,
+      "geometry_type_counts": {
+        "MultiPolygon": 917
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/tripura.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/7a3a4855-2271-4f2b-a588-fd36d54e4af6/download/vb_soi_tr_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/7a3a4855-2271-4f2b-a588-fd36d54e4af6",
+      "sha256": "6de3822eba9d42fde9b0b3cf5da0c91fbe7ab9ce3b731d010399491670bc5b01",
+      "size_bytes": 7411504,
+      "state_or_ut": "Tripura"
+    },
+    {
+      "feature_count": 107816,
+      "geometry_type_counts": {
+        "MultiPolygon": 107816
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/uttar_pradesh.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/4756a27b-afc6-470f-af40-b418d830e298/download/vb_soi_up_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/4756a27b-afc6-470f-af40-b418d830e298",
+      "sha256": "108ea15c7ec1746c67a53a6edc10aa1ee740a55fe1cdb4f8bf79feafdd104a80",
+      "size_bytes": 605942368,
+      "state_or_ut": "Uttar Pradesh"
+    },
+    {
+      "feature_count": 16920,
+      "geometry_type_counts": {
+        "MultiPolygon": 16920
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/uttarakhand.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/a2897943-3b36-4a3e-a4cf-7c0d247c8b7b/download/vb_soi_uk_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/a2897943-3b36-4a3e-a4cf-7c0d247c8b7b",
+      "sha256": "5b3d40c3af0e711c31e0e9ff08013f19a7e162d15ff3dd785b4cb5293cba1ad6",
+      "size_bytes": 80517196,
+      "state_or_ut": "Uttarakhand"
+    },
+    {
+      "feature_count": 41188,
+      "geometry_type_counts": {
+        "MultiPolygon": 41188
+      },
+      "path": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/west_bengal.geojson",
+      "requires_crs_transform": true,
+      "resolved_url": "https://nwdp.nwic.gov.in/dataset/9bad17f2-9d88-428d-98ad-831ef01ae2e4/resource/1a8e4af1-42ad-4403-b116-3e8e6f357a88/download/vb_soi_wb_geojson.zip",
+      "resource_url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/1a8e4af1-42ad-4403-b116-3e8e6f357a88",
+      "sha256": "42cc676d414fc27e562a8ce3f3fc37d03680fc5e1eca5e6873687ca9873d5764",
+      "size_bytes": 253250181,
+      "state_or_ut": "West Bengal"
+    }
+  ],
+  "generated_at": "2026-08-24T11:26:09.234729+00:00",
+  "guardrails": {
+    "android_behavior_changed": false,
+    "db_writes_attempted": false,
+    "raw_cache_only": true,
+    "runtime_spatial_matching_changed": false,
+    "runtime_tables_written": false,
+    "staging_import_not_started": true
+  },
+  "healthy": true,
+  "mode": "RAW_CACHE_MANIFEST_ONLY",
+  "next_actions": [
+    "Create CRS transform/materialization plan for all-state GeoJSON",
+    "Generate all-state match/non-match candidate reports without DB writes",
+    "Import inactive staging rows only after transform and candidate plan are reviewed"
+  ],
+  "raw_output_dir": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z",
+  "schema_version": "nwdp_boundary_all_state_geojson_raw_cache_manifest.v1",
+  "summary": {
+    "downloaded_state_count": 36,
+    "guardrails": {
+      "android_behavior_changed": false,
+      "db_writes_attempted": false,
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "staging_import_not_started": true
+    },
+    "healthy": true,
+    "parseable_state_count": 36,
+    "raw_output_dir": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z",
+    "schema_version": "nwdp_boundary_all_state_geojson_download_corrected_summary.v1",
+    "state_feature_counts": {
+      "Andaman and Nicobar Islands": 669,
+      "Andhra Pradesh": 18100,
+      "Arunachal Pradesh": 5803,
+      "Assam": 26662,
+      "Bihar": 45063,
+      "Chandigarh": 13,
+      "Chhattisgarh": 20811,
+      "Dadra and Nagar Haveli and Daman & Diu": 101,
+      "Delhi": 254,
+      "Goa": 412,
+      "Gujarat": 18838,
+      "Haryana": 7010,
+      "Himachal Pradesh": 20773,
+      "Jammu & Kashmir": 6593,
+      "Jharkhand": 32678,
+      "Karnataka": 29789,
+      "Kerala": 1556,
+      "Ladakh": 250,
+      "Lakshadweep": 34,
+      "Madhya Pradesh": 55937,
+      "Maharashtra": 44468,
+      "Manipur": 2674,
+      "Meghalaya": 6897,
+      "Mizoram": 881,
+      "Nagaland": 1564,
+      "Odisha": 53320,
+      "Puducherry": 101,
+      "Punjab": 12860,
+      "Rajasthan": 45012,
+      "Sikkim": 484,
+      "Tamil Nadu": 17119,
+      "Telangana": 10718,
+      "Tripura": 917,
+      "Uttar Pradesh": 107816,
+      "Uttarakhand": 16920,
+      "West Bengal": 41188
+    },
+    "states_requiring_crs_transform": [
+      "Andaman and Nicobar Islands",
+      "Andhra Pradesh",
+      "Arunachal Pradesh",
+      "Assam",
+      "Bihar",
+      "Chandigarh",
+      "Chhattisgarh",
+      "Dadra and Nagar Haveli and Daman & Diu",
+      "Delhi",
+      "Goa",
+      "Gujarat",
+      "Haryana",
+      "Himachal Pradesh",
+      "Jammu & Kashmir",
+      "Jharkhand",
+      "Karnataka",
+      "Kerala",
+      "Ladakh",
+      "Lakshadweep",
+      "Madhya Pradesh",
+      "Maharashtra",
+      "Manipur",
+      "Meghalaya",
+      "Mizoram",
+      "Nagaland",
+      "Odisha",
+      "Puducherry",
+      "Punjab",
+      "Rajasthan",
+      "Sikkim",
+      "Tamil Nadu",
+      "Telangana",
+      "Tripura",
+      "Uttar Pradesh",
+      "Uttarakhand",
+      "West Bengal"
+    ],
+    "total_feature_count": 654285
+  }
+}
