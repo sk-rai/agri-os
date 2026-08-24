@@ -351,3 +351,35 @@ Guardrails preserved:
 Current decision:
 
 The pilot now demonstrates that reviewer metadata plus materialized geometry produces exactly 10 promotable candidates in dry-run. The runtime importer remains dry-run-first and still blocks runtime table writes. A future runtime apply checkpoint must be explicit, separately reviewed, and followed by verification before any lookup API is introduced.
+
+## Runtime apply design checkpoint
+
+Status date: 2026-08-24.
+
+Current runtime importer state:
+
+- `backend/scripts/promote_nwdp_boundary_runtime.py` remains dry-run-first;
+- `--apply` is blocked by design;
+- blocked apply error: `APPLY_BLOCKED_PENDING_REVIEWED_RUNTIME_PROMOTION_POLICY`;
+- `ready_for_runtime_table_write` remains false;
+- `ready_for_runtime_spatial_matching` remains false;
+- runtime table counts remain zero.
+
+The future runtime apply implementation should be a separate checkpoint and should keep these design constraints:
+
+1. only eligible PROMOTABLE rows may be written;
+2. the tiny pilot must write exactly:
+   - 1 inactive runtime set;
+   - 10 inactive runtime features;
+   - 10 inactive runtime crosswalks;
+   - 1 promotion event;
+3. staging candidates must remain inactive;
+4. staging candidates must remain NOT_PROMOTED until a separate activation/supersession policy exists;
+5. runtime set activation must remain false/inactive at initial write;
+6. lookup APIs must remain absent;
+7. Android behavior must remain unchanged;
+8. post-apply verification must prove runtime row counts and candidate guardrails before any lookup work starts.
+
+Current decision:
+
+Do not remove the apply block in-place as a small edit. The next implementation should add an explicit runtime apply policy gate and regression around the tiny pilot write shape before any runtime lookup endpoint is introduced.
