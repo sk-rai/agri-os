@@ -432,3 +432,44 @@ Repeat apply guard:
 Current decision:
 
 The tiny pilot runtime rows exist only as inactive runtime materialization. Runtime spatial matching is still not ready, no runtime lookup API is enabled, and Android behavior remains unchanged. The next checkpoint should verify read-only inspection/reporting for inactive runtime rows before any activation or lookup work is considered.
+
+## Runtime pilot inspection checkpoint — 2026-08-24
+
+After the tiny pilot inactive runtime write, a read-only inspection checkpoint was added and verified.
+
+Inspection artifacts:
+
+- `backend/scripts/inspect_nwdp_boundary_runtime_pilot.py`
+- `backend/scripts/test_nwdp_boundary_runtime_pilot_inspection.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Observed runtime shape:
+
+- runtime sets: 1
+- runtime features: 10
+- runtime crosswalks: 10
+- runtime promotion events: 1
+- active runtime rows: 0 across all runtime tables
+
+Observed guardrails:
+
+- runtime set status remains `PILOT_IMPORTED_INACTIVE`
+- runtime set `activation_status` remains `INACTIVE`
+- runtime set `is_active=false`
+- promotion event mode is `TINY_PILOT_REVIEWED_BATCH`
+- promotion event status is `APPLIED`
+- promotion event `is_active=false`
+- linked staging candidates remain inactive
+- linked staging candidates remain `promotion_status=NOT_PROMOTED`
+- linked staging candidates remain reviewer-approved only, not activated
+
+Readiness remains intentionally constrained:
+
+- `runtime_rows_available_for_review=true`
+- `runtime_rows_active=false`
+- `lookup_api_enabled=false`
+- `ready_for_runtime_spatial_matching=false`
+- `android_behavior_changed=false`
+
+Decision: inactive runtime rows are now inspectable for review, but they are not eligible for runtime lookup, Android behavior, or spatial matching until a separate activation policy and verification checkpoint is approved.
+
