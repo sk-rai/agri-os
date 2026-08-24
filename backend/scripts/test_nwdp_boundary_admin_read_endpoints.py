@@ -109,6 +109,28 @@ def main() -> int:
         check(candidate_detail_data["candidate"]["is_active"] is False, "Candidate detail row remains inactive", candidate_detail_data["candidate"])
         check(candidate_detail_data["candidate"]["promotion_status"] == "NOT_PROMOTED", "Candidate detail row remains unpromoted", candidate_detail_data["candidate"])
 
+        runtime_inspection = client.get(
+            "/api/v1/master-data/geography/boundary-runtime-pilot/inspection?limit=10",
+            headers=headers,
+        )
+        check(runtime_inspection.status_code == 200, "Admin viewer can inspect inactive runtime pilot rows", runtime_inspection.text[:800])
+        runtime_inspection_data = runtime_inspection.json()
+        check(runtime_inspection_data["schema_version"] == "nwdp_boundary_runtime_pilot_inspection.v1", "Runtime inspection schema version is stable", runtime_inspection_data)
+        check(runtime_inspection_data["mode"] == "READ_ONLY_RUNTIME_PILOT_INSPECTION", "Runtime inspection is read-only", runtime_inspection_data)
+        check(runtime_inspection_data["db_writes_attempted"] is False, "Runtime inspection attempts no DB writes", runtime_inspection_data)
+        check(runtime_inspection_data["runtime_tables_written"] is False, "Runtime inspection writes no runtime tables", runtime_inspection_data)
+        check(runtime_inspection_data["runtime_spatial_matching_changed"] is False, "Runtime inspection keeps matching disabled", runtime_inspection_data)
+        check(runtime_inspection_data["android_behavior_changed"] is False, "Runtime inspection keeps Android unchanged", runtime_inspection_data)
+        check(runtime_inspection_data["inspection"]["runtime_counts"] == {
+            "geography_boundary_runtime_sets": 1,
+            "geography_boundary_runtime_features": 10,
+            "geography_boundary_runtime_crosswalks": 10,
+            "geography_boundary_runtime_promotion_events": 1,
+        }, "Runtime inspection reports pilot row shape", runtime_inspection_data["inspection"]["runtime_counts"])
+        check(all(value == 0 for value in runtime_inspection_data["inspection"]["runtime_active_counts"].values()), "Runtime inspection reports no active runtime rows", runtime_inspection_data["inspection"]["runtime_active_counts"])
+        check(runtime_inspection_data["readiness"]["lookup_api_enabled"] is False, "Runtime inspection keeps lookup disabled", runtime_inspection_data["readiness"])
+        check(runtime_inspection_data["readiness"]["ready_for_runtime_spatial_matching"] is False, "Runtime inspection keeps spatial matching disabled", runtime_inspection_data["readiness"])
+
         after = staging_summary(db)
         check(after["candidates"] == before["candidates"], "Read endpoints did not create/delete candidates", dict(after))
         check(after["active_candidates"] == 0, "Read endpoints did not activate candidates", dict(after))

@@ -230,6 +230,18 @@ class NwdpBoundaryRuntimePromotionDryRunResponse(BaseModel):
     readiness: dict
 
 
+class NwdpBoundaryRuntimePilotInspectionResponse(BaseModel):
+    schema_version: str
+    mode: str
+    governance: dict
+    db_writes_attempted: bool
+    runtime_tables_written: bool
+    runtime_spatial_matching_changed: bool
+    android_behavior_changed: bool
+    inspection: dict
+    readiness: dict
+
+
 class NwdpBoundaryCandidateReviewRequest(BaseModel):
     reviewer_decision: str = Field(
         ...,
@@ -258,6 +270,122 @@ def _nwdp_boundary_governance(db_write_scope: str = "NONE") -> dict:
 
 def _jsonish(value):
     return value if value is not None else {}
+
+
+NWDP_BOUNDARY_RUNTIME_TABLES = [
+    "geography_boundary_runtime_sets",
+    "geography_boundary_runtime_features",
+    "geography_boundary_runtime_crosswalks",
+    "geography_boundary_runtime_promotion_events",
+]
+
+
+def _nwdp_boundary_runtime_pilot_inspection(db: Session, limit: int) -> dict:
+    runtime_counts = {
+        table: int(db.execute(text(f"select count(*) from {table}")).scalar() or 0)
+        for table in NWDP_BOUNDARY_RUNTIME_TABLES
+    }
+    runtime_active_counts = {
+        table: int(db.execute(text(f"select count(*) from {table} where is_active = true")).scalar() or 0)
+        for table in NWDP_BOUNDARY_RUNTIME_TABLES
+    }
+    runtime_sets = [dict(row) for row in db.execute(text("""
+        select id::text as runtime_set_id, status, activation_status, is_active,
+               source_system, state_or_ut, source_format
+        from geography_boundary_runtime_sets
+        order by created_at, id
+    """)).mappings().all()]
+    promotion_events = [dict(row) for row in db.execute(text("""
+        select id::text as promotion_event_id, runtime_set_id::text,
+               source_import_batch_id::text, promotion_mode, promotion_status,
+               is_active, candidate_count, runtime_feature_count,
+               runtime_crosswalk_count, promoted_by
+        from geography_boundary_runtime_promotion_events
+        order by created_at, id
+    """)).mappings().all()]
+    crosswalks = [dict(row) for row in db.execute(text("""
+        select
+          rw.id::text as runtime_crosswalk_id,
+          rw.runtime_set_id::text,
+          rw.runtime_feature_id::text,
+          rw.source_candidate_id::text as candidate_id,
+          rw.runtime_scope,
+          rw.village_id::text,
+          rw.village_lgd_code,
+          rw.confidence,
+          rw.reviewer_decision,
+          rw.is_active as runtime_crosswalk_active,
+          rf.is_active as runtime_feature_active,
+          rf.geometry_validation_status,
+          rf.geometry_hash,
+          rf.bbox_wgs84,
+          rf.centroid_wgs84,
+          c.source_feature_index,
+          c.review_status,
+          c.promotion_status,
+          c.is_active as staging_candidate_active,
+          f.source_district_name,
+          f.source_subdistrict_name,
+          f.source_block_name,
+          f.source_village_name,
+          f.source_vlcode
+        from geography_boundary_runtime_crosswalks rw
+        join geography_boundary_runtime_features rf on rf.id = rw.runtime_feature_id
+        join geography_boundary_crosswalk_candidates c on c.id = rw.source_candidate_id
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        order by c.source_feature_index
+        limit :limit
+    """), {"limit": limit}).mappings().all()]
+    staging_guardrails = dict(db.execute(text("""
+        select
+          count(*) as linked_candidate_count,
+          sum(case when c.is_active = false then 1 else 0 end) as inactive_count,
+          sum(case when c.promotion_status = 'NOT_PROMOTED' then 1 else 0 end) as not_promoted_count,
+          sum(case when c.review_status = 'APPROVED_FOR_PROMOTION' then 1 else 0 end) as approved_count,
+          sum(case when c.reviewer_decision = 'ACCEPT_DIRECT_CODE_MATCH' then 1 else 0 end) as accepted_direct_count
+        from geography_boundary_runtime_crosswalks rw
+        join geography_boundary_crosswalk_candidates c on c.id = rw.source_candidate_id
+    """)).mappings().one())
+
+    return {
+        "runtime_counts": runtime_counts,
+        "runtime_active_counts": runtime_active_counts,
+        "runtime_sets": runtime_sets,
+        "promotion_events": promotion_events,
+        "staging_guardrails": staging_guardrails,
+        "crosswalks": crosswalks,
+    }
+
+
+@router.get("/boundary-runtime-pilot/inspection", response_model=NwdpBoundaryRuntimePilotInspectionResponse)
+def get_nwdp_boundary_runtime_pilot_inspection(
+    limit: int = Query(25, ge=1, le=200),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    inspection = _nwdp_boundary_runtime_pilot_inspection(db, limit)
+    return {
+        "schema_version": "nwdp_boundary_runtime_pilot_inspection.v1",
+        "mode": "READ_ONLY_RUNTIME_PILOT_INSPECTION",
+        "governance": _nwdp_boundary_governance(),
+        "db_writes_attempted": False,
+        "runtime_tables_written": False,
+        "runtime_spatial_matching_changed": False,
+        "android_behavior_changed": False,
+        "inspection": inspection,
+        "readiness": {
+            "runtime_rows_available_for_review": inspection["runtime_counts"] == {
+                "geography_boundary_runtime_sets": 1,
+                "geography_boundary_runtime_features": 10,
+                "geography_boundary_runtime_crosswalks": 10,
+                "geography_boundary_runtime_promotion_events": 1,
+            },
+            "runtime_rows_active": any(value > 0 for value in inspection["runtime_active_counts"].values()),
+            "ready_for_runtime_spatial_matching": False,
+            "android_behavior_changed": False,
+            "lookup_api_enabled": False,
+        },
+    }
 
 
 @router.get("/boundary-runtime-promotion/dry-run", response_model=NwdpBoundaryRuntimePromotionDryRunResponse)
