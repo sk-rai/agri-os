@@ -316,3 +316,51 @@ Current decision:
 - tables are intentionally empty;
 - the next implementation should be a guarded runtime promotion importer with dry-run-first behavior;
 - no runtime lookup API should be added until runtime promotion has a passing dry-run and explicit apply checkpoint.
+
+## Runtime promotion importer dry-run checkpoint
+
+Status date: 2026-08-24
+
+Importer added:
+
+- `backend/scripts/promote_nwdp_boundary_runtime.py`
+
+Regression added:
+
+- `backend/scripts/test_nwdp_boundary_runtime_promotion_importer.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Latest observed dry-run result:
+
+- schema_version: nwdp_boundary_runtime_promotion_importer.v1;
+- healthy: true;
+- apply_mode: false;
+- db_writes_attempted: false;
+- runtime_tables_written: false;
+- runtime_rows_effective: 0;
+- runtime tables available: true;
+- runtime table counts: 0 for sets, features, crosswalks, and promotion events;
+- candidate_count: 29,789;
+- promotable_candidate_count: 0;
+- excluded_candidate_count: 29,789;
+- eligibility_counts: NOT_REVIEW_APPROVED = 29,789;
+- ready_for_runtime_table_write: false;
+- ready_for_runtime_spatial_matching: false;
+- android_behavior_changed: false.
+
+Latest observed blocked apply result:
+
+- `--apply` exits non-zero;
+- apply_blocked: true;
+- error: APPLY_BLOCKED_PENDING_REVIEWED_RUNTIME_PROMOTION_POLICY;
+- db_writes_attempted: false;
+- runtime_tables_written: false;
+- runtime_rows_effective: 0;
+- runtime table counts remain 0.
+
+Current decision:
+
+- the importer is dry-run-first and apply-blocked;
+- it can report candidate eligibility against the local runtime schema;
+- it cannot write runtime rows yet;
+- runtime lookup and Android consumption remain disabled.
