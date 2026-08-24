@@ -502,3 +502,57 @@ Regression coverage:
 
 Decision: the endpoint is review/inspection-only. It does not represent runtime activation, does not expose public lookup behavior, and must not be consumed by Android or spatial matching until a separate activation checkpoint is designed, reviewed, applied, and verified.
 
+
+## Runtime activation readiness policy checkpoint — 2026-08-24
+
+This checkpoint defines the required policy gates before any inactive runtime boundary rows can become active or reachable by lookup behavior.
+
+Activation is not implemented by this checkpoint.
+
+Required pre-activation gates:
+
+- runtime pilot inspection endpoint must remain healthy;
+- runtime row shape must remain exactly 1 runtime set, 10 runtime features, 10 runtime crosswalks, and 1 promotion event for the tiny pilot;
+- all runtime rows must still be inactive before activation starts;
+- linked staging candidates must still be inactive;
+- linked staging candidates must still be `promotion_status=NOT_PROMOTED`;
+- linked staging candidates must still be `APPROVED_FOR_PROMOTION`;
+- linked staging candidates must still have `ACCEPT_DIRECT_CODE_MATCH`;
+- runtime features must retain `VALIDATED` geometry status;
+- runtime features must retain geometry hash, bbox, and centroid metadata;
+- repeat runtime apply must remain blocked against non-empty runtime tables;
+- Android behavior must remain unchanged before activation;
+- public lookup API must remain absent before activation.
+
+Required activation shape, if a later checkpoint approves it:
+
+- activate exactly one runtime set;
+- activate exactly 10 runtime features;
+- activate exactly 10 runtime crosswalks;
+- keep the promotion event as immutable audit evidence;
+- mark activation timestamp and actor on the runtime set;
+- do not mutate source feature geometry;
+- do not mutate staged candidate geometry;
+- do not create/delete staged candidates;
+- do not change Android behavior in the same checkpoint.
+
+Required post-activation verification:
+
+- exactly one runtime set has `is_active=true`;
+- active runtime set has `activation_status=ACTIVE`;
+- exactly 10 runtime features have `is_active=true`;
+- exactly 10 runtime crosswalks have `is_active=true`;
+- no additional runtime rows are created;
+- no staging candidate is deleted;
+- no unrelated candidate is activated;
+- no unrelated candidate is promoted;
+- public lookup remains disabled unless separately introduced;
+- Android behavior remains unchanged unless separately introduced.
+
+Rollback requirement:
+
+A rollback/supersession design must exist before activation is applied. At minimum it must define how to return the runtime set, features, and crosswalks to inactive or superseded state without deleting audit rows.
+
+Current decision:
+
+The next implementation should not activate runtime rows yet. The next safe implementation checkpoint is an activation dry-run/planner that reports the exact activation diff and rollback plan while keeping all runtime rows inactive.
