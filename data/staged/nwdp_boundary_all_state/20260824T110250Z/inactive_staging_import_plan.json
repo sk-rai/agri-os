@@ -1,0 +1,387 @@
+{
+  "apply_policy": {
+    "apply_implemented": false,
+    "apply_requires_separate_checkpoint": true,
+    "candidate_activation_allowed": false,
+    "candidate_promotion_allowed": false,
+    "initial_apply_scope": "inactive staging rows only",
+    "runtime_tables_allowed": false
+  },
+  "generated_at": "2026-08-24T14:10:37.772428+00:00",
+  "guardrails": {
+    "android_behavior_changed": false,
+    "db_writes_attempted": false,
+    "lookup_api_enabled": false,
+    "runtime_spatial_matching_changed": false,
+    "runtime_tables_written": false
+  },
+  "healthy": false,
+  "idempotency_policy": {
+    "duplicate_source_file_sha256_must_be_blocked": true,
+    "existing_active_batch_for_same_state_source_system_must_block": true,
+    "re_run_requires_absent_or_clean_inactive_batch": true,
+    "state_by_state": true
+  },
+  "mode": "READ_ONLY_INACTIVE_STAGING_IMPORT_PLAN",
+  "readiness": {
+    "ready_for_inactive_staging_import_apply": false,
+    "ready_for_inactive_staging_import_design": false,
+    "ready_for_runtime_spatial_matching": false,
+    "ready_for_runtime_table_write": false
+  },
+  "schema_version": "nwdp_boundary_all_state_inactive_staging_import_plan.v1",
+  "source_match_csv": "/tmp/nwdp-boundary-all-state-match-plan.csv",
+  "source_match_plan": "/tmp/nwdp-boundary-all-state-match-plan.json",
+  "state_plans": [
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 669,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 669,
+      "state_or_ut": "Andaman and Nicobar Islands"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 18100,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 18100,
+      "state_or_ut": "Andhra Pradesh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 5803,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 5803,
+      "state_or_ut": "Arunachal Pradesh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 26662,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 26662,
+      "state_or_ut": "Assam"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 45063,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 45063,
+      "state_or_ut": "Bihar"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 13,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 13,
+      "state_or_ut": "Chandigarh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 20811,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 20811,
+      "state_or_ut": "Chhattisgarh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 101,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 101,
+      "state_or_ut": "Dadra and Nagar Haveli and Daman & Diu"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 254,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 254,
+      "state_or_ut": "Delhi"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 412,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 412,
+      "state_or_ut": "Goa"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 18838,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 18838,
+      "state_or_ut": "Gujarat"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 7010,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 7010,
+      "state_or_ut": "Haryana"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 20773,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 20773,
+      "state_or_ut": "Himachal Pradesh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 6593,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 6593,
+      "state_or_ut": "Jammu & Kashmir"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 32678,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 32678,
+      "state_or_ut": "Jharkhand"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 29789,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 29789,
+      "state_or_ut": "Karnataka"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 1556,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 1556,
+      "state_or_ut": "Kerala"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 250,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 250,
+      "state_or_ut": "Ladakh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 34,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 34,
+      "state_or_ut": "Lakshadweep"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 55937,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 55937,
+      "state_or_ut": "Madhya Pradesh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 44468,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 44468,
+      "state_or_ut": "Maharashtra"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 2674,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 2674,
+      "state_or_ut": "Manipur"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 6897,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 6897,
+      "state_or_ut": "Meghalaya"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 881,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 881,
+      "state_or_ut": "Mizoram"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 1564,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 1564,
+      "state_or_ut": "Nagaland"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 53320,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 53320,
+      "state_or_ut": "Odisha"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 101,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 101,
+      "state_or_ut": "Puducherry"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 12860,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 12860,
+      "state_or_ut": "Punjab"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 45012,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 45012,
+      "state_or_ut": "Rajasthan"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 484,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 484,
+      "state_or_ut": "Sikkim"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 17119,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 17119,
+      "state_or_ut": "Tamil Nadu"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 10718,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 10718,
+      "state_or_ut": "Telangana"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 917,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 917,
+      "state_or_ut": "Tripura"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 107816,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 107816,
+      "state_or_ut": "Uttar Pradesh"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 16920,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 16920,
+      "state_or_ut": "Uttarakhand"
+    },
+    {
+      "planned_active_candidate_count": 0,
+      "planned_active_source_feature_count": 0,
+      "planned_candidate_insert_count": 41188,
+      "planned_import_batch_count": 1,
+      "planned_runtime_write_count": 0,
+      "planned_source_feature_insert_count": 41188,
+      "state_or_ut": "West Bengal"
+    }
+  ],
+  "summary": {
+    "bucket_counts": {
+      "": 654285
+    },
+    "planned_active_candidate_count": 0,
+    "planned_active_source_feature_count": 0,
+    "planned_candidate_insert_count": 654285,
+    "planned_import_batch_count": 36,
+    "planned_runtime_write_count": 0,
+    "planned_source_feature_insert_count": 654285,
+    "proposed_scope_counts": {
+      "": 77294,
+      "district": 411,
+      "district_review": 23423,
+      "district_subdistrict": 70456,
+      "district_subdistrict_reference_only": 5885,
+      "village": 471048,
+      "village_review": 5768
+    },
+    "review_status_counts": {
+      "AUTO_CANDIDATE": 313667,
+      "BLOCKED": 77294,
+      "MANUAL_REVIEW": 263324
+    },
+    "state_or_ut_count": 36
+  }
+}
