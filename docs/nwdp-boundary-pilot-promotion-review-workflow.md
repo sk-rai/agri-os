@@ -258,3 +258,44 @@ Current decision:
 - materialization remains read-only at this checkpoint;
 - the next step should be a guarded staging geometry materialization apply script that writes only source feature hash/bbox/centroid/validation metadata for selected inactive staging rows;
 - runtime tables must remain empty until a later runtime promotion apply checkpoint.
+
+## Pilot geometry materialization applied checkpoint
+
+Status date: 2026-08-24.
+
+The guarded pilot geometry materializer has now been applied for the selected 10 DIRECT_VLCODE_MATCH pilot source features only.
+
+Observed result:
+
+- script: `backend/scripts/materialize_nwdp_boundary_pilot_geometry.py`;
+- regression: `backend/scripts/test_nwdp_boundary_pilot_geometry_materializer.py`;
+- selected_candidate_count: 10;
+- planned_staging_geometry_update_count: 10;
+- staging_rows_updated: 10;
+- validated_geometry_count: 10;
+- runtime_write_count: 0;
+- runtime_tables_written: false;
+- runtime_rows_effective: 0;
+- runtime_spatial_matching_changed: false.
+
+Local verification confirmed:
+
+- pilot_count: 10;
+- hash_count: 10;
+- bbox_count: 10;
+- centroid_count: 10;
+- validated_count: 10;
+- runtime table counts remain 0 for runtime sets, features, crosswalks, and promotion events.
+
+Guardrails preserved:
+
+- no runtime rows were loaded;
+- no runtime table was written;
+- no candidate was activated;
+- no candidate was promoted;
+- no runtime lookup API was enabled;
+- Android behavior remains unchanged.
+
+Current decision:
+
+The tiny pilot now has staging geometry hash, transformed bbox, transformed centroid, and VALIDATED geometry status. The next implementation should be a guarded reviewer-metadata approval checkpoint for these same 10 direct-code candidates, still without runtime rows or lookup behavior.
