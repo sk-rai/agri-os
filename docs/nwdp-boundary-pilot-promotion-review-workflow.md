@@ -173,3 +173,45 @@ The report should list 10 to 25 candidate ids from DIRECT_VLCODE_MATCH with:
 - required next action.
 
 It should remain read-only and should not update review metadata.
+
+## Pilot planner checkpoint
+
+Status date: 2026-08-24
+
+Planner added:
+
+- `backend/scripts/plan_nwdp_boundary_pilot_promotion_review.py`
+
+Regression added:
+
+- `backend/scripts/test_nwdp_boundary_pilot_promotion_review_plan.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Latest observed planner result:
+
+- schema_version: nwdp_boundary_pilot_promotion_review_plan.v1;
+- mode: READ_ONLY_PILOT_SELECTION;
+- selected_candidate_count: 10;
+- candidate_bucket: DIRECT_VLCODE_MATCH;
+- db_writes_attempted: false;
+- runtime_tables_written: false;
+- runtime_spatial_matching_changed: false;
+- android_behavior_changed: false;
+- runtime_write_allowed_now: false;
+- requires_reviewer_metadata: true;
+- requires_geometry_validation: true.
+
+Important finding:
+
+The selected direct-code pilot candidates preserve source vlcode/proposed LGD matches, but their current staged geometry fields are not promotion-ready:
+
+- geometry_validation_status: NOT_VALIDATED;
+- source_geometry_hash: null;
+- transformed_bbox: empty;
+- transformed_centroid: empty.
+
+Current decision:
+
+- reviewer approval alone is not enough for runtime promotion;
+- geometry/hash materialization and validation must happen before the runtime importer can write rows;
+- the runtime importer remains dry-run-first and apply-blocked.
