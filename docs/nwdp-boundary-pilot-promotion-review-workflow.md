@@ -215,3 +215,46 @@ Current decision:
 - reviewer approval alone is not enough for runtime promotion;
 - geometry/hash materialization and validation must happen before the runtime importer can write rows;
 - the runtime importer remains dry-run-first and apply-blocked.
+
+## Pilot geometry materialization checkpoint
+
+Status date: 2026-08-24
+
+Planner added:
+
+- `backend/scripts/plan_nwdp_boundary_pilot_geometry_materialization.py`
+
+Regression added:
+
+- `backend/scripts/test_nwdp_boundary_pilot_geometry_materialization_plan.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Latest observed planner result:
+
+- schema_version: nwdp_boundary_pilot_geometry_materialization_plan.v1;
+- mode: READ_ONLY_GEOMETRY_MATERIALIZATION_PLAN;
+- selected_candidate_count: 10;
+- geometry_payload_available_count: 10;
+- transformed bbox health: true for sampled rows;
+- db_writes_attempted: false;
+- staging_rows_to_update_now: 0;
+- runtime_tables_written: false;
+- runtime_rows_to_write_now: 0;
+- runtime_spatial_matching_changed: false;
+- android_behavior_changed: false.
+
+Important finding:
+
+The original NWDP/GSI SHP zip is locally available and can provide geometry payloads for the selected pilot rows. The planner can derive materialized source geometry hashes and transformed bboxes, while current staging rows still have:
+
+- source_geometry_hash: null;
+- transformed_bbox: empty;
+- transformed_centroid: empty;
+- geometry_validation_status: NOT_VALIDATED.
+
+Current decision:
+
+- geometry materialization is feasible for the pilot subset;
+- materialization remains read-only at this checkpoint;
+- the next step should be a guarded staging geometry materialization apply script that writes only source feature hash/bbox/centroid/validation metadata for selected inactive staging rows;
+- runtime tables must remain empty until a later runtime promotion apply checkpoint.
