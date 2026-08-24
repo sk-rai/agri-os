@@ -299,3 +299,55 @@ Guardrails preserved:
 Current decision:
 
 The tiny pilot now has staging geometry hash, transformed bbox, transformed centroid, and VALIDATED geometry status. The next implementation should be a guarded reviewer-metadata approval checkpoint for these same 10 direct-code candidates, still without runtime rows or lookup behavior.
+
+## Pilot reviewer metadata checkpoint
+
+Status date: 2026-08-24.
+
+The guarded pilot reviewer-metadata checkpoint has been applied for the same 10 DIRECT_VLCODE_MATCH pilot candidates that already had materialized staging geometry.
+
+Observed reviewer metadata result:
+
+- script: `backend/scripts/review_nwdp_boundary_pilot_candidates.py`;
+- regression: `backend/scripts/test_nwdp_boundary_pilot_reviewer_metadata.py`;
+- selected_candidate_count: 10;
+- staging_review_rows_updated: 10;
+- planned_review_status: APPROVED_FOR_PROMOTION;
+- planned_reviewer_decision: ACCEPT_DIRECT_CODE_MATCH;
+- runtime_write_count: 0;
+- runtime_tables_written: false;
+- runtime_rows_effective: 0;
+- runtime_spatial_matching_changed: false;
+- android_behavior_changed: false.
+
+Observed runtime promotion dry-run after reviewer metadata:
+
+- schema_version: nwdp_boundary_runtime_promotion_importer.v1;
+- healthy: true;
+- db_writes_attempted: false;
+- runtime_tables_written: false;
+- runtime_rows_effective: 0;
+- candidate_count: 29,789;
+- promotable_candidate_count: 10;
+- excluded_candidate_count: 29,779;
+- eligibility_counts:
+  - NOT_REVIEW_APPROVED: 29,779;
+  - PROMOTABLE: 10;
+- planned_runtime_set_insert_count: 1;
+- planned_runtime_feature_insert_count: 10;
+- planned_runtime_crosswalk_insert_count: 10;
+- ready_for_runtime_table_write: false;
+- ready_for_runtime_spatial_matching: false.
+
+Guardrails preserved:
+
+- pilot candidates remain inactive;
+- pilot candidates remain NOT_PROMOTED;
+- no runtime rows were loaded;
+- runtime table counts remain zero;
+- no runtime lookup API was enabled;
+- Android behavior remains unchanged.
+
+Current decision:
+
+The pilot now demonstrates that reviewer metadata plus materialized geometry produces exactly 10 promotable candidates in dry-run. The runtime importer remains dry-run-first and still blocks runtime table writes. A future runtime apply checkpoint must be explicit, separately reviewed, and followed by verification before any lookup API is introduced.
