@@ -606,3 +606,40 @@ The planner explicitly keeps rollback policy as required before apply. The minim
 Current decision:
 
 The system is ready for a separately reviewed activation apply checkpoint, but activation has not been implemented or applied. Runtime spatial matching, lookup API behavior, and Android behavior remain disabled.
+
+## All-state NWDP boundary acquisition manifest checkpoint — 2026-08-24
+
+A read-only all-state NWDP village boundary acquisition plan was created from the National Water Data Portal resource audit.
+
+Observed source inventory:
+
+- state/UT count: 36
+- GeoJSON resources: 36
+- KML resources: 36
+- SHP resources: 36
+- GeoJSON coverage is complete for all states/UTs
+- SHP has known source issues:
+  - Uttarakhand SHP missing from the expected state/format matrix
+  - Telangana SHP appears duplicated
+
+Decision:
+
+Use GeoJSON as the all-state acquisition format for the next checkpoint. SHP remains useful for audit/comparison only, because the SHP state/format matrix is not clean.
+
+Manifest artifact:
+
+- `data/staged/nwdp_boundary_all_state/20260824T105417Z/geojson_acquisition_manifest.json`
+
+Guardrails preserved:
+
+- downloads_attempted=false
+- db_writes_attempted=false
+- runtime_tables_written=false
+- runtime_spatial_matching_changed=false
+- android_behavior_changed=false
+- activation_allowed=false
+- lookup_api_enabled=false
+
+Next checkpoint:
+
+Download the 36 GeoJSON resources into a local raw cache with checksums, then audit feature count, properties, coordinate sanity, geometry types, bbox, and duplicate source village codes before producing all-state staging candidate CSVs.

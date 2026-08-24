@@ -1,0 +1,350 @@
+{
+  "android_behavior_changed": false,
+  "artifact": {
+    "created_at": "2026-08-24T10:54:17.661155+00:00",
+    "path": "data/staged/nwdp_boundary_all_state/20260824T105417Z/geojson_acquisition_manifest.json",
+    "purpose": "All-state NWDP village boundary GeoJSON acquisition manifest; no downloads or DB writes."
+  },
+  "db_writes_attempted": false,
+  "downloads_attempted": false,
+  "geojson_resources": [
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Andaman and Nicobar Islands",
+      "title": "Village Boundary of Andaman and Nicobar Islands GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/8ecd1271-1838-4413-9d9a-599b122a2e8a"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Andhra Pradesh",
+      "title": "Village Boundary of Andhra Pradesh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/80335829-b05e-4b0f-a920-91971a93bce1"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Arunachal Pradesh",
+      "title": "Village Boundary of Arunachal Pradesh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/e47e23ab-7f6a-432a-8218-aa7e778e170c"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Assam",
+      "title": "Village Boundary of Assam GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/bd9571d5-4874-4cfd-a78e-9d1fdddbe0b2"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Bihar",
+      "title": "Village Boundary of Bihar GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/6f68ad30-a395-4037-a64a-ff42b3fd5a25"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Chandigarh",
+      "title": "Village Boundary of Chandigarh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/f7c76b46-75a6-4ab8-a64e-fe0764f20c55"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Chhattisgarh",
+      "title": "Village Boundary of Chhattisgarh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/f91bf1e3-b973-46ae-9c5e-1a815a366f61"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Dadra and Nagar Haveli and Daman & Diu",
+      "title": "Village Boundary of Dadra and Nagar Haveli and Daman & Diu GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/2f408b46-6b7b-4cd1-95e6-95b4101b0041"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Delhi",
+      "title": "Village Boundary of Delhi GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/634ff8c6-03e6-45d1-b1a1-fcc9cc4a6842"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Goa",
+      "title": "Village Boundary of Goa GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/1e2bab81-768d-475b-884c-3409d2b5dbd8"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Gujarat",
+      "title": "Village Boundary of Gujarat GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/4ce4dc83-fe99-4394-b4db-55b51554828c"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Haryana",
+      "title": "Village Boundary of Haryana GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/534d7cd1-357e-4919-a672-a2eb77265f72"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Himachal Pradesh",
+      "title": "Village Boundary of Himachal Pradesh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/5e83ba19-b3bc-4dbc-be5f-33b0d229b1b3"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Jammu & Kashmir",
+      "title": "Village Boundary of Jammu & Kashmir GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/c65985c9-8e44-45e1-9ade-a54e9c747b63"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Jharkhand",
+      "title": "Village Boundary of Jharkhand GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/fb3b2f75-430c-4830-abec-5cec058b777d"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Karnataka",
+      "title": "Village Boundary of Karnataka GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/1fd9b5a0-2a73-4404-9e45-7c1f3968e545"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Kerala",
+      "title": "Village Boundary of Kerala GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/e7968f1b-b9dc-4d30-9f55-6dbefba9fff6"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Ladakh",
+      "title": "Village Boundary of Ladakh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/72cbc4f1-acb2-46d6-87b9-9496572318d4"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Lakshadweep",
+      "title": "Village Boundary of Lakshadweep GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/d9e5840a-76cc-4456-88e6-b5d5c4bbab6d"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Madhya Pradesh",
+      "title": "Village Boundary of Madhya Pradesh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/6312f443-cbb0-4bad-b889-daf09d45d39f"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Maharashtra",
+      "title": "Village Boundary of Maharashtra GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/41bc7681-d90c-4338-8fdc-35f5f98bc417"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Manipur",
+      "title": "Village Boundary of Manipur GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/dcb99b37-d358-481c-af8e-42ae64723511"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Meghalaya",
+      "title": "Village Boundary of Meghalaya GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/b11b4193-c185-477c-8eab-7e365f0bf751"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Mizoram",
+      "title": "Village Boundary of Mizoram GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/d6c6f0f1-981b-4f31-8708-0c01e95637ed"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Nagaland",
+      "title": "Village Boundary of Nagaland GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/41739322-d899-4471-ba51-adf8cb44c622"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Odisha",
+      "title": "Village Boundary of Odisha GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/8b78c6a6-1e58-485f-bb37-c7812fb93d18"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Puducherry",
+      "title": "Village Boundary of Puducherry GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/dd9cd307-f03a-49e1-8409-bad2d5568afc"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Punjab",
+      "title": "Village Boundary of Punjab GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/2d014771-e5ff-4ee4-8b3d-730daa2e0d88"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Rajasthan",
+      "title": "Village Boundary of Rajasthan GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/fac4d409-954a-477d-8124-6607fcbd5a74"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Sikkim",
+      "title": "Village Boundary of Sikkim GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/53071bb3-7403-4963-ace9-4f08ca1954ee"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Tamil Nadu",
+      "title": "Village Boundary of Tamil Nadu GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/6ffc418d-317b-42e7-9191-26612a05f1ad"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Telangana",
+      "title": "Village Boundary of Telangana GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/4e8ef6b2-d503-4258-b843-c342895d97de"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Tripura",
+      "title": "Village Boundary of Tripura GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/7a3a4855-2271-4f2b-a588-fd36d54e4af6"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Uttar Pradesh",
+      "title": "Village Boundary of Uttar Pradesh GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/4756a27b-afc6-470f-af40-b418d830e298"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "Uttarakhand",
+      "title": "village Boundary of Uttarakhand GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/a2897943-3b36-4a3e-a4cf-7c0d247c8b7b"
+    },
+    {
+      "format": "GeoJSON",
+      "source": "anchor",
+      "state_or_ut": "West Bengal",
+      "title": "Village Boundary of West Bengal GeoJSON",
+      "url": "https://nwdp.nwic.gov.in/dataset/village-boundary/resource/1a8e4af1-42ad-4403-b116-3e8e6f357a88"
+    }
+  ],
+  "guardrails": {
+    "activation_allowed": false,
+    "android_behavior_changed": false,
+    "db_writes_attempted": false,
+    "download_plan_only": true,
+    "downloads_attempted": false,
+    "lookup_api_enabled": false,
+    "runtime_write_allowed": false,
+    "staging_import_not_started": true
+  },
+  "healthy": true,
+  "mode": "READ_ONLY_ACQUISITION_PLAN",
+  "next_actions": [
+    "download GeoJSON resources to a local raw cache with checksums",
+    "audit each GeoJSON for feature count, properties, CRS/coordinate sanity, bbox, geometry types, and duplicate vlcode",
+    "produce all-state candidate CSVs without DB writes",
+    "import inactive staging rows state-by-state only after audit reports pass"
+  ],
+  "runtime_spatial_matching_changed": false,
+  "runtime_tables_written": false,
+  "schema_version": "nwdp_boundary_all_state_acquisition_plan.v1",
+  "source_summary": {
+    "claim_boundary": "Village boundary is reference locality context, not cadastral parcel or ownership truth.",
+    "dataset": "Village Boundary",
+    "portal": "National Water Data Portal",
+    "producer_agency": "Geological Survey of India"
+  },
+  "source_url": "https://nwdp.nwic.gov.in/dataset/village-boundary",
+  "states": [
+    "Andaman and Nicobar Islands",
+    "Andhra Pradesh",
+    "Arunachal Pradesh",
+    "Assam",
+    "Bihar",
+    "Chandigarh",
+    "Chhattisgarh",
+    "Dadra and Nagar Haveli and Daman & Diu",
+    "Delhi",
+    "Goa",
+    "Gujarat",
+    "Haryana",
+    "Himachal Pradesh",
+    "Jammu & Kashmir",
+    "Jharkhand",
+    "Karnataka",
+    "Kerala",
+    "Ladakh",
+    "Lakshadweep",
+    "Madhya Pradesh",
+    "Maharashtra",
+    "Manipur",
+    "Meghalaya",
+    "Mizoram",
+    "Nagaland",
+    "Odisha",
+    "Puducherry",
+    "Punjab",
+    "Rajasthan",
+    "Sikkim",
+    "Tamil Nadu",
+    "Telangana",
+    "Tripura",
+    "Uttar Pradesh",
+    "Uttarakhand",
+    "West Bengal"
+  ],
+  "summary": {
+    "geojson_complete_for_all_states": true,
+    "geojson_resource_count": 36,
+    "kml_resource_count": 36,
+    "recommended_acquisition_format": "GeoJSON",
+    "shp_complete_for_all_states": false,
+    "shp_known_issues": [
+      {
+        "format": "SHP",
+        "state_or_ut": "Uttarakhand"
+      },
+      {
+        "count": 2,
+        "format": "SHP",
+        "state_or_ut": "Telangana"
+      }
+    ],
+    "shp_resource_count": 36,
+    "state_or_ut_count": 36
+  }
+}
