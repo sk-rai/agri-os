@@ -556,3 +556,53 @@ A rollback/supersession design must exist before activation is applied. At minim
 Current decision:
 
 The next implementation should not activate runtime rows yet. The next safe implementation checkpoint is an activation dry-run/planner that reports the exact activation diff and rollback plan while keeping all runtime rows inactive.
+
+## Runtime activation planner checkpoint — 2026-08-24
+
+A read-only activation planner now reports the exact tiny-pilot activation diff without applying any writes.
+
+Artifacts:
+
+- `backend/scripts/plan_nwdp_boundary_runtime_activation.py`
+- `backend/scripts/test_nwdp_boundary_runtime_activation_plan.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Observed planner result:
+
+- schema_version: `nwdp_boundary_runtime_activation_plan.v1`
+- mode: `READ_ONLY_ACTIVATION_DRY_RUN`
+- healthy: true
+- activation_applied: false
+- db_writes_attempted: false
+- runtime_tables_written: false
+- runtime_spatial_matching_changed: false
+- android_behavior_changed: false
+- lookup_api_enabled: false
+
+Observed preconditions:
+
+- runtime row shape matches tiny pilot: true
+- runtime rows all inactive: true
+- single inactive runtime set: true
+- runtime features validated: true
+- runtime crosswalks link valid staging rows: true
+- promotion event audit shape valid: true
+
+Planned activation diff only:
+
+- runtime sets to activate: 1
+- runtime features to activate: 10
+- runtime crosswalks to activate: 10
+- promotion events to activate: 0
+- staging candidates to activate: 0
+- staging candidates to promote: 0
+- lookup API enabled: false
+- Android behavior changed: false
+
+Rollback requirement:
+
+The planner explicitly keeps rollback policy as required before apply. The minimum rollback shape must preserve audit rows, avoid deleting runtime rows, and avoid mutating source features or staged candidates.
+
+Current decision:
+
+The system is ready for a separately reviewed activation apply checkpoint, but activation has not been implemented or applied. Runtime spatial matching, lookup API behavior, and Android behavior remain disabled.
