@@ -473,3 +473,32 @@ Readiness remains intentionally constrained:
 
 Decision: inactive runtime rows are now inspectable for review, but they are not eligible for runtime lookup, Android behavior, or spatial matching until a separate activation policy and verification checkpoint is approved.
 
+## Admin runtime pilot inspection endpoint checkpoint — 2026-08-24
+
+An admin-view-only API endpoint now exposes the inactive runtime pilot rows for inspection:
+
+- `GET /api/v1/master-data/geography/boundary-runtime-pilot/inspection?limit=10`
+- response schema: `nwdp_boundary_runtime_pilot_inspection.v1`
+- mode: `READ_ONLY_RUNTIME_PILOT_INSPECTION`
+- permission: admin view permission
+- source: inactive runtime tables only
+
+Verified guardrails:
+
+- `db_writes_attempted=false`
+- `runtime_tables_written=false`
+- `runtime_spatial_matching_changed=false`
+- `android_behavior_changed=false`
+- runtime row shape remains 1 runtime set, 10 runtime features, 10 runtime crosswalks, and 1 promotion event
+- all runtime active counts remain zero
+- staging candidates remain inactive and `promotion_status=NOT_PROMOTED`
+- `lookup_api_enabled=false`
+- `ready_for_runtime_spatial_matching=false`
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_admin_read_endpoints.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Decision: the endpoint is review/inspection-only. It does not represent runtime activation, does not expose public lookup behavior, and must not be consumed by Android or spatial matching until a separate activation checkpoint is designed, reviewed, applied, and verified.
+
