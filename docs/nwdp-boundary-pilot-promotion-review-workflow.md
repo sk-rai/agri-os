@@ -643,3 +643,38 @@ Guardrails preserved:
 Next checkpoint:
 
 Download the 36 GeoJSON resources into a local raw cache with checksums, then audit feature count, properties, coordinate sanity, geometry types, bbox, and duplicate source village codes before producing all-state staging candidate CSVs.
+
+## All-state NWDP boundary match plan checkpoint — 2026-08-24
+
+A read-only all-state match/non-match plan was generated from the downloaded NWDP/GSI GeoJSON raw cache.
+
+Artifacts:
+
+- raw cache manifest: `data/staged/nwdp_boundary_all_state/20260824T110250Z/geojson_raw_cache_manifest.json`
+- committed summary artifact: `data/staged/nwdp_boundary_all_state/20260824T110250Z/all_state_match_plan_summary.json`
+- large local artifacts not committed:
+  - `/tmp/nwdp-boundary-all-state-match-plan.json`
+  - `/tmp/nwdp-boundary-all-state-match-plan.csv`
+
+Observed all-state plan:
+
+- state/UT count: 36
+- source feature count: 654,285
+- planned candidate count: 654,285
+- `DIRECT_VLCODE_MATCH`: 313,667
+- `DIRECT_VLCODE_PARENT_MISMATCH`: 157,381
+- `MANUAL_REVIEW`: 263,324
+- `BLOCKED`: 77,294
+- `AUTO_CANDIDATE`: 313,667
+
+Guardrails preserved:
+
+- `db_writes_attempted=false`
+- `runtime_tables_written=false`
+- `runtime_spatial_matching_changed=false`
+- `android_behavior_changed=false`
+- `lookup_api_enabled=false`
+
+Decision:
+
+All-state inactive staging import is feasible, but it must be designed as a guarded, idempotent, state-by-state import. The all-state match plan must not be imported directly to runtime, and parent-mismatch/manual/blocked buckets must remain review-only until separate review and promotion checkpoints exist.
