@@ -19,6 +19,7 @@ CHECKS = [
     ("runtime tiny pilot apply", [str(PYTHON), "scripts/test_nwdp_boundary_runtime_tiny_pilot_apply.py"]),
     ("runtime pilot inspection", [str(PYTHON), "scripts/test_nwdp_boundary_runtime_pilot_inspection.py"]),
     ("runtime activation plan", [str(PYTHON), "scripts/test_nwdp_boundary_runtime_activation_plan.py"]),
+    ("all-state inactive staging import plan", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_inactive_staging_import_plan.py"]),
 ]
 
 
