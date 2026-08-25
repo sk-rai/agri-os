@@ -1,0 +1,216 @@
+{
+  "decision": "The first 9 small states/UTs are staged as inactive GeoJSON NWDP review rows only. Continue state-by-state before any runtime promotion, lookup, spatial matching, or Android behavior work.",
+  "generated_at": "2026-08-25T09:59:40.904568+00:00",
+  "guardrails": {
+    "android_behavior_changed": false,
+    "candidate_activation_changed": false,
+    "candidate_promotion_changed": false,
+    "lookup_api_enabled": false,
+    "runtime_spatial_matching_changed": false,
+    "runtime_tables_written": false
+  },
+  "healthy": true,
+  "mode": "STATE_SCOPED_INACTIVE_STAGING_APPLY_ROLLOUT_SUMMARY",
+  "rollout": {
+    "expected_total": 2305,
+    "healthy": true,
+    "state_count": 8,
+    "states": [
+      {
+        "android_behavior_changed": false,
+        "batch_id": "8e833584-59e5-53a4-ac16-176e152911b3",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 34,
+        "healthy": true,
+        "inserted_candidates": 34,
+        "inserted_source_features": 34,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 34,
+          "promoted_candidates": 0,
+          "source_features": 34
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Lakshadweep"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "4471d2be-3a40-58a7-af9b-7627423d1d78",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 101,
+        "healthy": true,
+        "inserted_candidates": 101,
+        "inserted_source_features": 101,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 101,
+          "promoted_candidates": 0,
+          "source_features": 101
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Dadra and Nagar Haveli and Daman & Diu"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "eafe6905-2fa0-5250-b615-09fa8bd6d8ca",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 101,
+        "healthy": true,
+        "inserted_candidates": 101,
+        "inserted_source_features": 101,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 101,
+          "promoted_candidates": 0,
+          "source_features": 101
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Puducherry"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "92302ea2-24bb-5d94-8420-7914b8ee34b1",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 250,
+        "healthy": true,
+        "inserted_candidates": 250,
+        "inserted_source_features": 250,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 250,
+          "promoted_candidates": 0,
+          "source_features": 250
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Ladakh"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 254,
+        "healthy": true,
+        "inserted_candidates": 254,
+        "inserted_source_features": 254,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 254,
+          "promoted_candidates": 0,
+          "source_features": 254
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Delhi"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "b6203ce5-1241-500a-b498-52cf1c0f5e0d",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 412,
+        "healthy": true,
+        "inserted_candidates": 412,
+        "inserted_source_features": 412,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 412,
+          "promoted_candidates": 0,
+          "source_features": 412
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Goa"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "ef163276-8093-5036-ba99-3237f1f8f06f",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 484,
+        "healthy": true,
+        "inserted_candidates": 484,
+        "inserted_source_features": 484,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 484,
+          "promoted_candidates": 0,
+          "source_features": 484
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Sikkim"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "0a93be10-e508-50b9-97ba-b43659899e9b",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 669,
+        "healthy": true,
+        "inserted_candidates": 669,
+        "inserted_source_features": 669,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 669,
+          "promoted_candidates": 0,
+          "source_features": 669
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Andaman and Nicobar Islands"
+      }
+    ]
+  },
+  "schema_version": "nwdp_boundary_small_state_inactive_staging_rollout_summary.v1",
+  "verification": {
+    "active_candidate_total": 0,
+    "active_source_feature_total": 0,
+    "candidate_total": 2318,
+    "expected_total": 2318,
+    "healthy": true,
+    "promoted_candidate_total": 0,
+    "source_feature_total": 2318,
+    "state_count": 9
+  }
+}
