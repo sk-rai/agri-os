@@ -796,3 +796,48 @@ Regression coverage:
 Decision:
 
 The all-state inactive staging import design is now reusable and regression-guarded. The next implementation checkpoint may add a guarded inactive staging apply path, but it must write only inactive staging import batches, source features, and candidates. Runtime tables, lookup behavior, Android behavior, candidate activation, and candidate promotion must remain disabled.
+
+## All-state inactive staging importer gate checkpoint — 2026-08-25
+
+A guarded all-state inactive staging importer checkpoint was added.
+
+Artifacts:
+
+- `backend/scripts/import_nwdp_boundary_all_state_inactive_staging.py`
+- `backend/scripts/test_nwdp_boundary_all_state_inactive_staging_importer.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Observed dry-run result:
+
+- schema version: `nwdp_boundary_all_state_inactive_staging_importer.v1`
+- healthy: true
+- state/UT scope: `ALL_STATES`
+- source format: `GeoJSON`
+- planned batches: 36
+- planned source feature rows: 654,285
+- planned candidate rows: 654,285
+- unsafe counts: empty
+- active source features planned: 0
+- active candidates planned: 0
+- runtime writes planned: 0
+
+Observed apply gate:
+
+- `--apply --allow-all-state-inactive-staging-write` exits non-zero
+- error: `ALL_STATE_INACTIVE_STAGING_APPLY_NOT_IMPLEMENTED_REQUIRES_SEPARATE_CHECKPOINT`
+- `db_writes_attempted=false`
+- `runtime_tables_written=false`
+
+Guardrails verified:
+
+- no DB writes
+- no runtime table writes
+- no runtime spatial matching changes
+- no Android behavior changes
+- no lookup API enabled
+- no candidate activation
+- no candidate promotion
+
+Decision:
+
+The all-state importer is now safely gated and regression-covered, but inactive staging apply remains intentionally unimplemented. The next checkpoint may implement state-by-state inactive staging writes behind the explicit all-state policy flag, followed immediately by post-apply verification.
