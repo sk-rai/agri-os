@@ -149,7 +149,13 @@ def read_rows(path: Path) -> tuple[list[dict[str, str]], list[str]]:
         return rows, list(reader.fieldnames or [])
 
 
-def plan_import(rows: list[dict[str, str]], input_path: Path, source_file_sha256: str, sample_limit: int) -> dict[str, Any]:
+def filter_rows(rows: list[dict[str, str]], state_or_ut: str | None) -> list[dict[str, str]]:
+    if not state_or_ut:
+        return rows
+    return [row for row in rows if clean(row.get("state_or_ut")) == state_or_ut]
+
+
+def plan_import(rows: list[dict[str, str]], input_path: Path, source_file_sha256: str, sample_limit: int, expected_state_count: int | None = None, expected_row_count: int | None = None) -> dict[str, Any]:
     state_counts = Counter()
     bucket_counts = Counter()
     planned_action_counts = Counter()
@@ -225,8 +231,8 @@ def plan_import(rows: list[dict[str, str]], input_path: Path, source_file_sha256
 
     healthy = (
         not unsafe_counts
-        and len(state_counts) == EXPECTED_STATE_COUNT
-        and sum(state_counts.values()) == EXPECTED_ROW_COUNT
+        and (expected_state_count is None or len(state_counts) == expected_state_count)
+        and (expected_row_count is None or sum(state_counts.values()) == expected_row_count)
     )
 
     return {
@@ -254,12 +260,291 @@ def plan_import(rows: list[dict[str, str]], input_path: Path, source_file_sha256
     }
 
 
+
+def apply_import(
+    rows: list[dict[str, str]],
+    input_path: Path,
+    import_plan: dict[str, Any],
+    source_file_sha256: str,
+    source_file_size_bytes: int | None,
+) -> dict[str, Any]:
+    from sqlalchemy import create_engine, text
+
+    if len(import_plan["state_counts"]) != 1:
+        return {
+            "healthy": False,
+            "error": "STATE_SCOPED_APPLY_REQUIRES_EXACTLY_ONE_STATE",
+            "state_counts": import_plan["state_counts"],
+        }
+
+    state_or_ut = next(iter(import_plan["state_counts"]))
+    batch_id = batch_id_for(state_or_ut, source_file_sha256, input_path)
+    now = datetime.now(timezone.utc)
+
+    inserted_features = 0
+    existing_features = 0
+    inserted_candidates = 0
+    existing_candidates = 0
+
+    engine = create_engine(db_url_from_settings())
+    with engine.begin() as conn:
+        existing_conflict = conn.execute(
+            text("""
+                select id::text, status, review_status, is_active
+                from geography_boundary_import_batches
+                where source_system = :source_system
+                  and source_format = :source_format
+                  and state_or_ut = :state_or_ut
+                  and id <> :batch_id
+                order by created_at desc
+                limit 1
+            """),
+            {
+                "source_system": SOURCE_SYSTEM,
+                "source_format": SOURCE_FORMAT,
+                "state_or_ut": state_or_ut,
+                "batch_id": batch_id,
+            },
+        ).mappings().first()
+        if existing_conflict:
+            return {
+                "healthy": False,
+                "error": "CONFLICTING_ALL_STATE_STAGING_BATCH_EXISTS_FOR_STATE",
+                "state_or_ut": state_or_ut,
+                "conflict": dict(existing_conflict),
+            }
+
+        before_batch = conn.execute(
+            text("select count(*) from geography_boundary_import_batches where id = :id"),
+            {"id": batch_id},
+        ).scalar()
+
+        conn.execute(
+            text("""
+                insert into geography_boundary_import_batches (
+                    id, source_system, source_dataset, source_producer_agency,
+                    state_or_ut, source_format, source_file_sha256,
+                    source_file_size_bytes, source_crs, source_epsg, target_crs,
+                    crosswalk_audit, status, review_status, metadata, is_active
+                )
+                values (
+                    :id, :source_system, :source_dataset, :source_producer_agency,
+                    :state_or_ut, :source_format, :source_file_sha256,
+                    :source_file_size_bytes, :source_crs, :source_epsg, :target_crs,
+                    cast(:crosswalk_audit as jsonb), 'IMPORTED_INACTIVE',
+                    'MANUAL_REVIEW', cast(:metadata as jsonb), false
+                )
+                on conflict (id) do update set
+                    crosswalk_audit = excluded.crosswalk_audit,
+                    updated_at = now(),
+                    status = 'IMPORTED_INACTIVE'
+                where geography_boundary_import_batches.is_active = false
+            """),
+            {
+                "id": batch_id,
+                "source_system": SOURCE_SYSTEM,
+                "source_dataset": SOURCE_DATASET,
+                "source_producer_agency": SOURCE_PRODUCER_AGENCY,
+                "state_or_ut": state_or_ut,
+                "source_format": SOURCE_FORMAT,
+                "source_file_sha256": source_file_sha256 or None,
+                "source_file_size_bytes": source_file_size_bytes,
+                "source_crs": SOURCE_CRS,
+                "source_epsg": SOURCE_EPSG,
+                "target_crs": TARGET_CRS,
+                "crosswalk_audit": json.dumps(import_plan, default=json_default),
+                "metadata": json.dumps({
+                    "importer": "import_nwdp_boundary_all_state_inactive_staging.py",
+                    "mode": "GUARDED_STATE_SCOPED_INACTIVE_STAGING",
+                    "candidate_input": str(input_path),
+                    "generated_at": now.isoformat(),
+                }),
+            },
+        )
+
+        after_batch = conn.execute(
+            text("select count(*) from geography_boundary_import_batches where id = :id"),
+            {"id": batch_id},
+        ).scalar()
+
+        for row in rows:
+            index = clean(row.get("source_feature_index") or row.get("index"))
+            bucket = clean(row.get("candidate_bucket") or row.get("bucket"))
+            review_status = clean(row.get("review_status"))
+            source_feature_id = feature_id_for(batch_id, index)
+            candidate_id = candidate_id_for(batch_id, index)
+
+            source_codes = {
+                "stcode": clean(row.get("stcode")),
+                "dtcode": clean(row.get("dtcode")),
+                "sdcode": clean(row.get("sdcode")),
+                "bkcode": clean(row.get("bkcode")),
+                "vlcode": clean(row.get("vlcode")),
+            }
+            source_names = {
+                "state": clean(row.get("state")),
+                "state_or_ut": state_or_ut,
+                "district": clean(row.get("district")),
+                "subdistrict": clean(row.get("subdistrict")),
+                "block": clean(row.get("block")),
+                "village": clean(row.get("village")),
+            }
+            match_evidence = {
+                "bucket": bucket,
+                "confidence": clean(row.get("confidence")),
+                "reason": clean(row.get("reason")),
+                "planned_action": BUCKET_POLICY.get(bucket),
+                "input_review_status": review_status,
+                "planned_review_status": planned_review_status(bucket, review_status),
+            }
+
+            before_feature = conn.execute(
+                text("select count(*) from geography_boundary_source_features where id = :id"),
+                {"id": source_feature_id},
+            ).scalar()
+
+            conn.execute(
+                text("""
+                    insert into geography_boundary_source_features (
+                        id, import_batch_id, source_feature_index,
+                        source_stcode, source_dtcode, source_sdcode, source_bkcode,
+                        source_vlcode, source_state_name, source_district_name,
+                        source_subdistrict_name, source_block_name, source_village_name,
+                        source_agency, feature_category, source_properties,
+                        metadata, is_active
+                    )
+                    values (
+                        :id, :import_batch_id, :source_feature_index,
+                        :source_stcode, :source_dtcode, :source_sdcode, :source_bkcode,
+                        :source_vlcode, :source_state_name, :source_district_name,
+                        :source_subdistrict_name, :source_block_name, :source_village_name,
+                        :source_agency, :feature_category, cast(:source_properties as jsonb),
+                        cast(:metadata as jsonb), false
+                    )
+                    on conflict (import_batch_id, source_feature_index) do update set
+                        updated_at = now(),
+                        source_properties = excluded.source_properties,
+                        metadata = excluded.metadata
+                    where geography_boundary_source_features.is_active = false
+                """),
+                {
+                    "id": source_feature_id,
+                    "import_batch_id": batch_id,
+                    "source_feature_index": int(index),
+                    "source_stcode": source_codes["stcode"],
+                    "source_dtcode": source_codes["dtcode"],
+                    "source_sdcode": source_codes["sdcode"],
+                    "source_bkcode": source_codes["bkcode"],
+                    "source_vlcode": source_codes["vlcode"],
+                    "source_state_name": state_or_ut,
+                    "source_district_name": source_names["district"],
+                    "source_subdistrict_name": source_names["subdistrict"],
+                    "source_block_name": source_names["block"],
+                    "source_village_name": source_names["village"],
+                    "source_agency": clean(row.get("src_agency")),
+                    "feature_category": feature_category(bucket),
+                    "source_properties": json.dumps(source_codes | source_names),
+                    "metadata": json.dumps({"candidate_bucket": bucket}),
+                },
+            )
+            if before_feature:
+                existing_features += 1
+            else:
+                inserted_features += 1
+
+            before_candidate = conn.execute(
+                text("select count(*) from geography_boundary_crosswalk_candidates where id = :id"),
+                {"id": candidate_id},
+            ).scalar()
+
+            conn.execute(
+                text("""
+                    insert into geography_boundary_crosswalk_candidates (
+                        id, import_batch_id, source_feature_id, source_feature_index,
+                        candidate_bucket, confidence, review_status, proposed_scope,
+                        proposed_village_id, proposed_village_lgd_code, source_codes,
+                        source_names, match_evidence, promotion_status, metadata, is_active
+                    )
+                    values (
+                        :id, :import_batch_id, :source_feature_id, :source_feature_index,
+                        :candidate_bucket, :confidence, :review_status, :proposed_scope,
+                        :proposed_village_id, :proposed_village_lgd_code,
+                        cast(:source_codes as jsonb), cast(:source_names as jsonb),
+                        cast(:match_evidence as jsonb), 'NOT_PROMOTED',
+                        cast(:metadata as jsonb), false
+                    )
+                    on conflict (import_batch_id, source_feature_index) do update set
+                        updated_at = now(),
+                        confidence = excluded.confidence,
+                        match_evidence = excluded.match_evidence,
+                        metadata = excluded.metadata
+                    where geography_boundary_crosswalk_candidates.review_status in ('AUTO_CANDIDATE', 'MANUAL_REVIEW', 'BLOCKED')
+                      and geography_boundary_crosswalk_candidates.promotion_status = 'NOT_PROMOTED'
+                      and geography_boundary_crosswalk_candidates.is_active = false
+                """),
+                {
+                    "id": candidate_id,
+                    "import_batch_id": batch_id,
+                    "source_feature_id": source_feature_id,
+                    "source_feature_index": int(index),
+                    "candidate_bucket": bucket,
+                    "confidence": clean(row.get("confidence")),
+                    "review_status": planned_review_status(bucket, review_status),
+                    "proposed_scope": clean(row.get("proposed_scope")) or "",
+                    "proposed_village_id": clean(row.get("backend_village_id")) or None,
+                    "proposed_village_lgd_code": clean(row.get("backend_village_lgd_code")) or None,
+                    "source_codes": json.dumps(source_codes),
+                    "source_names": json.dumps(source_names),
+                    "match_evidence": json.dumps(match_evidence),
+                    "metadata": json.dumps({"importer_action": BUCKET_POLICY.get(bucket)}),
+                },
+            )
+            if before_candidate:
+                existing_candidates += 1
+            else:
+                inserted_candidates += 1
+
+        post_counts = {
+            "batches": conn.execute(text("select count(*) from geography_boundary_import_batches where id = :id"), {"id": batch_id}).scalar(),
+            "source_features": conn.execute(text("select count(*) from geography_boundary_source_features where import_batch_id = :id"), {"id": batch_id}).scalar(),
+            "candidates": conn.execute(text("select count(*) from geography_boundary_crosswalk_candidates where import_batch_id = :id"), {"id": batch_id}).scalar(),
+            "active_source_features": conn.execute(text("select count(*) from geography_boundary_source_features where import_batch_id = :id and is_active = true"), {"id": batch_id}).scalar(),
+            "active_candidates": conn.execute(text("select count(*) from geography_boundary_crosswalk_candidates where import_batch_id = :id and is_active = true"), {"id": batch_id}).scalar(),
+            "promoted_candidates": conn.execute(text("select count(*) from geography_boundary_crosswalk_candidates where import_batch_id = :id and promotion_status <> 'NOT_PROMOTED'"), {"id": batch_id}).scalar(),
+        }
+
+    expected = len(rows)
+    return {
+        "healthy": (
+            bool(after_batch)
+            and post_counts["source_features"] == expected
+            and post_counts["candidates"] == expected
+            and post_counts["active_source_features"] == 0
+            and post_counts["active_candidates"] == 0
+            and post_counts["promoted_candidates"] == 0
+        ),
+        "state_or_ut": state_or_ut,
+        "batch_id": batch_id,
+        "batch_existed_before": bool(before_batch),
+        "batch_exists_after": bool(after_batch),
+        "inserted_source_features": inserted_features,
+        "existing_source_features": existing_features,
+        "inserted_candidates": inserted_candidates,
+        "existing_candidates": existing_candidates,
+        "post_counts": post_counts,
+        "runtime_tables_written": False,
+        "runtime_spatial_matching_changed": False,
+        "android_behavior_changed": False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Guarded all-state NWDP inactive staging importer.")
     parser.add_argument("--input", default=str(DEFAULT_INPUT))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--sample-limit", type=int, default=8)
     parser.add_argument("--apply", action="store_true", help="Request inactive staging import.")
+    parser.add_argument("--state-or-ut", default="", help="Required for apply; limits import to one state/UT.")
     parser.add_argument("--allow-all-state-inactive-staging-write", action="store_true", help="Future policy gate for all-state inactive staging writes.")
     parser.add_argument("--source-file-sha256", default="", help="Optional source manifest checksum for deterministic batch ids.")
     parser.add_argument("--source-file-size-bytes", type=int, default=None)
@@ -279,21 +564,42 @@ def main() -> int:
             "runtime_tables_written": False,
         }
     else:
-        rows, columns = read_rows(input_path)
+        all_rows, columns = read_rows(input_path)
+        rows = filter_rows(all_rows, clean(args.state_or_ut) or None)
         table_check = check_target_tables()
-        import_plan = plan_import(rows, input_path, args.source_file_sha256, args.sample_limit)
+        expected_state_count = 1 if clean(args.state_or_ut) else EXPECTED_STATE_COUNT
+        expected_row_count = len(rows) if clean(args.state_or_ut) else EXPECTED_ROW_COUNT
+        import_plan = plan_import(rows, input_path, args.source_file_sha256, args.sample_limit, expected_state_count, expected_row_count)
 
         apply_result = None
         db_writes_attempted = False
         healthy = import_plan["healthy"]
 
-        if args.apply:
+        if args.apply and not args.allow_all_state_inactive_staging_write:
             healthy = False
             apply_result = {
                 "healthy": False,
-                "error": "ALL_STATE_INACTIVE_STAGING_APPLY_NOT_IMPLEMENTED_REQUIRES_SEPARATE_CHECKPOINT",
-                "policy_flag_present": bool(args.allow_all_state_inactive_staging_write),
+                "error": "ALL_STATE_INACTIVE_STAGING_APPLY_REQUIRES_POLICY_FLAG",
+                "policy_flag_present": False,
             }
+        elif args.apply and not clean(args.state_or_ut):
+            healthy = False
+            apply_result = {
+                "healthy": False,
+                "error": "ALL_STATE_INACTIVE_STAGING_APPLY_REQUIRES_STATE_SCOPE",
+                "policy_flag_present": True,
+            }
+        elif args.apply:
+            if not table_check.get("healthy"):
+                healthy = False
+                apply_result = {"healthy": False, "error": "TARGET_TABLES_NOT_READY", "table_check": table_check}
+            elif not import_plan["healthy"]:
+                healthy = False
+                apply_result = {"healthy": False, "error": "IMPORT_PLAN_UNSAFE", "unsafe_counts": import_plan.get("unsafe_counts")}
+            else:
+                db_writes_attempted = True
+                apply_result = apply_import(rows, input_path, import_plan, args.source_file_sha256, args.source_file_size_bytes)
+                healthy = bool(apply_result.get("healthy"))
 
         result = {
             "schema_version": "nwdp_boundary_all_state_inactive_staging_importer.v1",
@@ -325,7 +631,7 @@ def main() -> int:
                 "safe_read_only": not args.apply,
                 "candidate_plan_healthy": import_plan["healthy"],
                 "staging_tables_available": table_check.get("healthy") is True,
-                "ready_for_inactive_staging_apply": False,
+                "ready_for_inactive_staging_apply": bool(clean(args.state_or_ut)) and import_plan["healthy"] and table_check.get("healthy") is True,
                 "ready_for_runtime_spatial_matching": False,
                 "ready_for_runtime_table_write": False,
             },

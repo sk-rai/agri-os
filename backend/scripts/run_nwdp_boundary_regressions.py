@@ -21,6 +21,7 @@ CHECKS = [
     ("runtime activation plan", [str(PYTHON), "scripts/test_nwdp_boundary_runtime_activation_plan.py"]),
     ("all-state inactive staging import plan", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_inactive_staging_import_plan.py"]),
     ("all-state inactive staging importer", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_inactive_staging_importer.py"]),
+    ("all-state Chandigarh inactive staging apply", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_chandigarh_inactive_staging_apply.py"]),
 ]
 
 
