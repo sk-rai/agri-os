@@ -70,7 +70,7 @@ def main() -> int:
     check(blocked["apply_mode"] is True, "Apply checkpoint records apply mode", blocked)
     check(blocked["db_writes_attempted"] is False, "Blocked apply attempts no DB writes", blocked)
     check(blocked["runtime_tables_written"] is False, "Blocked apply writes no runtime tables", blocked)
-    check(blocked["apply_result"]["error"] == "ALL_STATE_INACTIVE_STAGING_APPLY_NOT_IMPLEMENTED_REQUIRES_SEPARATE_CHECKPOINT", "Blocked apply reports policy error", blocked["apply_result"])
+    check(blocked["apply_result"]["error"] == "ALL_STATE_INACTIVE_STAGING_APPLY_REQUIRES_STATE_SCOPE", "Blocked apply reports policy error", blocked["apply_result"])
     check(blocked["readiness"]["ready_for_inactive_staging_apply"] is False, "Blocked apply keeps staging apply disabled", blocked["readiness"])
     check(blocked["readiness"]["ready_for_runtime_table_write"] is False, "Blocked apply keeps runtime write disabled", blocked["readiness"])
 
