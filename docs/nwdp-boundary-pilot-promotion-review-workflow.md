@@ -896,3 +896,41 @@ Regression coverage:
 Decision:
 
 State-scoped inactive staging apply is now proven on the smallest all-state source, Chandigarh. The next rollout should continue state-by-state, preferably from smallest to largest, verifying idempotency and inactive guardrails after each state. Runtime promotion, runtime lookup, spatial matching, Android behavior, and candidate promotion remain out of scope.
+
+## Small-state inactive staging rollout checkpoint — 2026-08-25
+
+A state-scoped inactive staging rollout was completed for the smallest all-state GeoJSON NWDP sources.
+
+States/UTs staged:
+
+- Chandigarh: 13
+- Lakshadweep: 34
+- Dadra and Nagar Haveli and Daman & Diu: 101
+- Puducherry: 101
+- Ladakh: 250
+- Delhi: 254
+- Goa: 412
+- Sikkim: 484
+- Andaman and Nicobar Islands: 669
+
+Observed verified aggregate:
+
+- staged states/UTs: 9
+- inactive source features: 2,318
+- inactive candidates: 2,318
+- active source features: 0
+- active candidates: 0
+- promoted candidates: 0
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- Android behavior changed: false
+- lookup API enabled: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Decision:
+
+The all-state inactive staging importer has now been proven beyond Chandigarh across the smallest state/UT band. Continue rollout state-by-state in increasing size/risk bands, verifying idempotency and inactive guardrails after each band. Runtime promotion, lookup behavior, spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope.
