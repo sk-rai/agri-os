@@ -737,3 +737,62 @@ Regression coverage:
 Decision:
 
 The all-state inactive staging import design is now reusable and regression-guarded. The next implementation checkpoint may add a guarded inactive staging apply path, but it must write only inactive staging import batches, source features, and candidates. Runtime tables, lookup behavior, Android behavior, candidate activation, and candidate promotion must remain disabled.
+
+## All-state inactive staging import planner checkpoint — 2026-08-25
+
+A reusable read-only planner and regression now verify the all-state inactive staging import shape.
+
+Artifacts:
+
+- `backend/scripts/plan_nwdp_boundary_all_state_inactive_staging_import.py`
+- `backend/scripts/test_nwdp_boundary_all_state_inactive_staging_import_plan.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Observed planner result:
+
+- schema version: `nwdp_boundary_all_state_inactive_staging_import_plan.v1`
+- mode: `READ_ONLY_INACTIVE_STAGING_IMPORT_PLAN`
+- healthy: true
+- planned import batches: 36
+- planned inactive source feature inserts: 654,285
+- planned inactive candidate inserts: 654,285
+- planned active source features: 0
+- planned active candidates: 0
+- planned runtime writes: 0
+
+Observed all-state bucket plan:
+
+- `DIRECT_VLCODE_MATCH`: 313,667
+- `DIRECT_VLCODE_PARENT_MISMATCH`: 157,381
+- `PARENT_MATCH_VILLAGE_UNRESOLVED`: 70,456
+- `DISTRICT_SCOPED_AMBIGUOUS`: 23,423
+- `SPECIAL_REFERENCE_FEATURE`: 5,885
+- `PARENT_SCOPED_NAME_MATCH`: 5,255
+- `PARENT_SCOPED_NAME_AMBIGUOUS`: 513
+- `DISTRICT_ONLY_UNRESOLVED`: 411
+- `BLOCKED_SOURCE_CAVEAT`: 77,294
+
+Observed review status plan:
+
+- `AUTO_CANDIDATE`: 313,667
+- `MANUAL_REVIEW`: 263,324
+- `BLOCKED`: 77,294
+
+Guardrails verified:
+
+- `db_writes_attempted=false`
+- `runtime_tables_written=false`
+- `runtime_spatial_matching_changed=false`
+- `android_behavior_changed=false`
+- `lookup_api_enabled=false`
+- apply remains unimplemented
+- inactive staging apply requires a separate checkpoint
+
+Regression coverage:
+
+- focused planner regression passed
+- full `backend/scripts/run_nwdp_boundary_regressions.py` passed
+
+Decision:
+
+The all-state inactive staging import design is now reusable and regression-guarded. The next implementation checkpoint may add a guarded inactive staging apply path, but it must write only inactive staging import batches, source features, and candidates. Runtime tables, lookup behavior, Android behavior, candidate activation, and candidate promotion must remain disabled.
