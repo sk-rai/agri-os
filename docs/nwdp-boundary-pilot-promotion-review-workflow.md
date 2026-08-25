@@ -841,3 +841,58 @@ Guardrails verified:
 Decision:
 
 The all-state importer is now safely gated and regression-covered, but inactive staging apply remains intentionally unimplemented. The next checkpoint may implement state-by-state inactive staging writes behind the explicit all-state policy flag, followed immediately by post-apply verification.
+
+## Chandigarh inactive staging apply checkpoint — 2026-08-25
+
+The first state-scoped all-state inactive staging apply checkpoint was completed for Chandigarh.
+
+Artifacts:
+
+- `backend/scripts/import_nwdp_boundary_all_state_inactive_staging.py`
+- `backend/scripts/test_nwdp_boundary_all_state_chandigarh_inactive_staging_apply.py`
+- `backend/scripts/test_nwdp_boundary_all_state_inactive_staging_importer.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Observed apply result:
+
+- state/UT: `Chandigarh`
+- apply mode: true
+- policy flag: `--allow-all-state-inactive-staging-write`
+- state scope required: true
+- healthy: true
+- DB writes attempted: true
+- inactive import batches: 1
+- inactive source features: 13
+- inactive candidates: 13
+- active source features: 0
+- active candidates: 0
+- promoted candidates: 0
+
+Observed repeat apply/idempotency:
+
+- repeat apply exits zero
+- existing source features: 13
+- existing candidates: 13
+- inserted source features: 0
+- inserted candidates: 0
+- post counts remain 1 batch, 13 source features, and 13 candidates
+- active/promoted counts remain zero
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- Android behavior changed: false
+- lookup API enabled: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Regression coverage:
+
+- all-state importer gate regression passed
+- Chandigarh inactive staging apply regression passed
+- full `backend/scripts/run_nwdp_boundary_regressions.py` passed
+
+Decision:
+
+State-scoped inactive staging apply is now proven on the smallest all-state source, Chandigarh. The next rollout should continue state-by-state, preferably from smallest to largest, verifying idempotency and inactive guardrails after each state. Runtime promotion, runtime lookup, spatial matching, Android behavior, and candidate promotion remain out of scope.
