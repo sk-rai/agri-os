@@ -1,0 +1,239 @@
+{
+  "decision": "The first 18 states/UTs are staged as inactive GeoJSON NWDP review rows only. Continue state-by-state before any runtime promotion, lookup, spatial matching, or Android behavior work.",
+  "generated_at": "2026-08-25T12:59:06.033969+00:00",
+  "guardrails": {
+    "android_behavior_changed": false,
+    "candidate_activation_changed": false,
+    "candidate_promotion_changed": false,
+    "lookup_api_enabled": false,
+    "runtime_spatial_matching_changed": false,
+    "runtime_tables_written": false
+  },
+  "healthy": true,
+  "mode": "STATE_SCOPED_INACTIVE_STAGING_APPLY_ROLLOUT_SUMMARY",
+  "rollout": {
+    "expected_total": 33895,
+    "healthy": true,
+    "state_count": 9,
+    "states": [
+      {
+        "android_behavior_changed": false,
+        "batch_id": "4303c2e3-74ab-5c88-ba78-a1d73bccf94f",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 881,
+        "healthy": true,
+        "inserted_candidates": 881,
+        "inserted_source_features": 881,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 881,
+          "promoted_candidates": 0,
+          "source_features": 881
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Mizoram"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "781c2bf4-357f-581e-8f3a-d84049b0f5b1",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 917,
+        "healthy": true,
+        "inserted_candidates": 917,
+        "inserted_source_features": 917,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 917,
+          "promoted_candidates": 0,
+          "source_features": 917
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Tripura"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "ff3b5953-b0b3-52d6-aebd-682623c85da3",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 1556,
+        "healthy": true,
+        "inserted_candidates": 1556,
+        "inserted_source_features": 1556,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 1556,
+          "promoted_candidates": 0,
+          "source_features": 1556
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Kerala"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "6836e8ea-0d86-55be-904b-4eec74a37733",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 1564,
+        "healthy": true,
+        "inserted_candidates": 1564,
+        "inserted_source_features": 1564,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 1564,
+          "promoted_candidates": 0,
+          "source_features": 1564
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Nagaland"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "0675d664-50d0-5a37-aabc-25c55d0edef0",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 2674,
+        "healthy": true,
+        "inserted_candidates": 2674,
+        "inserted_source_features": 2674,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 2674,
+          "promoted_candidates": 0,
+          "source_features": 2674
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Manipur"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "f6020ca1-f1cb-5d88-bfb8-b66f1d8db279",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 5803,
+        "healthy": true,
+        "inserted_candidates": 5803,
+        "inserted_source_features": 5803,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 5803,
+          "promoted_candidates": 0,
+          "source_features": 5803
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Arunachal Pradesh"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "989f3796-a0c2-5dc6-9ef3-08f1e3dc7ba1",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 6593,
+        "healthy": true,
+        "inserted_candidates": 6593,
+        "inserted_source_features": 6593,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 6593,
+          "promoted_candidates": 0,
+          "source_features": 6593
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Jammu & Kashmir"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "a5ed2d5e-9948-53c9-ac1e-fbfa7a410679",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 6897,
+        "healthy": true,
+        "inserted_candidates": 6897,
+        "inserted_source_features": 6897,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 6897,
+          "promoted_candidates": 0,
+          "source_features": 6897
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Meghalaya"
+      },
+      {
+        "android_behavior_changed": false,
+        "batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "existing_candidates": 0,
+        "existing_source_features": 0,
+        "exit_code": 0,
+        "expected_count": 7010,
+        "healthy": true,
+        "inserted_candidates": 7010,
+        "inserted_source_features": 7010,
+        "lookup_api_enabled": false,
+        "post_counts": {
+          "active_candidates": 0,
+          "active_source_features": 0,
+          "batches": 1,
+          "candidates": 7010,
+          "promoted_candidates": 0,
+          "source_features": 7010
+        },
+        "runtime_spatial_matching_changed": false,
+        "runtime_tables_written": false,
+        "state_or_ut": "Haryana"
+      }
+    ]
+  },
+  "schema_version": "nwdp_boundary_mid_small_state_inactive_staging_rollout_summary.v1",
+  "verification": {
+    "active_candidate_total": 0,
+    "active_source_feature_total": 0,
+    "candidate_total": 36213,
+    "expected_total": 36213,
+    "healthy": true,
+    "promoted_candidate_total": 0,
+    "source_feature_total": 36213,
+    "state_count": 18
+  }
+}
