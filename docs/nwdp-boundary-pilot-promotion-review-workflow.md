@@ -973,3 +973,47 @@ Decision:
 
 The inactive staging rollout has now covered 18 states/UTs with no active candidates, no promoted candidates, and no runtime table writes. Continue rollout in state-scoped bands. Runtime promotion, lookup behavior, spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope until separately reviewed checkpoints.
 
+## Moderate-state inactive staging rollout checkpoint — 2026-08-25
+
+The next state-scoped inactive staging rollout band was completed and verified.
+
+Additional states staged in this band:
+
+- Telangana: 10,718
+- Punjab: 12,860
+- Uttarakhand: 16,920
+- Tamil Nadu: 17,119
+- Andhra Pradesh: 18,100
+- Gujarat: 18,838
+
+Observed verified aggregate excluding the earlier Karnataka pilot:
+
+- staged rollout states/UTs: 24
+- inactive source features: 130,768
+- inactive candidates: 130,768
+- active source features: 0
+- active candidates: 0
+- promoted candidates: 0
+
+Observed verified aggregate including the earlier Karnataka pilot:
+
+- NWDP staging states/UTs: 25
+- inactive source features: 160,557
+- inactive candidates: 160,557
+- active source features: 0
+- active candidates: 0
+- promoted candidates: 0
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- Android behavior changed: false
+- lookup API enabled: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Decision:
+
+The inactive staging rollout has now covered 24 all-state rollout states/UTs, plus the earlier Karnataka pilot. Continue in state-scoped bands. Runtime promotion, lookup behavior, spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope until separately reviewed checkpoints.
+
