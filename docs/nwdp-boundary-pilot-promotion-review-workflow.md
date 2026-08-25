@@ -934,3 +934,42 @@ Guardrails preserved:
 Decision:
 
 The all-state inactive staging importer has now been proven beyond Chandigarh across the smallest state/UT band. Continue rollout state-by-state in increasing size/risk bands, verifying idempotency and inactive guardrails after each band. Runtime promotion, lookup behavior, spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope.
+
+## Mid-small inactive staging rollout checkpoint — 2026-08-25
+
+The next state-scoped inactive staging rollout band was completed and verified.
+
+Additional states/UTs staged in this band:
+
+- Mizoram: 881
+- Tripura: 917
+- Kerala: 1,556
+- Nagaland: 1,564
+- Manipur: 2,674
+- Arunachal Pradesh: 5,803
+- Jammu & Kashmir: 6,593
+- Meghalaya: 6,897
+- Haryana: 7,010
+
+Observed verified cumulative aggregate:
+
+- staged states/UTs: 18
+- inactive source features: 36,213
+- inactive candidates: 36,213
+- active source features: 0
+- active candidates: 0
+- promoted candidates: 0
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- Android behavior changed: false
+- lookup API enabled: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Decision:
+
+The inactive staging rollout has now covered 18 states/UTs with no active candidates, no promoted candidates, and no runtime table writes. Continue rollout in state-scoped bands. Runtime promotion, lookup behavior, spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope until separately reviewed checkpoints.
+
