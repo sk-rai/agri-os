@@ -1,0 +1,85 @@
+{
+  "active_candidate_total": 0,
+  "active_source_feature_total": 0,
+  "android_behavior_changed": false,
+  "band": "final_heavy_state_inactive_staging_rollout",
+  "band_total": 217073,
+  "cumulative_nwdp_staging_state_count": 36,
+  "cumulative_nwdp_staging_total": 654285,
+  "generated_at": "2026-08-26T00:00:00+05:30",
+  "healthy": true,
+  "lookup_api_enabled": false,
+  "promoted_candidate_total": 0,
+  "runtime_spatial_matching_changed": false,
+  "runtime_tables_written": false,
+  "schema_version": "nwdp_boundary_final_heavy_state_inactive_staging_rollout_summary.v1",
+  "state_count": 3,
+  "states": [
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 53320,
+      "healthy": true,
+      "inserted_candidates": 53320,
+      "inserted_source_features": 53320,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 53320,
+        "promoted_candidates": 0,
+        "source_features": 53320
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Odisha"
+    },
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 55937,
+      "healthy": true,
+      "inserted_candidates": 55937,
+      "inserted_source_features": 55937,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 55937,
+        "promoted_candidates": 0,
+        "source_features": 55937
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Madhya Pradesh"
+    },
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 107816,
+      "healthy": true,
+      "inserted_candidates": 107816,
+      "inserted_source_features": 107816,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 107816,
+        "promoted_candidates": 0,
+        "source_features": 107816
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Uttar Pradesh"
+    }
+  ]
+}
