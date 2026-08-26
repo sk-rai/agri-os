@@ -22,6 +22,7 @@ CHECKS = [
     ("all-state inactive staging import plan", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_inactive_staging_import_plan.py"]),
     ("all-state inactive staging importer", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_inactive_staging_importer.py"]),
     ("all-state Chandigarh inactive staging apply", [str(PYTHON), "scripts/test_nwdp_boundary_all_state_chandigarh_inactive_staging_apply.py"]),
+    ("admin state-wise match summary endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_admin_state_wise_match_summary_endpoint.py"]),
 ]
 
 

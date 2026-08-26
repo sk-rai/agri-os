@@ -272,6 +272,135 @@ def _jsonish(value):
     return value if value is not None else {}
 
 
+
+def _nwdp_boundary_state_wise_match_summary(db: Session) -> dict:
+    state_rows = db.execute(text("""
+        with batch_scope as (
+          select id, state_or_ut
+          from geography_boundary_import_batches
+          where source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+        ),
+        feature_totals as (
+          select
+            import_batch_id,
+            count(*)::bigint as source_features,
+            count(*) filter (where is_active = true)::bigint as active_source_features
+          from geography_boundary_source_features
+          where import_batch_id in (select id from batch_scope)
+          group by import_batch_id
+        ),
+        candidate_totals as (
+          select
+            import_batch_id,
+            count(*)::bigint as candidates,
+            count(*) filter (where is_active = true)::bigint as active_candidates,
+            count(*) filter (where promotion_status <> 'NOT_PROMOTED')::bigint as promoted_candidates,
+            count(*) filter (
+              where candidate_bucket = 'DIRECT_VLCODE_MATCH'
+                and review_status = 'AUTO_CANDIDATE'
+                and is_active = false
+                and promotion_status = 'NOT_PROMOTED'
+            )::bigint as future_match_ready_candidates,
+            count(*) filter (
+              where review_status = 'MANUAL_REVIEW'
+                and is_active = false
+                and promotion_status = 'NOT_PROMOTED'
+            )::bigint as manual_review_candidates,
+            count(*) filter (
+              where review_status = 'BLOCKED'
+                and is_active = false
+                and promotion_status = 'NOT_PROMOTED'
+            )::bigint as blocked_candidates
+          from geography_boundary_crosswalk_candidates
+          where import_batch_id in (select id from batch_scope)
+          group by import_batch_id
+        )
+        select
+          b.state_or_ut,
+          count(distinct b.id)::bigint as batches,
+          coalesce(sum(f.source_features), 0)::bigint as source_features,
+          coalesce(sum(c.candidates), 0)::bigint as candidates,
+          coalesce(sum(f.active_source_features), 0)::bigint as active_source_features,
+          coalesce(sum(c.active_candidates), 0)::bigint as active_candidates,
+          coalesce(sum(c.promoted_candidates), 0)::bigint as promoted_candidates,
+          coalesce(sum(c.future_match_ready_candidates), 0)::bigint as future_match_ready_candidates,
+          coalesce(sum(c.manual_review_candidates), 0)::bigint as manual_review_candidates,
+          coalesce(sum(c.blocked_candidates), 0)::bigint as blocked_candidates
+        from batch_scope b
+        left join feature_totals f on f.import_batch_id = b.id
+        left join candidate_totals c on c.import_batch_id = b.id
+        group by b.state_or_ut
+        order by b.state_or_ut
+    """)).mappings().all()
+
+    bucket_rows = db.execute(text("""
+        select b.state_or_ut, c.candidate_bucket, count(*)::bigint as count
+        from geography_boundary_import_batches b
+        join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+        where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+        group by b.state_or_ut, c.candidate_bucket
+        order by b.state_or_ut, c.candidate_bucket
+    """)).mappings().all()
+
+    review_rows = db.execute(text("""
+        select b.state_or_ut, c.review_status, count(*)::bigint as count
+        from geography_boundary_import_batches b
+        join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+        where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+        group by b.state_or_ut, c.review_status
+        order by b.state_or_ut, c.review_status
+    """)).mappings().all()
+
+    by_state = {}
+    for row in state_rows:
+        item = {
+            "state_or_ut": row["state_or_ut"],
+            "batches": int(row["batches"] or 0),
+            "source_features": int(row["source_features"] or 0),
+            "candidates": int(row["candidates"] or 0),
+            "active_source_features": int(row["active_source_features"] or 0),
+            "active_candidates": int(row["active_candidates"] or 0),
+            "promoted_candidates": int(row["promoted_candidates"] or 0),
+            "future_match_ready_candidates": int(row["future_match_ready_candidates"] or 0),
+            "manual_review_candidates": int(row["manual_review_candidates"] or 0),
+            "blocked_candidates": int(row["blocked_candidates"] or 0),
+            "candidate_bucket_counts": {},
+            "review_status_counts": {},
+            "future_project_matching_allowed_now": False,
+            "ready_for_future_project_matching_design": True,
+        }
+        by_state[item["state_or_ut"]] = item
+
+    for row in bucket_rows:
+        if row["state_or_ut"] in by_state:
+            by_state[row["state_or_ut"]]["candidate_bucket_counts"][row["candidate_bucket"] or ""] = int(row["count"] or 0)
+
+    for row in review_rows:
+        if row["state_or_ut"] in by_state:
+            by_state[row["state_or_ut"]]["review_status_counts"][row["review_status"] or ""] = int(row["count"] or 0)
+
+    states = list(by_state.values())
+    totals = {
+        "state_count": len(states),
+        "source_features": sum(item["source_features"] for item in states),
+        "candidates": sum(item["candidates"] for item in states),
+        "active_source_features": sum(item["active_source_features"] for item in states),
+        "active_candidates": sum(item["active_candidates"] for item in states),
+        "promoted_candidates": sum(item["promoted_candidates"] for item in states),
+        "future_match_ready_candidates": sum(item["future_match_ready_candidates"] for item in states),
+        "manual_review_candidates": sum(item["manual_review_candidates"] for item in states),
+        "blocked_candidates": sum(item["blocked_candidates"] for item in states),
+    }
+    healthy = (
+        totals["state_count"] == 36
+        and totals["source_features"] == 654285
+        and totals["candidates"] == 654285
+        and totals["active_source_features"] == 0
+        and totals["active_candidates"] == 0
+        and totals["promoted_candidates"] == 0
+    )
+    return {"healthy": healthy, "totals": totals, "states": states}
+
 NWDP_BOUNDARY_RUNTIME_TABLES = [
     "geography_boundary_runtime_sets",
     "geography_boundary_runtime_features",
@@ -354,6 +483,32 @@ def _nwdp_boundary_runtime_pilot_inspection(db: Session, limit: int) -> dict:
         "promotion_events": promotion_events,
         "staging_guardrails": staging_guardrails,
         "crosswalks": crosswalks,
+    }
+
+
+
+@router.get("/nwdp-boundary-state-wise-match-summary")
+def get_nwdp_boundary_state_wise_match_summary(
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+) -> dict:
+    summary = _nwdp_boundary_state_wise_match_summary(db)
+    return {
+        "schema_version": "nwdp_boundary_admin_state_wise_match_summary.v1",
+        "claim_boundary": "Read-only admin summary over inactive staging rows. It does not activate candidates, promote candidates, write runtime tables, enable point-in-polygon matching, change lookup behavior, or change Android behavior.",
+        "governance": _nwdp_boundary_governance(),
+        "runtime_tables_written": False,
+        "runtime_spatial_matching_changed": False,
+        "lookup_api_enabled": False,
+        "android_behavior_changed": False,
+        "readiness": {
+            "ready_for_admin_state_wise_review_reporting": summary["healthy"],
+            "ready_for_future_project_matching_design": summary["healthy"],
+            "ready_for_runtime_spatial_matching": False,
+            "ready_for_lookup_api_enablement": False,
+            "ready_for_android_behavior_change": False,
+        },
+        **summary,
     }
 
 
