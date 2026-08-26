@@ -45,6 +45,7 @@ type CandidateRow = {
   proposed_scope: string;
   source_codes: Record<string, string | null>;
   source_names: Record<string, string | null>;
+  match_evidence?: Record<string, unknown> | null;
   proposed_village_lgd_code?: string | null;
   proposed_village_id?: string | null;
   is_active?: boolean;
@@ -99,6 +100,60 @@ type ReviewResponse = {
   runtime_spatial_matching_changed: boolean;
   android_behavior_changed: boolean;
   promotion_supported: boolean;
+};
+
+type StateWiseMatchRow = {
+  state_or_ut: string;
+  source_features: number;
+  candidates: number;
+  future_match_ready_candidates: number;
+  manual_review_candidates: number;
+  blocked_candidates: number;
+  active_source_features: number;
+  active_candidates: number;
+  promoted_candidates: number;
+};
+
+type StateWiseMatchSummaryResponse = {
+  schema_version: string;
+  healthy: boolean;
+  totals: {
+    state_count: number;
+    candidates: number;
+    future_match_ready_candidates: number;
+    active_candidates: number;
+    promoted_candidates: number;
+  };
+  states: StateWiseMatchRow[];
+};
+
+type EligibleProjectCandidate = {
+  state_or_ut: string;
+  candidate_id: string;
+  source_feature_index: number;
+  candidate_bucket: string;
+  review_status: string;
+  proposed_village_lgd_code?: string | null;
+  source_vlcode?: string | null;
+  source_district_name?: string | null;
+  source_subdistrict_name?: string | null;
+  source_village_name?: string | null;
+};
+
+type EligibleProjectCandidatesResponse = {
+  schema_version: string;
+  mode: string;
+  summary: {
+    eligible_candidate_count: number;
+    returned_count: number;
+    manual_review_excluded: boolean;
+    blocked_excluded: boolean;
+    runtime_tables_written: boolean;
+    runtime_spatial_matching_changed: boolean;
+    lookup_api_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+  items: EligibleProjectCandidate[];
 };
 
 const BUCKETS = [
@@ -170,8 +225,11 @@ export default function NwdpBoundaryReviewPage() {
   const [batchId, setBatchId] = useState("");
   const [data, setData] = useState<CandidateListResponse | null>(null);
   const [detail, setDetail] = useState<CandidateDetailResponse | null>(null);
+  const [stateSummary, setStateSummary] = useState<StateWiseMatchSummaryResponse | null>(null);
+  const [eligibleData, setEligibleData] = useState<EligibleProjectCandidatesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [eligibleLoading, setEligibleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -185,6 +243,7 @@ export default function NwdpBoundaryReviewPage() {
   const [unresolvedOnly, setUnresolvedOnly] = useState(false);
   const [parentMismatchOnly, setParentMismatchOnly] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("");
+  const [projectState, setProjectState] = useState("Karnataka");
   const [offset, setOffset] = useState(0);
 
   function showQueue(nextBucket: string, nextReviewStatus = "", options?: { specialOnly?: boolean; unresolvedOnly?: boolean; parentMismatchOnly?: boolean }) {
@@ -252,6 +311,30 @@ export default function NwdpBoundaryReviewPage() {
     }
   }, [queryPath]);
 
+  const loadStateSummary = useCallback(async () => {
+    try {
+      const response = await api<StateWiseMatchSummaryResponse>("/api/v1/master-data/geography/nwdp-boundary-state-wise-match-summary");
+      setStateSummary(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load state-wise match summary");
+    }
+  }, []);
+
+  const loadEligibleProjectCandidates = useCallback(async () => {
+    if (!projectState.trim()) return;
+    setEligibleLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ state_or_ut: projectState.trim(), limit: "25" });
+      const response = await api<EligibleProjectCandidatesResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates?${params.toString()}`);
+      setEligibleData(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load project matching candidates");
+    } finally {
+      setEligibleLoading(false);
+    }
+  }, [projectState]);
+
   const loadDetail = useCallback(async (candidateId: string) => {
     setDetailLoading(true);
     setError(null);
@@ -272,6 +355,10 @@ export default function NwdpBoundaryReviewPage() {
   }, [loadBatches]);
 
   useEffect(() => {
+    void loadStateSummary();
+  }, [loadStateSummary]);
+
+  useEffect(() => {
     const firstCandidateId = data?.items[0]?.candidate_id;
     if (!detail && firstCandidateId) {
       void loadDetail(firstCandidateId);
@@ -279,6 +366,8 @@ export default function NwdpBoundaryReviewPage() {
   }, [data, detail, loadDetail]);
 
   useEffect(() => { void loadCandidates(); }, [loadCandidates]);
+
+  useEffect(() => { void loadEligibleProjectCandidates(); }, [loadEligibleProjectCandidates]);
 
   function applyFilters(event: FormEvent) {
     event.preventDefault();
@@ -355,7 +444,7 @@ export default function NwdpBoundaryReviewPage() {
         <p className="text-sm font-semibold uppercase tracking-wide text-green-700">Reference data review</p>
         <h1 className="text-2xl font-bold text-gray-900">NWDP Boundary Review</h1>
         <p className="mt-2 max-w-4xl text-sm text-gray-600">
-          Review inactive NWDP/GSI Karnataka village-boundary crosswalk candidates. This follows the CoRE/LGD pattern:
+          Review inactive NWDP/GSI village-boundary crosswalk candidates across staged states and UTs. This follows the CoRE/LGD pattern:
           review metadata is allowed, but no geometry is activated, promoted, or used for runtime point-in-polygon matching here.
         </p>
       </div>
@@ -364,10 +453,79 @@ export default function NwdpBoundaryReviewPage() {
       {message ? <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700">{message}</div> : null}
 
       <section className="grid gap-4 md:grid-cols-4">
-        <Card label="Candidates" value={data?.summary.total ?? batches[0]?.candidate_count ?? "—"} />
-        <Card label="Auto candidates" value={data?.summary.auto_candidate_count ?? "—"} />
-        <Card label="Manual review" value={data?.summary.manual_review_count ?? "—"} />
-        <Card label="Active / promoted" value={`${data?.summary.active_candidate_count ?? 0} / ${data?.summary.promoted_candidate_count ?? 0}`} tone="safe" />
+        <Card label="Staged states/UTs" value={stateSummary?.totals.state_count ?? batches.length || "—"} />
+        <Card label="Inactive candidates" value={stateSummary?.totals.candidates ?? data?.summary.total ?? "—"} />
+        <Card label="Future match-ready" value={stateSummary?.totals.future_match_ready_candidates ?? data?.summary.auto_candidate_count ?? "—"} tone="safe" />
+        <Card label="Active / promoted" value={`${stateSummary?.totals.active_candidates ?? data?.summary.active_candidate_count ?? 0} / ${stateSummary?.totals.promoted_candidates ?? data?.summary.promoted_candidate_count ?? 0}`} tone="safe" />
+      </section>
+
+      <section className="rounded-xl border border-green-200 bg-green-50 p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-green-700">Project matching read model</p>
+            <h2 className="mt-1 font-semibold text-gray-900">Eligible direct-code candidates</h2>
+            <p className="mt-1 max-w-3xl text-sm text-green-900">
+              This panel reuses the staged boundary review data for future project matching. It only reads inactive
+              DIRECT_VLCODE_MATCH / AUTO_CANDIDATE rows and excludes manual-review or blocked candidates.
+            </p>
+          </div>
+          <div className="rounded-full border border-green-300 bg-white px-3 py-1 text-xs font-semibold text-green-700">
+            Apply / runtime matching: disabled
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <Select
+            label="State / UT"
+            value={projectState}
+            onChange={setProjectState}
+            options={(stateSummary?.states || []).map((state) => ({ value: state.state_or_ut, label: `${state.state_or_ut} (${state.future_match_ready_candidates})` }))}
+          />
+          <Card label="Eligible in state" value={eligibleData?.summary.eligible_candidate_count ?? (eligibleLoading ? "…" : "—")} tone="safe" />
+          <Card label="Manual review queue" value={stateSummary?.states.find((state) => state.state_or_ut === projectState)?.manual_review_candidates ?? "—"} />
+          <Card label="Blocked queue" value={stateSummary?.states.find((state) => state.state_or_ut === projectState)?.blocked_candidates ?? "—"} />
+        </div>
+
+        <div className="mt-4 overflow-x-auto rounded-lg border border-green-200 bg-white">
+          <table className="min-w-full divide-y text-sm">
+            <thead className="bg-green-50 text-left text-xs uppercase tracking-wide text-green-800">
+              <tr>
+                <th className="px-4 py-3">Feature</th>
+                <th className="px-4 py-3">Source</th>
+                <th className="px-4 py-3">Village LGD</th>
+                <th className="px-4 py-3">Candidate</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(eligibleData?.items || []).map((row) => (
+                <tr key={row.candidate_id} className="hover:bg-green-50/50">
+                  <td className="px-4 py-3">
+                    <button className="font-mono text-xs text-green-700 underline-offset-2 hover:underline" onClick={() => void loadDetail(row.candidate_id)}>
+                      #{row.source_feature_index}
+                    </button>
+                    <div className="text-xs text-gray-500">{row.source_vlcode || "no vlcode"}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">{row.source_village_name || "—"}</div>
+                    <div className="text-xs text-gray-500">{[row.source_district_name, row.source_subdistrict_name].filter(Boolean).join(" / ")}</div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-700">{row.proposed_village_lgd_code || "—"}</td>
+                  <td className="px-4 py-3"><Badge className={bucketTone(row.candidate_bucket)}>{row.review_status}</Badge></td>
+                </tr>
+              ))}
+              {!eligibleLoading && eligibleData?.items.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-sm text-gray-500" colSpan={4}>No eligible direct-code candidates for this state/UT.</td>
+                </tr>
+              ) : null}
+              {eligibleLoading ? (
+                <tr>
+                  <td className="px-4 py-6 text-sm text-gray-500" colSpan={4}>Loading eligible rows…</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="rounded-xl border bg-white p-5 shadow-sm">
