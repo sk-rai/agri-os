@@ -1090,3 +1090,52 @@ Decision:
 
 All 36 NWDP/GSI all-state village-boundary sources are now loaded into inactive staging. This completes the geography staging coverage checkpoint only. Runtime promotion, lookup behavior, point-in-polygon spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope until separately reviewed and applied checkpoints.
 
+## Project matching eligible candidates endpoint checkpoint — 2026-08-26
+
+A read-only admin/project matching candidate endpoint is now available for future project matching review workflows.
+
+Endpoint:
+
+- `GET /api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates`
+
+Required scope:
+
+- `state_or_ut`, or
+- `village_id`
+
+The endpoint intentionally rejects unbounded requests.
+
+Eligible candidate predicate:
+
+- `candidate_bucket = DIRECT_VLCODE_MATCH`
+- `review_status = AUTO_CANDIDATE`
+- `is_active = false`
+- `promotion_status = NOT_PROMOTED`
+- `proposed_village_id is not null`
+
+Excluded rows:
+
+- manual review candidates
+- blocked candidates
+- parent mismatch candidates until reviewed
+- special/reference-only features
+- active or promoted candidates
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- lookup API enabled: false
+- Android behavior changed: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_project_matching_eligible_candidates_endpoint.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Decision:
+
+This endpoint creates the safe read-only bridge from inactive NWDP staging to future admin/project matching review. It does not enable application behavior or runtime point-in-polygon matching. Any apply path that uses these candidates for project matching must be separately designed, checkpointed, guarded by feature/state/project switches, and reversible without mutating manual-review or blocked rows.
+
