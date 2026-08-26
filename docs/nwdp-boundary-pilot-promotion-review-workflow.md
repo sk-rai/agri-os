@@ -1058,3 +1058,35 @@ Decision:
 
 The inactive staging rollout has now covered 27 all-state rollout states/UTs, plus the earlier Karnataka pilot. Continue state-scoped rollout for the remaining high-volume states. Runtime promotion, lookup behavior, spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope until separately reviewed checkpoints.
 
+## Final-heavy inactive staging rollout checkpoint — 2026-08-26
+
+The final high-volume state-scoped inactive staging rollout band was completed and verified.
+
+Additional states staged in this band:
+
+- Odisha: 53,320
+- Madhya Pradesh: 55,937
+- Uttar Pradesh: 107,816
+
+Observed verified final aggregate:
+
+- NWDP staging states/UTs: 36
+- inactive source features: 654,285
+- inactive candidates: 654,285
+- active source features: 0
+- active candidates: 0
+- promoted candidates: 0
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- Android behavior changed: false
+- lookup API enabled: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Decision:
+
+All 36 NWDP/GSI all-state village-boundary sources are now loaded into inactive staging. This completes the geography staging coverage checkpoint only. Runtime promotion, lookup behavior, point-in-polygon spatial matching, Android behavior, candidate activation, and candidate promotion remain out of scope until separately reviewed and applied checkpoints.
+
