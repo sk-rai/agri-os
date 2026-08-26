@@ -1,0 +1,132 @@
+{
+  "active_candidate_total": 0,
+  "active_source_feature_total": 0,
+  "android_behavior_changed": false,
+  "band": "large_state_inactive_staging_rollout",
+  "band_total": 208409,
+  "cumulative_nwdp_staging_state_count_including_karnataka_pilot": 33,
+  "cumulative_nwdp_staging_total_including_karnataka_pilot": 437212,
+  "cumulative_rollout_state_count_excluding_karnataka_pilot": 32,
+  "cumulative_rollout_total_excluding_karnataka_pilot": 407423,
+  "generated_at": "2026-08-26T00:00:00+05:30",
+  "healthy": true,
+  "karnataka_pilot_staging_count": 29789,
+  "lookup_api_enabled": false,
+  "promoted_candidate_total": 0,
+  "runtime_spatial_matching_changed": false,
+  "runtime_tables_written": false,
+  "schema_version": "nwdp_boundary_large_state_inactive_staging_rollout_summary.v1",
+  "state_count": 5,
+  "states": [
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 32678,
+      "healthy": true,
+      "inserted_candidates": 32678,
+      "inserted_source_features": 32678,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 32678,
+        "promoted_candidates": 0,
+        "source_features": 32678
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Jharkhand"
+    },
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 41188,
+      "healthy": true,
+      "inserted_candidates": 41188,
+      "inserted_source_features": 41188,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 41188,
+        "promoted_candidates": 0,
+        "source_features": 41188
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "West Bengal"
+    },
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 44468,
+      "healthy": true,
+      "inserted_candidates": 44468,
+      "inserted_source_features": 44468,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 44468,
+        "promoted_candidates": 0,
+        "source_features": 44468
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Maharashtra"
+    },
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 45012,
+      "healthy": true,
+      "inserted_candidates": 45012,
+      "inserted_source_features": 45012,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 45012,
+        "promoted_candidates": 0,
+        "source_features": 45012
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Rajasthan"
+    },
+    {
+      "android_behavior_changed": false,
+      "existing_candidates": 0,
+      "existing_source_features": 0,
+      "exit_code": 0,
+      "expected_count": 45063,
+      "healthy": true,
+      "inserted_candidates": 45063,
+      "inserted_source_features": 45063,
+      "lookup_api_enabled": false,
+      "post_counts": {
+        "active_candidates": 0,
+        "active_source_features": 0,
+        "batches": 1,
+        "candidates": 45063,
+        "promoted_candidates": 0,
+        "source_features": 45063
+      },
+      "runtime_spatial_matching_changed": false,
+      "runtime_tables_written": false,
+      "state_or_ut": "Bihar"
+    }
+  ]
+}
