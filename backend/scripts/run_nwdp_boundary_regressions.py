@@ -25,6 +25,7 @@ CHECKS = [
     ("admin state-wise match summary endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_admin_state_wise_match_summary_endpoint.py"]),
     ("project matching enablement plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_enablement_plan.py"]),
     ("project matching read model plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_read_model_plan.py"]),
+    ("project matching eligible candidates endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_eligible_candidates_endpoint.py"]),
 ]
 
 

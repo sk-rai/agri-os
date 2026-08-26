@@ -512,6 +512,128 @@ def get_nwdp_boundary_state_wise_match_summary(
     }
 
 
+
+def _nwdp_boundary_project_matching_eligible_candidates(
+    db: Session,
+    state_or_ut: str | None,
+    village_id: UUID | None,
+    limit: int,
+) -> dict:
+    params = {
+        "state_or_ut": state_or_ut,
+        "village_id": str(village_id) if village_id else None,
+        "limit": limit,
+    }
+
+    where_scope = """
+      and (:state_or_ut is not null or :village_id is not null)
+      and (:state_or_ut is null or b.state_or_ut = :state_or_ut)
+      and (:village_id is null or c.proposed_village_id::text = :village_id)
+    """
+
+    total = int(db.execute(text(f"""
+        select count(*)::bigint
+        from geography_boundary_import_batches b
+        join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+        where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+          and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
+          and c.review_status = 'AUTO_CANDIDATE'
+          and c.is_active = false
+          and c.promotion_status = 'NOT_PROMOTED'
+          and c.proposed_village_id is not null
+          {where_scope}
+    """), params).scalar() or 0)
+
+    items = [dict(row) for row in db.execute(text(f"""
+        select
+          b.state_or_ut,
+          b.id::text as import_batch_id,
+          c.id::text as candidate_id,
+          c.source_feature_id::text,
+          c.source_feature_index,
+          c.candidate_bucket,
+          c.confidence,
+          c.review_status,
+          c.promotion_status,
+          c.proposed_scope,
+          c.proposed_village_id::text,
+          c.proposed_village_lgd_code,
+          f.source_stcode,
+          f.source_dtcode,
+          f.source_sdcode,
+          f.source_bkcode,
+          f.source_vlcode,
+          f.source_district_name,
+          f.source_subdistrict_name,
+          f.source_block_name,
+          f.source_village_name
+        from geography_boundary_import_batches b
+        join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+        join geography_boundary_source_features f on f.id = c.source_feature_id
+        where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+          and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
+          and c.review_status = 'AUTO_CANDIDATE'
+          and c.is_active = false
+          and c.promotion_status = 'NOT_PROMOTED'
+          and c.proposed_village_id is not null
+          {where_scope}
+        order by b.state_or_ut, f.source_feature_index
+        limit :limit
+    """), params).mappings().all()]
+
+    return {
+        "total": total,
+        "returned": len(items),
+        "items": items,
+    }
+
+
+
+@router.get("/nwdp-boundary-project-matching/eligible-candidates")
+def list_nwdp_boundary_project_matching_eligible_candidates(
+    state_or_ut: Optional[str] = Query(None),
+    village_id: Optional[UUID] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+) -> dict:
+    if state_or_ut is None and village_id is None:
+        raise HTTPException(status_code=400, detail="state_or_ut or village_id is required")
+
+    result = _nwdp_boundary_project_matching_eligible_candidates(db, state_or_ut, village_id, limit)
+    return {
+        "schema_version": "nwdp_boundary_project_matching_eligible_candidates.v1",
+        "mode": "READ_ONLY_PROJECT_MATCHING_ELIGIBLE_CANDIDATES",
+        "claim_boundary": "Read-only admin/project matching candidate read model. It returns inactive DIRECT_VLCODE_MATCH AUTO_CANDIDATE rows only. It excludes manual review and blocked candidates and does not activate candidates, promote candidates, write runtime tables, enable lookup behavior, or change Android behavior.",
+        "governance": _nwdp_boundary_governance(),
+        "filters": {
+            "state_or_ut": state_or_ut,
+            "village_id": str(village_id) if village_id else None,
+            "limit": limit,
+        },
+        "summary": {
+            "eligible_candidate_count": result["total"],
+            "returned_count": result["returned"],
+            "manual_review_excluded": True,
+            "blocked_excluded": True,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_spatial_matching_changed": False,
+            "lookup_api_enabled": False,
+            "android_behavior_changed": False,
+        },
+        "readiness": {
+            "ready_for_admin_project_matching_read": True,
+            "ready_for_project_matching_apply": False,
+            "ready_for_runtime_spatial_matching": False,
+            "ready_for_lookup_api_enablement": False,
+            "ready_for_android_behavior_change": False,
+        },
+        "items": result["items"],
+    }
+
+
 @router.get("/boundary-runtime-pilot/inspection", response_model=NwdpBoundaryRuntimePilotInspectionResponse)
 def get_nwdp_boundary_runtime_pilot_inspection(
     limit: int = Query(25, ge=1, le=200),
