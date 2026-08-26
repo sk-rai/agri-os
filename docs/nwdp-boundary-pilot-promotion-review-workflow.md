@@ -1139,3 +1139,54 @@ Decision:
 
 This endpoint creates the safe read-only bridge from inactive NWDP staging to future admin/project matching review. It does not enable application behavior or runtime point-in-polygon matching. Any apply path that uses these candidates for project matching must be separately designed, checkpointed, guarded by feature/state/project switches, and reversible without mutating manual-review or blocked rows.
 
+## Boundary review UI project matching reuse checkpoint — 2026-08-26
+
+The existing NWDP boundary review admin UI has been reused for all-state staged boundary review and future project matching inspection.
+
+UI route:
+
+- `/nwdp-boundary-review`
+
+Reuse scope:
+
+- keeps the existing batch and candidate review queues;
+- generalizes the page copy from the earlier Karnataka pilot to all staged states/UTs;
+- adds a read-only project matching panel backed by the state-wise summary and eligible-candidates endpoints;
+- allows admins to inspect inactive direct-code candidates by state/UT;
+- allows clicking an eligible row into the existing candidate detail/review evidence workflow.
+
+Project matching read model shown in the UI:
+
+- `DIRECT_VLCODE_MATCH`
+- `AUTO_CANDIDATE`
+- `is_active = false`
+- `promotion_status = NOT_PROMOTED`
+- proposed village id present
+
+Excluded from project matching UI readiness:
+
+- manual-review candidates
+- blocked candidates
+- parent mismatch candidates until reviewed
+- special/reference-only features
+- active or promoted candidates
+
+Guardrails preserved:
+
+- runtime tables written: false
+- runtime spatial matching changed: false
+- lookup API enabled: false
+- Android behavior changed: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_review_ui_project_matching_reuse.py`
+- `backend/scripts/run_nwdp_boundary_regressions.py`
+- `web` lint for `src/app/(admin)/nwdp-boundary-review/page.tsx`
+
+Decision:
+
+This is a UI/read-model reuse checkpoint only. It does not add project matching apply behavior, runtime point-in-polygon lookup, Android lookup behavior, candidate activation, or candidate promotion. Those remain separate guarded checkpoints.
+

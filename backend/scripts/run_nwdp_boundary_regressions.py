@@ -26,6 +26,7 @@ CHECKS = [
     ("project matching enablement plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_enablement_plan.py"]),
     ("project matching read model plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_read_model_plan.py"]),
     ("project matching eligible candidates endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_eligible_candidates_endpoint.py"]),
+    ("boundary review UI project matching reuse", [str(PYTHON), "scripts/test_nwdp_boundary_review_ui_project_matching_reuse.py"]),
 ]
 
 
