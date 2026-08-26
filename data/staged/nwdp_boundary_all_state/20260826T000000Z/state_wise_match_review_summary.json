@@ -1,0 +1,1163 @@
+{
+  "claim_boundary": "Read-only state-wise staging report. It does not activate candidates, promote candidates, write runtime tables, enable point-in-polygon matching, change lookup behavior, or change Android behavior.",
+  "generated_at": "2026-08-26T07:22:02.319229+00:00",
+  "healthy": true,
+  "readiness": {
+    "ready_for_admin_state_wise_review_reporting": true,
+    "ready_for_android_behavior_change": false,
+    "ready_for_future_project_matching_design": true,
+    "ready_for_lookup_api_enablement": false,
+    "ready_for_runtime_spatial_matching": false
+  },
+  "schema_version": "nwdp_boundary_state_wise_match_review_summary.v1",
+  "states": [
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 156,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 512,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 1,
+        "SPECIAL_REFERENCE_FEATURE": 156
+      },
+      "candidates": 669,
+      "future_match_ready_candidates": 512,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 1,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict_reference_only": 156,
+        "village": 513
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 512,
+        "BLOCKED": 156,
+        "MANUAL_REVIEW": 1
+      },
+      "source_features": 669,
+      "state_or_ut": "Andaman and Nicobar Islands"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 490,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 4448,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 6480,
+        "DISTRICT_ONLY_UNRESOLVED": 2,
+        "DISTRICT_SCOPED_AMBIGUOUS": 331,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 6326,
+        "PARENT_SCOPED_NAME_MATCH": 23,
+        "SPECIAL_REFERENCE_FEATURE": 490
+      },
+      "candidates": 18100,
+      "future_match_ready_candidates": 4448,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 13162,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district": 2,
+        "district_review": 331,
+        "district_subdistrict": 6326,
+        "district_subdistrict_reference_only": 490,
+        "village": 10928,
+        "village_review": 23
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 4448,
+        "BLOCKED": 490,
+        "MANUAL_REVIEW": 13162
+      },
+      "source_features": 18100,
+      "state_or_ut": "Andhra Pradesh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 215,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 3758,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 638,
+        "DISTRICT_SCOPED_AMBIGUOUS": 23,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 1162,
+        "PARENT_SCOPED_NAME_MATCH": 7,
+        "SPECIAL_REFERENCE_FEATURE": 215
+      },
+      "candidates": 5803,
+      "future_match_ready_candidates": 3758,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 1830,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 23,
+        "district_subdistrict": 1162,
+        "district_subdistrict_reference_only": 215,
+        "village": 4396,
+        "village_review": 7
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 3758,
+        "BLOCKED": 215,
+        "MANUAL_REVIEW": 1830
+      },
+      "source_features": 5803,
+      "state_or_ut": "Arunachal Pradesh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 122,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 22523,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 4017,
+        "SPECIAL_REFERENCE_FEATURE": 122
+      },
+      "candidates": 26662,
+      "future_match_ready_candidates": 22523,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 4017,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 4017,
+        "district_subdistrict_reference_only": 122,
+        "village": 22523
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 22523,
+        "BLOCKED": 122,
+        "MANUAL_REVIEW": 4017
+      },
+      "source_features": 26662,
+      "state_or_ut": "Assam"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 5,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 32452,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 12606,
+        "SPECIAL_REFERENCE_FEATURE": 5
+      },
+      "candidates": 45063,
+      "future_match_ready_candidates": 32452,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 12606,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 12606,
+        "district_subdistrict_reference_only": 5,
+        "village": 32452
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 32452,
+        "BLOCKED": 5,
+        "MANUAL_REVIEW": 12606
+      },
+      "source_features": 45063,
+      "state_or_ut": "Bihar"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 12,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 12,
+        "DIRECT_VLCODE_MATCH": 1
+      },
+      "candidates": 13,
+      "future_match_ready_candidates": 1,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 0,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 12,
+        "village": 1
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 1,
+        "BLOCKED": 12
+      },
+      "source_features": 13,
+      "state_or_ut": "Chandigarh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 468,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 17875,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 2468,
+        "SPECIAL_REFERENCE_FEATURE": 468
+      },
+      "candidates": 20811,
+      "future_match_ready_candidates": 17875,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 2468,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 2468,
+        "district_subdistrict_reference_only": 468,
+        "village": 17875
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 17875,
+        "BLOCKED": 468,
+        "MANUAL_REVIEW": 2468
+      },
+      "source_features": 20811,
+      "state_or_ut": "Chhattisgarh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 3,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 75,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 21,
+        "PARENT_SCOPED_NAME_MATCH": 2,
+        "SPECIAL_REFERENCE_FEATURE": 3
+      },
+      "candidates": 101,
+      "future_match_ready_candidates": 75,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 23,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 21,
+        "district_subdistrict_reference_only": 3,
+        "village": 75,
+        "village_review": 2
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 75,
+        "BLOCKED": 3,
+        "MANUAL_REVIEW": 23
+      },
+      "source_features": 101,
+      "state_or_ut": "Dadra and Nagar Haveli and Daman & Diu"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 223,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 223,
+        "DIRECT_VLCODE_MATCH": 19,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 2,
+        "DISTRICT_ONLY_UNRESOLVED": 4,
+        "DISTRICT_SCOPED_AMBIGUOUS": 6
+      },
+      "candidates": 254,
+      "future_match_ready_candidates": 19,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 12,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 223,
+        "district": 4,
+        "district_review": 6,
+        "village": 21
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 19,
+        "BLOCKED": 223,
+        "MANUAL_REVIEW": 12
+      },
+      "source_features": 254,
+      "state_or_ut": "Delhi"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 3,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 269,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 137,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 3,
+        "SPECIAL_REFERENCE_FEATURE": 3
+      },
+      "candidates": 412,
+      "future_match_ready_candidates": 269,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 140,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 3,
+        "district_subdistrict_reference_only": 3,
+        "village": 406
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 269,
+        "BLOCKED": 3,
+        "MANUAL_REVIEW": 140
+      },
+      "source_features": 412,
+      "state_or_ut": "Goa"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 199,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 14757,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 1130,
+        "DISTRICT_ONLY_UNRESOLVED": 1,
+        "DISTRICT_SCOPED_AMBIGUOUS": 187,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 2522,
+        "PARENT_SCOPED_NAME_MATCH": 42,
+        "SPECIAL_REFERENCE_FEATURE": 199
+      },
+      "candidates": 18838,
+      "future_match_ready_candidates": 14757,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 3882,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district": 1,
+        "district_review": 187,
+        "district_subdistrict": 2522,
+        "district_subdistrict_reference_only": 199,
+        "village": 15887,
+        "village_review": 42
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 14757,
+        "BLOCKED": 199,
+        "MANUAL_REVIEW": 3882
+      },
+      "source_features": 18838,
+      "state_or_ut": "Gujarat"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 6102,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 6096,
+        "DIRECT_VLCODE_MATCH": 3,
+        "DISTRICT_ONLY_UNRESOLVED": 15,
+        "DISTRICT_SCOPED_AMBIGUOUS": 1,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 889,
+        "SPECIAL_REFERENCE_FEATURE": 6
+      },
+      "candidates": 7010,
+      "future_match_ready_candidates": 3,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 905,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 6096,
+        "district": 15,
+        "district_review": 1,
+        "district_subdistrict": 889,
+        "district_subdistrict_reference_only": 6,
+        "village": 3
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 3,
+        "BLOCKED": 6102,
+        "MANUAL_REVIEW": 905
+      },
+      "source_features": 7010,
+      "state_or_ut": "Haryana"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 20730,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 20696,
+        "DIRECT_VLCODE_MATCH": 43,
+        "SPECIAL_REFERENCE_FEATURE": 34
+      },
+      "candidates": 20773,
+      "future_match_ready_candidates": 43,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 0,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 20696,
+        "district_subdistrict_reference_only": 34,
+        "village": 43
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 43,
+        "BLOCKED": 20730
+      },
+      "source_features": 20773,
+      "state_or_ut": "Himachal Pradesh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 4917,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 4807,
+        "DIRECT_VLCODE_MATCH": 31,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 26,
+        "DISTRICT_ONLY_UNRESOLVED": 11,
+        "DISTRICT_SCOPED_AMBIGUOUS": 584,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 356,
+        "PARENT_SCOPED_NAME_AMBIGUOUS": 3,
+        "PARENT_SCOPED_NAME_MATCH": 665,
+        "SPECIAL_REFERENCE_FEATURE": 110
+      },
+      "candidates": 6593,
+      "future_match_ready_candidates": 31,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 1645,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 4807,
+        "district": 11,
+        "district_review": 584,
+        "district_subdistrict": 356,
+        "district_subdistrict_reference_only": 110,
+        "village": 57,
+        "village_review": 668
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 31,
+        "BLOCKED": 4917,
+        "MANUAL_REVIEW": 1645
+      },
+      "source_features": 6593,
+      "state_or_ut": "Jammu & Kashmir"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 56,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 28057,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 4565,
+        "SPECIAL_REFERENCE_FEATURE": 56
+      },
+      "candidates": 32678,
+      "future_match_ready_candidates": 28057,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 4565,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 4565,
+        "district_subdistrict_reference_only": 56,
+        "village": 28057
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 28057,
+        "BLOCKED": 56,
+        "MANUAL_REVIEW": 4565
+      },
+      "source_features": 32678,
+      "state_or_ut": "Jharkhand"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 255,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 23196,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 1063,
+        "DISTRICT_SCOPED_AMBIGUOUS": 626,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 4388,
+        "PARENT_SCOPED_NAME_AMBIGUOUS": 28,
+        "PARENT_SCOPED_NAME_MATCH": 233,
+        "SPECIAL_REFERENCE_FEATURE": 255
+      },
+      "candidates": 29789,
+      "future_match_ready_candidates": 23186,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 6338,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 626,
+        "district_subdistrict": 4388,
+        "district_subdistrict_reference_only": 255,
+        "village": 24259,
+        "village_review": 261
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "APPROVED_FOR_PROMOTION": 10,
+        "AUTO_CANDIDATE": 23186,
+        "BLOCKED": 255,
+        "MANUAL_REVIEW": 6338
+      },
+      "source_features": 29789,
+      "state_or_ut": "Karnataka"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 2,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 1471,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 48,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 28,
+        "PARENT_SCOPED_NAME_MATCH": 7,
+        "SPECIAL_REFERENCE_FEATURE": 2
+      },
+      "candidates": 1556,
+      "future_match_ready_candidates": 1471,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 83,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 28,
+        "district_subdistrict_reference_only": 2,
+        "village": 1519,
+        "village_review": 7
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 1471,
+        "BLOCKED": 2,
+        "MANUAL_REVIEW": 83
+      },
+      "source_features": 1556,
+      "state_or_ut": "Kerala"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 248,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 241,
+        "DIRECT_VLCODE_MATCH": 2,
+        "SPECIAL_REFERENCE_FEATURE": 7
+      },
+      "candidates": 250,
+      "future_match_ready_candidates": 2,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 0,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 241,
+        "district_subdistrict_reference_only": 7,
+        "village": 2
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 2,
+        "BLOCKED": 248
+      },
+      "source_features": 250,
+      "state_or_ut": "Ladakh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 9,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 25,
+        "SPECIAL_REFERENCE_FEATURE": 9
+      },
+      "candidates": 34,
+      "future_match_ready_candidates": 25,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 0,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict_reference_only": 9,
+        "village": 25
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 25,
+        "BLOCKED": 9
+      },
+      "source_features": 34,
+      "state_or_ut": "Lakshadweep"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 507,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 45052,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 10378,
+        "SPECIAL_REFERENCE_FEATURE": 507
+      },
+      "candidates": 55937,
+      "future_match_ready_candidates": 45052,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 10378,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 10378,
+        "district_subdistrict_reference_only": 507,
+        "village": 45052
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 45052,
+        "BLOCKED": 507,
+        "MANUAL_REVIEW": 10378
+      },
+      "source_features": 55937,
+      "state_or_ut": "Madhya Pradesh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 265,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 37435,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 6768,
+        "SPECIAL_REFERENCE_FEATURE": 265
+      },
+      "candidates": 44468,
+      "future_match_ready_candidates": 37435,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 6768,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 6768,
+        "district_subdistrict_reference_only": 265,
+        "village": 37435
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 37435,
+        "BLOCKED": 265,
+        "MANUAL_REVIEW": 6768
+      },
+      "source_features": 44468,
+      "state_or_ut": "Maharashtra"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 33,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 1006,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 898,
+        "DISTRICT_SCOPED_AMBIGUOUS": 20,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 709,
+        "PARENT_SCOPED_NAME_AMBIGUOUS": 1,
+        "PARENT_SCOPED_NAME_MATCH": 7,
+        "SPECIAL_REFERENCE_FEATURE": 33
+      },
+      "candidates": 2674,
+      "future_match_ready_candidates": 1006,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 1635,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 20,
+        "district_subdistrict": 709,
+        "district_subdistrict_reference_only": 33,
+        "village": 1904,
+        "village_review": 8
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 1006,
+        "BLOCKED": 33,
+        "MANUAL_REVIEW": 1635
+      },
+      "source_features": 2674,
+      "state_or_ut": "Manipur"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 40,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 3711,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 1266,
+        "DISTRICT_SCOPED_AMBIGUOUS": 51,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 1809,
+        "PARENT_SCOPED_NAME_MATCH": 20,
+        "SPECIAL_REFERENCE_FEATURE": 40
+      },
+      "candidates": 6897,
+      "future_match_ready_candidates": 3711,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 3146,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 51,
+        "district_subdistrict": 1809,
+        "district_subdistrict_reference_only": 40,
+        "village": 4977,
+        "village_review": 20
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 3711,
+        "BLOCKED": 40,
+        "MANUAL_REVIEW": 3146
+      },
+      "source_features": 6897,
+      "state_or_ut": "Meghalaya"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 28,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 402,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 113,
+        "DISTRICT_SCOPED_AMBIGUOUS": 3,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 332,
+        "PARENT_SCOPED_NAME_MATCH": 3,
+        "SPECIAL_REFERENCE_FEATURE": 28
+      },
+      "candidates": 881,
+      "future_match_ready_candidates": 402,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 451,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 3,
+        "district_subdistrict": 332,
+        "district_subdistrict_reference_only": 28,
+        "village": 515,
+        "village_review": 3
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 402,
+        "BLOCKED": 28,
+        "MANUAL_REVIEW": 451
+      },
+      "source_features": 881,
+      "state_or_ut": "Mizoram"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 112,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 771,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 358,
+        "DISTRICT_SCOPED_AMBIGUOUS": 3,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 319,
+        "PARENT_SCOPED_NAME_MATCH": 1,
+        "SPECIAL_REFERENCE_FEATURE": 112
+      },
+      "candidates": 1564,
+      "future_match_ready_candidates": 771,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 681,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 3,
+        "district_subdistrict": 319,
+        "district_subdistrict_reference_only": 112,
+        "village": 1129,
+        "village_review": 1
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 771,
+        "BLOCKED": 112,
+        "MANUAL_REVIEW": 681
+      },
+      "source_features": 1564,
+      "state_or_ut": "Nagaland"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 1756,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 46591,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 4973,
+        "SPECIAL_REFERENCE_FEATURE": 1756
+      },
+      "candidates": 53320,
+      "future_match_ready_candidates": 46591,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 4973,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 4973,
+        "district_subdistrict_reference_only": 1756,
+        "village": 46591
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 46591,
+        "BLOCKED": 1756,
+        "MANUAL_REVIEW": 4973
+      },
+      "source_features": 53320,
+      "state_or_ut": "Odisha"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 1,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 96,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 3,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 1,
+        "SPECIAL_REFERENCE_FEATURE": 1
+      },
+      "candidates": 101,
+      "future_match_ready_candidates": 96,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 4,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 1,
+        "district_subdistrict_reference_only": 1,
+        "village": 99
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 96,
+        "BLOCKED": 1,
+        "MANUAL_REVIEW": 4
+      },
+      "source_features": 101,
+      "state_or_ut": "Puducherry"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 10887,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 10886,
+        "DIRECT_VLCODE_MATCH": 82,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 17,
+        "DISTRICT_ONLY_UNRESOLVED": 128,
+        "DISTRICT_SCOPED_AMBIGUOUS": 5,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 1741,
+        "SPECIAL_REFERENCE_FEATURE": 1
+      },
+      "candidates": 12860,
+      "future_match_ready_candidates": 82,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 1891,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 10886,
+        "district": 128,
+        "district_review": 5,
+        "district_subdistrict": 1741,
+        "district_subdistrict_reference_only": 1,
+        "village": 99
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 82,
+        "BLOCKED": 10887,
+        "MANUAL_REVIEW": 1891
+      },
+      "source_features": 12860,
+      "state_or_ut": "Punjab"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 37498,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 37470,
+        "DIRECT_VLCODE_MATCH": 7514,
+        "SPECIAL_REFERENCE_FEATURE": 28
+      },
+      "candidates": 45012,
+      "future_match_ready_candidates": 7514,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 0,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 37470,
+        "district_subdistrict_reference_only": 28,
+        "village": 7514
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 7514,
+        "BLOCKED": 37498
+      },
+      "source_features": 45012,
+      "state_or_ut": "Rajasthan"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 75,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 113,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 199,
+        "DISTRICT_SCOPED_AMBIGUOUS": 1,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 95,
+        "PARENT_SCOPED_NAME_MATCH": 1,
+        "SPECIAL_REFERENCE_FEATURE": 75
+      },
+      "candidates": 484,
+      "future_match_ready_candidates": 113,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 296,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 1,
+        "district_subdistrict": 95,
+        "district_subdistrict_reference_only": 75,
+        "village": 312,
+        "village_review": 1
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 113,
+        "BLOCKED": 75,
+        "MANUAL_REVIEW": 296
+      },
+      "source_features": 484,
+      "state_or_ut": "Sikkim"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 58,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 11225,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 4256,
+        "DISTRICT_ONLY_UNRESOLVED": 2,
+        "DISTRICT_SCOPED_AMBIGUOUS": 47,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 1523,
+        "PARENT_SCOPED_NAME_MATCH": 8,
+        "SPECIAL_REFERENCE_FEATURE": 58
+      },
+      "candidates": 17119,
+      "future_match_ready_candidates": 11225,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 5836,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district": 2,
+        "district_review": 47,
+        "district_subdistrict": 1523,
+        "district_subdistrict_reference_only": 58,
+        "village": 15481,
+        "village_review": 8
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 11225,
+        "BLOCKED": 58,
+        "MANUAL_REVIEW": 5836
+      },
+      "source_features": 17119,
+      "state_or_ut": "Tamil Nadu"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 39,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 7636,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 1838,
+        "DISTRICT_ONLY_UNRESOLVED": 8,
+        "DISTRICT_SCOPED_AMBIGUOUS": 81,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 1111,
+        "PARENT_SCOPED_NAME_MATCH": 5,
+        "SPECIAL_REFERENCE_FEATURE": 39
+      },
+      "candidates": 10718,
+      "future_match_ready_candidates": 7636,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 3043,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district": 8,
+        "district_review": 81,
+        "district_subdistrict": 1111,
+        "district_subdistrict_reference_only": 39,
+        "village": 9474,
+        "village_review": 5
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 7636,
+        "BLOCKED": 39,
+        "MANUAL_REVIEW": 3043
+      },
+      "source_features": 10718,
+      "state_or_ut": "Telangana"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 5,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 781,
+        "DIRECT_VLCODE_PARENT_MISMATCH": 11,
+        "DISTRICT_SCOPED_AMBIGUOUS": 2,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 117,
+        "PARENT_SCOPED_NAME_MATCH": 1,
+        "SPECIAL_REFERENCE_FEATURE": 5
+      },
+      "candidates": 917,
+      "future_match_ready_candidates": 781,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 131,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_review": 2,
+        "district_subdistrict": 117,
+        "district_subdistrict_reference_only": 5,
+        "village": 792,
+        "village_review": 1
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 781,
+        "BLOCKED": 5,
+        "MANUAL_REVIEW": 131
+      },
+      "source_features": 917,
+      "state_or_ut": "Tripura"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 63,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 107491,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 262,
+        "SPECIAL_REFERENCE_FEATURE": 63
+      },
+      "candidates": 107816,
+      "future_match_ready_candidates": 107491,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 262,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 262,
+        "district_subdistrict_reference_only": 63,
+        "village": 107491
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 107491,
+        "BLOCKED": 63,
+        "MANUAL_REVIEW": 262
+      },
+      "source_features": 107816,
+      "state_or_ut": "Uttar Pradesh"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 16865,
+      "candidate_bucket_counts": {
+        "BLOCKED_SOURCE_CAVEAT": 16845,
+        "DIRECT_VLCODE_MATCH": 55,
+        "SPECIAL_REFERENCE_FEATURE": 20
+      },
+      "candidates": 16920,
+      "future_match_ready_candidates": 55,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 0,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "": 16845,
+        "district_subdistrict_reference_only": 20,
+        "village": 55
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 55,
+        "BLOCKED": 16865
+      },
+      "source_features": 16920,
+      "state_or_ut": "Uttarakhand"
+    },
+    {
+      "active_candidates": 0,
+      "active_source_features": 0,
+      "batches": 1,
+      "blocked_candidates": 87,
+      "candidate_bucket_counts": {
+        "DIRECT_VLCODE_MATCH": 33568,
+        "PARENT_MATCH_VILLAGE_UNRESOLVED": 7533,
+        "SPECIAL_REFERENCE_FEATURE": 87
+      },
+      "candidates": 41188,
+      "future_match_ready_candidates": 33568,
+      "future_project_matching_allowed_now": false,
+      "manual_review_candidates": 7533,
+      "promoted_candidates": 0,
+      "proposed_scope_counts": {
+        "district_subdistrict": 7533,
+        "district_subdistrict_reference_only": 87,
+        "village": 33568
+      },
+      "ready_for_future_project_matching_design": true,
+      "review_status_counts": {
+        "AUTO_CANDIDATE": 33568,
+        "BLOCKED": 87,
+        "MANUAL_REVIEW": 7533
+      },
+      "source_features": 41188,
+      "state_or_ut": "West Bengal"
+    }
+  ],
+  "totals": {
+    "active_candidates": 0,
+    "active_source_features": 0,
+    "blocked_candidates": 102534,
+    "candidates": 654285,
+    "future_match_ready_candidates": 453036,
+    "manual_review_candidates": 98705,
+    "promoted_candidates": 0,
+    "source_features": 654285,
+    "state_count": 36
+  }
+}

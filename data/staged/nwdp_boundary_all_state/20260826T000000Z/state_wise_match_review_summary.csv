@@ -1,0 +1,37 @@
+state_or_ut,source_features,candidates,future_match_ready_candidates,manual_review_candidates,blocked_candidates,active_source_features,active_candidates,promoted_candidates
+Andaman and Nicobar Islands,669,669,512,1,156,0,0,0
+Andhra Pradesh,18100,18100,4448,13162,490,0,0,0
+Arunachal Pradesh,5803,5803,3758,1830,215,0,0,0
+Assam,26662,26662,22523,4017,122,0,0,0
+Bihar,45063,45063,32452,12606,5,0,0,0
+Chandigarh,13,13,1,0,12,0,0,0
+Chhattisgarh,20811,20811,17875,2468,468,0,0,0
+Dadra and Nagar Haveli and Daman & Diu,101,101,75,23,3,0,0,0
+Delhi,254,254,19,12,223,0,0,0
+Goa,412,412,269,140,3,0,0,0
+Gujarat,18838,18838,14757,3882,199,0,0,0
+Haryana,7010,7010,3,905,6102,0,0,0
+Himachal Pradesh,20773,20773,43,0,20730,0,0,0
+Jammu & Kashmir,6593,6593,31,1645,4917,0,0,0
+Jharkhand,32678,32678,28057,4565,56,0,0,0
+Karnataka,29789,29789,23186,6338,255,0,0,0
+Kerala,1556,1556,1471,83,2,0,0,0
+Ladakh,250,250,2,0,248,0,0,0
+Lakshadweep,34,34,25,0,9,0,0,0
+Madhya Pradesh,55937,55937,45052,10378,507,0,0,0
+Maharashtra,44468,44468,37435,6768,265,0,0,0
+Manipur,2674,2674,1006,1635,33,0,0,0
+Meghalaya,6897,6897,3711,3146,40,0,0,0
+Mizoram,881,881,402,451,28,0,0,0
+Nagaland,1564,1564,771,681,112,0,0,0
+Odisha,53320,53320,46591,4973,1756,0,0,0
+Puducherry,101,101,96,4,1,0,0,0
+Punjab,12860,12860,82,1891,10887,0,0,0
+Rajasthan,45012,45012,7514,0,37498,0,0,0
+Sikkim,484,484,113,296,75,0,0,0
+Tamil Nadu,17119,17119,11225,5836,58,0,0,0
+Telangana,10718,10718,7636,3043,39,0,0,0
+Tripura,917,917,781,131,5,0,0,0
+Uttar Pradesh,107816,107816,107491,262,63,0,0,0
+Uttarakhand,16920,16920,55,0,16865,0,0,0
+West Bengal,41188,41188,33568,7533,87,0,0,0
