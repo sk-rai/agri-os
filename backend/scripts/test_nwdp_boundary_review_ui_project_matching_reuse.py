@@ -31,6 +31,14 @@ def main() -> int:
     check("api<ReviewResponse>" in text, "Existing review metadata workflow is retained")
     check("runtime point-in-polygon matching here" in text, "Existing no-runtime guardrail remains")
 
+    check("projectsApi" in text, "UI reuses existing projects API")
+    check("nwdp-boundary-project-matching/project-preview" in text, "UI uses project preview endpoint")
+    check("Project coverage preview" in text, "UI exposes project coverage preview section")
+    check("Project villages" in text, "UI shows project village count")
+    check("Villages with boundary" in text, "UI shows covered village count")
+    check("Manual / blocked excluded" in text, "UI shows excluded manual/blocked counts")
+    check("inspection-only" in text, "UI labels project preview as inspection-only")
+
     print("=" * 72)
     print("NWDP BOUNDARY REVIEW UI PROJECT MATCHING REUSE REGRESSION PASSED")
     print("=" * 72)

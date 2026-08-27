@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { api, apiDownload } from "@/lib/api";
+import { api, apiDownload, projectsApi, type Project } from "@/lib/api";
 
 type Governance = {
   read_only_runtime: boolean;
@@ -156,6 +156,55 @@ type EligibleProjectCandidatesResponse = {
   items: EligibleProjectCandidate[];
 };
 
+type ProjectBoundaryPreviewResponse = {
+  schema_version: string;
+  mode: string;
+  project: {
+    project_id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  summary: {
+    project_village_count: number;
+    villages_with_eligible_boundary: number;
+    villages_without_eligible_boundary: number;
+    eligible_candidate_count: number;
+    manual_review_candidate_count: number;
+    blocked_candidate_count: number;
+    coverage_ratio: number;
+    manual_review_excluded_from_matching: boolean;
+    blocked_excluded_from_matching: boolean;
+  };
+  items: Array<{
+    village_id: string;
+    village_lgd_code: string;
+    village_name: string;
+    state_or_ut?: string | null;
+    eligible_candidate_count: number;
+    sample_candidate_id?: string | null;
+    sample_source_feature_index?: number | null;
+    sample_source_vlcode?: string | null;
+    sample_source_district_name?: string | null;
+    sample_source_subdistrict_name?: string | null;
+    sample_source_village_name?: string | null;
+  }>;
+  guardrails: {
+    db_writes_attempted: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_tables_written: boolean;
+    runtime_spatial_matching_changed: boolean;
+    lookup_api_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+  readiness: {
+    ready_for_admin_project_matching_preview: boolean;
+    ready_for_project_matching_apply: boolean;
+    ready_for_runtime_spatial_matching: boolean;
+  };
+};
+
 const BUCKETS = [
   "",
   "DIRECT_VLCODE_MATCH",
@@ -227,9 +276,12 @@ export default function NwdpBoundaryReviewPage() {
   const [detail, setDetail] = useState<CandidateDetailResponse | null>(null);
   const [stateSummary, setStateSummary] = useState<StateWiseMatchSummaryResponse | null>(null);
   const [eligibleData, setEligibleData] = useState<EligibleProjectCandidatesResponse | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectPreview, setProjectPreview] = useState<ProjectBoundaryPreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [eligibleLoading, setEligibleLoading] = useState(false);
+  const [projectPreviewLoading, setProjectPreviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -244,6 +296,7 @@ export default function NwdpBoundaryReviewPage() {
   const [parentMismatchOnly, setParentMismatchOnly] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("");
   const [projectState, setProjectState] = useState("Karnataka");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [offset, setOffset] = useState(0);
 
   function showQueue(nextBucket: string, nextReviewStatus = "", options?: { specialOnly?: boolean; unresolvedOnly?: boolean; parentMismatchOnly?: boolean }) {
@@ -296,6 +349,16 @@ export default function NwdpBoundaryReviewPage() {
     if (!batchId && response.items.length > 0) setBatchId(getBatchId(response.items[0]));
   }, [batchId]);
 
+  const loadProjects = useCallback(async () => {
+    try {
+      const response = await projectsApi.list();
+      setProjects(response);
+      if (!selectedProjectId && response.length > 0) setSelectedProjectId(response[0].id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load projects");
+    }
+  }, [selectedProjectId]);
+
   const loadCandidates = useCallback(async () => {
     if (!queryPath) return;
     setLoading(true);
@@ -335,6 +398,21 @@ export default function NwdpBoundaryReviewPage() {
     }
   }, [projectState]);
 
+  const loadProjectPreview = useCallback(async () => {
+    if (!selectedProjectId) return;
+    setProjectPreviewLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ project_id: selectedProjectId, limit: "25" });
+      const response = await api<ProjectBoundaryPreviewResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?${params.toString()}`);
+      setProjectPreview(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load project boundary preview");
+    } finally {
+      setProjectPreviewLoading(false);
+    }
+  }, [selectedProjectId]);
+
   const loadDetail = useCallback(async (candidateId: string) => {
     setDetailLoading(true);
     setError(null);
@@ -355,6 +433,10 @@ export default function NwdpBoundaryReviewPage() {
   }, [loadBatches]);
 
   useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  useEffect(() => {
     void loadStateSummary();
   }, [loadStateSummary]);
 
@@ -368,6 +450,8 @@ export default function NwdpBoundaryReviewPage() {
   useEffect(() => { void loadCandidates(); }, [loadCandidates]);
 
   useEffect(() => { void loadEligibleProjectCandidates(); }, [loadEligibleProjectCandidates]);
+
+  useEffect(() => { void loadProjectPreview(); }, [loadProjectPreview]);
 
   function applyFilters(event: FormEvent) {
     event.preventDefault();
@@ -525,6 +609,82 @@ export default function NwdpBoundaryReviewPage() {
               ) : null}
             </tbody>
           </table>
+        </div>
+        <div className="mt-5 rounded-lg border border-green-200 bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-gray-900">Project coverage preview</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Read-only coverage view for enrolled project villages. It reports eligible boundaries; it does not match/apply them.
+              </p>
+            </div>
+            <button className="rounded border border-green-300 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-50" type="button" onClick={() => void loadProjectPreview()}>
+              Refresh project preview
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Select
+              label="Project"
+              value={selectedProjectId}
+              onChange={setSelectedProjectId}
+              options={projects.map((project) => ({ value: project.id, label: `${project.name} / ${project.status}` }))}
+            />
+            <Card label="Project villages" value={projectPreview?.summary.project_village_count ?? (projectPreviewLoading ? "…" : "—")} />
+            <Card label="Villages with boundary" value={projectPreview?.summary.villages_with_eligible_boundary ?? "—"} tone="safe" />
+            <Card label="Coverage" value={projectPreview ? `${Math.round(projectPreview.summary.coverage_ratio * 100)}%` : "—"} tone="safe" />
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <Card label="Eligible candidates" value={projectPreview?.summary.eligible_candidate_count ?? "—"} tone="safe" />
+            <Card label="Missing boundary" value={projectPreview?.summary.villages_without_eligible_boundary ?? "—"} />
+            <Card label="Manual / blocked excluded" value={`${projectPreview?.summary.manual_review_candidate_count ?? 0} / ${projectPreview?.summary.blocked_candidate_count ?? 0}`} />
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded border">
+            <table className="min-w-full divide-y text-sm">
+              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-3">Village</th>
+                  <th className="px-4 py-3">Boundary coverage</th>
+                  <th className="px-4 py-3">Sample source</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {(projectPreview?.items || []).map((row) => (
+                  <tr key={row.village_id}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{row.village_name}</div>
+                      <div className="text-xs text-gray-500">{row.village_lgd_code}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.eligible_candidate_count > 0 ? (
+                        <Badge className="border-green-200 bg-green-50 text-green-700">{`${row.eligible_candidate_count} eligible`}</Badge>
+                      ) : (
+                        <Badge className="border-gray-200 bg-gray-50 text-gray-600">No eligible boundary</Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {row.sample_candidate_id ? (
+                        <button className="text-green-700 underline-offset-2 hover:underline" onClick={() => void loadDetail(row.sample_candidate_id || "")}>
+                          #{row.sample_source_feature_index} · {row.sample_source_village_name || row.sample_source_vlcode || "source"}
+                        </button>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {!projectPreviewLoading && projectPreview?.items.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-6 text-sm text-gray-500" colSpan={3}>No project villages available for this preview.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Project coverage preview is inspection-only. Manual-review and blocked candidates remain excluded, and apply/runtime matching stays disabled.
+          </p>
         </div>
       </section>
 
