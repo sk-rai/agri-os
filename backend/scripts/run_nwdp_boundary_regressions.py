@@ -36,6 +36,7 @@ CHECKS = [
     ("project match schema migration", [str(PYTHON), "scripts/test_nwdp_boundary_project_match_schema_migration.py"]),
     ("project matching apply disabled endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_apply_disabled_endpoint.py"]),
     ("core agro-zone ambiguity reduction plan", [str(PYTHON), "scripts/test_nwdp_boundary_core_agro_zone_ambiguity_reduction_plan.py"]),
+    ("core agro-zone overlay feasibility", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_overlay_feasibility.py"]),
 ]
 
 
