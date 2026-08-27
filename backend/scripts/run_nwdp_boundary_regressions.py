@@ -30,6 +30,8 @@ CHECKS = [
     ("project matching project preview plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_project_preview_plan.py"]),
     ("project matching project preview endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_project_preview_endpoint.py"]),
     ("project matching project preview positive coverage", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_project_preview_positive_coverage.py"]),
+    ("project matching apply dry-run plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_apply_dry_run_plan.py"]),
+    ("project matching apply dry-run positive selection", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_apply_dry_run_positive_selection.py"]),
 ]
 
 
