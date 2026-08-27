@@ -1229,3 +1229,52 @@ Decision:
 
 This checkpoint proves that project-scoped boundary coverage can be previewed with non-zero eligible coverage. It remains inspection-only. Project matching apply, runtime point-in-polygon lookup, candidate activation, candidate promotion, and Android lookup behavior remain out of scope until separately designed, reviewed, guarded, and checkpointed.
 
+## Project matching apply dry-run plan checkpoint — 2026-08-27
+
+The project matching apply path now has a dry-run-only plan and positive selection regression proof.
+
+What was verified:
+
+- the dry-run plan is project scoped;
+- selected candidates are limited to inactive NWDP direct-VLCODE matches;
+- selected candidates must be `AUTO_CANDIDATE`;
+- selected candidates must remain `NOT_PROMOTED`;
+- selected candidates must have a proposed backend village id;
+- manual-review candidates are excluded;
+- blocked candidates are excluded;
+- non-direct buckets are excluded;
+- a positive-selection fixture found one eligible candidate for one project village;
+- the dry-run produced candidate evidence for admin/design review;
+- the dry-run did not write project matching records.
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_project_matching_apply_dry_run_plan.py`
+- `backend/scripts/test_nwdp_boundary_project_matching_apply_dry_run_positive_selection.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Guardrails preserved:
+
+- NWDP staging candidates unchanged: 654,285
+- active candidates: 0
+- promoted candidates: 0
+- runtime tables written: false
+- runtime spatial matching changed: false
+- lookup API enabled: false
+- Android behavior changed: false
+- candidate activation changed: false
+- candidate promotion changed: false
+- project matching apply implemented: false
+
+Required before any real apply:
+
+- explicit admin confirmation flow;
+- feature flag or equivalent project/state gate;
+- rollback policy;
+- write-target schema/review for project matching records;
+- post-apply verification that staging, runtime, lookup, and Android guardrails remain bounded.
+
+Decision:
+
+This checkpoint advances the project matching flow from preview-only to dry-run apply design review. It still does not implement apply behavior, runtime point-in-polygon lookup, candidate activation, candidate promotion, lookup API enablement, or Android behavior changes. Those remain separate guarded checkpoints.
+
