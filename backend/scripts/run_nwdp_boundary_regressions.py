@@ -29,6 +29,7 @@ CHECKS = [
     ("boundary review UI project matching reuse", [str(PYTHON), "scripts/test_nwdp_boundary_review_ui_project_matching_reuse.py"]),
     ("project matching project preview plan", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_project_preview_plan.py"]),
     ("project matching project preview endpoint", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_project_preview_endpoint.py"]),
+    ("project matching project preview positive coverage", [str(PYTHON), "scripts/test_nwdp_boundary_project_matching_project_preview_positive_coverage.py"]),
 ]
 
 
