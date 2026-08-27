@@ -1399,3 +1399,55 @@ Decision:
 
 This checkpoint creates the schema contract for future project matching apply, but does not apply project matches. Runtime spatial matching, candidate activation, candidate promotion, lookup behavior, and Android behavior remain separate guarded checkpoints.
 
+## Project match schema local DB validation checkpoint — 2026-08-27
+
+The project match schema migration was applied and validated against the local development database.
+
+Migration applied:
+
+- Alembic upgrade `055 -> 056`
+- migration: `backend/alembic/versions/056_add_nwdp_boundary_project_matches.py`
+
+Validated table:
+
+- `geography_boundary_project_matches`
+
+Observed local DB validation:
+
+- table exists: true
+- column count: 21
+- project match rows: 0
+- expected indexes present:
+  - `idx_geography_boundary_project_matches_candidate`
+  - `idx_geography_boundary_project_matches_project`
+  - `idx_geography_boundary_project_matches_rollback`
+  - `idx_geography_boundary_project_matches_village`
+  - `uq_geography_boundary_project_matches_one_active`
+- expected constraints present:
+  - primary key
+  - tenant foreign key
+  - project foreign key
+  - village foreign key
+  - boundary candidate foreign key
+  - match status check
+  - active status check
+
+NWDP staging guardrail verification:
+
+- candidates: 654,285
+- active candidates: 0
+- promoted candidates: 0
+
+Guardrails preserved:
+
+- project matching rows created: false
+- candidate activation changed: false
+- candidate promotion changed: false
+- runtime tables changed: false
+- lookup API enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The write-target schema is now validated locally. This remains a schema checkpoint only. Project matching apply, rollback execution, runtime lookup, candidate activation, candidate promotion, lookup API enablement, and Android behavior changes remain separate guarded checkpoints.
+
