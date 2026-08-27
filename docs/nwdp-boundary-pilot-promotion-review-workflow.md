@@ -1567,3 +1567,71 @@ Decision:
 
 The CoRE/agro/ecological region class catalog is already available in DB. The next step is a read-only sampled polygon overlay using local NWDP village GeoJSON and normalized CoRE zone GeoJSON to estimate how much earlier CoRE/LGD ambiguity can be reduced at village level.
 
+
+## NWDP × CoRE agro-zone national sampled overlay checkpoint — 2026-08-27
+
+The NWDP village boundary layer has now been proven usable as an additional polygon layer for read-only CoRE/agro-climatic, agro-ecological, and biogeographic overlay analysis.
+
+This checkpoint does not create village-zone mappings. It proves the overlay mechanics and preserves manual review where polygons do not resolve cleanly to a dominant zone.
+
+Input layers verified:
+
+- NWDP raw village polygons: `data/raw/nwdp_boundary_all_state/20260824T110250Z/*.geojson`
+- NWDP source CRS: `EPSG:7755`
+- transformed target CRS: `EPSG:4326`
+- equal-area overlay CRS: `EPSG:6933`
+- normalized agro-climatic zones: `data/staged/core_stack/exports_normalized/Agro_Climatic_Zones.normalized.geojson`
+- normalized agro-ecological zones: `data/staged/core_stack/exports_normalized/Agro_Ecological_Zones.normalized.geojson`
+- normalized biogeographic zones: `data/staged/core_stack/exports_normalized/Biogeographic_Zone_pan_india.normalized.geojson`
+
+Progression proven:
+
+- feasibility audit confirmed local zone layers and NWDP candidate coverage are available;
+- CRS-fixed Andaman sample proved `EPSG:7755 -> EPSG:4326` transforms raw NWDP coordinates into valid lon/lat bounds;
+- three-state pilot covered Andaman and Nicobar Islands, Karnataka, and Maharashtra;
+- national sampled overlay covered all 36 staged states/UTs.
+
+Observed national sampled overlay:
+
+- states/UTs covered: 36
+- sampled eligible candidates: 171
+- sampled villages overlaid: 171
+- invalid or missing sampled geometries: 0
+
+Observed national sampled classification:
+
+- agro-climatic:
+  - dominant zone: 169
+  - manual-review zone: 2
+- agro-ecological:
+  - dominant zone: 169
+  - manual-review zone: 2
+- biogeographic:
+  - dominant zone: 160
+  - manual-review zone: 9
+  - no zone overlap: 1
+  - unresolved multi-zone: 1
+
+Regression coverage:
+
+- `backend/scripts/plan_nwdp_boundary_core_agro_zone_ambiguity_reduction.py`
+- `backend/scripts/audit_nwdp_core_agro_zone_overlay_feasibility.py`
+- `backend/scripts/sample_nwdp_core_agro_zone_overlay.py`
+- `backend/scripts/pilot_nwdp_core_agro_zone_overlay_report.py`
+- `backend/scripts/test_nwdp_core_agro_zone_national_sample_overlay_report.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Guardrails preserved:
+
+- DB writes attempted: false
+- CoRE/village zone mappings written: false
+- NWDP candidates activated: false
+- NWDP candidates promoted: false
+- project matching records written: false
+- runtime tables written: false
+- lookup API enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The NWDP layer can reduce earlier CoRE/agro-zone ambiguity by moving from coarse district/block assumptions to village-polygon overlay. The national sample proves all-state mechanics, but it remains read-only. The next checkpoint should be a batched full read-only national overlay report before any mapping apply, runtime lookup, or Android behavior change is designed.
