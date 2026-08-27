@@ -1451,3 +1451,64 @@ Decision:
 
 The write-target schema is now validated locally. This remains a schema checkpoint only. Project matching apply, rollback execution, runtime lookup, candidate activation, candidate promotion, lookup API enablement, and Android behavior changes remain separate guarded checkpoints.
 
+## Project matching disabled apply contract endpoint checkpoint — 2026-08-27
+
+The project matching apply route now exists as a disabled contract endpoint.
+
+Endpoint:
+
+- `POST /api/v1/master-data/geography/nwdp-boundary-project-matching/apply`
+
+Current behavior:
+
+- requires admin edit permission;
+- requires a valid project id;
+- reports supplied future apply gates;
+- always returns `501 PROJECT_MATCHING_APPLY_NOT_IMPLEMENTED`;
+- does not create project matching rows;
+- does not activate candidates;
+- does not promote candidates;
+- does not write runtime tables;
+- does not enable lookup behavior;
+- does not change Android behavior.
+
+Future apply gates surfaced by the endpoint:
+
+- feature flag enabled;
+- dry-run confirmed;
+- admin confirmation;
+- rollback token present.
+
+Candidate selection contract preserved:
+
+- source system: `NWDP_GSI_VILLAGE_BOUNDARY`;
+- candidate bucket: `DIRECT_VLCODE_MATCH`;
+- review status: `AUTO_CANDIDATE`;
+- candidate `is_active = false`;
+- candidate `promotion_status = NOT_PROMOTED`;
+- proposed village id required;
+- manual-review candidates excluded;
+- blocked candidates excluded;
+- non-direct candidates excluded.
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_project_matching_apply_disabled_endpoint.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Observed verification:
+
+- unauthenticated apply denied;
+- admin editor receives `501`;
+- all supplied gates are reported;
+- project match row count remained unchanged;
+- NWDP candidates remained unchanged:
+  - candidates: 654,285
+  - active candidates: 0
+  - promoted candidates: 0
+- full NWDP regression runner passed.
+
+Decision:
+
+This checkpoint exposes the future apply route without implementing apply behavior. Actual project matching apply, rollback execution, runtime spatial matching, candidate activation, candidate promotion, lookup API enablement, and Android behavior changes remain separate guarded checkpoints.
+
