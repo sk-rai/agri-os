@@ -1190,3 +1190,42 @@ Decision:
 
 This is a UI/read-model reuse checkpoint only. It does not add project matching apply behavior, runtime point-in-polygon lookup, Android lookup behavior, candidate activation, or candidate promotion. Those remain separate guarded checkpoints.
 
+## Project matching project preview positive coverage checkpoint — 2026-08-27
+
+The read-only project matching project preview now has positive coverage regression proof.
+
+What was verified:
+
+- a temporary project was created for the regression;
+- the temporary project was linked to one existing backend village that has an eligible NWDP direct-code boundary candidate;
+- the project preview endpoint returned one covered project village;
+- `eligible_candidate_count >= 1`;
+- `coverage_ratio = 1.0`;
+- sample candidate/source evidence was returned for admin inspection;
+- temporary project/farmer/enrollment rows were cleaned up after the test.
+
+Endpoint covered:
+
+- `GET /api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?project_id=...`
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_project_matching_project_preview_positive_coverage.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Guardrails preserved:
+
+- NWDP staging candidates unchanged: 654,285
+- active candidates: 0
+- promoted candidates: 0
+- runtime tables written: false
+- runtime spatial matching changed: false
+- lookup API enabled: false
+- Android behavior changed: false
+- candidate activation changed: false
+- candidate promotion changed: false
+
+Decision:
+
+This checkpoint proves that project-scoped boundary coverage can be previewed with non-zero eligible coverage. It remains inspection-only. Project matching apply, runtime point-in-polygon lookup, candidate activation, candidate promotion, and Android lookup behavior remain out of scope until separately designed, reviewed, guarded, and checkpointed.
+
