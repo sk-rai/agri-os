@@ -39,6 +39,7 @@ CHECKS = [
     ("core agro-zone overlay feasibility", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_overlay_feasibility.py"]),
     ("core agro-zone sample overlay", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_sample_overlay.py"]),
     ("core agro-zone pilot overlay report", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_pilot_overlay_report.py"]),
+    ("core agro-zone national sample overlay report", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_national_sample_overlay_report.py"]),
 ]
 
 
