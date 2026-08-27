@@ -235,6 +235,11 @@ const SCOPES = [
   "district_subdistrict_reference_only",
 ];
 
+
+const BACKEND_GEOGRAPHY_VILLAGES = 576_083;
+const BACKEND_GEOGRAPHY_VILLAGES_WITH_LGD = 576_082;
+const SAFE_DIRECT_AUTO_NWDP_MATCHES = 313_667;
+
 const DECISIONS = [
   "KEEP_PENDING",
   "ACCEPT_DIRECT_CODE_MATCH",
@@ -297,6 +302,35 @@ export default function NwdpBoundaryReviewPage() {
   const [historyFilter, setHistoryFilter] = useState("");
   const [projectState, setProjectState] = useState("Karnataka");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+
+
+  const geographyCoverage = useMemo(() => {
+    const rows = stateSummary?.states ?? [];
+    const nwdpBoundaryFeatures = stateSummary?.totals.candidates ?? rows.reduce((sum, row) => sum + row.candidates, 0);
+    const futureMatchReady = stateSummary?.totals.future_match_ready_candidates ?? rows.reduce((sum, row) => sum + row.future_match_ready_candidates, 0);
+    const manualReview = rows.reduce((sum, row) => sum + row.manual_review_candidates, 0);
+    const blocked = rows.reduce((sum, row) => sum + row.blocked_candidates, 0);
+    const selected = rows.find((row) => row.state_or_ut === projectState);
+
+    return {
+      stateCount: stateSummary?.totals.state_count ?? rows.length,
+      nwdpBoundaryFeatures,
+      futureMatchReady,
+      manualReview,
+      blocked,
+      selected,
+      masterVillageCount: BACKEND_GEOGRAPHY_VILLAGES,
+      masterVillageWithLgdCount: BACKEND_GEOGRAPHY_VILLAGES_WITH_LGD,
+      safeDirectAutoMatches: SAFE_DIRECT_AUTO_NWDP_MATCHES,
+      futureReadyCoveragePercent: BACKEND_GEOGRAPHY_VILLAGES
+        ? Math.round((futureMatchReady / BACKEND_GEOGRAPHY_VILLAGES) * 100)
+        : 0,
+      safeDirectCoveragePercent: BACKEND_GEOGRAPHY_VILLAGES
+        ? Math.round((SAFE_DIRECT_AUTO_NWDP_MATCHES / BACKEND_GEOGRAPHY_VILLAGES) * 100)
+        : 0,
+    };
+  }, [projectState, stateSummary]);
+
   const [offset, setOffset] = useState(0);
 
   function showQueue(nextBucket: string, nextReviewStatus = "", options?: { specialOnly?: boolean; unresolvedOnly?: boolean; parentMismatchOnly?: boolean }) {
@@ -533,7 +567,48 @@ export default function NwdpBoundaryReviewPage() {
         </p>
       </div>
 
-      {error ? <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+  
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Existing geography master vs NWDP boundary layer</p>
+          <h2 className="mt-1 font-semibold text-gray-900">Village coverage comparison</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Android already uses the geography master village hierarchy for state/district/tehsil/village selection. The NWDP layer is an additional polygon boundary layer for visualization and future project matching.
+          </p>
+        </div>
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+          Preview only · not Android runtime
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <Card label="Master villages" value={geographyCoverage.masterVillageCount.toLocaleString("en-IN")} />
+        <Card label="Master LGD villages" value={geographyCoverage.masterVillageWithLgdCount.toLocaleString("en-IN")} />
+        <Card label="NWDP boundary features" value={geographyCoverage.nwdpBoundaryFeatures.toLocaleString("en-IN")} tone="safe" />
+        <Card label="Staged states / UTs" value={geographyCoverage.stateCount.toLocaleString("en-IN")} />
+        <Card label="Safe direct auto matches" value={geographyCoverage.safeDirectAutoMatches.toLocaleString("en-IN")} tone="safe" />
+        <Card label="Future match-ready" value={geographyCoverage.futureMatchReady.toLocaleString("en-IN")} tone="safe" />
+        <Card label="Manual review" value={geographyCoverage.manualReview.toLocaleString("en-IN")} />
+        <Card label="Blocked" value={geographyCoverage.blocked.toLocaleString("en-IN")} tone="danger" />
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
+        <p>
+          Safe direct-code auto coverage is about <span className="font-semibold">{geographyCoverage.safeDirectCoveragePercent}%</span> of current geography master villages. Broader future match-ready coverage is about <span className="font-semibold">{geographyCoverage.futureReadyCoveragePercent}%</span>, but only direct-code auto candidates are eligible for the guarded project-matching path.
+        </p>
+        {geographyCoverage.selected ? (
+          <p className="mt-2">
+            Selected state/UT <span className="font-semibold">{geographyCoverage.selected.state_or_ut}</span>: {geographyCoverage.selected.candidates.toLocaleString("en-IN")} NWDP candidates, {geographyCoverage.selected.future_match_ready_candidates.toLocaleString("en-IN")} future match-ready, {geographyCoverage.selected.manual_review_candidates.toLocaleString("en-IN")} manual-review, {geographyCoverage.selected.blocked_candidates.toLocaleString("en-IN")} blocked.
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-500">
+          This section reuses the committed state-wise match/non-match summary. It does not write project matches, activate candidates, promote candidates, enable lookup APIs, or change Android behavior.
+        </p>
+      </div>
+    </section>
+
+    {error ? <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700">{message}</div> : null}
 
       <section className="grid gap-4 md:grid-cols-4">
@@ -912,7 +987,6 @@ export default function NwdpBoundaryReviewPage() {
     </div>
   );
 }
-
 function Card({ label, value, tone }: { label: string; value: string | number; tone?: "safe" }) {
   return (
     <div className={`rounded-xl border bg-white p-5 shadow-sm ${tone === "safe" ? "border-green-200" : ""}`}>
