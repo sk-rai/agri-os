@@ -1333,3 +1333,69 @@ Decision:
 
 This checkpoint records the apply design contract only. It does not create the write-target table, implement project matching apply, activate candidates, promote candidates, write runtime tables, enable lookup APIs, or change Android behavior. Those remain separate guarded checkpoints.
 
+## Project match schema checkpoint — 2026-08-27
+
+The future project matching apply path now has an explicit schema write target.
+
+Migration added:
+
+- `backend/alembic/versions/056_add_nwdp_boundary_project_matches.py`
+
+Proposed table:
+
+- `geography_boundary_project_matches`
+
+Purpose:
+
+- records a project-scoped linkage from one project village to one reviewed NWDP boundary candidate;
+- provides an explicit rollback unit for future apply rows;
+- keeps project matching separate from runtime spatial matching tables.
+
+Key fields:
+
+- `tenant_id`
+- `project_id`
+- `village_id`
+- `boundary_candidate_id`
+- `source_system`
+- `match_source`
+- `match_status`
+- `applied_by`
+- `applied_at`
+- `rolled_back_by`
+- `rolled_back_at`
+- `rollback_token`
+- `dry_run_report`
+- `apply_report`
+- `rollback_report`
+- `metadata`
+- audit columns
+
+Constraints and indexes:
+
+- foreign key to `tenants`;
+- foreign key to `projects`;
+- foreign key to `geography_villages`;
+- foreign key to `geography_boundary_crosswalk_candidates`;
+- `match_status` constrained to `PLANNED`, `APPLIED`, `ROLLED_BACK`, or `FAILED`;
+- active rows must have `match_status = APPLIED`;
+- partial unique index allows only one active project match per `project_id + village_id + source_system`.
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_project_match_schema_migration.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Guardrails preserved:
+
+- project matching apply implemented: false
+- candidate activation changed: false
+- candidate promotion changed: false
+- runtime tables mutated: false
+- lookup API enabled: false
+- Android behavior changed: false
+
+Decision:
+
+This checkpoint creates the schema contract for future project matching apply, but does not apply project matches. Runtime spatial matching, candidate activation, candidate promotion, lookup behavior, and Android behavior remain separate guarded checkpoints.
+
