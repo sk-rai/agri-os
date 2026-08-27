@@ -1278,3 +1278,58 @@ Decision:
 
 This checkpoint advances the project matching flow from preview-only to dry-run apply design review. It still does not implement apply behavior, runtime point-in-polygon lookup, candidate activation, candidate promotion, lookup API enablement, or Android behavior changes. Those remain separate guarded checkpoints.
 
+## Project matching apply design plan checkpoint — 2026-08-27
+
+The project matching apply path now has a read-only design contract regression.
+
+What the design plan defines:
+
+- proposed write target: `geography_boundary_project_matches`;
+- project-scoped linkage from a project village to one reviewed NWDP boundary candidate;
+- required rollback token for future apply rows;
+- one active NWDP boundary project match per `project_id + village_id + source_system`;
+- candidate selection limited to inactive direct-VLCODE NWDP candidates;
+- selected candidates must be `AUTO_CANDIDATE`;
+- selected candidates must remain `NOT_PROMOTED`;
+- manual-review candidates are excluded;
+- blocked candidates are excluded;
+- non-direct buckets are excluded.
+
+Required apply gates:
+
+- feature flag or equivalent project/state gate;
+- explicit admin confirmation;
+- project scope;
+- dry-run immediately before apply;
+- rollback token;
+- post-apply verification.
+
+Rollback policy:
+
+- rollback unit: rollback token;
+- rollback action: deactivate project match rows created by the apply token;
+- rollback must not delete staging candidates;
+- rollback must not mutate runtime tables;
+- rollback must not change Android behavior;
+- rollback must not promote candidates.
+
+Regression coverage:
+
+- `backend/scripts/test_nwdp_boundary_project_matching_apply_design_plan.py`
+- included in `backend/scripts/run_nwdp_boundary_regressions.py`
+
+Guardrails preserved:
+
+- DB writes attempted: false
+- project matching records written: false
+- candidate activation changed: false
+- candidate promotion changed: false
+- runtime tables written: false
+- runtime spatial matching changed: false
+- lookup API enabled: false
+- Android behavior changed: false
+
+Decision:
+
+This checkpoint records the apply design contract only. It does not create the write-target table, implement project matching apply, activate candidates, promote candidates, write runtime tables, enable lookup APIs, or change Android behavior. Those remain separate guarded checkpoints.
+
