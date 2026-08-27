@@ -1512,3 +1512,58 @@ Decision:
 
 This checkpoint exposes the future apply route without implementing apply behavior. Actual project matching apply, rollback execution, runtime spatial matching, candidate activation, candidate promotion, lookup API enablement, and Android behavior changes remain separate guarded checkpoints.
 
+## CoRE Stack climate/ecology region class metadata verification checkpoint — 2026-08-27
+
+The CoRE Stack climate/ecology region class metadata is present in the local development database and was re-verified with the existing importer.
+
+Importer:
+
+- `backend/scripts/import_core_stack_climate_regions.py`
+
+Source manifest:
+
+- `data/staged/core_stack/core_stack_climate_layer_manifest.json`
+
+Local source zone layers:
+
+- `data/staged/core_stack/exports_normalized/Agro_Climatic_Zones.normalized.geojson`
+- `data/staged/core_stack/exports_normalized/Agro_Ecological_Zones.normalized.geojson`
+- `data/staged/core_stack/exports_normalized/Biogeographic_Zone_pan_india.normalized.geojson`
+
+Observed import verification:
+
+- dry-run exit: 0
+- apply exit: 0
+- classes seen: 45
+- created: 0
+- updated: 0
+- unchanged: 45
+
+Observed DB class metadata counts:
+
+- `CORE_STACK_AGRO_CLIMATIC_ZONE`: 15
+- `CORE_STACK_AGRO_ECOLOGICAL_ZONE`: 20
+- `CORE_STACK_BIOGEOGRAPHIC_ZONE`: 10
+- total CoRE Stack climate/ecology classes: 45
+- review status: `MANUAL_REVIEW`
+- active class-reference rows: 45
+
+Notes:
+
+- the normalized biogeographic GeoJSON contains more polygon/province features than broad class rows;
+- overlay analysis should preserve both broad `biogeozone` and finer `biogeoprov` / `prov_code` where available;
+- the class metadata importer does not create LGD/village mappings.
+
+Guardrails preserved:
+
+- village-zone mappings written: false
+- NWDP candidates activated: false
+- NWDP candidates promoted: false
+- project matching records written: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The CoRE/agro/ecological region class catalog is already available in DB. The next step is a read-only sampled polygon overlay using local NWDP village GeoJSON and normalized CoRE zone GeoJSON to estimate how much earlier CoRE/LGD ambiguity can be reduced at village level.
+
