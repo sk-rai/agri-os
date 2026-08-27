@@ -1005,6 +1005,87 @@ def get_nwdp_boundary_runtime_promotion_dry_run(
     }
 
 
+
+@router.post("/nwdp-boundary-project-matching/apply")
+def apply_nwdp_boundary_project_matching_disabled(
+    project_id: UUID,
+    rollback_token: str | None = Query(default=None),
+    dry_run_confirmed: bool = Query(default=False),
+    admin_confirmation: bool = Query(default=False),
+    feature_flag_enabled: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Disabled contract endpoint for future guarded project matching apply."""
+    project = db.execute(
+        text("""
+            select id, tenant_id, name, status
+            from projects
+            where id = :project_id
+              and is_active = true
+        """),
+        {"project_id": str(project_id)},
+    ).mappings().first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    detail = {
+        "schema_version": "nwdp_boundary_project_matching_apply_disabled.v1",
+        "mode": "PROJECT_MATCHING_APPLY_NOT_IMPLEMENTED",
+        "claim_boundary": (
+            "Disabled contract endpoint only. It validates the future apply gates and returns "
+            "the required guardrails, but does not write project matching records, activate "
+            "candidates, promote candidates, write runtime tables, enable lookup APIs, or "
+            "change Android behavior."
+        ),
+        "governance": _nwdp_boundary_governance(db_write_scope="NONE"),
+        "project": {
+            "project_id": str(project["id"]),
+            "tenant_id": project["tenant_id"],
+            "name": project["name"],
+            "status": project["status"],
+        },
+        "required_gates": {
+            "feature_flag_enabled": feature_flag_enabled,
+            "dry_run_confirmed": dry_run_confirmed,
+            "admin_confirmation": admin_confirmation,
+            "rollback_token_present": bool(rollback_token),
+            "all_gates_present": bool(
+                feature_flag_enabled and dry_run_confirmed and admin_confirmation and rollback_token
+            ),
+        },
+        "candidate_selection_policy": {
+            "source_system": "NWDP_GSI_VILLAGE_BOUNDARY",
+            "candidate_bucket": "DIRECT_VLCODE_MATCH",
+            "review_status": "AUTO_CANDIDATE",
+            "required_is_active": False,
+            "required_promotion_status": "NOT_PROMOTED",
+            "requires_proposed_village_id": True,
+            "manual_review_candidates_excluded": True,
+            "blocked_candidates_excluded": True,
+            "non_direct_candidates_excluded": True,
+        },
+        "guardrails": {
+            "db_writes_attempted": False,
+            "project_matching_records_written": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_spatial_matching_changed": False,
+            "lookup_api_enabled": False,
+            "android_behavior_changed": False,
+        },
+        "readiness": {
+            "ready_for_apply_contract_review": True,
+            "ready_for_project_matching_apply": False,
+            "ready_for_runtime_spatial_matching": False,
+            "ready_for_lookup_api_enablement": False,
+            "ready_for_android_behavior_change": False,
+        },
+    }
+    raise HTTPException(status_code=501, detail=detail)
+
+
 @router.get("/nwdp-boundary-batches", response_model=NwdpBoundaryBatchListResponse)
 def list_nwdp_boundary_batches(
     state_or_ut: Optional[str] = Query(None),
