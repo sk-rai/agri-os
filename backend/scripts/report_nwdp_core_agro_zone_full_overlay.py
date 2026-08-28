@@ -13,6 +13,7 @@ import json
 import math
 import re
 import sys
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,6 +156,7 @@ def overlay_state(
     limit: int | None,
     sample_limit: int,
 ) -> dict[str, Any]:
+    state_started = time.perf_counter()
     path = raw_path(state)
     if not path.exists():
         return {
@@ -227,12 +229,17 @@ def overlay_state(
             writer.writeheader()
             writer.writerows(csv_rows)
 
+    elapsed_seconds = time.perf_counter() - state_started
+    rows_per_second = overlaid / elapsed_seconds if elapsed_seconds > 0 else None
+
     return {
         "state_or_ut": state,
         "healthy": bool(rows) and invalid_or_missing == 0,
         "raw_nwdp_geojson": str(path),
         "eligible_candidate_count": len(rows),
         "overlaid_count": overlaid,
+        "elapsed_seconds": elapsed_seconds,
+        "rows_per_second": rows_per_second,
         "invalid_or_missing_geometry_count": invalid_or_missing,
         "csv": str(state_csv) if csv_rows else None,
         "layer_status_counts": {key: dict(value) for key, value in sorted(status_counts.items())},
@@ -255,7 +262,9 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args()
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    started_at = datetime.now(timezone.utc)
+    run_started = time.perf_counter()
+    run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
     output_dir = args.output_dir / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -301,12 +310,24 @@ def main() -> int:
         guardrails["project_matching_records_written"],
     ])
 
+    elapsed_seconds = time.perf_counter() - run_started
+    overlaid_total = sum(state.get("overlaid_count", 0) for state in state_reports)
+    rows_per_second = overlaid_total / elapsed_seconds if elapsed_seconds > 0 else None
+    estimated_full_eligible_villages = 451465
+    estimated_full_seconds = estimated_full_eligible_villages / rows_per_second if rows_per_second else None
+
     aggregate = {
         "state_count": len(state_reports),
         "healthy_state_count": sum(1 for state in state_reports if state.get("healthy")),
         "eligible_candidate_count": sum(state.get("eligible_candidate_count", 0) for state in state_reports),
-        "overlaid_count": sum(state.get("overlaid_count", 0) for state in state_reports),
+        "overlaid_count": overlaid_total,
         "invalid_or_missing_geometry_count": sum(state.get("invalid_or_missing_geometry_count", 0) for state in state_reports),
+        "elapsed_seconds": elapsed_seconds,
+        "rows_per_second": rows_per_second,
+        "estimated_full_eligible_villages": estimated_full_eligible_villages,
+        "estimated_full_seconds": estimated_full_seconds,
+        "estimated_full_minutes": estimated_full_seconds / 60 if estimated_full_seconds else None,
+        "estimated_full_hours": estimated_full_seconds / 3600 if estimated_full_seconds else None,
         "layer_status_counts": {key: dict(value) for key, value in sorted(layer_totals.items())},
     }
 
@@ -315,6 +336,8 @@ def main() -> int:
         "mode": "READ_ONLY_BATCHED_POLYGON_OVERLAY_REPORT",
         "healthy": bool(state_reports) and all(state.get("healthy") for state in state_reports) and not guardrails["db_writes_attempted"],
         "run_id": run_id,
+        "started_at": started_at.isoformat(),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
         "output_dir": str(output_dir),
         "nwdp_source_crs": args.nwdp_source_crs,
         "nwdp_target_crs": "EPSG:4326",
@@ -347,6 +370,8 @@ def main() -> int:
             "eligible_candidate_count",
             "overlaid_count",
             "invalid_or_missing_geometry_count",
+            "elapsed_seconds",
+            "rows_per_second",
             "csv",
         ]
         writer = csv.DictWriter(handle, fieldnames=fields)

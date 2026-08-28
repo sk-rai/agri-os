@@ -63,6 +63,10 @@ def main() -> int:
     check(aggregate["eligible_candidate_count"] == 1, "Chandigarh has one eligible candidate", aggregate)
     check(aggregate["overlaid_count"] == 1, "Chandigarh candidate is overlaid", aggregate)
     check(aggregate["invalid_or_missing_geometry_count"] == 0, "No invalid/missing geometry", aggregate)
+    check(aggregate["elapsed_seconds"] > 0, "Aggregate timing is recorded", aggregate)
+    check(aggregate["rows_per_second"] > 0, "Aggregate throughput is recorded", aggregate)
+    check(aggregate["estimated_full_eligible_villages"] == 451465, "Full national estimate row count is recorded", aggregate)
+    check(aggregate["estimated_full_seconds"] > 0, "Full national runtime estimate is recorded", aggregate)
 
     layers = aggregate["layer_status_counts"]
     check(layers["agro_climatic"].get("DOMINANT_ZONE") == 1, "Agro-climatic dominant zone found", layers)
@@ -74,6 +78,8 @@ def main() -> int:
     check(csv_path.exists(), "Full overlay writes state CSV rows", str(csv_path))
     check(state["state_or_ut"] == "Chandigarh", "State is Chandigarh", state)
     check(state["overlaid_count"] == state["eligible_candidate_count"], "All eligible Chandigarh candidates overlaid", state)
+    check(state["elapsed_seconds"] > 0, "State timing is recorded", state)
+    check(state["rows_per_second"] > 0, "State throughput is recorded", state)
 
     guardrails = data["guardrails"]
     check(guardrails["db_writes_attempted"] is False, "Full overlay attempts no DB writes", guardrails)
