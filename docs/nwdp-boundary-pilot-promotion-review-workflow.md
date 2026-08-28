@@ -1635,3 +1635,41 @@ Guardrails preserved:
 Decision:
 
 The NWDP layer can reduce earlier CoRE/agro-zone ambiguity by moving from coarse district/block assumptions to village-polygon overlay. The national sample proves all-state mechanics, but it remains read-only. The next checkpoint should be a batched full read-only national overlay report before any mapping apply, runtime lookup, or Android behavior change is designed.
+
+## NWDP × CoRE agro-zone overlay timing checkpoint — 2026-08-28
+
+A capped all-state timing run was completed for the read-only NWDP village polygon × CoRE agro-zone overlay report.
+
+Command shape:
+
+- `backend/scripts/report_nwdp_core_agro_zone_full_overlay.py`
+- `--limit-per-state 1000`
+- `--sample-limit-per-state 1`
+
+Result:
+
+- states/UTs processed: 36
+- healthy states/UTs: 36
+- eligible/overlaid rows: 22,280
+- invalid or missing geometry: 0
+- elapsed time: 2,021.6 seconds, about 33.7 minutes
+- throughput: about 11.02 rows/second
+- estimated full eligible villages: 451,465
+- estimated full national run time: about 40,964 seconds, 682.7 minutes, or 11.38 hours
+
+Layer outcome in the capped run:
+
+- agro-climatic: 22,107 dominant, 155 manual-review, 16 unresolved multi-zone, 2 no-overlap
+- agro-ecological: 22,069 dominant, 193 manual-review, 16 unresolved multi-zone, 2 no-overlap
+- biogeographic: 21,563 dominant, 644 manual-review, 47 unresolved multi-zone, 26 no-overlap
+
+Slowest capped states:
+
+- Gujarat: 1,000 rows in 298.92 seconds, 3.35 rows/second
+- Rajasthan: 1,000 rows in 123.84 seconds, 8.08 rows/second
+- Madhya Pradesh: 1,000 rows in 118.75 seconds, 8.42 rows/second
+- Karnataka: 1,000 rows in 104.91 seconds, 9.53 rows/second
+
+Decision:
+
+The overlay mechanics are healthy and the current single-process full national estimate is roughly 11.4 hours. A cautious 2-worker state-split parallel run is the next safe test. This remains read-only and does not write CoRE village-zone mappings, activate NWDP candidates, promote NWDP candidates, write project matches, enable lookup APIs, or change Android behavior.
