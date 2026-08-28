@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 
 
-SCRIPT = Path("backend/scripts/audit_nwdp_demographic_enrichment_readiness.py")
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "backend/scripts/audit_nwdp_demographic_enrichment_readiness.py"
 OUTPUT = Path("/tmp/nwdp-demographic-enrichment-readiness-regression.json")
 STATE_CSV = Path("/tmp/nwdp-demographic-enrichment-state-summary-regression.csv")
 
@@ -31,6 +32,8 @@ def main() -> int:
         [
             sys.executable,
             str(SCRIPT),
+            "--raw-dir",
+            str(ROOT / "data/raw/nwdp_boundary_all_state/20260824T110250Z"),
             "--output",
             str(OUTPUT),
             "--state-summary-csv",
