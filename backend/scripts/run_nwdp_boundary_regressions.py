@@ -41,6 +41,8 @@ CHECKS = [
     ("core agro-zone pilot overlay report", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_pilot_overlay_report.py"]),
     ("core agro-zone national sample overlay report", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_national_sample_overlay_report.py"]),
     ("core agro-zone full overlay Chandigarh", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_full_overlay_chandigarh.py"]),
+    ("nwdp demographic enrichment readiness", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_readiness.py"]),
+    ("nwdp demographic enrichment schema plan", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_schema_plan.py"]),
 ]
 
 

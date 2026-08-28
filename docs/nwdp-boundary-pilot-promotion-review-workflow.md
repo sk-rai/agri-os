@@ -1673,3 +1673,35 @@ Slowest capped states:
 Decision:
 
 The overlay mechanics are healthy and the current single-process full national estimate is roughly 11.4 hours. A cautious 2-worker state-split parallel run is the next safe test. This remains read-only and does not write CoRE village-zone mappings, activate NWDP candidates, promote NWDP candidates, write project matches, enable lookup APIs, or change Android behavior.
+
+## NWDP demographic enrichment schema plan checkpoint — 2026-08-28
+
+The NWDP raw village boundary properties have been confirmed as a strong demographic/amenity-like enrichment source, while official Census 2011 PCA/DCHB data remains separate and not locally loaded.
+
+Current evidence:
+
+- geography master villages: `576,083`
+- geography master villages with LGD code: `576,083`
+- geography master villages with `census_name`: `0`
+- geography master villages with `census_village_code`: `0`
+- NWDP raw GeoJSON files: `36`
+- NWDP raw boundary features: `654,285`
+- NWDP features with non-zero population: `605,657`
+- NWDP features with non-zero households: `605,657`
+- NWDP population/household coverage: about `92.57%`
+
+The planned enrichment target is a separate source-versioned profile table:
+
+- `geography_village_demographic_profiles`
+
+The table should attach to canonical LGD geography using `village_id`, not replace the geography master identity.
+
+Official Census remains separate:
+
+- `geography_census_locations`
+- `geography_census_village_profiles`
+- `geography_census_lgd_crosswalk_candidates`
+
+Decision:
+
+NWDP demographic properties can be used as a near-term enrichment candidate layer for matched villages, but they must be labelled as NWDP source attributes, not official Census. LGD remains canonical for Android/admin village identity. No DB writes, demographic profile rows, LGD overwrites, official Census import claims, runtime lookup enablement, or Android behavior changes are made by this checkpoint.
