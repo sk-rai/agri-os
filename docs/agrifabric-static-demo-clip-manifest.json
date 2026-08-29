@@ -1,0 +1,52 @@
+{
+  "schema_version": "agrifabric_static_demo_clip_manifest.v1",
+  "status": "planned_no_render",
+  "status_date": "2026-08-29",
+  "source_timing_doc": "docs/agrifabric-static-demo-voiceover-timing.md",
+  "guardrails": {
+    "no_android_capture_required": true,
+    "no_backend_fixture_mutation": true,
+    "no_database_writes": true,
+    "no_live_provider_claims": true,
+    "no_automated_claim_decisioning_claims": true,
+    "rendering_deferred_until_cpu_available": true
+  },
+  "clips": [
+    {
+      "id": "agrifabric-v02-product-pillars-static",
+      "title": "Six pillars of AgriFabric",
+      "target_seconds": 50,
+      "primary_asset": "web/smoke/screenshots/agrifabric/agrifabric-v02-product-pillars-full.png",
+      "thumbnail": "web/public/demo-assets/agrifabric-v02-product-pillars-thumb.png",
+      "planned_output": "web/public/demo-assets/agrifabric-v02-product-pillars-static.mp4",
+      "claim_boundary": "Extend is a roadmap foundation. Do not imply live risk scoring, live weather or soil, live NDVI, or automated decisioning."
+    },
+    {
+      "id": "agrifabric-v10-relationship-graph-static",
+      "title": "Relationship graph and commercial analytics",
+      "target_seconds": 45,
+      "primary_asset": "web/smoke/screenshots/agrifabric/agrifabric-v10-relationship-graph-full.png",
+      "thumbnail": "web/public/demo-assets/agrifabric-v10-relationship-graph-thumb.png",
+      "planned_output": "web/public/demo-assets/agrifabric-v10-relationship-graph-static.mp4",
+      "claim_boundary": "Do not imply current automated field-agent scoring, formal fraud scoring, claim approval, or claim rejection."
+    },
+    {
+      "id": "agrifabric-v08-geography-digipin-static",
+      "title": "PIN, GPS, DigiPin, and land intelligence",
+      "target_seconds": 55,
+      "primary_asset": "web/smoke/screenshots/agrifabric/agrifabric-v08-geography-digipin-full.png",
+      "thumbnail": "web/public/demo-assets/agrifabric-v08-geography-digipin-thumb.png",
+      "planned_output": "web/public/demo-assets/agrifabric-v08-geography-digipin-static.mp4",
+      "claim_boundary": "Do not claim PIN resolves exact plot identity, Android computes canonical DigiPin, live geocoding is enabled, or global geography rollout is complete."
+    },
+    {
+      "id": "agrifabric-v11-insurance-roadmap-static",
+      "title": "Insurance and subsidy integrity foundation",
+      "target_seconds": 50,
+      "primary_asset": "web/smoke/screenshots/agrifabric/agrifabric-v11-insurance-roadmap-full.png",
+      "thumbnail": "web/public/demo-assets/agrifabric-v11-insurance-roadmap-thumb.png",
+      "planned_output": "web/public/demo-assets/agrifabric-v11-insurance-roadmap-static.mp4",
+      "claim_boundary": "Never say detects fraud today, approves claims, rejects claims, live NDVI scoring, or insurer-integrated production scoring."
+    }
+  ]
+}
