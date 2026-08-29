@@ -553,5 +553,5 @@ Validation passed with web/smoke/agrifabric_landing_smoke.mjs: all six tabs rend
 Remaining work:
 
 - optional visual polish / thumbnail recapture;
-- static narrated clip production for V02, V10, V08, and V11;
+- static narrated clip production for V02, V10, V08, and V11 using docs/agrifabric-static-demo-voiceover-timing.md;
 - Android/Maestro capture for operational proof clips after NWDP overlay completes.

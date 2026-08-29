@@ -141,7 +141,7 @@ Review the four existing static thumbnails and choose one of two paths:
 1. If they are good enough, copy selected final thumbnails into a tracked asset directory such as web/public/demo-assets/.
 2. If they need polish, adjust /agrifabric copy/layout first, then refresh the screenshots using the commands above.
 
-After thumbnail selection, produce short narrated static clips for V02, V10, V08, and V11 using the script beats in docs/agrifabric-static-demo-capture-runbook.md.
+After thumbnail selection, produce short narrated static clips for V02, V10, V08, and V11 using the script beats in docs/agrifabric-static-demo-capture-runbook.md and the editor-ready timings in docs/agrifabric-static-demo-voiceover-timing.md.
 
 ## Demo thumbnail strip integration checkpoint - 2026-08-29
 
