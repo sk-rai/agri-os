@@ -14,6 +14,7 @@ Tracked implementation:
 - web/src/app/agrifabric/AgriFabricLandingClient.tsx
 - web/smoke/agrifabric_landing_smoke.mjs
 - web/smoke/agrifabric_landing_capture_helper.mjs
+- web/smoke/agrifabric_static_demo_readiness_check.mjs
 - web/public/landing-assets/*.svg
 
 Tracked planning docs:
@@ -159,6 +160,10 @@ The Operations tab now distinguishes static/web-ready demo cards from Android-he
 Validation command used from web/:
 
 WEB_BASE_URL=http://localhost:3000 node smoke/agrifabric_landing_smoke.mjs
+
+Static demo readiness command used from repository root:
+
+node web/smoke/agrifabric_static_demo_readiness_check.mjs
 
 Validation result:
 

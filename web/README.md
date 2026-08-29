@@ -39,6 +39,7 @@ A warning about `<img>` usage on the AgriFabric landing page is currently accept
 From repo root while the web server is running:
 
 - `WEB_BASE_URL=http://localhost:3000 node web/smoke/agrifabric_landing_smoke.mjs`
+- `node web/smoke/agrifabric_static_demo_readiness_check.mjs`
 
 The smoke verifies:
 
