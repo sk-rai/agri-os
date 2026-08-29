@@ -18,6 +18,7 @@ Tracked implementation:
 - web/smoke/agrifabric_static_demo_clip_manifest_check.mjs
 - web/smoke/agrifabric_static_demo_render_dry_run.mjs
 - docs/agrifabric-static-demo-clip-manifest.json
+- docs/agrifabric-static-demo-editor-handoff.md
 - web/public/landing-assets/*.svg
 
 Tracked planning docs:
@@ -187,4 +188,4 @@ Validation result:
 - missing assets: none
 - mobile rendered: true
 
-Current next step: create static narrated clips for V02, V10, V08, and V11, or refresh thumbnails if visual polish is required.
+Current next step: use docs/agrifabric-static-demo-editor-handoff.md to produce static narrated clips for V02, V10, V08, and V11, or refresh thumbnails if visual polish is required.
