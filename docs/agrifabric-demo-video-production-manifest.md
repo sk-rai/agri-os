@@ -142,3 +142,33 @@ Review the four existing static thumbnails and choose one of two paths:
 2. If they need polish, adjust /agrifabric copy/layout first, then refresh the screenshots using the commands above.
 
 After thumbnail selection, produce short narrated static clips for V02, V10, V08, and V11 using the script beats in docs/agrifabric-static-demo-capture-runbook.md.
+
+## Demo thumbnail strip integration checkpoint - 2026-08-29
+
+The first static demo thumbnail strip has been wired into the AgriFabric landing page using promoted public assets under web/public/demo-assets/.
+
+Promoted thumbnails:
+
+- web/public/demo-assets/agrifabric-v02-product-pillars-thumb.png
+- web/public/demo-assets/agrifabric-v10-relationship-graph-thumb.png
+- web/public/demo-assets/agrifabric-v08-geography-digipin-thumb.png
+- web/public/demo-assets/agrifabric-v11-insurance-roadmap-thumb.png
+
+The Operations tab now distinguishes static/web-ready demo cards from Android-heavy clips that should wait until the long NWDP overlay job is complete.
+
+Validation command used from web/:
+
+WEB_BASE_URL=http://localhost:3000 node smoke/agrifabric_landing_smoke.mjs
+
+Validation result:
+
+- status: PASSED
+- landing loaded: true
+- tab count: 6
+- overview/product/graph/operations/geography/roadmap rendered: true
+- claim boundary visible: true
+- landing asset count: 10
+- missing assets: none
+- mobile rendered: true
+
+Current next step: create static narrated clips for V02, V10, V08, and V11, or refresh thumbnails if visual polish is required.

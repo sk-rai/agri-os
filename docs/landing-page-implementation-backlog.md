@@ -533,3 +533,25 @@ Any use of these terms must be either:
 - implemented and linked to proof; or
 - marked as foundation, approval-gated, or roadmap.
 
+
+## Demo thumbnail strip implementation checkpoint
+
+Status date: 2026-08-29
+
+The AgriFabric Operations tab now includes a static demo thumbnail strip using promoted assets in web/public/demo-assets/.
+
+Implemented:
+
+- V02 Product pillars thumbnail card;
+- V10 Relationship graph thumbnail card;
+- V08 Geography/DigiPin thumbnail card;
+- V11 Insurance integrity roadmap thumbnail card;
+- Android-heavy onboarding and offline-sync cards remain explicitly marked as later capture items while the NWDP full overlay job is running.
+
+Validation passed with web/smoke/agrifabric_landing_smoke.mjs: all six tabs render, claim boundary is visible, ten landing assets load, no assets are missing, and mobile rendering passes.
+
+Remaining work:
+
+- optional visual polish / thumbnail recapture;
+- static narrated clip production for V02, V10, V08, and V11;
+- Android/Maestro capture for operational proof clips after NWDP overlay completes.
