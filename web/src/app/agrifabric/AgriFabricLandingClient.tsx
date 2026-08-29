@@ -59,12 +59,48 @@ const proofBadges = [
 ];
 
 const demoSlots = [
-  ["Android onboarding", "Android-only", "Farmer/profile/parcel capture and backend-owned labels."],
-  ["FPO admin workflow", "Web-only", "Project cohorts, farmer search, and traceability."],
-  ["Offline sync resilience", "Android-only", "Queue persistence, replay, conflicts, and backlog draining."],
-  ["Broadcast analytics", "Web-only", "Delivery/read/ack lifecycle and admin drilldown."],
-  ["Field event to advisory", "Mixed", "Android field event, backend advisory, web analytics."],
-  ["Localization + land intelligence", "Mixed", "Backend override in admin, Android rendering proof."],
+  {
+    title: "Six pillars of AgriFabric",
+    mode: "Web/static",
+    body: "Capture, Coordinate, Sync, Advise, Govern, and roadmap-bounded Extend.",
+    thumbnail: "/demo-assets/agrifabric-v02-product-pillars-thumb.png",
+    status: "Static thumbnail ready",
+  },
+  {
+    title: "Relationship graph",
+    mode: "Web/static",
+    body: "Farmers, projects, parcels, crop cycles, advisories, media, sync, and audit as typed relationships.",
+    thumbnail: "/demo-assets/agrifabric-v10-relationship-graph-thumb.png",
+    status: "Static thumbnail ready",
+  },
+  {
+    title: "Geography + DigiPin",
+    mode: "Web/static",
+    body: "PIN context, GPS/parcel precision, backend-generated DigiPin, and non-blocking land guidance.",
+    thumbnail: "/demo-assets/agrifabric-v08-geography-digipin-thumb.png",
+    status: "Static thumbnail ready",
+  },
+  {
+    title: "Insurance integrity roadmap",
+    mode: "Roadmap",
+    body: "Evidence bundles and future review signals, explicitly not automated claim decisioning.",
+    thumbnail: "/demo-assets/agrifabric-v11-insurance-roadmap-thumb.png",
+    status: "Roadmap bounded",
+  },
+  {
+    title: "Android onboarding",
+    mode: "Android later",
+    body: "Farmer/profile/parcel capture and backend-owned labels. Hold until NWDP overlay completes.",
+    thumbnail: null,
+    status: "Pending Android capture",
+  },
+  {
+    title: "Offline sync resilience",
+    mode: "Android later",
+    body: "Queue persistence, replay, conflicts, and backlog draining. Hold until NWDP overlay completes.",
+    thumbnail: null,
+    status: "Pending Android capture",
+  },
 ];
 
 function Badge({
@@ -250,13 +286,23 @@ function OperationsTab() {
       />
       <VisualCard src="/landing-assets/field-evidence-pipeline.svg" alt="Field evidence pipeline" />
       <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {demoSlots.map(([title, mode, body]) => (
-          <div key={title} className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="font-bold text-white">{title}</p>
-              <Badge tone={mode === "Mixed" ? "purple" : mode === "Web-only" ? "green" : "blue"}>{mode}</Badge>
+        {demoSlots.map((slot) => (
+          <div key={slot.title} className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 shadow-xl shadow-slate-950/20">
+            {slot.thumbnail ? (
+              <img src={slot.thumbnail} alt="" className="h-36 w-full border-b border-white/10 object-cover object-top" />
+            ) : (
+              <div className="flex h-36 items-center justify-center border-b border-dashed border-white/15 bg-slate-900/70 px-5 text-center text-sm font-semibold text-slate-400">
+                Capture after long NWDP overlay completes
+              </div>
+            )}
+            <div className="p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="font-bold text-white">{slot.title}</p>
+                <Badge tone={slot.mode === "Roadmap" ? "amber" : slot.mode === "Web/static" ? "green" : "blue"}>{slot.mode}</Badge>
+              </div>
+              <p className="text-sm leading-6 text-slate-400">{slot.body}</p>
+              <p className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-sky-300">{slot.status}</p>
             </div>
-            <p className="text-sm leading-6 text-slate-400">{body}</p>
           </div>
         ))}
       </div>
