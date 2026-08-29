@@ -548,7 +548,7 @@ Implemented:
 - V11 Insurance integrity roadmap thumbnail card;
 - Android-heavy onboarding and offline-sync cards remain explicitly marked as later capture items while the NWDP full overlay job is running.
 
-Validation passed with web/smoke/agrifabric_landing_smoke.mjs: all six tabs render, claim boundary is visible, ten landing assets load, no assets are missing, and mobile rendering passes. Static demo readiness is also covered by web/smoke/agrifabric_static_demo_readiness_check.mjs before narrated clip production.
+Validation passed with web/smoke/agrifabric_landing_smoke.mjs: all six tabs render, claim boundary is visible, ten landing assets load, no assets are missing, and mobile rendering passes. Static demo readiness is also covered by web/smoke/agrifabric_static_demo_readiness_check.mjs before narrated clip production. The no-render clip batch is tracked in docs/agrifabric-static-demo-clip-manifest.json and validated by web/smoke/agrifabric_static_demo_clip_manifest_check.mjs.
 
 Remaining work:
 

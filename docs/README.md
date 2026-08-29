@@ -46,6 +46,7 @@ Current landing/demo planning docs:
 - `agrifabric-demo-video-capture-matrix.md` — future video capture matrix by landing tab and capture mode.
 - `agrifabric-static-demo-capture-runbook.md` — static landing-page capture order, scripts, and claim boundaries.
 - `agrifabric-static-demo-voiceover-timing.md` — editor-ready voiceover and scene timing for the first static demo clip batch.
+- `agrifabric-static-demo-clip-manifest.json` — machine-readable no-render plan for the first static MP4 batch.
 
 The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smoke/agrifabric_landing_smoke.mjs`, static-demo checked by `web/smoke/agrifabric_static_demo_readiness_check.mjs`, and screenshot-assisted by `web/smoke/agrifabric_landing_capture_helper.mjs`.
 

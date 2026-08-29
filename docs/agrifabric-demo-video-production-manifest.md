@@ -15,6 +15,8 @@ Tracked implementation:
 - web/smoke/agrifabric_landing_smoke.mjs
 - web/smoke/agrifabric_landing_capture_helper.mjs
 - web/smoke/agrifabric_static_demo_readiness_check.mjs
+- web/smoke/agrifabric_static_demo_clip_manifest_check.mjs
+- docs/agrifabric-static-demo-clip-manifest.json
 - web/public/landing-assets/*.svg
 
 Tracked planning docs:
@@ -164,6 +166,10 @@ WEB_BASE_URL=http://localhost:3000 node smoke/agrifabric_landing_smoke.mjs
 Static demo readiness command used from repository root:
 
 node web/smoke/agrifabric_static_demo_readiness_check.mjs
+
+Static demo clip manifest command used from repository root:
+
+node web/smoke/agrifabric_static_demo_clip_manifest_check.mjs
 
 Validation result:
 
