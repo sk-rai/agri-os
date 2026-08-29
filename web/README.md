@@ -41,6 +41,7 @@ From repo root while the web server is running:
 - `WEB_BASE_URL=http://localhost:3000 node web/smoke/agrifabric_landing_smoke.mjs`
 - `node web/smoke/agrifabric_static_demo_readiness_check.mjs`
 - `node web/smoke/agrifabric_static_demo_clip_manifest_check.mjs`
+- `node web/smoke/agrifabric_static_demo_render_dry_run.mjs`
 
 The smoke verifies:
 

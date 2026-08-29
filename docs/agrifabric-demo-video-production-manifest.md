@@ -16,6 +16,7 @@ Tracked implementation:
 - web/smoke/agrifabric_landing_capture_helper.mjs
 - web/smoke/agrifabric_static_demo_readiness_check.mjs
 - web/smoke/agrifabric_static_demo_clip_manifest_check.mjs
+- web/smoke/agrifabric_static_demo_render_dry_run.mjs
 - docs/agrifabric-static-demo-clip-manifest.json
 - web/public/landing-assets/*.svg
 
@@ -170,6 +171,10 @@ node web/smoke/agrifabric_static_demo_readiness_check.mjs
 Static demo clip manifest command used from repository root:
 
 node web/smoke/agrifabric_static_demo_clip_manifest_check.mjs
+
+Static demo render dry-run command used from repository root:
+
+node web/smoke/agrifabric_static_demo_render_dry_run.mjs
 
 Validation result:
 
