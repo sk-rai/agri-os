@@ -1705,3 +1705,56 @@ Official Census remains separate:
 Decision:
 
 NWDP demographic properties can be used as a near-term enrichment candidate layer for matched villages, but they must be labelled as NWDP source attributes, not official Census. LGD remains canonical for Android/admin village identity. No DB writes, demographic profile rows, LGD overwrites, official Census import claims, runtime lookup enablement, or Android behavior changes are made by this checkpoint.
+
+## NWDP × CoRE agro-zone full national read-only overlay checkpoint — 2026-08-30
+
+The two-worker full national read-only NWDP × CoRE/agro-zone overlay completed successfully.
+
+This checkpoint confirms that the overlay pipeline can process all currently eligible direct-code NWDP village boundary candidates without writing runtime mappings, activating candidates, enabling lookup APIs, or changing Android behavior.
+
+Run location:
+
+- `data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/`
+
+Compact combined summary:
+
+- `data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/combined_national_overlay_summary.json`
+
+Verified result:
+
+- worker report count: 2
+- state/UT count processed: 34
+- healthy state/UT count: 34
+- eligible candidate count: 452,930
+- overlaid count: 452,930
+- duplicate states: none
+- unhealthy states: none
+- invalid or missing geometry count: 0
+
+Excluded zero-eligible states:
+
+- Dadra and Nagar Haveli and Daman Diu
+- Jammu Kashmir
+
+These two states were excluded because they currently have zero eligible direct-code auto candidates in the staging crosswalk selection used for this read-only overlay.
+
+Timing:
+
+- slowest worker wall-clock lower bound: 8.09 hours
+- approximate combined worker runtime: 8.26 hours
+- observed rows/sec by slowest-worker wall clock: 15.5561
+
+Guardrails verified false:
+
+- DB writes attempted: false
+- CoRE zone mappings written: false
+- NWDP candidates activated: false
+- NWDP candidates promoted: false
+- project matching records written: false
+- runtime tables written: false
+- lookup API enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The full national read-only overlay is now proven for the currently eligible 34-state/UT candidate set. The next safe step is to create a compact regression/checkpoint script that validates the combined summary and preserves the distinction between read-only overlay evidence and any future mapping apply/runtime lookup behavior.

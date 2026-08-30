@@ -1,0 +1,93 @@
+{
+  "aggregate": {
+    "eligible_candidate_count": 452930,
+    "healthy_state_count": 34,
+    "invalid_or_missing_geometry_count": 0,
+    "layer_status_counts": {
+      "agro_climatic": {
+        "DOMINANT_ZONE": 451192,
+        "MANUAL_REVIEW_ZONE": 1598,
+        "NO_ZONE_OVERLAP": 23,
+        "UNRESOLVED_MULTI_ZONE": 117
+      },
+      "agro_ecological": {
+        "DOMINANT_ZONE": 449552,
+        "MANUAL_REVIEW_ZONE": 3235,
+        "NO_ZONE_OVERLAP": 24,
+        "UNRESOLVED_MULTI_ZONE": 119
+      },
+      "biogeographic": {
+        "DOMINANT_ZONE": 447341,
+        "MANUAL_REVIEW_ZONE": 5350,
+        "NO_ZONE_OVERLAP": 50,
+        "UNRESOLVED_MULTI_ZONE": 189
+      }
+    },
+    "observed_rows_per_second_by_slowest_worker_wall_clock": 15.5561,
+    "overlaid_count": 452930,
+    "state_count": 34,
+    "state_summary_count": 2,
+    "wall_clock_elapsed_hours_lower_bound": 8.09,
+    "worker_cpu_time_hours_approx": 8.26,
+    "worker_elapsed_seconds_max": 29115.91550349,
+    "worker_elapsed_seconds_sum": 29724.928865438,
+    "worker_report_count": 2
+  },
+  "duplicate_states": [],
+  "excluded_zero_eligible_states": [
+    "Dadra and Nagar Haveli and Daman Diu",
+    "Jammu Kashmir"
+  ],
+  "guardrail_true_counts": {
+    "android_behavior_changed": 0,
+    "core_zone_mappings_written": 0,
+    "db_writes_attempted": 0,
+    "lookup_api_enabled": 0,
+    "nwdp_candidates_activated": 0,
+    "nwdp_candidates_promoted": 0,
+    "project_matching_records_written": 0,
+    "runtime_tables_written": 0
+  },
+  "healthy": true,
+  "note": "This is a read-only 34-state/UT full overlay. Two states were excluded because they currently have zero eligible direct-code auto candidates.",
+  "output_dir": "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker",
+  "readiness_any_true": {
+    "ready_for_android_behavior_change": false,
+    "ready_for_core_zone_mapping_apply": false,
+    "ready_for_full_national_read_only_overlay": true,
+    "ready_for_lookup_api_enablement": false,
+    "ready_for_runtime_spatial_matching": false
+  },
+  "reports": [
+    "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/worker-a/20260829T041359Z/overlay_report.json",
+    "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/worker-b/20260829T041359Z/overlay_report.json"
+  ],
+  "schema_version": "nwdp_core_agro_zone_full_national_2worker_summary.v1",
+  "summaries": [
+    "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/worker-a/20260829T041359Z/state_summary.csv",
+    "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/worker-b/20260829T041359Z/state_summary.csv"
+  ],
+  "unhealthy_states": [],
+  "worker_reports": [
+    {
+      "elapsed_seconds": 29115.91550349,
+      "eligible_candidate_count": 441281,
+      "healthy": true,
+      "healthy_state_count": 16,
+      "overlaid_count": 441281,
+      "path": "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/worker-a/20260829T041359Z/overlay_report.json",
+      "rows_per_second": 15.15600634117466,
+      "state_count": 16
+    },
+    {
+      "elapsed_seconds": 609.013361948,
+      "eligible_candidate_count": 11649,
+      "healthy": true,
+      "healthy_state_count": 18,
+      "overlaid_count": 11649,
+      "path": "data/staged/core_stack/nwdp_full_overlay_runs/20260829_full_national_2worker/worker-b/20260829T041359Z/overlay_report.json",
+      "rows_per_second": 19.12765914156517,
+      "state_count": 18
+    }
+  ]
+}
