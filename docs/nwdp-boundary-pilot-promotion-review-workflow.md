@@ -2033,3 +2033,63 @@ Guardrails preserved:
 Decision:
 
 Migration `057` is now the expected local schema baseline for the NWDP demographic enrichment track. The next checkpoint should be an admin-preview or guarded dry-run importer over the empty profile table, before any demographic profile rows are written.
+
+## NWDP demographic admin preview endpoint plan checkpoint — 2026-08-30
+
+A disabled/read-only admin preview endpoint plan has been added for NWDP demographic enrichment profiles.
+
+Planned endpoint:
+
+- `GET /api/v1/master-data/geography/nwdp-demographic-profiles/preview`
+
+Target table:
+
+- `geography_village_demographic_profiles`
+
+Scripts added:
+
+- `backend/scripts/plan_nwdp_demographic_admin_preview_endpoint.py`
+- `backend/scripts/test_nwdp_demographic_admin_preview_endpoint_plan.py`
+
+Intended current behavior while no profiles are imported:
+
+- endpoint remains disabled;
+- response reason: `NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED`;
+- profile row count: 0;
+- active profile row count: 0;
+- promoted profile row count: 0;
+- ready for profile apply: false;
+- ready for Android behavior change: false.
+
+Future preview fields planned:
+
+- state/UT;
+- district;
+- village name and LGD code;
+- source system and source version;
+- source village code;
+- total population;
+- total households;
+- rural/urban;
+- review status;
+- promotion status;
+- active flag.
+
+Runner status:
+
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the admin preview endpoint plan regression;
+- full NWDP boundary regression runner passed after wiring.
+
+Guardrails preserved:
+
+- endpoint implemented: false;
+- DB writes attempted: false;
+- demographic profile rows written: false;
+- profiles promoted: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false;
+- official Census claimed imported: false.
+
+Decision:
+
+The endpoint contract is ready for implementation as a read-only admin preview. The implementation should return a disabled/empty response while the profile table has zero rows and must not expose Android/runtime behavior.
