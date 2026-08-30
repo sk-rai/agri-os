@@ -2183,3 +2183,44 @@ Guardrails preserved:
 
 Decision:
 The preview API can now support admin analysis of approved versus manual-review demographic profiles by state/district combo once guarded profile rows exist. The next checkpoint should add a positive fixture regression or guarded dry-run import validation before any real demographic profile import/apply.
+
+## NWDP demographic admin preview positive state/district fixture checkpoint — 2026-08-30
+
+Status:
+The NWDP demographic admin preview regression now verifies positive state/district review analysis with temporary fixture profile rows.
+
+Regression:
+- `backend/scripts/test_nwdp_demographic_admin_preview_endpoint.py`
+
+Validated behavior:
+- unauthenticated preview is denied;
+- authenticated admin preview returns `200`;
+- empty-table behavior remains healthy and disabled;
+- endpoint supports `state_or_ut` and `district` filters;
+- filtered fixture profiles are returned in `items`;
+- `summary` reports review-status counts;
+- `approved_vs_manual_review` reports approved versus manual-review counts;
+- `state_district_summary` groups profile counts by state/UT and district.
+
+Positive fixture result:
+- state/UT: `Fixture State`;
+- district: `Fixture District`;
+- fixture profile rows: 3;
+- `APPROVED_FOR_PROMOTION`: 1;
+- `MANUAL_REVIEW`: 2;
+- active profile rows: 0;
+- promoted profile rows: 0.
+
+Cleanup:
+The regression deletes its fixture rows after execution and verifies profile table counts return to the pre-test state.
+
+Guardrails preserved:
+- endpoint remains read-only;
+- real NWDP demographic profile rows imported: false;
+- real profiles promoted: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false;
+- official Census claimed imported: false.
+
+Decision:
+The admin preview path can now analyze approved versus manual-review demographic profiles by state/district combo once guarded profile rows exist. The next checkpoint should be a demographic profile import dry-run plan that computes candidate insert rows without writing them.
