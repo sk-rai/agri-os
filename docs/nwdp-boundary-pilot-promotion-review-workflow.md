@@ -1992,3 +1992,44 @@ Guardrails preserved:
 Decision:
 
 The local development database is now at Alembic revision `057`, with the empty demographic profile table available for the next guarded checkpoint. The next step should be a disabled/admin-preview or dry-run import validation layer before any demographic profile rows are written.
+
+## NWDP demographic schema migration DB-state regression checkpoint — 2026-08-30
+
+A read-only DB-state regression has been added for Alembic migration `057`.
+
+Regression added:
+
+- `backend/scripts/test_nwdp_demographic_schema_migration_db_state.py`
+
+The regression connects to the local development database and verifies that the migration has been applied correctly without inserting demographic profile rows.
+
+Checks performed:
+
+- Alembic version is `057`;
+- `geography_village_demographic_profiles` exists;
+- table row count is `0`;
+- expected columns are present;
+- expected indexes are present;
+- at least one foreign key exists for the table;
+- guardrails remain false.
+
+Runner status:
+
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the DB-state regression;
+- full NWDP boundary regression runner passed after wiring.
+
+Important operational note:
+
+Because this DB-state regression expects Alembic revision `057`, developers must run `cd backend && ../venv/bin/alembic upgrade head` before running the full NWDP boundary regression suite on a fresh or older local database.
+
+Guardrails preserved:
+
+- DB-state check is read-only;
+- demographic profile rows written: false;
+- LGD geography overwritten: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false.
+
+Decision:
+
+Migration `057` is now the expected local schema baseline for the NWDP demographic enrichment track. The next checkpoint should be an admin-preview or guarded dry-run importer over the empty profile table, before any demographic profile rows are written.
