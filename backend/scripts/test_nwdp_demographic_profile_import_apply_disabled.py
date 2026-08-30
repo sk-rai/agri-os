@@ -65,7 +65,7 @@ def assert_common_guardrails(data: dict) -> None:
     check(data["target_table"] == "geography_village_demographic_profiles", "Target table is explicit", data)
     check(data["apply_result"]["policy_flag_present"] is True, "Policy flag is present", data["apply_result"])
     check(data["apply_result"]["requires_state_scope"] is True, "State scope is required", data["apply_result"])
-    check(data["apply_result"]["apply_implemented"] is False, "Apply remains unimplemented", data["apply_result"])
+    check(data["apply_result"]["apply_implemented"] is True, "Apply implementation is present but gated", data["apply_result"])
 
     scope = data["planned_scope"]
     check(scope["allowed_future_scope"] == "single state/UT inactive profile rows only", "Future apply scope is state-scoped", scope)
@@ -108,7 +108,7 @@ def main() -> int:
     assert_common_guardrails(no_scope)
 
     scoped = run_guard("--state-or-ut", "Chandigarh")
-    check(scoped["error"] == "NWDP_DEMOGRAPHIC_PROFILE_IMPORT_APPLY_NOT_IMPLEMENTED", "Scoped apply remains disabled", scoped)
+    check(scoped["error"] == "NWDP_DEMOGRAPHIC_PROFILE_IMPORT_APPLY_FLAG_REQUIRED", "Scoped apply still requires explicit apply flag", scoped)
     check(scoped["state_or_ut"] == "Chandigarh", "Scoped apply echoes state scope", scoped)
     check(scoped["apply_result"]["state_scope_present"] is True, "Scoped apply records state scope", scoped["apply_result"])
     assert_common_guardrails(scoped)
