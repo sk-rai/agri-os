@@ -49,6 +49,7 @@ CHECKS = [
 ("nwdp demographic schema migration apply validation plan", [str(PYTHON), "scripts/test_nwdp_demographic_schema_migration_apply_validation_plan.py"]),
 ("nwdp demographic schema migration db state", [str(PYTHON), "scripts/test_nwdp_demographic_schema_migration_db_state.py"]),
 ("nwdp demographic admin preview endpoint plan", [str(PYTHON), "scripts/test_nwdp_demographic_admin_preview_endpoint_plan.py"]),
+("nwdp demographic admin preview endpoint", [str(PYTHON), "scripts/test_nwdp_demographic_admin_preview_endpoint.py"]),
     ("nwdp demographic enrichment import plan", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_import_plan.py"]),
 ]
 

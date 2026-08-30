@@ -1086,6 +1086,72 @@ def apply_nwdp_boundary_project_matching_disabled(
     raise HTTPException(status_code=501, detail=detail)
 
 
+
+@router.get("/nwdp-demographic-profiles/preview")
+def preview_nwdp_demographic_profiles(
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    counts = db.execute(text("""
+        select
+          count(*) as profile_row_count,
+          count(*) filter (where is_active = true) as active_profile_row_count,
+          count(*) filter (where promotion_status = 'PROMOTED') as promoted_profile_row_count
+        from geography_village_demographic_profiles
+    """)).mappings().first()
+
+    profile_row_count = int(counts["profile_row_count"] or 0)
+    active_profile_row_count = int(counts["active_profile_row_count"] or 0)
+    promoted_profile_row_count = int(counts["promoted_profile_row_count"] or 0)
+
+    enabled = profile_row_count > 0
+
+    return {
+        "schema_version": "nwdp_demographic_profiles_admin_preview.v1",
+        "healthy": True,
+        "enabled": enabled,
+        "reason": None if enabled else "NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED",
+        "target_table": "geography_village_demographic_profiles",
+        "profile_row_count": profile_row_count,
+        "active_profile_row_count": active_profile_row_count,
+        "promoted_profile_row_count": promoted_profile_row_count,
+        "claim_boundary": (
+            "Read-only admin preview endpoint. It does not import demographic profile rows, "
+            "does not promote profiles, does not enable runtime lookup, does not expose Android "
+            "behavior, and does not claim official Census PCA/DCHB import."
+        ),
+        "future_preview_fields": [
+            "state_or_ut",
+            "district",
+            "village_name",
+            "village_lgd_code",
+            "source_system",
+            "source_version",
+            "source_vlcode",
+            "total_population",
+            "total_households",
+            "rural_urban",
+            "review_status",
+            "promotion_status",
+            "is_active",
+        ],
+        "guardrails": {
+            "db_writes_attempted": False,
+            "demographic_profile_rows_written": False,
+            "profiles_promoted": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+            "official_census_claimed_imported": False,
+        },
+        "readiness": {
+            "ready_for_profile_apply": False,
+            "ready_for_runtime_lookup_enablement": False,
+            "ready_for_android_behavior_change": False,
+            "ready_for_official_census_import": False,
+        },
+    }
+
+
 @router.get("/nwdp-boundary-batches", response_model=NwdpBoundaryBatchListResponse)
 def list_nwdp_boundary_batches(
     state_or_ut: Optional[str] = Query(None),
