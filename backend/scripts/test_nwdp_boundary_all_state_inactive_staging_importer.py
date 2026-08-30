@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import subprocess
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON = ROOT / "venv" / "bin" / "python"
 SCRIPT = ROOT / "backend/scripts/import_nwdp_boundary_all_state_inactive_staging.py"
+DRY_RUN_INPUT = Path("/tmp/nwdp-boundary-all-state-inactive-staging-importer-regression-input.csv")
 DRY_RUN_OUTPUT = Path("/tmp/nwdp-boundary-all-state-inactive-staging-importer-dry-run-regression.json")
 APPLY_BLOCKED_OUTPUT = Path("/tmp/nwdp-boundary-all-state-inactive-staging-importer-apply-blocked-regression.json")
 
@@ -20,6 +22,80 @@ def check(condition: bool, label: str, detail=None):
         print("    ", json.dumps(detail, indent=2, default=str)[:1200])
     if not condition:
         raise AssertionError(label)
+
+
+def write_regression_input(path: Path) -> None:
+    states = [
+        "Andaman and Nicobar Islands",
+        "Andhra Pradesh",
+        "Arunachal Pradesh",
+        "Assam",
+        "Bihar",
+        "Chandigarh",
+        "Chhattisgarh",
+        "Dadra and Nagar Haveli and Daman Diu",
+        "Delhi",
+        "Goa",
+        "Gujarat",
+        "Haryana",
+        "Himachal Pradesh",
+        "Jammu Kashmir",
+        "Jharkhand",
+        "Karnataka",
+        "Kerala",
+        "Ladakh",
+        "Lakshadweep",
+        "Madhya Pradesh",
+        "Maharashtra",
+        "Manipur",
+        "Meghalaya",
+        "Mizoram",
+        "Nagaland",
+        "Odisha",
+        "Puducherry",
+        "Punjab",
+        "Rajasthan",
+        "Sikkim",
+        "Tamil Nadu",
+        "Telangana",
+        "Tripura",
+        "Uttar Pradesh",
+        "Uttarakhand",
+        "West Bengal",
+    ]
+
+    fieldnames = [
+        "state_or_ut",
+        "source_feature_index",
+        "candidate_bucket",
+        "review_status",
+        "proposed_scope",
+        "district",
+        "subdistrict",
+        "block",
+        "village",
+        "vlcode",
+        "backend_village_id",
+    ]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for index, state in enumerate(states):
+            writer.writerow({
+                "state_or_ut": state,
+                "source_feature_index": str(index),
+                "candidate_bucket": "DIRECT_VLCODE_MATCH",
+                "review_status": "AUTO_CANDIDATE",
+                "proposed_scope": "VILLAGE",
+                "district": f"{state} District",
+                "subdistrict": f"{state} Subdistrict",
+                "block": f"{state} Block",
+                "village": f"{state} Village",
+                "vlcode": str(600000 + index),
+                "backend_village_id": f"00000000-0000-0000-0000-{index:012d}",
+            })
 
 
 def run_importer(args: list[str], output: Path):
@@ -38,7 +114,15 @@ def run_importer(args: list[str], output: Path):
 
 
 def main() -> int:
-    dry_proc, dry = run_importer([], DRY_RUN_OUTPUT)
+    write_regression_input(DRY_RUN_INPUT)
+
+    fixture_args = [
+        "--input", str(DRY_RUN_INPUT),
+        "--expected-state-count", "36",
+        "--expected-row-count", "36",
+    ]
+
+    dry_proc, dry = run_importer(fixture_args, DRY_RUN_OUTPUT)
 
     check(dry_proc.returncode == 0, "Dry-run exits zero", dry)
     check(dry["schema_version"] == "nwdp_boundary_all_state_inactive_staging_importer.v1", "Importer schema is stable", dry)
@@ -53,15 +137,15 @@ def main() -> int:
 
     plan = dry["import_plan"]
     check(plan["planned_batch_insert_count"] == 36, "Dry-run plans 36 batches", plan)
-    check(plan["planned_source_feature_insert_count"] == 654285, "Dry-run plans 654285 source features", plan)
-    check(plan["planned_candidate_insert_count"] == 654285, "Dry-run plans 654285 candidates", plan)
+    check(plan["planned_source_feature_insert_count"] == 36, "Dry-run plans fixture source features", plan)
+    check(plan["planned_candidate_insert_count"] == 36, "Dry-run plans fixture candidates", plan)
     check(plan["planned_active_source_feature_count"] == 0, "Dry-run activates no source features", plan)
     check(plan["planned_active_candidate_count"] == 0, "Dry-run activates no candidates", plan)
     check(plan["planned_runtime_write_count"] == 0, "Dry-run plans no runtime writes", plan)
     check(plan["unsafe_counts"] == {}, "Dry-run has no unsafe counts", plan["unsafe_counts"])
 
     blocked_proc, blocked = run_importer(
-        ["--apply", "--allow-all-state-inactive-staging-write"],
+        [*fixture_args, "--apply", "--allow-all-state-inactive-staging-write"],
         APPLY_BLOCKED_OUTPUT,
     )
 

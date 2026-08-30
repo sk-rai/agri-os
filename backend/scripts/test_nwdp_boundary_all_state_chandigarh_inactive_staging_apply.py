@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import subprocess
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON = ROOT / "venv" / "bin" / "python"
 SCRIPT = ROOT / "backend/scripts/import_nwdp_boundary_all_state_inactive_staging.py"
+INPUT = Path("/tmp/nwdp-boundary-all-state-match-plan.csv")
 OUTPUT = Path("/tmp/nwdp-boundary-chandigarh-inactive-staging-apply-regression.json")
 
 
@@ -21,7 +23,44 @@ def check(condition: bool, label: str, detail=None):
         raise AssertionError(label)
 
 
+def write_chandigarh_input(path: Path) -> None:
+    fieldnames = [
+        "state_or_ut",
+        "source_feature_index",
+        "candidate_bucket",
+        "review_status",
+        "proposed_scope",
+        "district",
+        "subdistrict",
+        "block",
+        "village",
+        "vlcode",
+        "backend_village_id",
+    ]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for index in range(13):
+            writer.writerow({
+                "state_or_ut": "Chandigarh",
+                "source_feature_index": str(index),
+                "candidate_bucket": "DIRECT_VLCODE_MATCH",
+                "review_status": "AUTO_CANDIDATE",
+                "proposed_scope": "VILLAGE",
+                "district": "Chandigarh",
+                "subdistrict": "Chandigarh",
+                "block": "Chandigarh",
+                "village": f"Chandigarh Village {index + 1}",
+                "vlcode": str(700000 + index),
+                "backend_village_id": f"00000000-0000-0000-0001-{index:012d}",
+            })
+
+
 def main() -> int:
+    write_chandigarh_input(INPUT)
+
     if OUTPUT.exists():
         OUTPUT.unlink()
 

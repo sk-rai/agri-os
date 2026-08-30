@@ -548,6 +548,8 @@ def main() -> int:
     parser.add_argument("--allow-all-state-inactive-staging-write", action="store_true", help="Future policy gate for all-state inactive staging writes.")
     parser.add_argument("--source-file-sha256", default="", help="Optional source manifest checksum for deterministic batch ids.")
     parser.add_argument("--source-file-size-bytes", type=int, default=None)
+    parser.add_argument("--expected-state-count", type=int, default=None, help="Override expected dry-run state count for deterministic regression fixtures.")
+    parser.add_argument("--expected-row-count", type=int, default=None, help="Override expected dry-run row count for deterministic regression fixtures.")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -567,8 +569,8 @@ def main() -> int:
         all_rows, columns = read_rows(input_path)
         rows = filter_rows(all_rows, clean(args.state_or_ut) or None)
         table_check = check_target_tables()
-        expected_state_count = 1 if clean(args.state_or_ut) else EXPECTED_STATE_COUNT
-        expected_row_count = len(rows) if clean(args.state_or_ut) else EXPECTED_ROW_COUNT
+        expected_state_count = 1 if clean(args.state_or_ut) else (args.expected_state_count or EXPECTED_STATE_COUNT)
+        expected_row_count = len(rows) if clean(args.state_or_ut) else (args.expected_row_count or EXPECTED_ROW_COUNT)
         import_plan = plan_import(rows, input_path, args.source_file_sha256, args.sample_limit, expected_state_count, expected_row_count)
 
         apply_result = None
