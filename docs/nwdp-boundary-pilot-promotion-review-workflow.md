@@ -1758,3 +1758,39 @@ Guardrails verified false:
 Decision:
 
 The full national read-only overlay is now proven for the currently eligible 34-state/UT candidate set. The next safe step is to create a compact regression/checkpoint script that validates the combined summary and preserves the distinction between read-only overlay evidence and any future mapping apply/runtime lookup behavior.
+
+## NWDP regression self-contained fixture checkpoint — 2026-08-30
+
+The NWDP boundary regression runner is now self-contained for the inactive staging importer checks that previously depended on `/tmp/nwdp-boundary-all-state-match-plan.csv`.
+
+Problem fixed:
+
+- `/tmp` is ephemeral and may be cleared after reboot or laptop shutdown.
+- The all-state inactive staging importer regression previously expected a match-plan CSV to already exist in `/tmp`.
+- The Chandigarh inactive staging apply regression also depended on that same `/tmp` input.
+- After reboot, the regression runner could fail with `INPUT_CSV_NOT_FOUND` even though the importer and guarded apply behavior were otherwise valid.
+
+Fix:
+
+- `test_nwdp_boundary_all_state_inactive_staging_importer.py` now creates its own deterministic 36-row all-state fixture input before running.
+- `test_nwdp_boundary_all_state_chandigarh_inactive_staging_apply.py` now recreates the deterministic Chandigarh fixture input before running.
+- `import_nwdp_boundary_all_state_inactive_staging.py` supports explicit regression expected-count overrides while keeping production defaults unchanged.
+
+Validation:
+
+- targeted full national overlay summary regression passed;
+- targeted all-state inactive staging importer regression passed;
+- targeted Chandigarh inactive staging apply regression passed;
+- full `backend/scripts/run_nwdp_boundary_regressions.py` passed.
+
+Guardrails preserved:
+
+- no runtime table writes;
+- no runtime spatial matching enablement;
+- no lookup API enablement;
+- no Android behavior change;
+- no candidate activation or promotion outside explicitly guarded inactive staging apply scope.
+
+Decision:
+
+The NWDP regression runner no longer relies on manually preserved `/tmp` match-plan artifacts for these checkpoints. Future long-running output should continue to use durable project paths for artifacts that must survive shutdown.
