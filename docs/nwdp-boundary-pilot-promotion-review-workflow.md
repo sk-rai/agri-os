@@ -1942,3 +1942,53 @@ Guardrails preserved:
 Decision:
 
 The migration is ready for local apply validation as a separate, explicit checkpoint. Applying migration `057` should create only the empty demographic profile table and indexes. Profile import/apply remains blocked until its own guarded import checkpoint.
+
+## NWDP demographic schema migration local apply checkpoint — 2026-08-30
+
+Alembic migration `057` was applied successfully in the local development database.
+
+Migration applied:
+
+- `backend/alembic/versions/057_add_village_demographic_profiles.py`
+
+Before apply:
+
+- Alembic current revision: `056`
+- `geography_village_demographic_profiles` existed: false
+- migration file regression passed
+
+Apply command:
+
+- `cd backend && ../venv/bin/alembic upgrade head`
+
+Apply result:
+
+- upgrade path: `056 -> 057`
+- Alembic current after apply: `057 (head)`
+
+Post-apply validation:
+
+- `geography_village_demographic_profiles` exists: true
+- row count immediately after migration: 0
+- missing expected columns: none
+- missing expected indexes: none
+- foreign key count: 1
+- post-apply health: true
+
+Regression status:
+
+- full `backend/scripts/run_nwdp_boundary_regressions.py` passed after local migration apply.
+
+Guardrails preserved:
+
+- demographic profile rows inserted: false
+- LGD geography overwritten: false
+- official Census import claimed: false
+- NWDP candidates activated: false
+- NWDP candidates promoted: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The local development database is now at Alembic revision `057`, with the empty demographic profile table available for the next guarded checkpoint. The next step should be a disabled/admin-preview or dry-run import validation layer before any demographic profile rows are written.
