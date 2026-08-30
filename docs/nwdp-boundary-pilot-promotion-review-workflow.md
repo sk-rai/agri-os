@@ -2224,3 +2224,42 @@ Guardrails preserved:
 
 Decision:
 The admin preview path can now analyze approved versus manual-review demographic profiles by state/district combo once guarded profile rows exist. The next checkpoint should be a demographic profile import dry-run plan that computes candidate insert rows without writing them.
+
+## NWDP demographic profile import dry-run rollup checkpoint — 2026-08-30
+
+Status:
+The NWDP demographic enrichment import planner now produces admin-review-friendly rollups without writing demographic profile rows.
+
+Scripts:
+- `backend/scripts/plan_nwdp_demographic_enrichment_import.py`
+- `backend/scripts/test_nwdp_demographic_enrichment_import_plan.py`
+
+Validation:
+- full NWDP boundary regression runner passed;
+- dry-run planner exits healthy;
+- safe candidate universe is loaded from guarded direct-code candidates;
+- sampled candidates attach to canonical `geography_villages`;
+- sampled raw NWDP features are found;
+- population, household, land-use, and amenity preview fields are preserved;
+- sample profile rows include `review_status`, `promotion_status`, and `is_active`;
+- planned profiles remain inactive;
+- planned profiles remain not promoted;
+- planned review buckets are reported;
+- planned promotion buckets are reported;
+- approved-versus-manual-review summary is reported;
+- planned state/district rollups are reported.
+
+Guardrails preserved:
+- DB writes attempted: false;
+- demographic profile rows written: false;
+- profiles promoted: false;
+- LGD geography overwritten: false;
+- NWDP candidates activated: false;
+- NWDP candidates promoted: false;
+- project matching records written: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false;
+- official Census claimed imported: false.
+
+Decision:
+The dry-run planner now matches the admin preview shape closely enough to support a guarded inactive-profile import checkpoint. The next implementation step can be an apply-disabled/import-apply plan that only allows inactive, not-promoted demographic profile rows and still keeps runtime/Android behavior disabled.
