@@ -2310,3 +2310,65 @@ Guardrails preserved:
 
 Decision:
 The project now has an explicit safety gate before demographic profile import. The next checkpoint may design a one-state inactive profile apply path, but implementation should remain scoped, idempotent, and separate from promotion/runtime/Android enablement.
+
+## NWDP demographic one-state inactive apply plan checkpoint — 2026-08-30
+
+Status:
+A plan-only checkpoint now defines the future one-state inactive NWDP demographic profile apply contract.
+
+Scripts:
+- `backend/scripts/plan_nwdp_demographic_one_state_inactive_apply.py`
+- `backend/scripts/test_nwdp_demographic_one_state_inactive_apply_plan.py`
+
+Runner:
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the one-state inactive apply plan regression.
+- Full NWDP boundary regression runner passed after wiring.
+
+Current behavior:
+- no-scope plan exits non-zero;
+- no-scope plan reports `NWDP_DEMOGRAPHIC_ONE_STATE_APPLY_PLAN_REQUIRES_STATE_SCOPE`;
+- scoped plan exits zero;
+- scoped plan echoes the requested state/UT;
+- scoped plan remains plan-only and performs no inserts.
+
+Selection policy:
+- source system: `NWDP_GSI_VILLAGE_BOUNDARY`;
+- source version: `20260824T110250Z`;
+- state/UT scope is required;
+- all-state apply is not allowed;
+- source candidate bucket must be `DIRECT_VLCODE_MATCH`;
+- source candidate review status must be `AUTO_CANDIDATE`;
+- source candidate promotion status must be `NOT_PROMOTED`;
+- source candidate must have `proposed_village_id`;
+- matching raw NWDP feature is required.
+
+Future insert policy:
+- insert scope: inactive demographic profile rows only;
+- profile review status: `AUTO_CANDIDATE`;
+- profile promotion status: `NOT_PROMOTED`;
+- profile active flag: `false`;
+- runtime table writes not allowed;
+- candidate activation not allowed;
+- candidate promotion not allowed.
+
+Idempotency policy:
+- primary dedupe key: `source_system`, `source_version`, `source_feature_id`;
+- existing source-feature profiles are skipped;
+- existing profiles are not updated;
+- existing profiles are not deleted;
+- active/promoted uniqueness remains separately guarded by table indexes.
+
+Guardrails preserved:
+- DB writes attempted: false;
+- demographic profile rows written: false;
+- profiles promoted: false;
+- LGD geography overwritten: false;
+- official Census claimed imported: false;
+- NWDP candidates activated: false;
+- NWDP candidates promoted: false;
+- project matching records written: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false.
+
+Decision:
+The next checkpoint may implement the first guarded one-state inactive apply, preferably against a tiny state/UT scope such as Chandigarh if it has eligible safe candidates. That implementation must remain idempotent and must not promote profiles, enable runtime lookup, or change Android behavior.
