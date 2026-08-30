@@ -2263,3 +2263,50 @@ Guardrails preserved:
 
 Decision:
 The dry-run planner now matches the admin preview shape closely enough to support a guarded inactive-profile import checkpoint. The next implementation step can be an apply-disabled/import-apply plan that only allows inactive, not-promoted demographic profile rows and still keeps runtime/Android behavior disabled.
+
+## NWDP demographic profile import apply-disabled checkpoint — 2026-08-30
+
+Status:
+A hard apply-disabled guard now exists for NWDP demographic profile import.
+
+Scripts:
+- `backend/scripts/apply_nwdp_demographic_profile_import.py`
+- `backend/scripts/test_nwdp_demographic_profile_import_apply_disabled.py`
+
+Runner:
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the apply-disabled regression.
+- Full NWDP boundary regression runner passed after wiring.
+
+Current behavior:
+- no-scope apply exits non-zero;
+- no-scope apply reports `NWDP_DEMOGRAPHIC_PROFILE_IMPORT_APPLY_REQUIRES_STATE_SCOPE`;
+- scoped apply still exits non-zero;
+- scoped apply reports `NWDP_DEMOGRAPHIC_PROFILE_IMPORT_APPLY_NOT_IMPLEMENTED`;
+- scoped apply echoes the requested state/UT;
+- apply output records that a state scope is required;
+- apply output records that apply is not implemented.
+
+Future allowed scope:
+- single state/UT only;
+- inactive profile rows only;
+- `DIRECT_VLCODE_MATCH` source candidates only;
+- `AUTO_CANDIDATE` source candidates only;
+- `NOT_PROMOTED` source candidates only;
+- inserted profile rows must remain `AUTO_CANDIDATE`;
+- inserted profile rows must remain `NOT_PROMOTED`;
+- inserted profile rows must remain `is_active = false`.
+
+Guardrails preserved:
+- DB writes attempted: false;
+- demographic profile rows written: false;
+- profiles promoted: false;
+- LGD geography overwritten: false;
+- official Census claimed imported: false;
+- NWDP candidates activated: false;
+- NWDP candidates promoted: false;
+- project matching records written: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false.
+
+Decision:
+The project now has an explicit safety gate before demographic profile import. The next checkpoint may design a one-state inactive profile apply path, but implementation should remain scoped, idempotent, and separate from promotion/runtime/Android enablement.
