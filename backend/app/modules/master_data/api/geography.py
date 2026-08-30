@@ -1089,45 +1089,148 @@ def apply_nwdp_boundary_project_matching_disabled(
 
 @router.get("/nwdp-demographic-profiles/preview")
 def preview_nwdp_demographic_profiles(
+    state_or_ut: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     principal=Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
-    counts = db.execute(text("""
-        select
-          count(*) as profile_row_count,
-          count(*) filter (where is_active = true) as active_profile_row_count,
-          count(*) filter (where promotion_status = 'PROMOTED') as promoted_profile_row_count
-        from geography_village_demographic_profiles
-    """)).mappings().first()
+    """Read-only admin preview for NWDP demographic profile rows.
 
-    profile_row_count = int(counts["profile_row_count"] or 0)
-    active_profile_row_count = int(counts["active_profile_row_count"] or 0)
-    promoted_profile_row_count = int(counts["promoted_profile_row_count"] or 0)
+    The endpoint intentionally mirrors the boundary review admin style: summary
+    counts, review-status breakdowns, filters, and state/district grouping. It
+    does not import, promote, activate, or expose runtime/Android behavior.
+    """
 
-    enabled = profile_row_count > 0
+    filters = {
+        "state_or_ut": state_or_ut,
+        "district": district,
+        "limit": limit,
+    }
+
+    where_parts = []
+    params = {"limit": limit}
+
+    if state_or_ut:
+        where_parts.append("source_state_name = :state_or_ut")
+        params["state_or_ut"] = state_or_ut
+
+    if district:
+        where_parts.append("source_district_name = :district")
+        params["district"] = district
+
+    where_sql = " AND ".join(where_parts) if where_parts else "TRUE"
+
+    counts = db.execute(
+        text(
+            f"""
+            SELECT
+                COUNT(*)::bigint AS profile_row_count,
+                COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active_profile_row_count,
+                COUNT(*) FILTER (WHERE promotion_status = 'PROMOTED')::bigint AS promoted_profile_row_count,
+                COUNT(*) FILTER (WHERE promotion_status = 'NOT_PROMOTED')::bigint AS not_promoted_profile_row_count,
+                COUNT(*) FILTER (WHERE review_status = 'AUTO_CANDIDATE')::bigint AS auto_candidate_count,
+                COUNT(*) FILTER (WHERE review_status = 'MANUAL_REVIEW')::bigint AS manual_review_count,
+                COUNT(*) FILTER (WHERE review_status = 'APPROVED_FOR_PROMOTION')::bigint AS approved_for_promotion_count,
+                COUNT(*) FILTER (WHERE review_status = 'REJECTED')::bigint AS rejected_count,
+                COUNT(*) FILTER (WHERE review_status = 'BLOCKED')::bigint AS blocked_count
+            FROM geography_village_demographic_profiles
+            WHERE {where_sql}
+            """
+        ),
+        params,
+    ).mappings().one()
+
+    summary = {
+        key: int(counts[key] or 0)
+        for key in (
+            "profile_row_count",
+            "active_profile_row_count",
+            "promoted_profile_row_count",
+            "not_promoted_profile_row_count",
+            "auto_candidate_count",
+            "manual_review_count",
+            "approved_for_promotion_count",
+            "rejected_count",
+            "blocked_count",
+        )
+    }
+
+    state_district_rows = db.execute(
+        text(
+            f"""
+            SELECT
+                source_state_name AS state_or_ut,
+                source_district_name AS district,
+                COUNT(*)::bigint AS profile_row_count,
+                COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active_profile_row_count,
+                COUNT(*) FILTER (WHERE promotion_status = 'PROMOTED')::bigint AS promoted_profile_row_count,
+                COUNT(*) FILTER (WHERE review_status = 'AUTO_CANDIDATE')::bigint AS auto_candidate_count,
+                COUNT(*) FILTER (WHERE review_status = 'MANUAL_REVIEW')::bigint AS manual_review_count,
+                COUNT(*) FILTER (WHERE review_status = 'APPROVED_FOR_PROMOTION')::bigint AS approved_for_promotion_count,
+                COUNT(*) FILTER (WHERE review_status = 'REJECTED')::bigint AS rejected_count,
+                COUNT(*) FILTER (WHERE review_status = 'BLOCKED')::bigint AS blocked_count
+            FROM geography_village_demographic_profiles
+            WHERE {where_sql}
+            GROUP BY source_state_name, source_district_name
+            ORDER BY source_state_name NULLS LAST, source_district_name NULLS LAST
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    preview_rows = db.execute(
+        text(
+            f"""
+            SELECT
+                id::text AS profile_id,
+                village_id::text AS village_id,
+                source_state_name AS state_or_ut,
+                source_district_name AS district,
+                source_subdistrict_name,
+                source_village_name,
+                source_vlcode,
+                source_system,
+                source_version,
+                total_population,
+                total_households,
+                rural_urban,
+                review_status,
+                promotion_status,
+                is_active
+            FROM geography_village_demographic_profiles
+            WHERE {where_sql}
+            ORDER BY source_state_name NULLS LAST, source_district_name NULLS LAST, source_village_name NULLS LAST
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    enabled = summary["profile_row_count"] > 0
+    reason = None if enabled else "NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED"
 
     return {
         "schema_version": "nwdp_demographic_profiles_admin_preview.v1",
+        "mode": "read_only_admin_preview",
         "healthy": True,
         "enabled": enabled,
-        "reason": None if enabled else "NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED",
-        "target_table": "geography_village_demographic_profiles",
-        "profile_row_count": profile_row_count,
-        "active_profile_row_count": active_profile_row_count,
-        "promoted_profile_row_count": promoted_profile_row_count,
+        "reason": reason,
         "claim_boundary": (
-            "Read-only admin preview endpoint. It does not import demographic profile rows, "
-            "does not promote profiles, does not enable runtime lookup, does not expose Android "
-            "behavior, and does not claim official Census PCA/DCHB import."
+            "Admin preview is read-only. It summarizes imported inactive/active "
+            "demographic profile rows for review, but does not import rows, "
+            "promote profiles, enable runtime lookup, or change Android behavior."
         ),
+        "target_table": "geography_village_demographic_profiles",
         "future_preview_fields": [
             "state_or_ut",
             "district",
-            "village_name",
-            "village_lgd_code",
+            "source_subdistrict_name",
+            "source_village_name",
+            "source_vlcode",
             "source_system",
             "source_version",
-            "source_vlcode",
             "total_population",
             "total_households",
             "rural_urban",
@@ -1135,6 +1238,30 @@ def preview_nwdp_demographic_profiles(
             "promotion_status",
             "is_active",
         ],
+        "filters": filters,
+        "profile_row_count": summary["profile_row_count"],
+        "active_profile_row_count": summary["active_profile_row_count"],
+        "promoted_profile_row_count": summary["promoted_profile_row_count"],
+        "summary": summary,
+        "approved_vs_manual_review": {
+            "approved_for_promotion_count": summary["approved_for_promotion_count"],
+            "manual_review_count": summary["manual_review_count"],
+        },
+        "state_district_summary": [
+            {
+                key: (int(value) if key.endswith("_count") else value)
+                for key, value in row.items()
+            }
+            for row in state_district_rows
+        ],
+        "items": [dict(row) for row in preview_rows],
+        "readiness": {
+            "ready_for_profile_apply": False,
+            "ready_for_runtime_lookup": False,
+            "ready_for_runtime_lookup_enablement": False,
+            "ready_for_android_behavior_change": False,
+            "ready_for_official_census_import": False,
+        },
         "guardrails": {
             "db_writes_attempted": False,
             "demographic_profile_rows_written": False,
@@ -1142,12 +1269,6 @@ def preview_nwdp_demographic_profiles(
             "runtime_lookup_enabled": False,
             "android_behavior_changed": False,
             "official_census_claimed_imported": False,
-        },
-        "readiness": {
-            "ready_for_profile_apply": False,
-            "ready_for_runtime_lookup_enablement": False,
-            "ready_for_android_behavior_change": False,
-            "ready_for_official_census_import": False,
         },
     }
 
