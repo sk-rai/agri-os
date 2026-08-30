@@ -1794,3 +1794,46 @@ Guardrails preserved:
 Decision:
 
 The NWDP regression runner no longer relies on manually preserved `/tmp` match-plan artifacts for these checkpoints. Future long-running output should continue to use durable project paths for artifacts that must survive shutdown.
+
+## NWDP demographic enrichment schema migration plan checkpoint — 2026-08-30
+
+A dry-run schema migration plan has been added for NWDP-derived village demographic enrichment profiles.
+
+This checkpoint does not create or apply a database migration. It records the intended target schema and validates that the next step can be migration-file authoring without importing profile rows or changing runtime behavior.
+
+Target table planned:
+
+- `geography_village_demographic_profiles`
+
+Purpose:
+
+- attach source-versioned NWDP demographic, land-use, water-source, and amenity-like attributes to canonical LGD `geography_villages`;
+- preserve source lineage through `source_system`, `source_version`, `source_feature_id`, `source_vlcode`, source names, `source_properties`, and `match_evidence`;
+- avoid overwriting LGD geography identity;
+- keep official Census PCA/DCHB as a separate future source lineage.
+
+Scripts added:
+
+- `backend/scripts/plan_nwdp_demographic_enrichment_schema_migration.py`
+- `backend/scripts/test_nwdp_demographic_enrichment_schema_migration_plan.py`
+
+Regression runner status:
+
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the schema migration plan check;
+- full NWDP boundary regression runner passed after wiring.
+
+Guardrails preserved:
+
+- schema migration file created: false
+- schema migration applied: false
+- demographic profile rows written: false
+- LGD geography overwritten: false
+- official Census claimed imported: false
+- NWDP candidates activated: false
+- NWDP candidates promoted: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The demographic enrichment track is ready for actual migration-file authoring as a separate checkpoint. The migration should create the empty `geography_village_demographic_profiles` table and indexes only. It must not insert demographic rows or enable any admin/runtime/Android behavior by itself.
