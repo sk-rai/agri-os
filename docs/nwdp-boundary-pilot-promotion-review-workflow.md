@@ -1837,3 +1837,52 @@ Guardrails preserved:
 Decision:
 
 The demographic enrichment track is ready for actual migration-file authoring as a separate checkpoint. The migration should create the empty `geography_village_demographic_profiles` table and indexes only. It must not insert demographic rows or enable any admin/runtime/Android behavior by itself.
+
+## NWDP demographic enrichment schema migration file checkpoint — 2026-08-30
+
+A schema-only Alembic migration file has been authored for the NWDP-derived village demographic enrichment profile table.
+
+Migration file:
+
+- `backend/alembic/versions/057_add_village_demographic_profiles.py`
+
+Target table:
+
+- `geography_village_demographic_profiles`
+
+The migration creates an empty table for source-versioned demographic, land-use, water-source, and amenity-like attributes attached to canonical LGD `geography_villages`.
+
+Regression added:
+
+- `backend/scripts/test_nwdp_demographic_enrichment_schema_migration_file.py`
+
+Regression coverage:
+
+- verifies revision `057`;
+- verifies `down_revision = 056`;
+- verifies the `geography_village_demographic_profiles` table is created;
+- verifies foreign key to `geography_villages.id`;
+- verifies source lineage columns;
+- verifies population, household, land-use, amenity, source-properties, and match-evidence columns;
+- verifies default inactive / not-promoted profile state;
+- verifies source-feature and active-promoted uniqueness indexes;
+- verifies the migration file avoids row insertion, bulk insert, geography master updates, Android behavior, and lookup API fragments.
+
+Runner status:
+
+- `backend/scripts/run_nwdp_boundary_regressions.py` now includes both the schema migration plan regression and migration file regression;
+- full NWDP boundary regression runner passed after wiring.
+
+Guardrails preserved:
+
+- migration file authored, but not applied by this checkpoint;
+- no demographic profile rows inserted;
+- no LGD geography rows overwritten;
+- no official Census import claimed;
+- no NWDP candidate activation or promotion;
+- no runtime lookup enabled;
+- no Android behavior changed.
+
+Decision:
+
+The demographic profile table schema is ready for local migration-apply validation as a separate checkpoint. Applying the migration should create only the empty table and indexes; profile import/apply remains a later guarded step.
