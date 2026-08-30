@@ -44,6 +44,7 @@ CHECKS = [
 ("core agro-zone full national summary", [str(PYTHON), "scripts/test_nwdp_core_agro_zone_full_national_summary.py"]),
     ("nwdp demographic enrichment readiness", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_readiness.py"]),
     ("nwdp demographic enrichment schema plan", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_schema_plan.py"]),
+("nwdp demographic enrichment schema migration plan", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_schema_migration_plan.py"]),
     ("nwdp demographic enrichment import plan", [str(PYTHON), "scripts/test_nwdp_demographic_enrichment_import_plan.py"]),
 ]
 
