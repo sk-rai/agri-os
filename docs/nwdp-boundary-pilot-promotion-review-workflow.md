@@ -2140,3 +2140,46 @@ Runner status:
 Decision:
 
 The demographic profile table now has a safe admin read surface. Because no profile rows have been imported, the endpoint correctly stays disabled and reports an explicit empty-table reason. The next checkpoint should be a guarded profile import dry-run against the migrated table, not Android/runtime enablement.
+
+## NWDP demographic admin preview review-analysis checkpoint — 2026-08-30
+
+Status:
+The NWDP demographic admin preview endpoint now keeps the same admin geography review style used by earlier boundary APIs.
+
+Endpoint:
+- `GET /api/v1/master-data/geography/nwdp-demographic-profiles/preview`
+
+Current behavior:
+- requires admin view authentication;
+- remains read-only;
+- supports `state_or_ut`, `district`, and `limit` filters;
+- returns top-level profile counts for backward compatibility;
+- returns a `summary` object with profile, active, promoted, not-promoted, auto-candidate, manual-review, approved-for-promotion, rejected, and blocked counts;
+- returns `approved_vs_manual_review` for quick admin comparison;
+- returns `state_district_summary` grouped by state/UT and district;
+- returns `items` for preview rows when profile rows exist;
+- remains disabled while the profile table is empty with reason `NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED`.
+
+Regression:
+- `backend/scripts/test_nwdp_demographic_admin_preview_endpoint.py`
+
+Validation:
+- unauthenticated request denied;
+- authenticated admin request returns `200`;
+- empty-table response remains healthy and disabled;
+- state/district filter echo is verified;
+- approved versus manual-review counts are present;
+- state/district summary is empty before import;
+- preview items are empty before import;
+- endpoint does not mutate the profile table.
+
+Guardrails preserved:
+- DB writes attempted by endpoint: false;
+- demographic profile rows written by endpoint: false;
+- profiles promoted: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false;
+- official Census claimed imported: false.
+
+Decision:
+The preview API can now support admin analysis of approved versus manual-review demographic profiles by state/district combo once guarded profile rows exist. The next checkpoint should add a positive fixture regression or guarded dry-run import validation before any real demographic profile import/apply.
