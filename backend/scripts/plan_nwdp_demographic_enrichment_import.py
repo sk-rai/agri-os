@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -145,6 +145,9 @@ def build_profile_preview(candidate: dict[str, Any], props: dict[str, Any]) -> d
         "area_irrigated_by_source": numeric(props.get("area_irrigated_by_source")),
         "handpump_status": first_value(props, "handpump_status"),
         "tapwater_treated_status": first_value(props, "tapwater_treated_status"),
+        "review_status": "AUTO_CANDIDATE",
+        "is_active": False,
+        "promotion_status": "NOT_PROMOTED",
     }
 
 
@@ -177,6 +180,10 @@ def main() -> int:
     population_nonzero = 0
     household_nonzero = 0
     state_counts: Counter[str] = Counter()
+    state_district_counts: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    planned_review_status_counts: Counter[str] = Counter()
+    planned_promotion_status_counts: Counter[str] = Counter()
+    planned_active_count = 0
     profile_samples = []
     raw_geojson_file_count = 0
 
@@ -199,7 +206,14 @@ def main() -> int:
             profile = build_profile_preview(candidate, props)
 
             planned += 1
-            state_counts[str(profile.get("source_state_name") or path.stem)] += 1
+            state_name = str(profile.get("source_state_name") or path.stem)
+            district_name = str(profile.get("source_district_name") or "")
+            state_counts[state_name] += 1
+            state_district_counts[(state_name, district_name)][profile["review_status"]] += 1
+            planned_review_status_counts[profile["review_status"]] += 1
+            planned_promotion_status_counts[profile["promotion_status"]] += 1
+            if profile["is_active"]:
+                planned_active_count += 1
 
             if profile["total_population"] > 0:
                 population_nonzero += 1
@@ -233,6 +247,27 @@ def main() -> int:
         "population_nonzero_ratio": round(population_nonzero / planned, 6) if planned else 0,
         "household_nonzero_ratio": round(household_nonzero / planned, 6) if planned else 0,
         "state_counts": state_counts.most_common(),
+        "planned_review_status_counts": dict(sorted(planned_review_status_counts.items())),
+        "planned_promotion_status_counts": dict(sorted(planned_promotion_status_counts.items())),
+        "planned_active_profile_rows": planned_active_count,
+        "planned_promoted_profile_rows": planned_promotion_status_counts.get("PROMOTED", 0),
+        "planned_approved_vs_manual_review": {
+            "approved_for_promotion_count": planned_review_status_counts.get("APPROVED_FOR_PROMOTION", 0),
+            "manual_review_count": planned_review_status_counts.get("MANUAL_REVIEW", 0),
+        },
+        "planned_state_district_summary": [
+            {
+                "state_or_ut": state,
+                "district": district,
+                "planned_profile_rows": sum(counter.values()),
+                "auto_candidate_count": counter.get("AUTO_CANDIDATE", 0),
+                "manual_review_count": counter.get("MANUAL_REVIEW", 0),
+                "approved_for_promotion_count": counter.get("APPROVED_FOR_PROMOTION", 0),
+                "blocked_count": counter.get("BLOCKED", 0),
+                "rejected_count": counter.get("REJECTED", 0),
+            }
+            for (state, district), counter in sorted(state_district_counts.items())
+        ],
         "sample_profile_rows": profile_samples,
         "notes": [
             "Dry-run plan only; no demographic profile rows are written.",
@@ -271,6 +306,8 @@ def main() -> int:
         "candidate_missing_state_key_count": result["candidate_missing_state_key_count"],
         "candidate_count_considered": result["candidate_count_considered"],
         "planned_profile_rows": result["planned_profile_rows"],
+        "planned_review_status_counts": result["planned_review_status_counts"],
+        "planned_state_district_summary_count": len(result["planned_state_district_summary"]),
         "population_nonzero_ratio": result["population_nonzero_ratio"],
         "household_nonzero_ratio": result["household_nonzero_ratio"],
     }, indent=2))
