@@ -2093,3 +2093,50 @@ Guardrails preserved:
 Decision:
 
 The endpoint contract is ready for implementation as a read-only admin preview. The implementation should return a disabled/empty response while the profile table has zero rows and must not expose Android/runtime behavior.
+
+## NWDP demographic admin preview endpoint implementation checkpoint — 2026-08-30
+
+The read-only admin preview endpoint for NWDP demographic enrichment profiles has been implemented.
+
+Endpoint:
+
+- `GET /api/v1/master-data/geography/nwdp-demographic-profiles/preview`
+
+Implementation:
+
+- `backend/app/modules/master_data/api/geography.py`
+
+Regression:
+
+- `backend/scripts/test_nwdp_demographic_admin_preview_endpoint.py`
+
+Current behavior while the profile table is empty:
+
+- requires admin view authentication;
+- unauthenticated requests are denied;
+- authenticated admin request returns `200`;
+- response schema: `nwdp_demographic_profiles_admin_preview.v1`;
+- `healthy`: true;
+- `enabled`: false;
+- `reason`: `NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED`;
+- `profile_row_count`: 0;
+- `active_profile_row_count`: 0;
+- `promoted_profile_row_count`: 0.
+
+Guardrails verified by regression:
+
+- DB writes attempted: false;
+- demographic profile rows written: false;
+- profiles promoted: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false;
+- official Census claimed imported: false.
+
+Runner status:
+
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the admin preview endpoint regression;
+- full NWDP boundary regression runner passed after endpoint implementation.
+
+Decision:
+
+The demographic profile table now has a safe admin read surface. Because no profile rows have been imported, the endpoint correctly stays disabled and reports an explicit empty-table reason. The next checkpoint should be a guarded profile import dry-run against the migrated table, not Android/runtime enablement.
