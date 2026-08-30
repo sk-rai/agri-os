@@ -1886,3 +1886,59 @@ Guardrails preserved:
 Decision:
 
 The demographic profile table schema is ready for local migration-apply validation as a separate checkpoint. Applying the migration should create only the empty table and indexes; profile import/apply remains a later guarded step.
+
+## NWDP demographic schema migration apply-validation plan checkpoint — 2026-08-30
+
+A dry-run validation plan has been added for local application of Alembic migration `057`.
+
+This checkpoint does not run Alembic, connect to the database, apply DDL, insert demographic profile rows, enable runtime lookup, or change Android behavior.
+
+Scripts added:
+
+- `backend/scripts/plan_nwdp_demographic_schema_migration_apply_validation.py`
+- `backend/scripts/test_nwdp_demographic_schema_migration_apply_validation_plan.py`
+
+Target migration:
+
+- `backend/alembic/versions/057_add_village_demographic_profiles.py`
+
+Target table:
+
+- `geography_village_demographic_profiles`
+
+Planned local apply command:
+
+- `cd backend && ../venv/bin/alembic upgrade head`
+
+Pre-apply checks:
+
+- confirm working tree has no unintended tracked modifications;
+- confirm migration file regression passes;
+- confirm Alembic current revision before upgrade;
+- confirm the target table does not already exist, or stop and inspect if it does.
+
+Post-apply checks:
+
+- confirm Alembic current/head is revision `057`;
+- confirm `geography_village_demographic_profiles` exists;
+- confirm the table row count is `0` immediately after migration;
+- confirm expected columns exist;
+- confirm expected indexes exist;
+- confirm foreign key to `geography_villages.id` exists;
+- confirm no `geography_villages` rows were updated;
+- confirm full NWDP boundary regression runner passes.
+
+Guardrails preserved:
+
+- Alembic upgrade executed: false
+- DB connection attempted: false
+- schema migration applied: false
+- demographic profile rows written: false
+- LGD geography overwritten: false
+- official Census claimed imported: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+
+Decision:
+
+The migration is ready for local apply validation as a separate, explicit checkpoint. Applying migration `057` should create only the empty demographic profile table and indexes. Profile import/apply remains blocked until its own guarded import checkpoint.
