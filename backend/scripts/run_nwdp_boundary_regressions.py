@@ -54,6 +54,7 @@ CHECKS = [
     ("nwdp demographic profile import apply disabled", [str(PYTHON), "scripts/test_nwdp_demographic_profile_import_apply_disabled.py"]),
     ("nwdp demographic one-state inactive apply plan", [str(PYTHON), "scripts/test_nwdp_demographic_one_state_inactive_apply_plan.py"]),
     ("nwdp demographic one-state inactive apply", [str(PYTHON), "scripts/test_nwdp_demographic_one_state_inactive_apply.py"]),
+    ("nwdp demographic one-state apply admin preview", [str(PYTHON), "scripts/test_nwdp_demographic_one_state_apply_admin_preview.py"]),
 ]
 
 

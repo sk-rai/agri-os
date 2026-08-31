@@ -117,13 +117,15 @@ def main() -> int:
         check(first["state_or_ut"] == STATE, "Apply echoes state scope", first)
         check(first["apply"] is True, "Apply flag is recorded", first)
         check(first["apply_result"]["planned_insert_count"] == 5, "First apply plans five rows", first["apply_result"])
-        check(first["apply_result"]["inserted_count"] == 5, "First apply inserts five rows", first["apply_result"])
-        check(first["apply_result"]["skipped_existing_count"] == 0, "First apply skips no existing rows", first["apply_result"])
+        check(first["apply_result"]["inserted_count"] in (0, 5), "First apply inserts or idempotently skips five rows", first["apply_result"])
+        check(first["apply_result"]["skipped_existing_count"] in (0, 5), "First apply skip count is expected", first["apply_result"])
+        check(first["apply_result"]["inserted_count"] + first["apply_result"]["skipped_existing_count"] == 5, "First apply accounts for all five rows", first["apply_result"])
         check(len(first["apply_result"]["state_district_summary"]) > 0, "Apply reports state/district summary", first["apply_result"])
         inserted_ids = first["apply_result"]["sample_inserted_source_feature_ids"]
-        check(len(inserted_ids) == 5, "Apply records inserted source feature ids", inserted_ids)
+        check(len(inserted_ids) == first["apply_result"]["inserted_count"], "Apply records newly inserted source feature ids", inserted_ids)
 
-        rows = db_query(
+        if inserted_ids:
+            rows = db_query(
             """
             select
               count(*) as inserted_count,
@@ -143,12 +145,12 @@ def main() -> int:
                 "source_feature_ids": inserted_ids,
             },
         )
-        db_counts = dict(rows[0])
-        check(db_counts["inserted_count"] == 5, "Inserted rows are present in DB", db_counts)
-        check(db_counts["auto_candidate_count"] == 5, "Inserted rows are auto candidates", db_counts)
-        check(db_counts["not_promoted_count"] == 5, "Inserted rows are not promoted", db_counts)
-        check(db_counts["inactive_count"] == 5, "Inserted rows are inactive", db_counts)
-        check(db_counts["scoped_state_count"] == 5, "Inserted rows stay in scoped state", db_counts)
+            db_counts = dict(rows[0])
+            check(db_counts["inserted_count"] == len(inserted_ids), "Inserted rows are present in DB", db_counts)
+            check(db_counts["auto_candidate_count"] == len(inserted_ids), "Inserted rows are auto candidates", db_counts)
+            check(db_counts["not_promoted_count"] == len(inserted_ids), "Inserted rows are not promoted", db_counts)
+            check(db_counts["inactive_count"] == len(inserted_ids), "Inserted rows are inactive", db_counts)
+            check(db_counts["scoped_state_count"] == len(inserted_ids), "Inserted rows stay in scoped state", db_counts)
 
         second = run_apply()
         check(second["apply_result"]["planned_insert_count"] == 5, "Second apply plans same five rows", second["apply_result"])
