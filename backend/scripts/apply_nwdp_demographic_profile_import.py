@@ -53,8 +53,18 @@ def state_key_aliases(state_or_ut: str) -> list[str]:
     if key in {"arunachal_pradesh", "arunanchal_pradesh"}:
         aliases.update({"arunachal_pradesh", "arunanchal_pradesh"})
 
+    if key in {"dadra_and_nagar_haveli_and_daman_and_diu", "dadra_and_nagar_haveli_and_daman_diu", "dadra_and_nagar_havelli_and_daman_and_diu"}:
+        aliases.update({"dadra_and_nagar_haveli_and_daman_and_diu", "dadra_and_nagar_haveli_and_daman_diu", "dadra_and_nagar_havelli_and_daman_and_diu"})
+
     return sorted(alias for alias in aliases if alias)
 
+
+def raw_geojson_paths_for_state(raw_dir: Path, state_or_ut: str) -> list[Path]:
+    requested_state_keys = set(state_key_aliases(state_or_ut))
+    paths = sorted(raw_dir.glob("*.geojson"))
+    matching = [path for path in paths if normalize_state_key(path.stem) in requested_state_keys]
+    fallback = [path for path in paths if path not in matching]
+    return matching + fallback
 
 def query_safe_candidates_for_state(state_or_ut: str) -> list[dict[str, Any]]:
     """Load only safe direct-code candidates for one import-batch state/UT."""
@@ -201,7 +211,7 @@ def find_state_profiles(state_or_ut: str, raw_dir: Path, limit: int) -> list[dic
 
     profiles: list[dict[str, Any]] = []
 
-    for raw_path in sorted(raw_dir.glob("*.geojson")):
+    for raw_path in raw_geojson_paths_for_state(raw_dir, state_or_ut):
         if not candidates_by_index:
             break
 
