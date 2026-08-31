@@ -50,6 +50,9 @@ def state_key_aliases(state_or_ut: str) -> list[str]:
     else:
         aliases.add(f"{key}s")
 
+    if key in {"arunachal_pradesh", "arunanchal_pradesh"}:
+        aliases.update({"arunachal_pradesh", "arunanchal_pradesh"})
+
     return sorted(alias for alias in aliases if alias)
 
 
