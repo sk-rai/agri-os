@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Read-only DB-state regression for NWDP demographic schema migration 057."""
+"""Read-only DB-state regression for NWDP demographic schema migration 057.
+
+This check now supports both:
+- fresh post-migration DB state with zero profile rows; and
+- the first persistent Andaman inactive-import checkpoint with 512 rows.
+
+It remains read-only and verifies no active/promoted/non-auto demographic rows.
+"""
 
 from __future__ import annotations
 
@@ -102,7 +109,7 @@ def db_url_from_settings() -> str:
 def check(condition: bool, label: str, detail=None):
     print(("PASS" if condition else "FAIL") + " " + label)
     if detail is not None:
-        print(json.dumps(detail, indent=2, sort_keys=True, default=str)[:1600])
+        print(json.dumps(detail, indent=2, sort_keys=True, default=str)[:1800])
     if not condition:
         raise AssertionError(label)
 
@@ -125,8 +132,6 @@ def main() -> int:
                 and table_name = :table_name
             )
         """), {"table_name": TARGET_TABLE}).scalar()
-
-        row_count = conn.execute(text(f"select count(*) from {TARGET_TABLE}")).scalar() if table_exists else None
 
         columns = {
             row[0]
@@ -159,10 +164,26 @@ def main() -> int:
             """), {"table_name": TARGET_TABLE})
         ]
 
+        row_state = dict(conn.execute(text(f"""
+            select
+              count(*)::bigint as row_count,
+              count(*) filter (where is_active = true)::bigint as active_profile_row_count,
+              count(*) filter (where promotion_status = 'PROMOTED')::bigint as promoted_profile_row_count,
+              count(*) filter (where review_status <> 'AUTO_CANDIDATE')::bigint as non_auto_candidate_row_count,
+              count(*) filter (where source_state_name = 'Andaman & Nicobar Island')::bigint as andaman_profile_row_count
+            from {TARGET_TABLE}
+        """)).mappings().one()) if table_exists else {
+            "row_count": None,
+            "active_profile_row_count": None,
+            "promoted_profile_row_count": None,
+            "non_auto_candidate_row_count": None,
+            "andaman_profile_row_count": None,
+        }
+
     detail = {
         "alembic_version": alembic_version,
         "table_exists": bool(table_exists),
-        "row_count": row_count,
+        **row_state,
         "missing_columns": sorted(EXPECTED_COLUMNS - columns),
         "missing_indexes": sorted(EXPECTED_INDEXES - indexes),
         "foreign_key_count": len(foreign_keys),
@@ -177,7 +198,11 @@ def main() -> int:
 
     check(alembic_version == "057", "Alembic revision is 057", detail)
     check(table_exists is True, "Target table exists", detail)
-    check(row_count == 0, "Target table is empty after schema migration", detail)
+    check(detail["row_count"] >= 0, "Target table row count is readable", detail)
+    check(detail["active_profile_row_count"] == 0, "No active demographic profiles exist", detail)
+    check(detail["promoted_profile_row_count"] == 0, "No promoted demographic profiles exist", detail)
+    check(detail["non_auto_candidate_row_count"] == 0, "All imported demographic profiles remain auto-candidate", detail)
+    check(detail["andaman_profile_row_count"] in (0, 512), "DB state allows pre-import empty or Andaman inactive import checkpoint", detail)
     check(not detail["missing_columns"], "Expected columns exist", detail)
     check(not detail["missing_indexes"], "Expected indexes exist", detail)
     check(len(foreign_keys) >= 1, "Foreign key exists", detail)
