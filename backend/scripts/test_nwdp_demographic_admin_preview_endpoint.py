@@ -176,19 +176,19 @@ def insert_fixture_profiles() -> None:
         db.commit()
 
 
-def assert_empty_table_contract(client: TestClient, headers: dict) -> None:
+def assert_current_baseline_contract(client: TestClient, headers: dict, before: dict) -> None:
     response = client.get(ENDPOINT, headers=headers)
     check(response.status_code == 200, "Admin preview endpoint returns 200", response.text)
 
     data = response.json()
     check(data["schema_version"] == "nwdp_demographic_profiles_admin_preview.v1", "Schema version is stable", data)
     check(data["healthy"] is True, "Preview response is healthy", data)
-    check(data["enabled"] is False, "Preview remains disabled while empty", data)
-    check(data["reason"] == "NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED", "Disabled reason is explicit", data)
+    check(data["enabled"] is (before["profile_row_count"] > 0), "Preview enabled state matches imported baseline", data)
+    check(data["reason"] is None if before["profile_row_count"] > 0 else data["reason"] == "NO_DEMOGRAPHIC_PROFILE_ROWS_IMPORTED", "Disabled reason matches imported baseline", data)
     check(data["target_table"] == "geography_village_demographic_profiles", "Target table is reported", data)
-    check(data["profile_row_count"] == 0, "Profile row count is zero", data)
-    check(data["active_profile_row_count"] == 0, "Active profile count is zero", data)
-    check(data["promoted_profile_row_count"] == 0, "Promoted profile count is zero", data)
+    check(data["profile_row_count"] == before["profile_row_count"], "Profile row count matches baseline", data)
+    check(data["active_profile_row_count"] == before["active_profile_row_count"], "Active profile count matches baseline", data)
+    check(data["promoted_profile_row_count"] == before["promoted_profile_row_count"], "Promoted profile count matches baseline", data)
     check(data["filters"] == {"state_or_ut": None, "district": None, "limit": 50}, "Default filters are present", data["filters"])
 
     fields = set(data["future_preview_fields"])
@@ -205,12 +205,12 @@ def assert_empty_table_contract(client: TestClient, headers: dict) -> None:
         check(field in fields, f"Future preview field present: {field}", data["future_preview_fields"])
 
     summary = data["summary"]
-    check(summary["auto_candidate_count"] == 0, "Summary auto candidate count is zero", summary)
-    check(summary["manual_review_count"] == 0, "Summary manual review count is zero", summary)
-    check(summary["approved_for_promotion_count"] == 0, "Summary approved count is zero", summary)
-    check(data["approved_vs_manual_review"] == {"approved_for_promotion_count": 0, "manual_review_count": 0}, "Approved versus manual review summary is empty", data["approved_vs_manual_review"])
-    check(data["state_district_summary"] == [], "State/district summary is empty before import", data["state_district_summary"])
-    check(data["items"] == [], "Preview items are empty before import", data["items"])
+    check(summary["auto_candidate_count"] == before["profile_row_count"], "Summary auto candidate count matches imported baseline", summary)
+    check(summary["manual_review_count"] == 0, "Summary manual review count remains zero", summary)
+    check(summary["approved_for_promotion_count"] == 0, "Summary approved count remains zero", summary)
+    check(data["approved_vs_manual_review"] == {"approved_for_promotion_count": 0, "manual_review_count": 0}, "Approved versus manual review summary remains empty", data["approved_vs_manual_review"])
+    check((len(data["state_district_summary"]) > 0) is (before["profile_row_count"] > 0), "State/district summary matches imported baseline", data["state_district_summary"][:5])
+    check((len(data["items"]) > 0) is (before["profile_row_count"] > 0), "Preview items match imported baseline", data["items"][:5])
 
     guardrails = data["guardrails"]
     check(guardrails["db_writes_attempted"] is False, "Endpoint attempts no DB writes", guardrails)
@@ -290,7 +290,7 @@ def main() -> int:
         admin, headers = create_test_admin(db, role="ADMIN_VIEWER", tenant_id="default")
 
     try:
-        assert_empty_table_contract(client, headers)
+        assert_current_baseline_contract(client, headers, before)
 
         insert_fixture_profiles()
         assert_positive_state_district_analysis(client, headers)
