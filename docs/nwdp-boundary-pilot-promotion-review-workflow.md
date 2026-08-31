@@ -2372,3 +2372,46 @@ Guardrails preserved:
 
 Decision:
 The next checkpoint may implement the first guarded one-state inactive apply, preferably against a tiny state/UT scope such as Chandigarh if it has eligible safe candidates. That implementation must remain idempotent and must not promote profiles, enable runtime lookup, or change Android behavior.
+
+## NWDP demographic one-state apply to admin-preview stitch checkpoint — 2026-08-31
+
+Status:
+A stitched regression now verifies that guarded one-state demographic profile apply feeds the admin preview endpoint correctly.
+
+Scripts:
+- `backend/scripts/test_nwdp_demographic_one_state_apply_admin_preview.py`
+- `backend/scripts/test_nwdp_demographic_one_state_inactive_apply.py`
+- `backend/scripts/apply_nwdp_demographic_profile_import.py`
+
+Runner:
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the stitched apply/admin-preview regression.
+- Full NWDP boundary regression runner passed after wiring.
+
+Validated flow:
+1. Apply a tiny guarded batch for `Andaman & Nicobar Island`.
+2. Insert 5 demographic profile rows.
+3. Keep rows inactive.
+4. Keep rows `AUTO_CANDIDATE`.
+5. Keep rows `NOT_PROMOTED`.
+6. Call admin demographic preview with `state_or_ut=Andaman & Nicobar Island`.
+7. Verify preview sees at least 5 scoped rows.
+8. Verify preview returns state/district grouped rows.
+9. Verify preview returns applied rows in `items`.
+10. Clean up the inserted rows and verify table counts return to pre-test state.
+
+Observed stitched preview grouping:
+- `Nicobars`: 4 rows
+- `North And Middle Andaman`: 1 row
+
+Guardrails preserved:
+- no profile promotion;
+- no candidate activation;
+- no candidate promotion;
+- no LGD geography overwrite;
+- no project matching records written;
+- no runtime lookup enabled;
+- no Android behavior changed;
+- no official Census import claim.
+
+Decision:
+The apply-to-preview path is verified with cleanup. The next checkpoint may run a persistent, guarded one-state inactive apply for all eligible `Andaman & Nicobar Island` demographic profile rows, then validate admin preview counts before considering broader state/all-state import.
