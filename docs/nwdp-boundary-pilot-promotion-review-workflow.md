@@ -2415,3 +2415,57 @@ Guardrails preserved:
 
 Decision:
 The apply-to-preview path is verified with cleanup. The next checkpoint may run a persistent, guarded one-state inactive apply for all eligible `Andaman & Nicobar Island` demographic profile rows, then validate admin preview counts before considering broader state/all-state import.
+
+## NWDP demographic Andaman persistent inactive apply checkpoint — 2026-08-31
+
+Status:
+The first persistent guarded one-state NWDP demographic profile import has been applied for `Andaman & Nicobar Island`.
+
+Command:
+- `backend/scripts/apply_nwdp_demographic_profile_import.py --state-or-ut "Andaman & Nicobar Island" --apply --max-rows 600`
+
+Result:
+- planned insert rows: 512
+- inserted rows: 512
+- skipped existing rows: 0
+- missing raw features: 0
+
+Idempotency validation:
+- rerun planned rows: 512
+- rerun inserted rows: 0
+- rerun skipped existing rows: 512
+
+Persistent DB validation:
+- profile rows: 512
+- `AUTO_CANDIDATE`: 512
+- `NOT_PROMOTED`: 512
+- inactive rows: 512
+- promoted rows: 0
+- active rows: 0
+
+District split:
+- `Nicobars`: 162
+- `North And Middle Andaman`: 227
+- `South Andamans`: 123
+
+Admin preview validation:
+- preview enabled: true
+- preview reason: null
+- preview profile row count: 512
+- state/district summary returned expected district counts
+- preview returned scoped items
+- preview endpoint remained read-only
+
+Guardrails preserved:
+- profile promotion: false
+- active profile rows: false
+- LGD geography overwrite: false
+- NWDP candidate activation: false
+- NWDP candidate promotion: false
+- project matching records written: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+
+Decision:
+The one-state persistent inactive import path is validated. The next checkpoint can either apply the next small state scope or prepare an all-state guarded apply plan with per-state caps, idempotency, and resumable audit output.
