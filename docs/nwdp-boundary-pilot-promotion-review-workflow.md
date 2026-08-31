@@ -2469,3 +2469,40 @@ Guardrails preserved:
 
 Decision:
 The one-state persistent inactive import path is validated. The next checkpoint can either apply the next small state scope or prepare an all-state guarded apply plan with per-state caps, idempotency, and resumable audit output.
+
+## NWDP demographic fast all-state inactive apply plan checkpoint — 2026-08-31
+
+Status:
+A fast all-state inactive demographic profile apply plan now exists. It uses DB aggregate counts only and avoids raw GeoJSON scanning in the regression runner.
+
+Scripts:
+- `backend/scripts/plan_nwdp_demographic_all_state_inactive_apply.py`
+- `backend/scripts/test_nwdp_demographic_all_state_inactive_apply_plan.py`
+
+Runner:
+- `backend/scripts/run_nwdp_boundary_regressions.py` includes the fast all-state plan regression.
+- Full NWDP boundary regression runner passed after wiring.
+
+Behavior:
+- computes planned profile rows by state/UT from guarded direct-code boundary candidates;
+- computes existing imported demographic profile rows by state/UT;
+- computes remaining insert rows by state/UT;
+- accounts for the already-persisted `Andaman & Nicobar Island` inactive import;
+- recommends one-state-at-a-time apply execution;
+- explicitly blocks a single all-state transaction;
+- records a performance policy showing no raw GeoJSON scan.
+
+Guardrails preserved:
+- DB writes attempted by planner: false;
+- demographic profile rows written by planner: false;
+- profiles promoted: false;
+- LGD geography overwritten: false;
+- official Census claimed imported: false;
+- NWDP candidates activated: false;
+- NWDP candidates promoted: false;
+- project matching records written: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false.
+
+Decision:
+All-state import should be performed by a resumable orchestrator that calls the existing guarded one-state apply command per state/UT, writes durable per-state audit files, skips completed states on resume, and exposes a separate read-only progress monitor.
