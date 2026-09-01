@@ -1975,6 +1975,144 @@ def update_nwdp_boundary_candidate_review(
 
 
 
+
+@router.get("/nwdp-demographic-profiles/promotion/dry-run")
+def get_nwdp_demographic_profile_promotion_dry_run(
+    state_or_ut: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Read-only dry-run for future NWDP demographic profile promotion.
+
+    This endpoint only counts/samples inactive NOT_PROMOTED profile rows that
+    have already been approved for promotion by admin review. It does not
+    promote, activate, enable runtime lookup, or change Android behavior.
+    """
+
+    filters = {
+        "state_or_ut": state_or_ut,
+        "district": district,
+        "limit": limit,
+    }
+
+    where_parts = [
+        "review_status = 'APPROVED_FOR_PROMOTION'",
+        "promotion_status = 'NOT_PROMOTED'",
+        "is_active = false",
+        "source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'",
+    ]
+    params = {"limit": limit}
+
+    if state_or_ut:
+        where_parts.append("source_state_name = :state_or_ut")
+        params["state_or_ut"] = state_or_ut
+
+    if district:
+        where_parts.append("source_district_name = :district")
+        params["district"] = district
+
+    where_sql = " AND ".join(where_parts)
+
+    summary = db.execute(text(f"""
+        SELECT
+          COUNT(*)::bigint AS eligible_profile_row_count,
+          COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active_profile_row_count,
+          COUNT(*) FILTER (WHERE promotion_status = 'PROMOTED')::bigint AS promoted_profile_row_count,
+          COUNT(*) FILTER (WHERE review_status = 'APPROVED_FOR_PROMOTION')::bigint AS approved_for_promotion_count
+        FROM geography_village_demographic_profiles
+        WHERE {where_sql}
+    """), params).mappings().one()
+
+    state_district_rows = db.execute(text(f"""
+        SELECT
+          source_state_name AS state_or_ut,
+          source_district_name AS district,
+          COUNT(*)::bigint AS eligible_profile_row_count,
+          COUNT(*) FILTER (WHERE review_status = 'APPROVED_FOR_PROMOTION')::bigint AS approved_for_promotion_count,
+          COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active_profile_row_count,
+          COUNT(*) FILTER (WHERE promotion_status = 'PROMOTED')::bigint AS promoted_profile_row_count
+        FROM geography_village_demographic_profiles
+        WHERE {where_sql}
+        GROUP BY source_state_name, source_district_name
+        ORDER BY source_state_name NULLS LAST, source_district_name NULLS LAST
+        LIMIT :limit
+    """), params).mappings().all()
+
+    sample_rows = db.execute(text(f"""
+        SELECT
+          id::text AS profile_id,
+          village_id::text AS village_id,
+          source_state_name AS state_or_ut,
+          source_district_name AS district,
+          source_subdistrict_name,
+          source_village_name,
+          source_vlcode,
+          total_population,
+          total_households,
+          rural_urban,
+          review_status,
+          promotion_status,
+          is_active
+        FROM geography_village_demographic_profiles
+        WHERE {where_sql}
+        ORDER BY source_state_name NULLS LAST, source_district_name NULLS LAST, source_village_name NULLS LAST
+        LIMIT :limit
+    """), params).mappings().all()
+
+    summary = {key: int(value or 0) for key, value in summary.items()}
+    eligible = summary["eligible_profile_row_count"]
+
+    return {
+        "schema_version": "nwdp_demographic_profile_promotion_dry_run.v1",
+        "mode": "read_only_promotion_dry_run",
+        "healthy": True,
+        "enabled": eligible > 0,
+        "reason": None if eligible > 0 else "NO_APPROVED_INACTIVE_NOT_PROMOTED_DEMOGRAPHIC_PROFILES",
+        "claim_boundary": (
+            "Promotion dry-run is read-only. It reports inactive, not-promoted "
+            "NWDP demographic profile rows that have been approved by admin "
+            "review, but does not promote profiles, activate rows, enable "
+            "runtime lookup, or change Android behavior."
+        ),
+        "filters": filters,
+        "selection_policy": {
+            "required_source_system": "NWDP_GSI_VILLAGE_BOUNDARY",
+            "required_review_status": "APPROVED_FOR_PROMOTION",
+            "required_promotion_status": "NOT_PROMOTED",
+            "required_is_active": False,
+            "state_or_district_scope_recommended": True,
+        },
+        "summary": summary,
+        "state_district_summary": [
+            {
+                key: (int(value or 0) if key.endswith("_count") else value)
+                for key, value in row.items()
+            }
+            for row in state_district_rows
+        ],
+        "items": [dict(row) for row in sample_rows],
+        "readiness": {
+            "ready_for_profile_promotion_apply": False,
+            "ready_for_profile_activation": False,
+            "ready_for_runtime_lookup_enablement": False,
+            "ready_for_android_behavior_change": False,
+            "ready_for_official_census_import": False,
+        },
+        "guardrails": {
+            "db_writes_attempted": False,
+            "profile_review_status_changed": False,
+            "profiles_promoted": False,
+            "profile_rows_activated": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+            "official_census_claimed_imported": False,
+            "lgd_geography_overwritten": False,
+        },
+    }
+
+
 @router.patch("/nwdp-demographic-profiles/{profile_id}/review")
 def update_nwdp_demographic_profile_review(
     profile_id: UUID,
