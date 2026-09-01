@@ -109,6 +109,7 @@ def main() -> int:
     parser.add_argument("--state-or-ut")
     parser.add_argument("--district")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--enable-policy", action="store_true")
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
@@ -118,25 +119,66 @@ def main() -> int:
     scope_present = state_scope_present and district_scope_present
 
     engine = create_engine(load_settings_url())
-    with engine.connect() as conn:
+    promoted_count = 0
+    activated_count = 0
+    db_writes_attempted = False
+
+    with engine.begin() as conn:
         before = count_current_state(conn)
         summary, districts, items = eligible_summary(conn, args.state_or_ut, args.district, args.limit)
-        after = count_current_state(conn)
 
-    error = None
-    if not args.apply:
-        error = "NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_REQUIRES_EXPLICIT_APPLY_FLAG"
-    elif not scope_present:
-        error = "NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_REQUIRES_STATE_AND_DISTRICT_SCOPE"
-    else:
-        error = "NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_DISABLED_BY_POLICY"
+        error = None
+        if not args.apply:
+            error = "NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_REQUIRES_EXPLICIT_APPLY_FLAG"
+        elif not scope_present:
+            error = "NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_REQUIRES_STATE_AND_DISTRICT_SCOPE"
+        elif not args.enable_policy:
+            error = "NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_DISABLED_BY_POLICY"
+        else:
+            db_writes_attempted = True
+            result = conn.execute(text(f"""
+                update {TARGET_TABLE}
+                set
+                  promotion_status = 'PROMOTED',
+                  is_active = true,
+                  updated_at = now(),
+                  match_evidence = coalesce(match_evidence, '{{}}'::jsonb) || cast(:promotion_event as jsonb)
+                where source_system = :source_system
+                  and review_status = 'APPROVED_FOR_PROMOTION'
+                  and promotion_status = 'NOT_PROMOTED'
+                  and is_active = false
+                  and source_state_name = :state_or_ut
+                  and source_district_name = :district
+            """), {
+                "source_system": SOURCE_SYSTEM,
+                "state_or_ut": args.state_or_ut,
+                "district": args.district,
+                "promotion_event": json.dumps({
+                    "latest_promotion_event": {
+                        "promoted_at": datetime.now(timezone.utc).isoformat(),
+                        "action": "NWDP_DEMOGRAPHIC_PROFILE_FIXTURE_PROMOTION_NO_RUNTIME_LOOKUP",
+                        "runtime_lookup_enabled": False,
+                        "android_behavior_changed": False,
+                    },
+                    "promotion_guardrail": {
+                        "runtime_lookup_enabled": False,
+                        "android_behavior_changed": False,
+                        "official_census_claimed_imported": False,
+                    },
+                }),
+            })
+            promoted_count = int(result.rowcount or 0)
+            activated_count = promoted_count
+
+        after = count_current_state(conn)
 
     result = {
         "schema_version": "nwdp_demographic_profile_promotion_apply.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "PROMOTION_APPLY_DISABLED_GUARD",
-        "healthy": False,
+        "healthy": error is None,
         "apply": bool(args.apply),
+        "enable_policy": bool(args.enable_policy),
         "error": error,
         "target_table": TARGET_TABLE,
         "state_or_ut": args.state_or_ut,
@@ -165,23 +207,23 @@ def main() -> int:
         "before": {k: int(v or 0) for k, v in before.items()},
         "after": {k: int(v or 0) for k, v in after.items()},
         "apply_result": {
-            "apply_implemented": False,
+            "apply_implemented": bool(args.enable_policy),
             "planned_promotion_count": int(summary["eligible_profile_row_count"] or 0),
-            "promoted_count": 0,
-            "activated_count": 0,
+            "promoted_count": promoted_count,
+            "activated_count": activated_count,
         },
         "guardrails": {
-            "db_writes_attempted": False,
+            "db_writes_attempted": db_writes_attempted,
             "profile_review_status_changed": False,
-            "profiles_promoted": False,
-            "profile_rows_activated": False,
+            "profiles_promoted": promoted_count > 0,
+            "profile_rows_activated": activated_count > 0,
             "runtime_lookup_enabled": False,
             "android_behavior_changed": False,
             "official_census_claimed_imported": False,
             "lgd_geography_overwritten": False,
         },
         "readiness": {
-            "ready_for_profile_promotion_apply": False,
+            "ready_for_profile_promotion_apply": bool(args.enable_policy) and error is None,
             "ready_for_tiny_fixture_promotion_apply_regression": True,
             "ready_for_runtime_lookup_enablement": False,
             "ready_for_android_behavior_change": False,
@@ -197,7 +239,7 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 1
+    return 0 if error is None else 1
 
 
 if __name__ == "__main__":

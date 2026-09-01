@@ -61,6 +61,7 @@ CHECKS = [
     ("nwdp demographic admin review endpoint", [str(PYTHON), "scripts/test_nwdp_demographic_admin_review_endpoint.py"]),
     ("nwdp demographic promotion dry-run endpoint", [str(PYTHON), "scripts/test_nwdp_demographic_promotion_dry_run_endpoint.py"]),
     ("nwdp demographic profile promotion apply disabled", [str(PYTHON), "scripts/test_nwdp_demographic_profile_promotion_apply_disabled.py"]),
+    ("nwdp demographic profile promotion tiny fixture apply", [str(PYTHON), "scripts/test_nwdp_demographic_profile_promotion_tiny_fixture_apply.py"]),
 ]
 
 
