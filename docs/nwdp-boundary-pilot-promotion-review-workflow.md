@@ -2780,3 +2780,100 @@ It should count and sample only rows where:
 - `is_active = false`
 
 The dry-run must not promote, activate, enable runtime lookup, or change Android behavior.
+
+## NWDP demographic promotion dry-run endpoint checkpoint — 2026-09-01
+
+Commit: `a53bdf2 test: add nwdp demographic promotion dry run`
+
+### Endpoint added
+
+`GET /api/v1/master-data/geography/nwdp-demographic-profiles/promotion/dry-run`
+
+The endpoint is read-only and admin-view guarded. It reports profile rows that would be eligible for a later demographic profile promotion workflow.
+
+### Selection policy
+
+The dry-run only includes rows matching all of the following:
+
+- `source_system = NWDP_GSI_VILLAGE_BOUNDARY`
+- `review_status = APPROVED_FOR_PROMOTION`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+
+Optional filters:
+
+- `state_or_ut`
+- `district`
+- `limit`
+
+### Response shape
+
+The dry-run returns:
+
+- stable schema version: `nwdp_demographic_profile_promotion_dry_run.v1`
+- `enabled`
+- explicit empty reason: `NO_APPROVED_INACTIVE_NOT_PROMOTED_DEMOGRAPHIC_PROFILES`
+- selection policy
+- summary counts
+- state/district summary
+- eligible sample items
+- readiness flags
+- guardrails
+
+### Regression coverage
+
+Added:
+
+- `backend/scripts/test_nwdp_demographic_promotion_dry_run_endpoint.py`
+
+Verified:
+
+- unauthenticated dry-run is denied;
+- empty scoped dry-run returns `200` with explicit disabled reason;
+- approved inactive not-promoted fixture row is included;
+- manual-review fixture row is excluded;
+- state/district summary is returned;
+- sample item remains inactive and not promoted;
+- dry-run does not write DB rows;
+- dry-run does not change review status;
+- dry-run does not promote profiles;
+- dry-run does not activate rows;
+- dry-run does not enable runtime lookup;
+- dry-run does not change Android behavior;
+- fixture cleanup returns profile table to pre-test counts.
+
+Persistent local table after regression cleanup:
+
+- `profile_row_count`: `453036`
+- `active_profile_row_count`: `0`
+- `promoted_profile_row_count`: `0`
+
+### Guardrails preserved
+
+- profiles promoted: false
+- profile rows activated: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+- LGD geography overwritten: false
+
+### Validation
+
+Passed:
+
+- `backend/scripts/test_nwdp_demographic_promotion_dry_run_endpoint.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+### Next checkpoint
+
+Plan the demographic profile promotion apply guard.
+
+Recommended sequence:
+
+1. Add a disabled promotion apply endpoint/script regression.
+2. Require explicit state/district scope.
+3. Require dry-run evidence first.
+4. Verify disabled apply mutates nothing.
+5. Only after that, add a tiny fixture promotion apply regression that promotes test rows and cleans them up.
+
+Promotion apply must still not enable runtime lookup or Android behavior.
