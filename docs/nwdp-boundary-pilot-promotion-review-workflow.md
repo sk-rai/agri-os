@@ -3214,3 +3214,79 @@ The report is read-only and preserves the current safety boundary:
 The targeted approval-candidates regression passed, and the full NWDP boundary regression runner passed after adding the report.
 
 Next practical step: add a disabled scoped bulk-approval apply guard. That guard should require explicit state and district scope, reviewer notes, a maximum row count, and an explicit apply flag, but should remain disabled by policy until a tiny fixture-only approval apply regression proves the mutation path safely.
+
+## NWDP demographic review approval apply disabled guard checkpoint — 2026-09-01
+
+Commit: `e7813f3 test: block nwdp demographic review approval apply`
+
+This checkpoint adds a disabled, audit-only approval-apply guard for moving imported NWDP demographic profile rows from `AUTO_CANDIDATE` toward `APPROVED_FOR_PROMOTION`.
+
+The guard exists before any real approval mutation is enabled, so the approval path is explicit, scoped, resumable, and regression-tested.
+
+### Scripts
+
+- Guard script: `backend/scripts/apply_nwdp_demographic_profile_review_approval.py`
+- Regression: `backend/scripts/test_nwdp_demographic_profile_review_approval_apply_disabled.py`
+
+### Scope tested
+
+The regression uses the first real review scope:
+
+- state/UT: `Andaman & Nicobar Island`
+- district: `South Andamans`
+
+Current scoped state remains:
+
+- profile rows: `123`
+- auto-candidate rows: `123`
+- approved-for-promotion rows: `0`
+- active rows: `0`
+- promoted rows: `0`
+
+### Approval guard policy
+
+The guarded apply path requires all of the following:
+
+- explicit `--apply`
+- state/UT scope
+- district scope
+- reviewer notes
+- positive `--max-rows`
+
+Even when all required inputs are present, the script remains disabled by policy and returns:
+
+`NWDP_DEMOGRAPHIC_PROFILE_REVIEW_APPROVAL_APPLY_DISABLED_BY_POLICY`
+
+### Candidate selection policy
+
+Rows are considered planned approval candidates only when all are true:
+
+- `source_system = NWDP_GSI_VILLAGE_BOUNDARY`
+- `source_version = 20260824T110250Z`
+- `review_status = AUTO_CANDIDATE`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+- row is inside the requested state/district scope
+
+### Guardrails verified
+
+The regression verifies that the disabled approval apply:
+
+- writes an audit JSON
+- exits non-zero while policy-disabled
+- reports scoped candidate counts and sample rows
+- honors `--max-rows` planning
+- performs no DB writes
+- changes no review statuses
+- promotes no profiles
+- activates no rows
+- does not enable runtime lookup
+- does not change Android behavior
+- does not overwrite LGD geography
+- does not claim official Census import
+
+### Validation
+
+The targeted regression passed, and the full NWDP boundary regression runner passed after this guard was added.
+
+Next practical step: add a tiny fixture-only approval apply regression. That fixture path should enable the same mutation shape only for synthetic test rows, prove bulk `AUTO_CANDIDATE -> APPROVED_FOR_PROMOTION`, prove idempotency on rerun, and clean up back to the pre-test row counts.
