@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Read-only DB-state regression for NWDP demographic schema migration 057.
 
-This check now supports both:
-- fresh post-migration DB state with zero profile rows; and
-- the first persistent Andaman inactive-import checkpoint with 512 rows.
+This check supports the known safe DB states:
+- fresh post-migration DB state with zero profile rows;
+- the first persistent Andaman inactive-import checkpoint with 512 rows; and
+- the completed all-state inactive-import checkpoint with 453,036 rows.
 
 It remains read-only and verifies no active/promoted/non-auto demographic rows.
 """
@@ -202,7 +203,8 @@ def main() -> int:
     check(detail["active_profile_row_count"] == 0, "No active demographic profiles exist", detail)
     check(detail["promoted_profile_row_count"] == 0, "No promoted demographic profiles exist", detail)
     check(detail["non_auto_candidate_row_count"] == 0, "All imported demographic profiles remain auto-candidate", detail)
-    check(detail["andaman_profile_row_count"] in (0, 512), "DB state allows pre-import empty or Andaman inactive import checkpoint", detail)
+    check(detail["row_count"] in (0, 512, 453036), "DB state allows empty, Andaman, or full all-state inactive import checkpoint", detail)
+    check(detail["andaman_profile_row_count"] in (0, 512), "Andaman checkpoint count is stable when imported", detail)
     check(not detail["missing_columns"], "Expected columns exist", detail)
     check(not detail["missing_indexes"], "Expected indexes exist", detail)
     check(len(foreign_keys) >= 1, "Foreign key exists", detail)

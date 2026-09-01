@@ -2506,3 +2506,70 @@ Guardrails preserved:
 
 Decision:
 All-state import should be performed by a resumable orchestrator that calls the existing guarded one-state apply command per state/UT, writes durable per-state audit files, skips completed states on resume, and exposes a separate read-only progress monitor.
+
+## NWDP demographic all-state inactive apply checkpoint - 2026-08-31
+
+Status:
+The guarded resumable all-state inactive demographic profile apply completed locally.
+
+Run:
+- run id: 20260831_nwdp_demographic_all_state_inactive_apply
+- run directory: data/staged/core_stack/nwdp_demographic_profile_apply_runs/20260831_nwdp_demographic_all_state_inactive_apply
+- orchestrator: backend/scripts/run_nwdp_demographic_all_state_inactive_apply.py
+- monitor: backend/scripts/monitor_nwdp_demographic_apply_run.py
+
+Final monitor summary:
+- status: COMPLETE_OR_NO_REMAINING_STATES
+- state plans: 36
+- completed state markers: 34
+- failed state markers: 0
+- planned rows completed by monitor: 448,076
+- inserted rows completed by monitor: 448,076
+- skipped existing rows completed by monitor: 0
+- remaining rows estimate: 0
+- total demographic profile table rows after apply: 453,036
+
+Prior checkpoint rows:
+- Andaman & Nicobar Island had already been persistently imported with 512 inactive rows.
+- The all-state resumable run inserted the remaining 448,076 inactive rows.
+
+Post-apply DB-state validation:
+- Alembic revision: 057
+- target table exists: true
+- total profile rows: 453,036
+- active profile rows: 0
+- promoted profile rows: 0
+- non-AUTO_CANDIDATE rows: 0
+- expected columns: present
+- expected indexes: present
+- foreign key to canonical geography_villages: present
+
+Admin preview validation:
+- admin preview endpoint enabled: true
+- response reason: null
+- profile row count: 453,036
+- active profile row count: 0
+- promoted profile row count: 0
+- approved/manual-review counts: 0/0 for the imported NWDP baseline
+- endpoint remains read-only
+- positive fixture regression still verifies approved vs manual-review state/district analysis and cleans up fixture rows
+
+Guardrails preserved:
+- profile promotion: false
+- active profile rows: false
+- LGD geography overwrite: false
+- NWDP candidate activation: false
+- NWDP candidate promotion: false
+- project matching records written: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+
+Operational notes:
+- The all-state apply ran through a resumable state-by-state orchestrator, not a single national transaction.
+- The orchestrator is plan-only by default; real writes require --execute.
+- Resume is idempotent through source-feature de-duplication and completed-state markers.
+- The read-only monitor reports completed markers, inserted/skipped counts, errors, remaining estimate, elapsed time, and rows/second.
+
+Decision:
+The national NWDP demographic enrichment table is now populated only with inactive, not-promoted AUTO_CANDIDATE profiles for admin review. The next checkpoint should be admin review/promotion planning. Runtime lookup and Android behavior remain blocked until a separate guarded promotion/activation checkpoint.
