@@ -97,7 +97,11 @@ def main() -> int:
     check(guardrails["android_behavior_changed"] is False, "Plan keeps Android unchanged", guardrails)
 
     readiness = data["readiness"]
-    check(readiness["ready_for_one_state_at_a_time_apply"] is True, "Plan is ready for one-state-at-a-time apply", readiness)
+    check(
+        readiness["ready_for_one_state_at_a_time_apply"] is (data["total_remaining_insert_rows"] > 0),
+        "One-state-at-a-time apply readiness matches remaining rows",
+        readiness,
+    )
     check(readiness["ready_for_single_all_state_apply"] is False, "Plan is not ready for single all-state apply", readiness)
     check(readiness["ready_for_runtime_lookup_enablement"] is False, "Plan is not runtime lookup", readiness)
     check(readiness["ready_for_android_behavior_change"] is False, "Plan is not Android change", readiness)
