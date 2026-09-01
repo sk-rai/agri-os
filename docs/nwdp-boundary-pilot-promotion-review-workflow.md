@@ -3146,3 +3146,71 @@ Recommended safe sequence:
 6. Keep promotion apply separate and explicit.
 
 No runtime lookup or Android behavior should be enabled during approval or promotion readiness work.
+
+## NWDP demographic approval candidates report checkpoint — 2026-09-01
+
+Commit: `d83e958 test: report nwdp demographic approval candidates`
+
+This checkpoint adds a read-only scoped approval-candidates report for imported NWDP demographic profile rows. It is meant to help an admin decide which rows can safely move from `AUTO_CANDIDATE` into `APPROVED_FOR_PROMOTION`, before any promotion dry-run or promotion apply is attempted.
+
+### Scripts
+
+- Report script: `backend/scripts/report_nwdp_demographic_approval_candidates.py`
+- Regression: `backend/scripts/test_nwdp_demographic_approval_candidates_report.py`
+
+### Output artifacts
+
+The current generated South Andamans report is written to:
+
+- JSON: `data/staged/core_stack/nwdp_demographic_approval_candidates/andaman_and_nicobar_island__south_andamans__approval_candidates.json`
+- CSV: `data/staged/core_stack/nwdp_demographic_approval_candidates/andaman_and_nicobar_island__south_andamans__approval_candidates.csv`
+
+These are local staged review artifacts and are intentionally left untracked unless we later decide to preserve them.
+
+### Scoped district reviewed
+
+South Andamans was chosen as the first real review scope because it is the smallest Andaman district imported so far.
+
+Current South Andamans imported demographic profile state:
+
+- profile rows: `123`
+- approval candidates: `123`
+- approval candidate ratio: `1.0`
+- nonzero population rows: `104`
+- nonzero household rows: `104`
+- approved for promotion: `0`
+- manual review: `0`
+- rejected: `0`
+- blocked: `0`
+- active rows: `0`
+- promoted rows: `0`
+
+### Approval-candidate policy
+
+A row is included as an approval candidate only when all of these are true:
+
+- `review_status = AUTO_CANDIDATE`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+- row is within the requested state/district scope
+
+This report does not approve rows. It only surfaces candidates for admin review.
+
+### Guardrails
+
+The report is read-only and preserves the current safety boundary:
+
+- no DB writes
+- no profile review-status changes
+- no profile promotion
+- no profile activation
+- no runtime lookup enablement
+- no Android behavior change
+- no official Census import claim
+- no LGD geography overwrite
+
+### Result
+
+The targeted approval-candidates regression passed, and the full NWDP boundary regression runner passed after adding the report.
+
+Next practical step: add a disabled scoped bulk-approval apply guard. That guard should require explicit state and district scope, reviewer notes, a maximum row count, and an explicit apply flag, but should remain disabled by policy until a tiny fixture-only approval apply regression proves the mutation path safely.
