@@ -2957,3 +2957,93 @@ That next checkpoint should:
 - clean up fixture rows and return table counts to pre-test state.
 
 Real imported demographic rows should remain unpromoted until a later explicit state/district approval and promotion checkpoint.
+
+## NWDP demographic profile promotion tiny fixture apply checkpoint — 2026-09-01
+
+Commit: `896b143 test: apply nwdp demographic promotion tiny fixture`
+
+### Script updated
+
+`backend/scripts/apply_nwdp_demographic_profile_promotion.py`
+
+The promotion script now has an explicit fixture-safe apply path guarded by:
+
+- `--apply`
+- `--enable-policy`
+- `--state-or-ut`
+- `--district`
+
+Without the explicit policy flag, promotion apply remains disabled by policy.
+
+### Regression added
+
+`backend/scripts/test_nwdp_demographic_profile_promotion_tiny_fixture_apply.py`
+
+The regression inserts two temporary approved inactive `NOT_PROMOTED` NWDP demographic profile fixture rows, runs scoped promotion apply, verifies the mutation, reruns apply for idempotency, and cleans up the fixture rows.
+
+### Fixture promotion behavior verified
+
+First apply:
+
+- planned promotion count: `2`
+- promoted count: `2`
+- activated count: `2`
+- DB writes attempted: true
+- profile rows activated: true
+- profiles promoted: true
+
+Second apply:
+
+- planned promotion count: `0`
+- promoted count: `0`
+- activated count: `0`
+- confirms idempotency after rows are already promoted/active
+
+### Important unique constraint coverage
+
+The regression uses two distinct `village_id` values because the target table has an active/promoted uniqueness guard on:
+
+- `village_id`
+- `source_system`
+- `source_version`
+
+This verifies that promotion respects the active promoted uniqueness model.
+
+### Cleanup and persistent state
+
+After cleanup, the persistent local demographic profile table returned to:
+
+- `profile_row_count`: `453036`
+- `active_profile_row_count`: `0`
+- `promoted_profile_row_count`: `0`
+
+No real imported demographic profile rows were promoted or activated.
+
+### Guardrails preserved
+
+Even during fixture promotion apply:
+
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+- LGD geography overwritten: false
+- project matching records written: false
+- NWDP boundary candidates activated/promoted: false
+
+### Validation
+
+Passed:
+
+- `backend/scripts/test_nwdp_demographic_profile_promotion_apply_disabled.py`
+- `backend/scripts/test_nwdp_demographic_profile_promotion_tiny_fixture_apply.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+### Next checkpoint
+
+Choose one of:
+
+1. Add an admin endpoint wrapper for promotion apply, still disabled for real rows by policy.
+2. Plan a real scoped approval + promotion dry-run for one small state/district.
+3. Add a state/district promotion readiness report before any real promotion.
+
+Recommended next step: option 3, because it lets admins see which state/district combinations have approved rows, auto-candidates, and promotion readiness before we touch real imported profiles.
