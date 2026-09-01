@@ -2877,3 +2877,83 @@ Recommended sequence:
 5. Only after that, add a tiny fixture promotion apply regression that promotes test rows and cleans them up.
 
 Promotion apply must still not enable runtime lookup or Android behavior.
+
+## NWDP demographic profile promotion apply disabled checkpoint — 2026-09-01
+
+Commit: `166eab9 test: block nwdp demographic profile promotion apply`
+
+### Script added
+
+`backend/scripts/apply_nwdp_demographic_profile_promotion.py`
+
+The script is a guarded promotion apply entry point, currently disabled by policy. It writes an audit JSON and mutates nothing.
+
+### Regression added
+
+`backend/scripts/test_nwdp_demographic_profile_promotion_apply_disabled.py`
+
+### Current behavior
+
+The disabled apply guard verifies three pre-apply blocks:
+
+1. missing explicit `--apply` flag;
+2. missing state/district scope;
+3. scoped apply attempt while promotion apply remains disabled by policy.
+
+All cases exit non-zero and write audit output.
+
+### Required future promotion selection policy
+
+Future promotion apply may only consider rows matching all of:
+
+- `source_system = NWDP_GSI_VILLAGE_BOUNDARY`
+- `review_status = APPROVED_FOR_PROMOTION`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+- state scope present
+- district scope present
+- dry-run performed first
+
+### Current persistent table state
+
+The local demographic profile table remains in the imported-but-not-promoted state:
+
+- `profile_row_count`: `453036`
+- `active_profile_row_count`: `0`
+- `promoted_profile_row_count`: `0`
+
+The disabled promotion apply guard reported zero eligible rows for the sampled Andaman/Nicobars scope because no real demographic profile rows have been approved for promotion.
+
+### Guardrails verified
+
+- DB writes attempted: false
+- profile review status changed: false
+- profiles promoted: false
+- profile rows activated: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+- LGD geography overwritten: false
+
+### Validation
+
+Passed:
+
+- `backend/scripts/test_nwdp_demographic_profile_promotion_apply_disabled.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+### Next checkpoint
+
+Add a tiny fixture-only promotion apply regression.
+
+That next checkpoint should:
+
+- insert one or more temporary approved inactive `NOT_PROMOTED` fixture rows;
+- run promotion apply with state/district scope;
+- promote/activate only fixture rows;
+- verify promoted/active counts for fixture rows;
+- verify runtime lookup remains disabled;
+- verify Android remains unchanged;
+- clean up fixture rows and return table counts to pre-test state.
+
+Real imported demographic rows should remain unpromoted until a later explicit state/district approval and promotion checkpoint.
