@@ -2573,3 +2573,101 @@ Operational notes:
 
 Decision:
 The national NWDP demographic enrichment table is now populated only with inactive, not-promoted AUTO_CANDIDATE profiles for admin review. The next checkpoint should be admin review/promotion planning. Runtime lookup and Android behavior remain blocked until a separate guarded promotion/activation checkpoint.
+
+## NWDP demographic admin review/promotion plan checkpoint — 2026-09-01
+
+Commit: `abfe4fb test: plan nwdp demographic admin review promotion`
+
+### Current imported demographic profile state
+
+The all-state inactive demographic profile import has completed locally.
+
+- Target table: `geography_village_demographic_profiles`
+- Imported rows: `453036`
+- Active profile rows: `0`
+- Promoted profile rows: `0`
+- Review status: all imported rows remain `AUTO_CANDIDATE`
+- Promotion status: all imported rows remain `NOT_PROMOTED`
+- Runtime lookup: not enabled
+- Android behavior: unchanged
+- Official Census import: not claimed
+
+### Admin review/promotion planning checkpoint
+
+Added:
+
+- `backend/scripts/plan_nwdp_demographic_admin_review_promotion.py`
+- `backend/scripts/test_nwdp_demographic_admin_review_promotion_plan.py`
+
+The plan is read-only and DB-aggregate based. It lets admins analyze imported inactive demographic profiles by state/UT and district before any review mutation or promotion workflow exists.
+
+The plan exposes:
+
+- total profile counts;
+- active/promoted profile counts;
+- `AUTO_CANDIDATE`, `MANUAL_REVIEW`, `APPROVED_FOR_PROMOTION`, `REJECTED`, and `BLOCKED` review buckets;
+- approved-vs-manual-review summary;
+- state/district summary rows;
+- future review-update endpoint shape;
+- future promotion dry-run endpoint shape.
+
+### Review policy
+
+The next implementation should follow the existing admin geography API style used for boundary candidate review.
+
+Planned future review transition surface:
+
+- `AUTO_CANDIDATE -> MANUAL_REVIEW`
+- `AUTO_CANDIDATE -> APPROVED_FOR_PROMOTION`
+- `AUTO_CANDIDATE -> REJECTED`
+- `AUTO_CANDIDATE -> BLOCKED`
+
+Guarded policy:
+
+- review notes required for non-trivial review status changes;
+- bulk review must be state/district scoped;
+- review update must only touch inactive `NOT_PROMOTED` NWDP demographic profile rows;
+- review update must not activate profile rows;
+- review update must not promote profile rows.
+
+### Promotion policy
+
+Promotion is not implemented in this checkpoint.
+
+Future promotion must remain a separate explicit dry-run and apply workflow requiring:
+
+- `review_status = APPROVED_FOR_PROMOTION`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+- state/district-scoped dry-run before apply
+
+### Guardrails verified
+
+- DB writes attempted by plan: false
+- demographic profile rows written by plan: false
+- profile review statuses changed: false
+- profiles promoted: false
+- profile rows activated: false
+- LGD geography overwritten: false
+- NWDP candidates activated/promoted: false
+- project matching records written: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+
+### Validation
+
+Regression passed:
+
+- `backend/scripts/test_nwdp_demographic_admin_review_promotion_plan.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+The all-state inactive apply plan regression was also updated so readiness reflects remaining rows. After the full import, `ready_for_one_state_at_a_time_apply` is false because there are no remaining rows to import.
+
+### Next checkpoint
+
+Implement the admin review update endpoint in the same style as existing boundary admin geography review APIs:
+
+`PATCH /api/v1/master-data/geography/nwdp-demographic-profiles/{profile_id}/review`
+
+It should mutate only review metadata/status for inactive, not-promoted demographic profile rows and must keep promotion, activation, runtime lookup, and Android behavior disabled.
