@@ -12,7 +12,7 @@ import csv
 import io
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from fastapi.responses import StreamingResponse
@@ -241,6 +241,13 @@ class NwdpBoundaryRuntimePilotInspectionResponse(BaseModel):
     inspection: dict
     readiness: dict
 
+
+
+class NwdpDemographicProfileReviewRequest(BaseModel):
+    review_status: str = Field(..., pattern="^(MANUAL_REVIEW|APPROVED_FOR_PROMOTION|REJECTED|BLOCKED)$")
+    reviewer_decision: str = Field(..., pattern="^(MARK_MANUAL_REVIEW|APPROVE_FOR_PROMOTION|REJECT_PROFILE|BLOCK_PROFILE)$")
+    reviewer_notes: str
+    evidence_summary: Optional[Dict[str, Any]] = None
 
 class NwdpBoundaryCandidateReviewRequest(BaseModel):
     reviewer_decision: str = Field(
@@ -1962,6 +1969,157 @@ def update_nwdp_boundary_candidate_review(
         "promotion_status": "NOT_PROMOTED",
         "runtime_spatial_matching_changed": False,
         "android_behavior_changed": False,
+        "promotion_supported": False,
+        "latest_review_event": event,
+    }
+
+
+
+@router.patch("/nwdp-demographic-profiles/{profile_id}/review")
+def update_nwdp_demographic_profile_review(
+    profile_id: UUID,
+    payload: NwdpDemographicProfileReviewRequest,
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+):
+    """Admin review update for inactive NWDP demographic profile rows.
+
+    This endpoint mirrors the guarded boundary candidate review style. It only
+    updates review metadata/status; it does not promote, activate, enable runtime
+    lookup, or change Android behavior.
+    """
+
+    row = db.execute(text("""
+        select
+          id::text as profile_id,
+          review_status,
+          promotion_status,
+          is_active,
+          source_system,
+          source_version,
+          source_state_name,
+          source_district_name,
+          source_village_name,
+          source_vlcode,
+          match_evidence
+        from geography_village_demographic_profiles
+        where id = :profile_id
+    """), {"profile_id": str(profile_id)}).mappings().first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="NWDP demographic profile not found")
+
+    if row["is_active"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ACTIVE_DEMOGRAPHIC_PROFILE_NOT_REVIEW_EDITABLE",
+                "message": "Active demographic profile rows cannot be changed through the review endpoint.",
+            },
+        )
+
+    if row["promotion_status"] != "NOT_PROMOTED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROMOTED_DEMOGRAPHIC_PROFILE_NOT_REVIEW_EDITABLE",
+                "message": "Promoted demographic profiles require a separate supersession workflow.",
+            },
+        )
+
+    if row["source_system"] != "NWDP_GSI_VILLAGE_BOUNDARY":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "NON_NWDP_DEMOGRAPHIC_PROFILE_NOT_REVIEW_EDITABLE",
+                "message": "Only NWDP-derived demographic profile rows are editable through this endpoint.",
+            },
+        )
+
+    expected = {
+        "MARK_MANUAL_REVIEW": "MANUAL_REVIEW",
+        "APPROVE_FOR_PROMOTION": "APPROVED_FOR_PROMOTION",
+        "REJECT_PROFILE": "REJECTED",
+        "BLOCK_PROFILE": "BLOCKED",
+    }
+    if expected[payload.reviewer_decision] != payload.review_status:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "REVIEW_DECISION_STATUS_MISMATCH",
+                "message": "Reviewer decision must match the requested demographic profile review status.",
+            },
+        )
+
+    notes = (payload.reviewer_notes or "").strip()
+    if len(notes) < 3:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "REVIEW_NOTES_REQUIRED",
+                "message": "Reviewer notes are required for NWDP demographic profile review changes.",
+            },
+        )
+
+    previous_status = row["review_status"]
+    previous_evidence = row["match_evidence"]
+    metadata = dict(previous_evidence or {})
+    history = list(metadata.get("review_history") or [])
+
+    event = {
+        "changed_at": datetime.now(timezone.utc).isoformat(),
+        "changed_by": str(principal.user_id),
+        "from_review_status": previous_status,
+        "to_review_status": payload.review_status,
+        "reviewer_decision": payload.reviewer_decision,
+        "reviewer_notes": notes,
+        "evidence_summary": payload.evidence_summary,
+        "action": "NWDP_DEMOGRAPHIC_PROFILE_REVIEW_METADATA_ONLY_NO_PROMOTION",
+    }
+
+    history.append(event)
+    metadata["review_history"] = history
+    metadata["latest_review_event"] = event
+    metadata["review_guardrail"] = {
+        "is_active_remains_false": True,
+        "promotion_status_remains_not_promoted": True,
+        "runtime_lookup_changed": False,
+        "android_behavior_changed": False,
+        "official_census_claimed_imported": False,
+    }
+
+    db.execute(text("""
+        update geography_village_demographic_profiles
+        set
+          review_status = :review_status,
+          match_evidence = cast(:match_evidence as jsonb),
+          updated_at = :updated_at
+        where id = :profile_id
+          and is_active = false
+          and promotion_status = 'NOT_PROMOTED'
+          and source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+    """), {
+        "profile_id": str(profile_id),
+        "review_status": payload.review_status,
+        "match_evidence": json.dumps(metadata),
+        "updated_at": datetime.now(timezone.utc),
+    })
+    db.commit()
+
+    return {
+        "schema_version": "nwdp_demographic_profile_admin_review.v1",
+        "profile_id": str(profile_id),
+        "previous_review_status": previous_status,
+        "review_status": payload.review_status,
+        "reviewer_decision": payload.reviewer_decision,
+        "is_active": False,
+        "promotion_status": "NOT_PROMOTED",
+        "profile_review_status_changed": True,
+        "profiles_promoted": False,
+        "profile_rows_activated": False,
+        "runtime_lookup_enabled": False,
+        "android_behavior_changed": False,
+        "official_census_claimed_imported": False,
         "promotion_supported": False,
         "latest_review_event": event,
     }
