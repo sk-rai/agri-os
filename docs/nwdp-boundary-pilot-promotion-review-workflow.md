@@ -2671,3 +2671,112 @@ Implement the admin review update endpoint in the same style as existing boundar
 `PATCH /api/v1/master-data/geography/nwdp-demographic-profiles/{profile_id}/review`
 
 It should mutate only review metadata/status for inactive, not-promoted demographic profile rows and must keep promotion, activation, runtime lookup, and Android behavior disabled.
+
+## NWDP demographic admin review endpoint implementation checkpoint — 2026-09-01
+
+Commit: `cae827b test: add nwdp demographic admin review endpoint`
+
+### Endpoint added
+
+`PATCH /api/v1/master-data/geography/nwdp-demographic-profiles/{profile_id}/review`
+
+The endpoint follows the existing guarded admin geography review style used for NWDP boundary candidates.
+
+It allows an authenticated admin editor to update review status metadata for one imported NWDP demographic profile row at a time.
+
+### Supported review transitions
+
+The regression verifies:
+
+- `AUTO_CANDIDATE -> APPROVED_FOR_PROMOTION`
+- `APPROVED_FOR_PROMOTION -> MANUAL_REVIEW`
+
+Planned/allowed review target statuses:
+
+- `MANUAL_REVIEW`
+- `APPROVED_FOR_PROMOTION`
+- `REJECTED`
+- `BLOCKED`
+
+Reviewer decision/status pairing is enforced:
+
+- `MARK_MANUAL_REVIEW` requires `MANUAL_REVIEW`
+- `APPROVE_FOR_PROMOTION` requires `APPROVED_FOR_PROMOTION`
+- `REJECT_PROFILE` requires `REJECTED`
+- `BLOCK_PROFILE` requires `BLOCKED`
+
+Reviewer notes are required.
+
+### Mutability boundary
+
+The endpoint only updates:
+
+- `review_status`
+- `match_evidence.review_history`
+- `match_evidence.latest_review_event`
+- `match_evidence.review_guardrail`
+- `updated_at`
+
+It does not update:
+
+- `promotion_status`
+- `is_active`
+- runtime lookup tables
+- LGD geography
+- Android behavior
+- official Census import state
+
+### Regression coverage
+
+Added:
+
+- `backend/scripts/test_nwdp_demographic_admin_review_endpoint.py`
+
+Verified:
+
+- unauthenticated request is denied;
+- missing notes are rejected;
+- reviewer decision/status mismatch is rejected;
+- admin approval transition succeeds;
+- admin manual-review transition succeeds;
+- review history is appended;
+- review guardrail records no promotion;
+- fixture rows are cleaned up back to the pre-test table counts.
+
+Current local persistent table state after regression cleanup:
+
+- `profile_row_count`: `453036`
+- `active_profile_row_count`: `0`
+- `promoted_profile_row_count`: `0`
+
+### Guardrails preserved
+
+- profile review status changed only for test fixture rows;
+- regression cleanup restored profile counts;
+- profiles promoted: false;
+- profile rows activated: false;
+- runtime lookup enabled: false;
+- Android behavior changed: false;
+- official Census import claimed: false;
+- LGD geography overwritten: false.
+
+### Validation
+
+Passed:
+
+- `backend/scripts/test_nwdp_demographic_admin_review_endpoint.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+### Next checkpoint
+
+Add a read-only promotion dry-run endpoint:
+
+`GET /api/v1/master-data/geography/nwdp-demographic-profiles/promotion/dry-run?state_or_ut=<STATE>&district=<DISTRICT>`
+
+It should count and sample only rows where:
+
+- `review_status = APPROVED_FOR_PROMOTION`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+
+The dry-run must not promote, activate, enable runtime lookup, or change Android behavior.
