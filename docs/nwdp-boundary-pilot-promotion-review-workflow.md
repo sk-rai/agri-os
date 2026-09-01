@@ -3047,3 +3047,102 @@ Choose one of:
 3. Add a state/district promotion readiness report before any real promotion.
 
 Recommended next step: option 3, because it lets admins see which state/district combinations have approved rows, auto-candidates, and promotion readiness before we touch real imported profiles.
+
+## NWDP demographic promotion readiness report checkpoint — 2026-09-01
+
+Commit: `a5f4d7c test: report nwdp demographic promotion readiness`
+
+### Script added
+
+`backend/scripts/report_nwdp_demographic_promotion_readiness.py`
+
+The report is read-only and summarizes demographic profile promotion readiness by state/UT and district.
+
+It outputs both:
+
+- JSON: `data/staged/core_stack/nwdp_demographic_promotion_readiness/nwdp_demographic_promotion_readiness_report.json`
+- CSV: `data/staged/core_stack/nwdp_demographic_promotion_readiness/nwdp_demographic_promotion_readiness_by_district.csv`
+
+### Regression added
+
+`backend/scripts/test_nwdp_demographic_promotion_readiness_report.py`
+
+### Eligibility policy
+
+A demographic profile row is eligible for future promotion only when all are true:
+
+- `review_status = APPROVED_FOR_PROMOTION`
+- `promotion_status = NOT_PROMOTED`
+- `is_active = false`
+
+Rows are not eligible when they are still:
+
+- `AUTO_CANDIDATE`
+- `MANUAL_REVIEW`
+- `REJECTED`
+- `BLOCKED`
+- already active
+- already promoted
+
+### District-level output
+
+The report emits one row per state/district with:
+
+- `profile_row_count`
+- `eligible_for_promotion_count`
+- `not_eligible_for_promotion_count`
+- `auto_candidate_count`
+- `manual_review_count`
+- `approved_for_promotion_count`
+- `rejected_count`
+- `blocked_count`
+- `active_profile_row_count`
+- `promoted_profile_row_count`
+
+### Regression validation
+
+The regression validates the current Andaman imported state:
+
+- `profile_row_count`: `512`
+- `eligible_for_promotion_count`: `0`
+- `not_eligible_for_promotion_count`: `512`
+- `auto_candidate_count`: `512`
+- `manual_review_count`: `0`
+- `approved_for_promotion_count`: `0`
+- `active_profile_row_count`: `0`
+- `promoted_profile_row_count`: `0`
+
+District rows sum back to the state total.
+
+### Guardrails preserved
+
+- DB writes attempted: false
+- profile review status changed: false
+- profiles promoted: false
+- profile rows activated: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- official Census import claimed: false
+- LGD geography overwritten: false
+
+### Validation
+
+Passed:
+
+- `backend/scripts/test_nwdp_demographic_promotion_readiness_report.py`
+- full `backend/scripts/run_nwdp_boundary_regressions.py`
+
+### Next checkpoint
+
+Plan a real scoped admin-review approval workflow for a small state/district.
+
+Recommended safe sequence:
+
+1. Pick a small state/district from the readiness CSV.
+2. Produce a read-only approval candidate report.
+3. Require explicit reviewer notes/evidence.
+4. Apply review approval to a tiny real scoped batch only after the report is accepted.
+5. Re-run promotion dry-run for that district.
+6. Keep promotion apply separate and explicit.
+
+No runtime lookup or Android behavior should be enabled during approval or promotion readiness work.
