@@ -153,6 +153,8 @@ def run_apply():
         FIXTURE_STATE,
         "--district",
         FIXTURE_DISTRICT,
+        "--source-version",
+        FIXTURE_SOURCE_VERSION,
         "--output",
         str(OUTPUT),
     ], cwd=str(ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=30)

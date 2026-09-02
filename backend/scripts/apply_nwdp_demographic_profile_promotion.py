@@ -23,7 +23,7 @@ TARGET_TABLE = "geography_village_demographic_profiles"
 DEFAULT_OUTPUT = Path("/tmp/nwdp-demographic-profile-promotion-apply-disabled.json")
 
 
-def count_current_state(conn) -> dict:
+def count_current_state(conn, source_version: str) -> dict:
     return dict(conn.execute(text(f"""
         select
           count(*)::bigint as profile_row_count,
@@ -31,22 +31,24 @@ def count_current_state(conn) -> dict:
           count(*) filter (where promotion_status = 'PROMOTED')::bigint as promoted_profile_row_count,
           count(*) filter (
             where source_system = :source_system
+              and source_version = :source_version
               and review_status = 'APPROVED_FOR_PROMOTION'
               and promotion_status = 'NOT_PROMOTED'
               and is_active = false
           )::bigint as eligible_profile_row_count
         from {TARGET_TABLE}
-    """), {"source_system": SOURCE_SYSTEM}).mappings().one())
+    """), {"source_system": SOURCE_SYSTEM, "source_version": source_version}).mappings().one())
 
 
-def eligible_summary(conn, state_or_ut: str | None, district: str | None, limit: int) -> tuple[dict, list[dict], list[dict]]:
+def eligible_summary(conn, state_or_ut: str | None, district: str | None, limit: int, source_version: str) -> tuple[dict, list[dict], list[dict]]:
     where = [
         "source_system = :source_system",
+        "source_version = :source_version",
         "review_status = 'APPROVED_FOR_PROMOTION'",
         "promotion_status = 'NOT_PROMOTED'",
         "is_active = false",
     ]
-    params = {"source_system": SOURCE_SYSTEM, "limit": limit}
+    params = {"source_system": SOURCE_SYSTEM, "source_version": source_version, "limit": limit}
 
     if state_or_ut:
         where.append("source_state_name = :state_or_ut")
@@ -111,6 +113,7 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--enable-policy", action="store_true")
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument("--source-version", default=SOURCE_VERSION)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
@@ -124,8 +127,8 @@ def main() -> int:
     db_writes_attempted = False
 
     with engine.begin() as conn:
-        before = count_current_state(conn)
-        summary, districts, items = eligible_summary(conn, args.state_or_ut, args.district, args.limit)
+        before = count_current_state(conn, args.source_version)
+        summary, districts, items = eligible_summary(conn, args.state_or_ut, args.district, args.limit, args.source_version)
 
         error = None
         if not args.apply:
@@ -144,6 +147,7 @@ def main() -> int:
                   updated_at = now(),
                   match_evidence = coalesce(match_evidence, '{{}}'::jsonb) || cast(:promotion_event as jsonb)
                 where source_system = :source_system
+                  and source_version = :source_version
                   and review_status = 'APPROVED_FOR_PROMOTION'
                   and promotion_status = 'NOT_PROMOTED'
                   and is_active = false
@@ -151,6 +155,7 @@ def main() -> int:
                   and source_district_name = :district
             """), {
                 "source_system": SOURCE_SYSTEM,
+                "source_version": args.source_version,
                 "state_or_ut": args.state_or_ut,
                 "district": args.district,
                 "promotion_event": json.dumps({
@@ -170,7 +175,7 @@ def main() -> int:
             promoted_count = int(result.rowcount or 0)
             activated_count = promoted_count
 
-        after = count_current_state(conn)
+        after = count_current_state(conn, args.source_version)
 
     result = {
         "schema_version": "nwdp_demographic_profile_promotion_apply.v1",
@@ -191,7 +196,7 @@ def main() -> int:
         },
         "selection_policy": {
             "required_source_system": SOURCE_SYSTEM,
-            "required_source_version": SOURCE_VERSION,
+            "required_source_version": args.source_version,
             "required_review_status": "APPROVED_FOR_PROMOTION",
             "required_promotion_status": "NOT_PROMOTED",
             "required_is_active": False,
