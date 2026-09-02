@@ -4061,3 +4061,93 @@ export const landIntelligenceSummaryApi = {
       { method: "DELETE", body: { reason: reason || "Deactivated from land-intelligence summary admin page" } }
     ),
 };
+
+export interface NwdpDemographicProfileSummary {
+  profile_row_count: number
+  active_profile_row_count: number
+  promoted_profile_row_count: number
+  not_promoted_profile_row_count: number
+  auto_candidate_count: number
+  manual_review_count: number
+  approved_for_promotion_count: number
+  rejected_count: number
+  blocked_count: number
+}
+
+export interface NwdpDemographicProfileRow {
+  profile_id: string
+  village_id: string | null
+  state_or_ut: string
+  district: string
+  source_subdistrict_name: string | null
+  source_village_name: string
+  source_vlcode: string | null
+  source_system?: string
+  source_version?: string
+  total_population: number | null
+  total_households: number | null
+  rural_urban: string | null
+  review_status: string
+  promotion_status: string
+  is_active: boolean
+}
+
+export interface NwdpDemographicProfileDistrictSummary {
+  state_or_ut: string
+  district: string
+  profile_row_count: number
+  active_profile_row_count: number
+  promoted_profile_row_count: number
+  auto_candidate_count: number
+  manual_review_count: number
+  approved_for_promotion_count: number
+  rejected_count: number
+  blocked_count: number
+}
+
+export interface NwdpDemographicProfilesPreviewResponse {
+  schema_version: string
+  mode: string
+  healthy: boolean
+  enabled: boolean
+  reason: string | null
+  claim_boundary: string
+  target_table: string
+  filters: {
+    state_or_ut: string | null
+    district: string | null
+    limit: number
+  }
+  profile_row_count: number
+  active_profile_row_count: number
+  promoted_profile_row_count: number
+  summary: NwdpDemographicProfileSummary
+  approved_vs_manual_review: {
+    approved_for_promotion_count: number
+    manual_review_count: number
+  }
+  state_district_summary: NwdpDemographicProfileDistrictSummary[]
+  items: NwdpDemographicProfileRow[]
+  readiness: Record<string, boolean>
+  guardrails: Record<string, boolean>
+}
+
+function nwdpDemographicProfileQuery(params?: {
+  state_or_ut?: string
+  district?: string
+  limit?: number
+}) {
+  const query = new URLSearchParams()
+  if (params?.state_or_ut) query.set("state_or_ut", params.state_or_ut)
+  if (params?.district) query.set("district", params.district)
+  if (params?.limit) query.set("limit", String(params.limit))
+  const text = query.toString()
+  return text ? `?${text}` : ""
+}
+
+export const nwdpDemographicProfilesApi = {
+  preview: (params?: { state_or_ut?: string; district?: string; limit?: number }) =>
+    api<NwdpDemographicProfilesPreviewResponse>(
+      `/api/v1/master-data/geography/nwdp-demographic-profiles/preview${nwdpDemographicProfileQuery(params)}`
+    ),
+}
