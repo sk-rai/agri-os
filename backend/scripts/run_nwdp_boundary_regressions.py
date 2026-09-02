@@ -66,6 +66,7 @@ CHECKS = [
     ("nwdp demographic approval candidates report", [str(PYTHON), "scripts/test_nwdp_demographic_approval_candidates_report.py"]),
     ("nwdp demographic profile review approval apply disabled", [str(PYTHON), "scripts/test_nwdp_demographic_profile_review_approval_apply_disabled.py"]),
     ("nwdp demographic profile review approval tiny fixture apply", [str(PYTHON), "scripts/test_nwdp_demographic_profile_review_approval_tiny_fixture_apply.py"]),
+    ("nwdp demographic South Andamans approval checkpoint", [str(PYTHON), "scripts/test_nwdp_demographic_south_andamans_approval_checkpoint.py"]),
 ]
 
 
