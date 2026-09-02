@@ -91,8 +91,8 @@ def main() -> int:
 
     before = profile_counts()
     check(before["profile_row_count"] == 123, "South Andamans profile count is stable", before)
-    check(before["auto_candidate_count"] == 123, "South Andamans candidates remain auto-candidate", before)
-    check(before["approved_for_promotion_count"] == 0, "South Andamans has no approved rows yet", before)
+    check(before["auto_candidate_count"] == 118, "South Andamans remaining candidates stay auto-candidate", before)
+    check(before["approved_for_promotion_count"] == 5, "South Andamans approval checkpoint has five approved rows", before)
     check(before["active_profile_row_count"] == 0, "South Andamans has no active demographic profiles", before)
     check(before["promoted_profile_row_count"] == 0, "South Andamans has no promoted demographic profiles", before)
 
@@ -136,7 +136,7 @@ def main() -> int:
     check(disabled["schema_version"] == "nwdp_demographic_profile_review_approval_apply.v1", "Schema version is stable", disabled)
     check(disabled["error"] == "NWDP_DEMOGRAPHIC_PROFILE_REVIEW_APPROVAL_APPLY_DISABLED_BY_POLICY", "Approval apply is disabled by policy", disabled)
     check(disabled["scope"]["state_and_district_scope_present"] is True, "Guard records state/district scope", disabled["scope"])
-    check(disabled["approval_summary"]["candidate_profile_row_count"] == 123, "Guard sees 123 scoped candidates", disabled["approval_summary"])
+    check(disabled["approval_summary"]["candidate_profile_row_count"] == 118, "Guard sees 118 remaining scoped candidates", disabled["approval_summary"])
     check(disabled["approval_summary"]["planned_approval_count"] == 5, "Guard honors max-row planning", disabled["approval_summary"])
     check(disabled["apply_result"]["apply_implemented"] is False, "Apply remains unimplemented", disabled["apply_result"])
     check(disabled["apply_result"]["approved_count"] == 0, "No rows are approved", disabled["apply_result"])

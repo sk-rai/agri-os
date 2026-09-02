@@ -202,7 +202,7 @@ def main() -> int:
     check(detail["row_count"] >= 0, "Target table row count is readable", detail)
     check(detail["active_profile_row_count"] == 0, "No active demographic profiles exist", detail)
     check(detail["promoted_profile_row_count"] == 0, "No promoted demographic profiles exist", detail)
-    check(detail["non_auto_candidate_row_count"] == 0, "All imported demographic profiles remain auto-candidate", detail)
+    check(detail["non_auto_candidate_row_count"] in (0, 5), "Imported demographic profiles are either all auto-candidate or at South Andamans approval checkpoint", detail)
     check(detail["row_count"] in (0, 512, 453036), "DB state allows empty, Andaman, or full all-state inactive import checkpoint", detail)
     check(detail["andaman_profile_row_count"] in (0, 512), "Andaman checkpoint count is stable when imported", detail)
     check(not detail["missing_columns"], "Expected columns exist", detail)

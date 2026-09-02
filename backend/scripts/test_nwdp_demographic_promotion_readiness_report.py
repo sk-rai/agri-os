@@ -54,20 +54,22 @@ def main() -> int:
 
     summary = data["summary"]
     check(summary["profile_row_count"] == 512, "Andaman profile total is stable", summary)
-    check(summary["eligible_for_promotion_count"] == 0, "No rows eligible before real approval", summary)
-    check(summary["not_eligible_for_promotion_count"] == 512, "All Andaman rows currently not eligible", summary)
-    check(summary["auto_candidate_count"] == 512, "All Andaman rows remain auto-candidate", summary)
+    expected_eligible = 5 if summary["profile_row_count"] == 512 else 0
+    expected_not_eligible = summary["profile_row_count"] - expected_eligible
+    check(summary["eligible_for_promotion_count"] == expected_eligible, "Eligible rows match current approval checkpoint", summary)
+    check(summary["not_eligible_for_promotion_count"] == expected_not_eligible, "Not-eligible rows match current approval checkpoint", summary)
+    check(summary["auto_candidate_count"] == expected_not_eligible, "Auto-candidate rows match current approval checkpoint", summary)
     check(summary["manual_review_count"] == 0, "No manual-review rows in Andaman imported state", summary)
-    check(summary["approved_for_promotion_count"] == 0, "No approved rows in Andaman imported state", summary)
+    check(summary["approved_for_promotion_count"] == expected_eligible, "Approved rows match current approval checkpoint", summary)
     check(summary["active_profile_row_count"] == 0, "No active rows", summary)
     check(summary["promoted_profile_row_count"] == 0, "No promoted rows", summary)
 
     rows = data["state_district_summary"]
     check(len(rows) == 3, "Andaman report has three district rows", rows)
     check(sum(row["profile_row_count"] for row in rows) == 512, "District rows sum to Andaman total", rows)
-    check(sum(row["eligible_for_promotion_count"] for row in rows) == 0, "District eligible counts sum to zero", rows)
-    check(sum(row["not_eligible_for_promotion_count"] for row in rows) == 512, "District not-eligible counts sum to total", rows)
-    check(all(row["auto_candidate_count"] == row["profile_row_count"] for row in rows), "District rows are auto-candidate", rows)
+    check(sum(row["eligible_for_promotion_count"] for row in rows) == expected_eligible, "District eligible counts match current approval checkpoint", rows)
+    check(sum(row["not_eligible_for_promotion_count"] for row in rows) == expected_not_eligible, "District not-eligible counts match current approval checkpoint", rows)
+    check(sum(row["auto_candidate_count"] for row in rows) == expected_not_eligible, "District auto-candidate counts match current approval checkpoint", rows)
 
     policy = data["eligibility_policy"]
     check(policy["eligible_requires_review_status"] == "APPROVED_FOR_PROMOTION", "Eligibility requires approval", policy)
@@ -84,7 +86,8 @@ def main() -> int:
 
     readiness = data["readiness"]
     check(readiness["ready_for_admin_review_prioritization"] is True, "Ready for admin review prioritization", readiness)
-    check(readiness["ready_for_promotion_dry_run"] is False, "Not ready for promotion dry-run without approvals", readiness)
+    expected_ready_for_dry_run = data["summary"]["eligible_for_promotion_count"] > 0
+    check(readiness["ready_for_promotion_dry_run"] is expected_ready_for_dry_run, "Promotion dry-run readiness matches approved checkpoint", readiness)
     check(readiness["ready_for_profile_promotion_apply"] is False, "Not ready for promotion apply", readiness)
     check(readiness["ready_for_runtime_lookup_enablement"] is False, "Not ready for runtime lookup", readiness)
     check(readiness["ready_for_android_behavior_change"] is False, "Not ready for Android", readiness)

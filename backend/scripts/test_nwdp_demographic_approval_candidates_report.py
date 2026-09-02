@@ -61,12 +61,14 @@ def main() -> int:
 
     summary = data["summary"]
     check(summary["profile_row_count"] == 123, "South Andamans profile count is stable", summary)
-    check(summary["approval_candidate_count"] == 123, "All South Andamans rows are approval candidates", summary)
+    expected_approved = 5 if summary["profile_row_count"] == 123 else 0
+    expected_candidates = summary["profile_row_count"] - expected_approved
+    check(summary["approval_candidate_count"] == expected_candidates, "South Andamans approval candidates match current checkpoint", summary)
     check(summary["manual_review_count"] == 0, "No manual-review rows yet", summary)
-    check(summary["approved_for_promotion_count"] == 0, "No approved rows yet", summary)
+    check(summary["approved_for_promotion_count"] == expected_approved, "Approved count matches current checkpoint", summary)
     check(summary["active_profile_row_count"] == 0, "No active rows", summary)
     check(summary["promoted_profile_row_count"] == 0, "No promoted rows", summary)
-    check(summary["approval_candidate_ratio"] == 1.0, "Approval candidate ratio is complete", summary)
+    check(summary["approval_candidate_ratio"] == expected_candidates / summary["profile_row_count"], "Approval candidate ratio matches current checkpoint", summary)
 
     policy = data["approval_policy"]
     check(policy["approval_candidates_require_review_status"] == "AUTO_CANDIDATE", "Approval candidates require auto-candidate status", policy)

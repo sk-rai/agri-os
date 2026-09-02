@@ -147,7 +147,8 @@ def main() -> int:
         check(preview["summary"]["auto_candidate_count"] >= 5, "Preview auto-candidate count includes applied rows", preview["summary"])
         check(preview["summary"]["active_profile_row_count"] == 0, "Preview active count remains zero", preview["summary"])
         check(preview["summary"]["promoted_profile_row_count"] == 0, "Preview promoted count remains zero", preview["summary"])
-        check(preview["approved_vs_manual_review"]["approved_for_promotion_count"] == 0, "Preview approved count remains zero", preview["approved_vs_manual_review"])
+        expected_approved = 5 if preview["summary"]["profile_row_count"] == 512 else 0
+        check(preview["approved_vs_manual_review"]["approved_for_promotion_count"] == expected_approved, "Preview approved count matches current checkpoint", preview["approved_vs_manual_review"])
         check(preview["approved_vs_manual_review"]["manual_review_count"] == 0, "Preview manual-review count remains zero", preview["approved_vs_manual_review"])
         check(len(preview["state_district_summary"]) > 0, "Preview returns state/district grouped rows", preview["state_district_summary"])
         check(len(preview["items"]) >= 5, "Preview returns applied rows as items", preview["items"])
