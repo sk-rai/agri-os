@@ -65,6 +65,7 @@ CHECKS = [
     ("nwdp demographic promotion readiness report", [str(PYTHON), "scripts/test_nwdp_demographic_promotion_readiness_report.py"]),
     ("nwdp demographic approval candidates report", [str(PYTHON), "scripts/test_nwdp_demographic_approval_candidates_report.py"]),
     ("nwdp demographic profile review approval apply disabled", [str(PYTHON), "scripts/test_nwdp_demographic_profile_review_approval_apply_disabled.py"]),
+    ("nwdp demographic profile review approval tiny fixture apply", [str(PYTHON), "scripts/test_nwdp_demographic_profile_review_approval_tiny_fixture_apply.py"]),
 ]
 
 

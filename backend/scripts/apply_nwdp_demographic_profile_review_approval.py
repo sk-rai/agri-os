@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Guarded NWDP demographic profile review approval apply.
 
-Disabled by policy. This script audits scoped AUTO_CANDIDATE rows that could
-be moved to APPROVED_FOR_PROMOTION later, but mutates nothing unless a future
-explicit enable path is added and tested.
+Disabled by policy by default. With --enable-policy, it can move scoped
+AUTO_CANDIDATE fixture/test rows to APPROVED_FOR_PROMOTION for regression
+validation. It never promotes profiles, activates rows, enables runtime lookup,
+or changes Android behavior.
 """
 
 from __future__ import annotations
@@ -123,6 +124,7 @@ def main() -> int:
     parser.add_argument("--state-or-ut")
     parser.add_argument("--district")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--enable-policy", action="store_true")
     parser.add_argument("--reviewer-notes")
     parser.add_argument("--max-rows", type=int, default=0)
     parser.add_argument("--limit", type=int, default=25)
@@ -135,19 +137,6 @@ def main() -> int:
     notes_present = bool((args.reviewer_notes or "").strip())
     max_rows_present = args.max_rows > 0
 
-    engine = create_engine(load_settings_url())
-
-    with engine.connect() as conn:
-        before = current_counts(conn)
-        candidate_summary, sample_items = scoped_candidate_report(
-            conn,
-            args.state_or_ut,
-            args.district,
-            args.max_rows,
-            args.limit,
-        )
-        after = current_counts(conn)
-
     error = None
     if not args.apply:
         error = "NWDP_DEMOGRAPHIC_PROFILE_REVIEW_APPROVAL_APPLY_REQUIRES_EXPLICIT_APPLY_FLAG"
@@ -157,15 +146,87 @@ def main() -> int:
         error = "NWDP_DEMOGRAPHIC_PROFILE_REVIEW_APPROVAL_APPLY_REQUIRES_REVIEWER_NOTES"
     elif not max_rows_present:
         error = "NWDP_DEMOGRAPHIC_PROFILE_REVIEW_APPROVAL_APPLY_REQUIRES_POSITIVE_MAX_ROWS"
-    else:
+    elif not args.enable_policy:
         error = "NWDP_DEMOGRAPHIC_PROFILE_REVIEW_APPROVAL_APPLY_DISABLED_BY_POLICY"
+
+    approved_count = 0
+    db_writes_attempted = False
+
+    engine = create_engine(load_settings_url())
+    with engine.begin() as conn:
+        before = current_counts(conn)
+        candidate_summary, sample_items = scoped_candidate_report(
+            conn,
+            args.state_or_ut,
+            args.district,
+            args.max_rows,
+            args.limit,
+        )
+
+        if error is None:
+            db_writes_attempted = True
+            approval_event = {
+                "latest_review_event": {
+                    "changed_at": datetime.now(timezone.utc).isoformat(),
+                    "from_review_status": "AUTO_CANDIDATE",
+                    "to_review_status": "APPROVED_FOR_PROMOTION",
+                    "reviewer_decision": "BULK_APPROVE_FOR_PROMOTION",
+                    "reviewer_notes": args.reviewer_notes,
+                    "action": "NWDP_DEMOGRAPHIC_PROFILE_FIXTURE_BULK_REVIEW_APPROVAL_NO_PROMOTION",
+                },
+                "review_guardrail": {
+                    "promotion_status_remains_not_promoted": True,
+                    "is_active_remains_false": True,
+                    "runtime_lookup_changed": False,
+                    "android_behavior_changed": False,
+                    "official_census_claimed_imported": False,
+                },
+            }
+
+            result = conn.execute(text(f"""
+                with selected as (
+                  select id
+                  from {TARGET_TABLE}
+                  where source_system = :source_system
+                    and source_version = :source_version
+                    and source_state_name = :state_or_ut
+                    and source_district_name = :district
+                    and review_status = 'AUTO_CANDIDATE'
+                    and promotion_status = 'NOT_PROMOTED'
+                    and is_active = false
+                  order by
+                    coalesce(total_population, 0) desc,
+                    source_subdistrict_name nulls last,
+                    source_village_name nulls last,
+                    id
+                  limit :max_rows
+                )
+                update {TARGET_TABLE} p
+                set
+                  review_status = 'APPROVED_FOR_PROMOTION',
+                  updated_at = now(),
+                  match_evidence = coalesce(p.match_evidence, '{{}}'::jsonb) || cast(:approval_event as jsonb)
+                from selected
+                where p.id = selected.id
+            """), {
+                "source_system": SOURCE_SYSTEM,
+                "source_version": SOURCE_VERSION,
+                "state_or_ut": args.state_or_ut,
+                "district": args.district,
+                "max_rows": args.max_rows,
+                "approval_event": json.dumps(approval_event),
+            })
+            approved_count = i(result.rowcount)
+
+        after = current_counts(conn)
 
     result = {
         "schema_version": "nwdp_demographic_profile_review_approval_apply.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "REVIEW_APPROVAL_APPLY_DISABLED_GUARD",
-        "healthy": False,
+        "healthy": error is None,
         "apply": bool(args.apply),
+        "enable_policy": bool(args.enable_policy),
         "error": error,
         "target_table": TARGET_TABLE,
         "state_or_ut": args.state_or_ut,
@@ -185,20 +246,20 @@ def main() -> int:
             "target_review_status": "APPROVED_FOR_PROMOTION",
             "reviewer_notes_required": True,
             "positive_max_rows_required": True,
-            "bulk_approval_apply_enabled": False,
+            "bulk_approval_apply_enabled": bool(args.enable_policy),
         },
         "approval_summary": {key: i(value) for key, value in candidate_summary.items()},
         "sample_items": sample_items,
         "before": {key: i(value) for key, value in before.items()},
         "after": {key: i(value) for key, value in after.items()},
         "apply_result": {
-            "apply_implemented": False,
+            "apply_implemented": bool(args.enable_policy),
             "planned_approval_count": i(candidate_summary["planned_approval_count"]),
-            "approved_count": 0,
+            "approved_count": approved_count,
         },
         "guardrails": {
-            "db_writes_attempted": False,
-            "profile_review_status_changed": False,
+            "db_writes_attempted": db_writes_attempted,
+            "profile_review_status_changed": approved_count > 0,
             "profiles_promoted": False,
             "profile_rows_activated": False,
             "runtime_lookup_enabled": False,
@@ -208,24 +269,24 @@ def main() -> int:
         },
         "readiness": {
             "ready_for_tiny_fixture_review_approval_apply_regression": True,
-            "ready_for_real_scoped_review_approval_apply": False,
-            "ready_for_promotion_dry_run": False,
+            "ready_for_real_scoped_review_approval_apply": bool(args.enable_policy) and error is None,
+            "ready_for_promotion_dry_run": approved_count > 0,
             "ready_for_profile_promotion_apply": False,
             "ready_for_runtime_lookup_enablement": False,
             "ready_for_android_behavior_change": False,
         },
         "claim_boundary": (
-            "Review approval apply is disabled by policy. This script audits "
-            "inactive auto-candidate not-promoted NWDP demographic profiles in "
-            "one state/district, but does not approve rows, promote profiles, "
-            "activate rows, enable runtime lookup, or change Android behavior."
+            "Review approval apply is disabled by policy unless explicitly enabled "
+            "for a scoped regression. It can move inactive auto-candidate not-promoted "
+            "NWDP demographic profiles to approved-for-promotion, but does not promote "
+            "profiles, activate rows, enable runtime lookup, or change Android behavior."
         ),
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 1
+    return 0 if error is None else 1
 
 
 if __name__ == "__main__":
