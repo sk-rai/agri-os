@@ -66,8 +66,8 @@ def main() -> int:
     check(summary["approval_candidate_count"] == expected_candidates, "South Andamans approval candidates match current checkpoint", summary)
     check(summary["manual_review_count"] == 0, "No manual-review rows yet", summary)
     check(summary["approved_for_promotion_count"] == expected_approved, "Approved count matches current checkpoint", summary)
-    check(summary["active_profile_row_count"] == 0, "No active rows", summary)
-    check(summary["promoted_profile_row_count"] == 0, "No promoted rows", summary)
+    check(summary["active_profile_row_count"] == expected_approved, "Active rows match promoted checkpoint", summary)
+    check(summary["promoted_profile_row_count"] == expected_approved, "Promoted rows match promoted checkpoint", summary)
     check(summary["approval_candidate_ratio"] == expected_candidates / summary["profile_row_count"], "Approval candidate ratio matches current checkpoint", summary)
 
     policy = data["approval_policy"]

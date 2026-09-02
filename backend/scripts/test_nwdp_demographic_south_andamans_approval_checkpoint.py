@@ -98,9 +98,9 @@ def main() -> int:
     check(counts["manual_review_count"] == 0, "No South Andamans rows are manual review", counts)
     check(counts["rejected_count"] == 0, "No South Andamans rows are rejected", counts)
     check(counts["blocked_count"] == 0, "No South Andamans rows are blocked", counts)
-    check(counts["active_profile_row_count"] == 0, "No South Andamans demographic profiles are active", counts)
-    check(counts["promoted_profile_row_count"] == 0, "No South Andamans demographic profiles are promoted", counts)
-    check(counts["promotion_dry_run_eligible_count"] == 5, "Five rows are eligible for promotion dry-run", counts)
+    check(counts["active_profile_row_count"] == 5, "Five South Andamans demographic profiles are active", counts)
+    check(counts["promoted_profile_row_count"] == 5, "Five South Andamans demographic profiles are promoted", counts)
+    check(counts["promotion_dry_run_eligible_count"] == 0, "No rows remain eligible for promotion dry-run after promotion", counts)
 
     dry_run = dry_run_summary()
     summary = dry_run["summary"]
@@ -108,11 +108,11 @@ def main() -> int:
 
     check(dry_run["status_code"] == 200, "Promotion dry-run endpoint returns 200", dry_run)
     check(dry_run["healthy"] is True, "Promotion dry-run is healthy", dry_run)
-    check(summary["eligible_profile_row_count"] == 5, "Promotion dry-run reports five eligible rows", summary)
-    check(summary["approved_for_promotion_count"] == 5, "Promotion dry-run reports five approved rows", summary)
-    check(summary["active_profile_row_count"] == 0, "Promotion dry-run sees no active rows", summary)
-    check(summary["promoted_profile_row_count"] == 0, "Promotion dry-run sees no promoted rows", summary)
-    check(len(dry_run["items"]) == 5, "Promotion dry-run returns five items", dry_run["items"])
+    check(summary["eligible_profile_row_count"] == 0, "Promotion dry-run reports no remaining eligible rows", summary)
+    check(summary["approved_for_promotion_count"] == 0, "Promotion dry-run reports no remaining approved eligible rows", summary)
+    check(summary["active_profile_row_count"] == 0, "Promotion dry-run reports no remaining active eligible rows", summary)
+    check(summary["promoted_profile_row_count"] == 0, "Promotion dry-run reports no remaining promoted eligible rows", summary)
+    check(len(dry_run["items"]) == 0, "Promotion dry-run returns no remaining eligible items", dry_run["items"])
 
     check(guardrails["db_writes_attempted"] is False, "Dry-run writes no DB rows", guardrails)
     check(guardrails["profile_review_status_changed"] is False, "Dry-run changes no review status", guardrails)
@@ -132,7 +132,7 @@ def main() -> int:
         "guardrails": guardrails,
         "readiness": {
             "ready_for_more_scoped_review_approval": True,
-            "ready_for_promotion_dry_run": True,
+            "ready_for_promotion_dry_run": False,
             "ready_for_profile_promotion_apply": False,
             "ready_for_runtime_lookup_enablement": False,
             "ready_for_android_behavior_change": False,

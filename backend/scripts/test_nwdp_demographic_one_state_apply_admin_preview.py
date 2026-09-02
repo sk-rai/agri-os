@@ -145,9 +145,9 @@ def main() -> int:
         check(preview["filters"]["state_or_ut"] == STATE, "Preview echoes state filter", preview["filters"])
         check(preview["profile_row_count"] >= 5, "Preview sees at least five scoped rows", preview)
         check(preview["summary"]["auto_candidate_count"] >= 5, "Preview auto-candidate count includes applied rows", preview["summary"])
-        check(preview["summary"]["active_profile_row_count"] == 0, "Preview active count remains zero", preview["summary"])
-        check(preview["summary"]["promoted_profile_row_count"] == 0, "Preview promoted count remains zero", preview["summary"])
         expected_approved = 5 if preview["summary"]["profile_row_count"] == 512 else 0
+        check(preview["summary"]["active_profile_row_count"] == expected_approved, "Preview active count matches current promotion checkpoint", preview["summary"])
+        check(preview["summary"]["promoted_profile_row_count"] == expected_approved, "Preview promoted count matches current promotion checkpoint", preview["summary"])
         check(preview["approved_vs_manual_review"]["approved_for_promotion_count"] == expected_approved, "Preview approved count matches current checkpoint", preview["approved_vs_manual_review"])
         check(preview["approved_vs_manual_review"]["manual_review_count"] == 0, "Preview manual-review count remains zero", preview["approved_vs_manual_review"])
         check(len(preview["state_district_summary"]) > 0, "Preview returns state/district grouped rows", preview["state_district_summary"])

@@ -93,8 +93,8 @@ def main() -> int:
     check(before["profile_row_count"] == 123, "South Andamans profile count is stable", before)
     check(before["auto_candidate_count"] == 118, "South Andamans remaining candidates stay auto-candidate", before)
     check(before["approved_for_promotion_count"] == 5, "South Andamans approval checkpoint has five approved rows", before)
-    check(before["active_profile_row_count"] == 0, "South Andamans has no active demographic profiles", before)
-    check(before["promoted_profile_row_count"] == 0, "South Andamans has no promoted demographic profiles", before)
+    check(before["active_profile_row_count"] == 5, "South Andamans has five active demographic profiles", before)
+    check(before["promoted_profile_row_count"] == 5, "South Andamans has five promoted demographic profiles", before)
 
     code, no_apply = run_guard(
         "--state-or-ut", STATE,

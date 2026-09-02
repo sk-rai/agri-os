@@ -73,9 +73,9 @@ def main():
     check(before["profile_row_count"] == 123, "South Andamans profile count is stable", before)
     check(before["auto_candidate_count"] == 118, "South Andamans has 118 remaining auto-candidates", before)
     check(before["approved_for_promotion_count"] == 5, "South Andamans has five approved rows", before)
-    check(before["promotion_eligible_count"] == 5, "Five rows are eligible for promotion audit", before)
-    check(before["active_profile_row_count"] == 0, "No South Andamans rows are active before audit", before)
-    check(before["promoted_profile_row_count"] == 0, "No South Andamans rows are promoted before audit", before)
+    check(before["promotion_eligible_count"] == 0, "No rows remain eligible for promotion audit after promotion", before)
+    check(before["active_profile_row_count"] == 5, "Five South Andamans rows are active before audit", before)
+    check(before["promoted_profile_row_count"] == 5, "Five South Andamans rows are promoted before audit", before)
 
     if OUT.exists():
         OUT.unlink()
@@ -109,12 +109,12 @@ def main():
     check(audit["apply"] is True, "Audit records explicit apply attempt", audit)
     check(audit["enable_policy"] is False, "Policy override is not enabled", audit)
     check(audit["scope"]["state_and_district_scope_present"] is True, "Audit is state/district scoped", audit["scope"])
-    check(audit["eligible_summary"]["eligible_profile_row_count"] == 5, "Audit sees five eligible scoped rows", audit["eligible_summary"])
-    check(audit["apply_result"]["planned_promotion_count"] == 5, "Audit plans five promotions", audit["apply_result"])
+    check(audit["eligible_summary"]["eligible_profile_row_count"] == 0, "Audit sees no remaining eligible scoped rows", audit["eligible_summary"])
+    check(audit["apply_result"]["planned_promotion_count"] == 0, "Audit plans no remaining promotions", audit["apply_result"])
     check(audit["apply_result"]["apply_implemented"] is False, "Promotion apply is not implemented without policy enablement", audit["apply_result"])
     check(audit["apply_result"]["promoted_count"] == 0, "Audit promotes zero rows", audit["apply_result"])
     check(audit["apply_result"]["activated_count"] == 0, "Audit activates zero rows", audit["apply_result"])
-    check(len(audit["sample_items"]) == 5, "Audit samples five eligible rows", audit["sample_items"])
+    check(len(audit["sample_items"]) == 0, "Audit samples no remaining eligible rows", audit["sample_items"])
 
     guardrails = audit["guardrails"]
     check(guardrails["db_writes_attempted"] is False, "Disabled audit attempts no DB writes", guardrails)
