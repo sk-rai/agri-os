@@ -3362,3 +3362,72 @@ The regression deletes the synthetic fixture rows and verifies the profile table
 This checkpoint still keeps real imported demographic rows untouched. The only approved rows were synthetic fixture rows, and they were removed before the regression ended.
 
 Next practical step: run a tiny real South Andamans approval checkpoint, such as approving the top 5 scoped candidates by the report ordering, then run promotion dry-run for South Andamans to confirm only those 5 rows become eligible for future promotion. Do not run promotion apply yet.
+
+## NWDP demographic South Andamans tiny real approval checkpoint — 2026-09-02
+
+This checkpoint applies the first real, scoped NWDP demographic review-status approval.
+
+The approval was intentionally tiny and limited to the first five South Andamans candidates by the approval script ordering. It changes only review metadata from `AUTO_CANDIDATE` to `APPROVED_FOR_PROMOTION`.
+
+### Scope
+
+- state/UT: `Andaman & Nicobar Island`
+- district: `South Andamans`
+- max rows approved: `5`
+
+### Command shape
+
+The approval used:
+
+- `backend/scripts/apply_nwdp_demographic_profile_review_approval.py`
+- explicit `--apply`
+- explicit `--enable-policy`
+- state + district scope
+- reviewer notes
+- `--max-rows 5`
+
+### Result
+
+Before approval:
+
+- South Andamans profile rows: `123`
+- approval candidates: `123`
+- approved for promotion: `0`
+- active rows: `0`
+- promoted rows: `0`
+
+After approval:
+
+- South Andamans profile rows: `123`
+- approval candidates remaining: `118`
+- approved for promotion: `5`
+- active rows: `0`
+- promoted rows: `0`
+
+### Promotion dry-run check
+
+The South Andamans promotion dry-run returned:
+
+- healthy: `true`
+- eligible profile rows: `5`
+- approved for promotion: `5`
+- active profile rows: `0`
+- promoted profile rows: `0`
+- item count: `5`
+
+### Guardrails preserved
+
+This checkpoint changed review status only. It did not:
+
+- promote profiles
+- activate profile rows
+- enable runtime lookup
+- change Android behavior
+- overwrite LGD geography
+- claim official Census import
+
+### Next practical step
+
+Do not run promotion apply yet.
+
+Next safe checkpoint is to add a post-approval DB-state regression/report that expects this exact South Andamans state: `123` total rows, `5` approved, `118` auto-candidate, `0` active, `0` promoted, and promotion dry-run eligibility of `5`.
