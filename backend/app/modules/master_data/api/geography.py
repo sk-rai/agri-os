@@ -1098,6 +1098,12 @@ def apply_nwdp_boundary_project_matching_disabled(
 def preview_nwdp_demographic_profiles(
     state_or_ut: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
+    review_status: Optional[str] = Query(None),
+    promotion_status: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    source_vlcode: Optional[str] = Query(None),
+    village_name: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     principal=Depends(require_admin_permission(AdminPermission.VIEW)),
@@ -1112,11 +1118,17 @@ def preview_nwdp_demographic_profiles(
     filters = {
         "state_or_ut": state_or_ut,
         "district": district,
+        "review_status": review_status,
+        "promotion_status": promotion_status,
+        "is_active": is_active,
+        "source_vlcode": source_vlcode,
+        "village_name": village_name,
+        "offset": offset,
         "limit": limit,
     }
 
     where_parts = []
-    params = {"limit": limit}
+    params = {"limit": limit, "offset": offset}
 
     if state_or_ut:
         where_parts.append("source_state_name = :state_or_ut")
@@ -1125,6 +1137,26 @@ def preview_nwdp_demographic_profiles(
     if district:
         where_parts.append("source_district_name = :district")
         params["district"] = district
+
+    if review_status:
+        where_parts.append("review_status = :review_status")
+        params["review_status"] = review_status
+
+    if promotion_status:
+        where_parts.append("promotion_status = :promotion_status")
+        params["promotion_status"] = promotion_status
+
+    if is_active is not None:
+        where_parts.append("is_active = :is_active")
+        params["is_active"] = is_active
+
+    if source_vlcode:
+        where_parts.append("source_vlcode = :source_vlcode")
+        params["source_vlcode"] = source_vlcode
+
+    if village_name:
+        where_parts.append("source_village_name ILIKE :village_name")
+        params["village_name"] = f"%{village_name}%"
 
     where_sql = " AND ".join(where_parts) if where_parts else "TRUE"
 
@@ -1208,7 +1240,8 @@ def preview_nwdp_demographic_profiles(
                 is_active
             FROM geography_village_demographic_profiles
             WHERE {where_sql}
-            ORDER BY source_state_name NULLS LAST, source_district_name NULLS LAST, source_village_name NULLS LAST
+            ORDER BY is_active DESC, source_state_name NULLS LAST, source_district_name NULLS LAST, source_village_name NULLS LAST
+            OFFSET :offset
             LIMIT :limit
             """
         ),

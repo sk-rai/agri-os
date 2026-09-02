@@ -48,9 +48,15 @@ function promotedFirst(a: NwdpDemographicProfileRow, b: NwdpDemographicProfileRo
 }
 
 export default function NwdpDemographicProfilesPage() {
-  const [stateOrUt, setStateOrUt] = useState("Andaman & Nicobar Island")
-  const [district, setDistrict] = useState("South Andamans")
-  const [limit, setLimit] = useState(200)
+  const [stateOrUt, setStateOrUt] = useState("")
+  const [district, setDistrict] = useState("")
+  const [villageName, setVillageName] = useState("")
+  const [sourceVlcode, setSourceVlcode] = useState("")
+  const [reviewStatus, setReviewStatus] = useState("")
+  const [promotionStatus, setPromotionStatus] = useState("PROMOTED")
+  const [activeFilter, setActiveFilter] = useState("true")
+  const [offset, setOffset] = useState(0)
+  const [limit, setLimit] = useState(100)
   const [data, setData] = useState<NwdpDemographicProfilesPreviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +68,12 @@ export default function NwdpDemographicProfilesPage() {
       const response = await nwdpDemographicProfilesApi.preview({
         state_or_ut: stateOrUt.trim() || undefined,
         district: district.trim() || undefined,
+        review_status: reviewStatus || undefined,
+        promotion_status: promotionStatus || undefined,
+        is_active: activeFilter ? activeFilter === "true" : undefined,
+        source_vlcode: sourceVlcode.trim() || undefined,
+        village_name: villageName.trim() || undefined,
+        offset,
         limit,
       })
       setData(response)
@@ -70,7 +82,7 @@ export default function NwdpDemographicProfilesPage() {
     } finally {
       setLoading(false)
     }
-  }, [district, limit, stateOrUt])
+  }, [activeFilter, district, limit, offset, promotionStatus, reviewStatus, sourceVlcode, stateOrUt, villageName])
 
   useEffect(() => {
     void loadPreview()
@@ -78,7 +90,33 @@ export default function NwdpDemographicProfilesPage() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    void loadPreview()
+    if (offset === 0) {
+      void loadPreview()
+      return
+    }
+    setOffset(0)
+  }
+
+  function showPromotedProfiles() {
+    setStateOrUt("")
+    setDistrict("")
+    setVillageName("")
+    setSourceVlcode("")
+    setReviewStatus("")
+    setPromotionStatus("PROMOTED")
+    setActiveFilter("true")
+    setOffset(0)
+  }
+
+  function clearFilters() {
+    setStateOrUt("")
+    setDistrict("")
+    setVillageName("")
+    setSourceVlcode("")
+    setReviewStatus("")
+    setPromotionStatus("")
+    setActiveFilter("")
+    setOffset(0)
   }
 
   const summary = data?.summary
@@ -98,7 +136,7 @@ export default function NwdpDemographicProfilesPage() {
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1fr_120px_auto]">
+      <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">State / UT</span>
           <input
@@ -116,6 +154,51 @@ export default function NwdpDemographicProfilesPage() {
           />
         </label>
         <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Village name</span>
+          <input
+            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Search village"
+            value={villageName}
+            onChange={(event) => setVillageName(event.target.value)}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">VLCode</span>
+          <input
+            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            placeholder="Exact VLCode"
+            value={sourceVlcode}
+            onChange={(event) => setSourceVlcode(event.target.value)}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Review status</span>
+          <select className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value)}>
+            <option value="">Any</option>
+            <option value="AUTO_CANDIDATE">Auto candidate</option>
+            <option value="APPROVED_FOR_PROMOTION">Approved</option>
+            <option value="MANUAL_REVIEW">Manual review</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="BLOCKED">Blocked</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Promotion status</span>
+          <select className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={promotionStatus} onChange={(event) => setPromotionStatus(event.target.value)}>
+            <option value="">Any</option>
+            <option value="PROMOTED">Promoted</option>
+            <option value="NOT_PROMOTED">Not promoted</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Active</span>
+          <select className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value)}>
+            <option value="">Any</option>
+            <option value="true">Active only</option>
+            <option value="false">Inactive only</option>
+          </select>
+        </label>
+        <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">Limit</span>
           <input
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
@@ -128,6 +211,12 @@ export default function NwdpDemographicProfilesPage() {
         </label>
         <button className="self-end rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
           Refresh
+        </button>
+        <button type="button" onClick={showPromotedProfiles} className="self-end rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+          Show promoted
+        </button>
+        <button type="button" onClick={clearFilters} className="self-end rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          Clear filters
         </button>
       </form>
 
@@ -197,6 +286,13 @@ export default function NwdpDemographicProfilesPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </section>
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
+            <span>Showing {formatNumber(offset + 1)}-{formatNumber(offset + rows.length)} of {formatNumber(summary.profile_row_count)} matching profiles</span>
+            <div className="flex gap-2">
+              <button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))} className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
+              <button type="button" disabled={offset + rows.length >= summary.profile_row_count} onClick={() => setOffset(offset + limit)} className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
             </div>
           </section>
         </>

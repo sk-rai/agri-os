@@ -4116,6 +4116,12 @@ export interface NwdpDemographicProfilesPreviewResponse {
   filters: {
     state_or_ut: string | null
     district: string | null
+    review_status: string | null
+    promotion_status: string | null
+    is_active: boolean | null
+    source_vlcode: string | null
+    village_name: string | null
+    offset: number
     limit: number
   }
   profile_row_count: number
@@ -4135,18 +4141,30 @@ export interface NwdpDemographicProfilesPreviewResponse {
 function nwdpDemographicProfileQuery(params?: {
   state_or_ut?: string
   district?: string
+  review_status?: string
+  promotion_status?: string
+  is_active?: boolean
+  source_vlcode?: string
+  village_name?: string
+  offset?: number
   limit?: number
 }) {
   const query = new URLSearchParams()
   if (params?.state_or_ut) query.set("state_or_ut", params.state_or_ut)
   if (params?.district) query.set("district", params.district)
+  if (params?.review_status) query.set("review_status", params.review_status)
+  if (params?.promotion_status) query.set("promotion_status", params.promotion_status)
+  if (params?.is_active !== undefined) query.set("is_active", String(params.is_active))
+  if (params?.source_vlcode) query.set("source_vlcode", params.source_vlcode)
+  if (params?.village_name) query.set("village_name", params.village_name)
+  if (params?.offset) query.set("offset", String(params.offset))
   if (params?.limit) query.set("limit", String(params.limit))
   const text = query.toString()
   return text ? `?${text}` : ""
 }
 
 export const nwdpDemographicProfilesApi = {
-  preview: (params?: { state_or_ut?: string; district?: string; limit?: number }) =>
+  preview: (params?: { state_or_ut?: string; district?: string; review_status?: string; promotion_status?: string; is_active?: boolean; source_vlcode?: string; village_name?: string; offset?: number; limit?: number }) =>
     api<NwdpDemographicProfilesPreviewResponse>(
       `/api/v1/master-data/geography/nwdp-demographic-profiles/preview${nwdpDemographicProfileQuery(params)}`
     ),

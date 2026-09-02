@@ -189,7 +189,7 @@ def assert_current_baseline_contract(client: TestClient, headers: dict, before: 
     check(data["profile_row_count"] == before["profile_row_count"], "Profile row count matches baseline", data)
     check(data["active_profile_row_count"] == before["active_profile_row_count"], "Active profile count matches baseline", data)
     check(data["promoted_profile_row_count"] == before["promoted_profile_row_count"], "Promoted profile count matches baseline", data)
-    check(data["filters"] == {"state_or_ut": None, "district": None, "limit": 50}, "Default filters are present", data["filters"])
+    check(data["filters"] == {"state_or_ut": None, "district": None, "review_status": None, "promotion_status": None, "is_active": None, "source_vlcode": None, "village_name": None, "offset": 0, "limit": 50}, "Default filters are present", data["filters"])
 
     fields = set(data["future_preview_fields"])
     for field in [

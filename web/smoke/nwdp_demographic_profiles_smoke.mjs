@@ -84,9 +84,21 @@ try {
     throw new Error(`Promotion status badges were not visible. Page text excerpt: ${bodyText.slice(0, 3000)}`);
   }
 
+  const initialRows = await page.locator("tbody tr").count();
+  if (initialRows < expectedPromotedVillages.length) {
+    throw new Error("Expected promoted profile rows before filtering, saw " + initialRows);
+  }
+
+  await page.getByPlaceholder("Search village").fill("Bambooflat");
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.waitForFunction(() => {
+    const text = document.body.innerText;
+    return text.includes("Bambooflat CT") && text.includes("1 promoted profile rows shown");
+  }, null, { timeout: 30000 });
+
   const rows = await page.locator("tbody tr").count();
-  if (rows < expectedPromotedVillages.length) {
-    throw new Error(`Expected at least ${expectedPromotedVillages.length} profile rows, saw ${rows}`);
+  if (rows !== 1) {
+    throw new Error("Expected exactly one Bambooflat profile row after filtering, saw " + rows);
   }
 
   const screenshotPath = path.join(screenshotDir, "nwdp-demographic-profiles.png");
@@ -100,7 +112,9 @@ try {
     tenant_id: tenantId,
     actor_id: actorId,
     promoted_villages_seen: expectedPromotedVillages,
-    rows_seen: rows,
+    initial_rows_seen: initialRows,
+    filtered_rows_seen: rows,
+    village_name_filter_checked: "Bambooflat",
     runtime_lookup_expected: "disabled",
   }, null, 2));
 } catch (error) {
