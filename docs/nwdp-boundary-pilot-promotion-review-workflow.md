@@ -3480,3 +3480,76 @@ The current real-data state still has:
 ### Next practical step
 
 Before approving more rows, validate the promotion path around the existing five approved South Andamans rows. The next safe step is a disabled real-scope promotion apply audit for South Andamans that sees exactly five eligible rows, followed by a tiny explicit promotion decision only if we are ready to activate those five rows.
+
+## NWDP demographic South Andamans promotion apply disabled audit — 2026-09-02
+
+This checkpoint audits the real South Andamans promotion apply path after the tiny approval checkpoint.
+
+The audit was run against the five real South Andamans rows that were moved from `AUTO_CANDIDATE` to `APPROVED_FOR_PROMOTION`. Promotion apply remains disabled by policy and no rows were promoted or activated.
+
+### Scope
+
+- state/UT: `Andaman & Nicobar Island`
+- district: `South Andamans`
+
+### Input state
+
+South Andamans current state before promotion:
+
+- profile rows: `123`
+- approved for promotion: `5`
+- remaining auto-candidate rows: `118`
+- promotion eligible rows: `5`
+- active rows: `0`
+- promoted rows: `0`
+
+### Audit command shape
+
+The audit used:
+
+- `backend/scripts/apply_nwdp_demographic_profile_promotion.py`
+- explicit `--apply`
+- state + district scope
+- no `--enable-policy`
+
+Because `--enable-policy` was intentionally omitted, the script returned:
+
+`NWDP_DEMOGRAPHIC_PROFILE_PROMOTION_APPLY_DISABLED_BY_POLICY`
+
+### Audit result
+
+The promotion guard reported:
+
+- eligible profile row count: `5`
+- scoped district count: `5`
+- scoped state count: `5`
+- planned promotion count: `5`
+- promoted count: `0`
+- activated count: `0`
+- DB writes attempted: `false`
+- healthy: `false` because policy remains disabled
+
+### Sample eligible rows
+
+The disabled audit surfaced the five currently eligible South Andamans rows:
+
+- Bambooflat CT — `645516`
+- Garacharma CT — `645551`
+- Hut Bay Rv — `645558`
+- Prothrapur CT — `645550`
+- Ramakrishnapur Rv — `645555`
+
+### Guardrails preserved
+
+The audit changed nothing. It did not:
+
+- promote profiles
+- activate profile rows
+- enable runtime lookup
+- change Android behavior
+- overwrite LGD geography
+- claim official Census import
+
+### Next practical step
+
+The next safe step is to add a read-only regression for this disabled real-scope promotion audit, so the full regression runner proves that the promotion guard sees exactly five eligible rows while remaining policy-disabled.
