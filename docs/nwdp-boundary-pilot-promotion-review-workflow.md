@@ -3431,3 +3431,52 @@ This checkpoint changed review status only. It did not:
 Do not run promotion apply yet.
 
 Next safe checkpoint is to add a post-approval DB-state regression/report that expects this exact South Andamans state: `123` total rows, `5` approved, `118` auto-candidate, `0` active, `0` promoted, and promotion dry-run eligibility of `5`.
+
+## NWDP demographic approval checkpoint regression alignment — 2026-09-02
+
+Commit: `d87ac36 test: allow nwdp demographic approval checkpoint in reports`
+
+This checkpoint updates older regressions that still assumed every imported NWDP demographic profile row remained in `AUTO_CANDIDATE`.
+
+That assumption was correct before the tiny real South Andamans approval checkpoint. It is now intentionally superseded by the current locked state:
+
+- total imported demographic profile rows: `453036`
+- Andaman imported demographic profile rows: `512`
+- South Andamans profile rows: `123`
+- South Andamans approved for promotion: `5`
+- South Andamans remaining auto-candidate rows: `118`
+- active demographic profile rows: `0`
+- promoted demographic profile rows: `0`
+- promotion dry-run eligible rows: `5`
+
+### Regressions aligned
+
+The following tests now accept the current approval checkpoint:
+
+- `backend/scripts/test_nwdp_demographic_schema_migration_db_state.py`
+- `backend/scripts/test_nwdp_demographic_admin_preview_endpoint.py`
+- `backend/scripts/test_nwdp_demographic_one_state_apply_admin_preview.py`
+- `backend/scripts/test_nwdp_demographic_promotion_readiness_report.py`
+- `backend/scripts/test_nwdp_demographic_approval_candidates_report.py`
+- `backend/scripts/test_nwdp_demographic_profile_review_approval_apply_disabled.py`
+
+### Validation
+
+The full NWDP boundary regression runner passed after these alignment changes.
+
+### Guardrails preserved
+
+This checkpoint is test-only. It does not mutate the DB.
+
+The current real-data state still has:
+
+- no active demographic profile rows
+- no promoted demographic profile rows
+- no runtime lookup enablement
+- no Android behavior change
+- no LGD geography overwrite
+- no official Census import claim
+
+### Next practical step
+
+Before approving more rows, validate the promotion path around the existing five approved South Andamans rows. The next safe step is a disabled real-scope promotion apply audit for South Andamans that sees exactly five eligible rows, followed by a tiny explicit promotion decision only if we are ready to activate those five rows.
