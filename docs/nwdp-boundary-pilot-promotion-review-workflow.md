@@ -3553,3 +3553,76 @@ The audit changed nothing. It did not:
 ### Next practical step
 
 The next safe step is to add a read-only regression for this disabled real-scope promotion audit, so the full regression runner proves that the promotion guard sees exactly five eligible rows while remaining policy-disabled.
+
+## NWDP demographic South Andamans promotion apply checkpoint — 2026-09-02
+
+The first real NWDP demographic promotion apply was completed for the already reviewed South Andamans scope.
+
+### Scope
+
+- state/UT: `Andaman & Nicobar Island`
+- district: `South Andamans`
+- source system: `NWDP_GSI_VILLAGE_BOUNDARY`
+- source version: `20260824T110250Z`
+
+### Apply command shape
+
+The promotion apply used the guarded promotion script with:
+
+- explicit `--apply`
+- explicit `--enable-policy`
+- state + district scope
+- existing review status requirement: `APPROVED_FOR_PROMOTION`
+- existing promotion status requirement: `NOT_PROMOTED`
+- inactive-row requirement: `is_active = false`
+
+### Result
+
+The apply promoted and activated the five previously approved South Andamans rows:
+
+- planned promotion count: `5`
+- promoted count: `5`
+- activated count: `5`
+- remaining promotion-eligible count: `0`
+
+The promoted villages were:
+
+- `Bambooflat CT` (`source_vlcode=645516`)
+- `Garacharma CT` (`source_vlcode=645551`)
+- `Hut Bay Rv` (`source_vlcode=645558`)
+- `Prothrapur CT` (`source_vlcode=645550`)
+- `Ramakrishnapur Rv` (`source_vlcode=645555`)
+
+### Current South Andamans demographic profile state
+
+- profile rows: `123`
+- remaining auto-candidate rows: `118`
+- approved-for-promotion rows: `5`
+- active rows: `5`
+- promoted rows: `5`
+- remaining promotion-eligible rows: `0`
+
+### Guardrails
+
+The promotion apply changed only the demographic profile promotion/activation state for the five scoped rows. It did not:
+
+- enable runtime lookup
+- change Android behavior
+- overwrite LGD geography
+- claim official Census import
+- change review status
+
+### Regression status
+
+After aligning checkpoint expectations, the full NWDP boundary regression runner passed:
+
+- `nwdp_boundary_regressions_exit=0`
+
+The active regression checkpoint is:
+
+- `backend/scripts/test_nwdp_demographic_south_andamans_approval_checkpoint.py`
+- `backend/scripts/test_nwdp_demographic_south_andamans_promotion_apply_disabled_audit.py`
+
+### Readiness
+
+This checkpoint makes the five promoted South Andamans demographic profiles ready for frontend/admin visibility work. It does not make runtime lookup or Android behavior changes ready.
