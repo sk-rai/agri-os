@@ -4105,6 +4105,26 @@ export interface NwdpDemographicProfileDistrictSummary {
   blocked_count: number
 }
 
+export interface NwdpDemographicProfileFilterOption {
+  state_or_ut: string
+  district?: string
+  profile_row_count: number
+  active_profile_row_count: number
+  promoted_profile_row_count: number
+}
+
+export interface NwdpDemographicProfileFilterOptionsResponse {
+  schema_version: string
+  mode: string
+  healthy: boolean
+  filters: {
+    state_or_ut: string | null
+  }
+  states: NwdpDemographicProfileFilterOption[]
+  districts: NwdpDemographicProfileFilterOption[]
+  guardrails: Record<string, boolean>
+}
+
 export interface NwdpDemographicProfilesPreviewResponse {
   schema_version: string
   mode: string
@@ -4167,5 +4187,9 @@ export const nwdpDemographicProfilesApi = {
   preview: (params?: { state_or_ut?: string; district?: string; review_status?: string; promotion_status?: string; is_active?: boolean; source_vlcode?: string; village_name?: string; offset?: number; limit?: number }) =>
     api<NwdpDemographicProfilesPreviewResponse>(
       `/api/v1/master-data/geography/nwdp-demographic-profiles/preview${nwdpDemographicProfileQuery(params)}`
+    ),
+  filterOptions: (params?: { state_or_ut?: string }) =>
+    api<NwdpDemographicProfileFilterOptionsResponse>(
+      `/api/v1/master-data/geography/nwdp-demographic-profiles/filter-options${nwdpDemographicProfileQuery(params)}`
     ),
 }

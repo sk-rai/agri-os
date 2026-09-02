@@ -1094,6 +1094,69 @@ def apply_nwdp_boundary_project_matching_disabled(
 
 
 
+@router.get("/nwdp-demographic-profiles/filter-options")
+def get_nwdp_demographic_profile_filter_options(
+    state_or_ut: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """Read-only state/district options for the NWDP demographic profile explorer."""
+
+    state_rows = db.execute(
+        text(
+            """
+            SELECT
+                source_state_name AS state_or_ut,
+                COUNT(*)::bigint AS profile_row_count,
+                COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active_profile_row_count,
+                COUNT(*) FILTER (WHERE promotion_status = 'PROMOTED')::bigint AS promoted_profile_row_count
+            FROM geography_village_demographic_profiles
+            GROUP BY source_state_name
+            ORDER BY source_state_name NULLS LAST
+            """
+        )
+    ).mappings().all()
+
+    district_rows = db.execute(
+        text(
+            """
+            SELECT
+                source_state_name AS state_or_ut,
+                source_district_name AS district,
+                COUNT(*)::bigint AS profile_row_count,
+                COUNT(*) FILTER (WHERE is_active = TRUE)::bigint AS active_profile_row_count,
+                COUNT(*) FILTER (WHERE promotion_status = 'PROMOTED')::bigint AS promoted_profile_row_count
+            FROM geography_village_demographic_profiles
+            WHERE (:state_or_ut IS NULL OR source_state_name = :state_or_ut)
+            GROUP BY source_state_name, source_district_name
+            ORDER BY source_state_name NULLS LAST, source_district_name NULLS LAST
+            """
+        ),
+        {"state_or_ut": state_or_ut},
+    ).mappings().all()
+
+    return {
+        "schema_version": "nwdp_demographic_profile_filter_options.v1",
+        "mode": "read_only_filter_options",
+        "healthy": True,
+        "filters": {"state_or_ut": state_or_ut},
+        "states": [
+            {key: (int(value) if key.endswith("_count") else value) for key, value in row.items()}
+            for row in state_rows
+        ],
+        "districts": [
+            {key: (int(value) if key.endswith("_count") else value) for key, value in row.items()}
+            for row in district_rows
+        ],
+        "guardrails": {
+            "db_writes_attempted": False,
+            "profiles_promoted": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
 @router.get("/nwdp-demographic-profiles/preview")
 def preview_nwdp_demographic_profiles(
     state_or_ut: Optional[str] = Query(None),

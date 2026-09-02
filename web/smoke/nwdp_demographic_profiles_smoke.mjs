@@ -73,6 +73,12 @@ try {
       && text.includes("Auto candidates");
   }, null, { timeout: 30000 });
 
+  await page.getByLabel("State / UT").selectOption("Andaman & Nicobar Island");
+  await page.getByLabel("District").locator("option", { hasText: "South Andamans" }).waitFor({ state: "attached", timeout: 30000 });
+  await page.getByLabel("District").selectOption("South Andamans");
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByText("5 promoted profile rows shown").waitFor({ timeout: 30000 });
+
   const bodyText = await page.locator("body").innerText();
   for (const village of expectedPromotedVillages) {
     if (!bodyText.includes(village)) {
@@ -114,6 +120,8 @@ try {
     promoted_villages_seen: expectedPromotedVillages,
     initial_rows_seen: initialRows,
     filtered_rows_seen: rows,
+    state_dropdown_checked: "Andaman & Nicobar Island",
+    district_dropdown_checked: "South Andamans",
     village_name_filter_checked: "Bambooflat",
     runtime_lookup_expected: "disabled",
   }, null, 2));

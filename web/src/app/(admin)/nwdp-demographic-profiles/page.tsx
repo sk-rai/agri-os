@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react"
 import {
   nwdpDemographicProfilesApi,
+  type NwdpDemographicProfileFilterOptionsResponse,
   type NwdpDemographicProfileRow,
   type NwdpDemographicProfilesPreviewResponse,
 } from "@/lib/api"
@@ -58,6 +59,7 @@ export default function NwdpDemographicProfilesPage() {
   const [offset, setOffset] = useState(0)
   const [limit, setLimit] = useState(100)
   const [data, setData] = useState<NwdpDemographicProfilesPreviewResponse | null>(null)
+  const [filterOptions, setFilterOptions] = useState<NwdpDemographicProfileFilterOptionsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -87,6 +89,31 @@ export default function NwdpDemographicProfilesPage() {
   useEffect(() => {
     void loadPreview()
   }, [loadPreview])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadFilterOptions() {
+      try {
+        const response = await nwdpDemographicProfilesApi.filterOptions({
+          state_or_ut: stateOrUt.trim() || undefined,
+        })
+        if (!ignore) {
+          setFilterOptions(response)
+        }
+      } catch {
+        if (!ignore) {
+          setFilterOptions(null)
+        }
+      }
+    }
+
+    void loadFilterOptions()
+
+    return () => {
+      ignore = true
+    }
+  }, [stateOrUt])
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -139,19 +166,40 @@ export default function NwdpDemographicProfilesPage() {
       <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">State / UT</span>
-          <input
+          <select
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             value={stateOrUt}
-            onChange={(event) => setStateOrUt(event.target.value)}
-          />
+            onChange={(event) => {
+              setStateOrUt(event.target.value)
+              setDistrict("")
+              setOffset(0)
+            }}
+          >
+            <option value="">All states</option>
+            {(filterOptions?.states ?? []).map((option) => (
+              <option key={option.state_or_ut} value={option.state_or_ut}>
+                {option.state_or_ut} ({formatNumber(option.profile_row_count)})
+              </option>
+            ))}
+          </select>
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">District</span>
-          <input
+          <select
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             value={district}
-            onChange={(event) => setDistrict(event.target.value)}
-          />
+            onChange={(event) => {
+              setDistrict(event.target.value)
+              setOffset(0)
+            }}
+          >
+            <option value="">All districts</option>
+            {(filterOptions?.districts ?? []).map((option) => (
+              <option key={`${option.state_or_ut}:${option.district}`} value={option.district}>
+                {option.district} ({formatNumber(option.profile_row_count)})
+              </option>
+            ))}
+          </select>
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">Village name</span>
