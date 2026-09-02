@@ -66,7 +66,7 @@ try {
 
   await page.waitForFunction(() => {
     const text = document.body.innerText;
-    return text.includes("5 promoted profile rows shown")
+    return text.includes("30 promoted profile rows shown")
       && text.includes("Profiles")
       && text.includes("Active")
       && text.includes("Promoted")
