@@ -3290,3 +3290,75 @@ The regression verifies that the disabled approval apply:
 The targeted regression passed, and the full NWDP boundary regression runner passed after this guard was added.
 
 Next practical step: add a tiny fixture-only approval apply regression. That fixture path should enable the same mutation shape only for synthetic test rows, prove bulk `AUTO_CANDIDATE -> APPROVED_FOR_PROMOTION`, prove idempotency on rerun, and clean up back to the pre-test row counts.
+
+## NWDP demographic review approval tiny fixture apply checkpoint — 2026-09-02
+
+Commit: `a28b21c test: apply nwdp demographic review approval tiny fixture`
+
+This checkpoint proves the bulk review-approval mutation path using only synthetic fixture rows.
+
+The approval path can now move scoped inactive NWDP demographic profile rows from `AUTO_CANDIDATE` to `APPROVED_FOR_PROMOTION` when explicitly enabled for a regression scope. It still does not promote profiles, activate rows, enable runtime lookup, or change Android behavior.
+
+### Scripts
+
+- Apply script: `backend/scripts/apply_nwdp_demographic_profile_review_approval.py`
+- Tiny fixture regression: `backend/scripts/test_nwdp_demographic_profile_review_approval_tiny_fixture_apply.py`
+
+### Fixture behavior proven
+
+The regression creates two synthetic NWDP demographic profile rows in a fixture-only state/district:
+
+- state/UT: `Review Approval Tiny Fixture State`
+- district: `Review Approval Tiny Fixture District`
+- starting review status: `AUTO_CANDIDATE`
+- starting promotion status: `NOT_PROMOTED`
+- starting active state: `false`
+
+The fixture apply is run with:
+
+- explicit `--apply`
+- explicit `--enable-policy`
+- state + district scope
+- reviewer notes
+- `--max-rows 2`
+
+### First apply result
+
+The first fixture apply proved:
+
+- planned approval count: `2`
+- approved count: `2`
+- DB write path attempted: `true`
+- review status changed: `true`
+- profiles promoted: `false`
+- profile rows activated: `false`
+- runtime lookup enabled: `false`
+- Android behavior changed: `false`
+- official Census import claimed: `false`
+
+### Second apply result
+
+The second fixture apply proved idempotency:
+
+- planned approval count: `0`
+- approved count: `0`
+- no remaining eligible fixture candidates
+- no promotion
+- no activation
+- no runtime lookup enablement
+- no Android behavior change
+
+### Cleanup
+
+The regression deletes the synthetic fixture rows and verifies the profile table returns to the pre-test counts:
+
+- profile row count: `453036`
+- active profile row count: `0`
+- promoted profile row count: `0`
+- approved-for-promotion count restored to previous value
+
+### Guardrails
+
+This checkpoint still keeps real imported demographic rows untouched. The only approved rows were synthetic fixture rows, and they were removed before the regression ended.
+
+Next practical step: run a tiny real South Andamans approval checkpoint, such as approving the top 5 scoped candidates by the report ordering, then run promotion dry-run for South Andamans to confirm only those 5 rows become eligible for future promotion. Do not run promotion apply yet.
