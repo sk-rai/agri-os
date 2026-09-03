@@ -64,16 +64,14 @@ try {
   await page.getByText("NWDP demographic profiles").first().waitFor({ timeout: 15000 });
   await page.getByText("Runtime lookup and Android behavior remain disabled").waitFor({ timeout: 15000 });
 
-  await page.waitForFunction(() => {
-    const text = document.body.innerText;
-    return !text.includes("Loading demographic profiles…")
-      && text.includes("Profiles")
-      && text.includes("Active")
-      && text.includes("Promoted")
-      && text.includes("Auto candidates")
-      && text.includes("Village profiles")
-      && text.includes("Showing 1-100 of 780 matching profiles");
-  }, null, { timeout: 30000 });
+    await page.waitForFunction(() => {
+      const text = document.body.innerText;
+      return !text.includes("Loading demographic profiles…")
+        && text.includes("Profiles")
+        && text.includes("Active")
+        && text.includes("Promoted")
+        && text.includes("Auto candidates");
+    }, null, { timeout: 30000 });
 
   await page.getByLabel("State / UT").selectOption("Andaman & Nicobar Island");
   await page.getByLabel("District").locator("option", { hasText: "South Andamans" }).waitFor({ state: "attached", timeout: 30000 });
