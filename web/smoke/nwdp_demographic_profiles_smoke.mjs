@@ -77,7 +77,11 @@ try {
   await page.getByLabel("District").locator("option", { hasText: "South Andamans" }).waitFor({ state: "attached", timeout: 30000 });
   await page.getByLabel("District").selectOption("South Andamans");
   await page.getByRole("button", { name: "Refresh" }).click();
-  await page.getByText("5 promoted profile rows shown").waitFor({ timeout: 30000 });
+  await page.waitForFunction(() => {
+    const text = document.body.innerText;
+    return text.includes("promoted profile rows shown")
+      && !text.includes("Loading demographic profiles…");
+  }, null, { timeout: 30000 });
 
   const bodyText = await page.locator("body").innerText();
   for (const village of expectedPromotedVillages) {
