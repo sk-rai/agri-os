@@ -30,6 +30,11 @@ def write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def write_json_list(path: Path, data: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def append_event(path: Path, event: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -64,6 +69,38 @@ def district_plan(readiness: dict) -> list[dict]:
     return sorted(rows, key=lambda r: (-int(r.get("auto_candidate_count") or 0), r.get("state_or_ut") or "", r.get("district") or ""))
 
 
+def failure_key(row: dict) -> tuple[str, str]:
+    return str(row.get("state_or_ut") or ""), str(row.get("district") or "")
+
+
+def load_failure_skip_list(paths: list[Path]) -> tuple[set[tuple[str, str]], list[dict]]:
+    skip_keys: set[tuple[str, str]] = set()
+    skipped: list[dict] = []
+
+    for path in paths:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        rows = data.get("failed_batches") or data.get("recent_failures") or [] if isinstance(data, dict) else data
+        if not isinstance(rows, list):
+            raise ValueError(f"{path} must be a JSON array or contain failed_batches/recent_failures")
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            state_or_ut, district = failure_key(row)
+            if not state_or_ut or not district:
+                continue
+            key = (state_or_ut, district)
+            if key not in skip_keys:
+                skipped.append({
+                    "state_or_ut": state_or_ut,
+                    "district": district,
+                    "source": str(path),
+                })
+            skip_keys.add(key)
+
+    return skip_keys, skipped
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
@@ -74,6 +111,7 @@ def main() -> int:
     parser.add_argument("--max-total-rows", type=int)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--reviewer-notes-prefix", default="Admin-reviewed bulk rollout batch")
+    parser.add_argument("--skip-failures-from", type=Path, action="append", default=[], help="JSON array or bulk summary containing failed districts to skip")
     parser.add_argument("--stop-on-error", action="store_true")
     args = parser.parse_args()
 
@@ -95,6 +133,8 @@ def main() -> int:
     started_at = utc_now()
     readiness_before = load_readiness(args.output_dir / "_readiness_before", args.state_or_ut, args.district)
     plan = district_plan(readiness_before)
+    skip_keys, skipped_districts = load_failure_skip_list(args.skip_failures_from)
+    plan = [row for row in plan if failure_key(row) not in skip_keys]
 
     append_event(events_path, {
         "event": "bulk_rollout_started",
@@ -103,6 +143,8 @@ def main() -> int:
         "max_total_rows": args.max_total_rows,
         "planned_district_count": len(plan),
         "planned_auto_candidate_count": sum(int(r["auto_candidate_count"]) for r in plan),
+        "skipped_district_count": len(skipped_districts),
+        "skipped_districts": skipped_districts,
     })
 
     total_attempted = 0
@@ -180,6 +222,18 @@ def main() -> int:
             break
 
     readiness_after = load_readiness(args.output_dir / "_readiness_after", args.state_or_ut, args.district)
+    failed_districts_path = args.output_dir / "failed_districts.json"
+    failure_districts = [
+        {
+            "state_or_ut": failure["state_or_ut"],
+            "district": failure["district"],
+            "batch_rows": failure["batch_rows"],
+            "batch_dir": failure["batch_dir"],
+            "returncode": failure["returncode"],
+        }
+        for failure in failures
+    ]
+    write_json_list(failed_districts_path, failure_districts)
     summary = {
         "schema_version": "nwdp_demographic_profile_bulk_rollout.v1",
         "generated_at": utc_now(),
@@ -195,6 +249,9 @@ def main() -> int:
         "successful_batch_count": len(successes),
         "failed_batch_count": len(failures),
         "failed_batches": failures,
+        "failed_districts": str(failed_districts_path),
+        "skipped_district_count": len(skipped_districts),
+        "skipped_districts": skipped_districts,
         "successful_batches": successes[-20:],
         "before": readiness_before["summary"],
         "after": readiness_after["summary"],
