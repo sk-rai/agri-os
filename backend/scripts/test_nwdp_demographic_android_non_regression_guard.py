@@ -109,8 +109,8 @@ def main():
 
     counts = profile_counts()
     check(counts["profile_row_count"] == 453036, "NWDP demographic profile total is stable", counts)
-    check(counts["approved_for_promotion_count"] == 80, "Eighty profiles remain approved after rollout checkpoints", counts)
-    check(counts["active_promoted_profile_row_count"] == 80, "Eighty profiles are promoted and active for web/admin verification", counts)
+    check(counts["approved_for_promotion_count"] == 180, "One hundred eighty profiles remain approved after rollout checkpoints", counts)
+    check(counts["active_promoted_profile_row_count"] == 180, "One hundred eighty profiles are promoted and active for web/admin verification", counts)
     check(counts["remaining_eligible_profile_row_count"] == 0, "No approved inactive profiles remain eligible after promotion checkpoint", counts)
 
     payload = farmer_payload_source()

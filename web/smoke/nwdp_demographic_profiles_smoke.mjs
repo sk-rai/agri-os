@@ -66,11 +66,13 @@ try {
 
   await page.waitForFunction(() => {
     const text = document.body.innerText;
-    return text.includes("80 promoted profile rows shown")
+    return !text.includes("Loading demographic profiles…")
       && text.includes("Profiles")
       && text.includes("Active")
       && text.includes("Promoted")
-      && text.includes("Auto candidates");
+      && text.includes("Auto candidates")
+      && text.includes("Village profiles")
+      && text.includes("Showing 1-100 of 180 matching profiles");
   }, null, { timeout: 30000 });
 
   await page.getByLabel("State / UT").selectOption("Andaman & Nicobar Island");
