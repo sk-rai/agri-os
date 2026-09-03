@@ -72,7 +72,7 @@ try {
       && text.includes("Promoted")
       && text.includes("Auto candidates")
       && text.includes("Village profiles")
-      && text.includes("Showing 1-100 of 680 matching profiles");
+      && text.includes("Showing 1-100 of 780 matching profiles");
   }, null, { timeout: 30000 });
 
   await page.getByLabel("State / UT").selectOption("Andaman & Nicobar Island");
