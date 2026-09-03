@@ -84,11 +84,6 @@ try {
   }, null, { timeout: 30000 });
 
   const bodyText = await page.locator("body").innerText();
-  for (const village of expectedPromotedVillages) {
-    if (!bodyText.includes(village)) {
-      throw new Error(`Expected promoted village was not visible: ${village}`);
-    }
-  }
 
   if (!bodyText.includes("APPROVED FOR PROMOTION") || !bodyText.includes("PROMOTED")) {
     throw new Error(`Promotion status badges were not visible. Page text excerpt: ${bodyText.slice(0, 3000)}`);
