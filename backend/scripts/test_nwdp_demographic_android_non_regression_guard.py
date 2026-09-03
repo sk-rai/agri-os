@@ -109,9 +109,9 @@ def main():
 
     counts = profile_counts()
     check(counts["profile_row_count"] == 453036, "NWDP demographic profile total is stable", counts)
-    check(counts["approved_for_promotion_count"] == 161780, "One hundred sixty-one thousand seven hundred eighty profiles remain approved after rollout checkpoints", counts)
-    check(counts["active_promoted_profile_row_count"] == 148837, "One hundred forty-eight thousand eight hundred thirty-seven profiles are promoted and active for web/admin verification", counts)
-    check(counts["remaining_eligible_profile_row_count"] == 12943, "Twelve thousand nine hundred forty-three approved inactive profiles remain eligible in failed duplicate districts", counts)
+    check(counts["approved_for_promotion_count"] == 261780, "Two hundred sixty-one thousand seven hundred eighty profiles remain approved after rollout checkpoints", counts)
+    check(counts["active_promoted_profile_row_count"] == 242159, "Two hundred forty-two thousand one hundred fifty-nine profiles are promoted and active for web/admin verification", counts)
+    check(counts["remaining_eligible_profile_row_count"] == 19621, "Nineteen thousand six hundred twenty-one approved inactive profiles remain eligible in failed duplicate districts", counts)
 
     payload = farmer_payload_source()
     farmer_hits = [needle for needle in FORBIDDEN_FARMER_PAYLOAD_STRINGS if needle in payload]
