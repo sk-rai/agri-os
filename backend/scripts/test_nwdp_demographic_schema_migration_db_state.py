@@ -200,7 +200,7 @@ def main() -> int:
     check(alembic_version == "057", "Alembic revision is 057", detail)
     check(table_exists is True, "Target table exists", detail)
     check(detail["row_count"] >= 0, "Target table row count is readable", detail)
-    check(detail["active_profile_row_count"] in (0, 5), "Active demographic profiles are empty or at South Andamans promotion checkpoint", detail)
+    check(detail["active_profile_row_count"] in (0, 5, 450026), "Active demographic profiles are empty, at South Andamans promotion checkpoint, or at full admin rollout checkpoint", detail)
     check(detail["promoted_profile_row_count"] in (0, 5), "Promoted demographic profiles are empty or at South Andamans promotion checkpoint", detail)
     check(detail["non_auto_candidate_row_count"] in (0, 5), "Imported demographic profiles are either all auto-candidate or at South Andamans approval/promotion checkpoint", detail)
     check(detail["row_count"] in (0, 512, 453036), "DB state allows empty, Andaman, or full all-state inactive import checkpoint", detail)
