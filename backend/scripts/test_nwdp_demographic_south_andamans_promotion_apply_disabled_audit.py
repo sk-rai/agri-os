@@ -71,11 +71,11 @@ def main():
 
     before = scoped_counts()
     check(before["profile_row_count"] == 123, "South Andamans profile count is stable", before)
-    check(before["auto_candidate_count"] == 118, "South Andamans has 118 remaining auto-candidates", before)
-    check(before["approved_for_promotion_count"] == 5, "South Andamans has five approved rows", before)
+    check(before["auto_candidate_count"] == 0, "No South Andamans auto-candidates remain after full admin rollout", before)
+    check(before["approved_for_promotion_count"] == before["profile_row_count"], "All South Andamans rows are approved after full admin rollout", before)
     check(before["promotion_eligible_count"] == 0, "No rows remain eligible for promotion audit after promotion", before)
-    check(before["active_profile_row_count"] == 5, "Five South Andamans rows are active before audit", before)
-    check(before["promoted_profile_row_count"] == 5, "Five South Andamans rows are promoted before audit", before)
+    check(before["active_profile_row_count"] == before["approved_for_promotion_count"], "Approved South Andamans rows are active before audit", before)
+    check(before["promoted_profile_row_count"] == before["active_profile_row_count"], "Active South Andamans rows are promoted before audit", before)
 
     if OUT.exists():
         OUT.unlink()

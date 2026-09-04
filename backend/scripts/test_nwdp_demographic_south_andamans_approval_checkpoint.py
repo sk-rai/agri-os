@@ -93,13 +93,13 @@ def main() -> int:
     counts = scoped_counts()
 
     check(counts["profile_row_count"] == 123, "South Andamans profile row count is stable", counts)
-    check(counts["approved_for_promotion_count"] == 5, "Five South Andamans rows are approved", counts)
-    check(counts["auto_candidate_count"] == 118, "Remaining South Andamans rows stay auto-candidate", counts)
+    check(counts["approved_for_promotion_count"] == 123, "All South Andamans rows are approved after full admin rollout", counts)
+    check(counts["auto_candidate_count"] == 0, "No South Andamans auto-candidates remain after full admin rollout", counts)
     check(counts["manual_review_count"] == 0, "No South Andamans rows are manual review", counts)
     check(counts["rejected_count"] == 0, "No South Andamans rows are rejected", counts)
     check(counts["blocked_count"] == 0, "No South Andamans rows are blocked", counts)
-    check(counts["active_profile_row_count"] == 5, "Five South Andamans demographic profiles are active", counts)
-    check(counts["promoted_profile_row_count"] == 5, "Five South Andamans demographic profiles are promoted", counts)
+    check(counts["active_profile_row_count"] == counts["approved_for_promotion_count"], "Approved South Andamans rows are active", counts)
+    check(counts["promoted_profile_row_count"] == counts["active_profile_row_count"], "Active South Andamans rows are promoted", counts)
     check(counts["promotion_dry_run_eligible_count"] == 0, "No rows remain eligible for promotion dry-run after promotion", counts)
 
     dry_run = dry_run_summary()
@@ -131,7 +131,7 @@ def main() -> int:
         "promotion_dry_run_summary": summary,
         "guardrails": guardrails,
         "readiness": {
-            "ready_for_more_scoped_review_approval": True,
+            "ready_for_more_scoped_review_approval": False,
             "ready_for_promotion_dry_run": False,
             "ready_for_profile_promotion_apply": False,
             "ready_for_runtime_lookup_enablement": False,

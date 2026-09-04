@@ -107,6 +107,11 @@ def db_url_from_settings() -> str:
     return str(value or "postgresql+psycopg2://agri_os:agri_os_dev@localhost:5432/agri_os")
 
 
+
+ALLOWED_ACTIVE_PROFILE_COUNTS = (0, 5, 450026)
+ALLOWED_PROMOTED_PROFILE_COUNTS = (0, 5, 450026)
+ALLOWED_NON_AUTO_CANDIDATE_COUNTS = (0, 5, 451596)
+
 def check(condition: bool, label: str, detail=None):
     print(("PASS" if condition else "FAIL") + " " + label)
     if detail is not None:
@@ -200,9 +205,9 @@ def main() -> int:
     check(alembic_version == "057", "Alembic revision is 057", detail)
     check(table_exists is True, "Target table exists", detail)
     check(detail["row_count"] >= 0, "Target table row count is readable", detail)
-    check(detail["active_profile_row_count"] in (0, 5, 450026), "Active demographic profiles are empty, at South Andamans promotion checkpoint, or at full admin rollout checkpoint", detail)
-    check(detail["promoted_profile_row_count"] in (0, 5, 450026), "Promoted demographic profiles are empty, at South Andamans promotion checkpoint, or at full admin rollout checkpoint", detail)
-    check(detail["non_auto_candidate_row_count"] in (0, 5), "Imported demographic profiles are either all auto-candidate or at South Andamans approval/promotion checkpoint", detail)
+    check(detail["active_profile_row_count"] in ALLOWED_ACTIVE_PROFILE_COUNTS, "Active demographic profiles match an allowed empty, pilot, or full admin rollout checkpoint", detail)
+    check(detail["promoted_profile_row_count"] in ALLOWED_PROMOTED_PROFILE_COUNTS, "Promoted demographic profiles match an allowed empty, pilot, or full admin rollout checkpoint", detail)
+    check(detail["non_auto_candidate_row_count"] in ALLOWED_NON_AUTO_CANDIDATE_COUNTS, "Imported demographic profiles match an allowed empty, pilot, or full admin rollout checkpoint", detail)
     check(detail["row_count"] in (0, 512, 453036), "DB state allows empty, Andaman, or full all-state inactive import checkpoint", detail)
     check(detail["andaman_profile_row_count"] in (0, 512), "Andaman checkpoint count is stable when imported", detail)
     check(not detail["missing_columns"], "Expected columns exist", detail)

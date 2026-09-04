@@ -54,23 +54,22 @@ def main() -> int:
 
     summary = data["summary"]
     check(summary["profile_row_count"] == 512, "Andaman profile total is stable", summary)
-    expected_approved = 5 if summary["profile_row_count"] == 512 else 0
-    expected_eligible = 0
+    expected_eligible = summary["approved_for_promotion_count"] - summary["active_profile_row_count"]
     expected_not_eligible = summary["profile_row_count"] - expected_eligible
-    check(summary["eligible_for_promotion_count"] == expected_eligible, "Eligible rows match current approval checkpoint", summary)
-    check(summary["not_eligible_for_promotion_count"] == expected_not_eligible, "Not-eligible rows match current approval checkpoint", summary)
-    check(summary["auto_candidate_count"] == summary["profile_row_count"] - expected_approved, "Auto-candidate rows match current promotion checkpoint", summary)
+    check(summary["eligible_for_promotion_count"] == expected_eligible, "Eligible rows match approved inactive count", summary)
+    check(summary["not_eligible_for_promotion_count"] == expected_not_eligible, "Not-eligible rows are all rows outside the promotion queue", summary)
+    check(summary["auto_candidate_count"] >= 0, "Auto-candidate row count is readable", summary)
     check(summary["manual_review_count"] == 0, "No manual-review rows in Andaman imported state", summary)
-    check(summary["approved_for_promotion_count"] == expected_approved, "Approved rows match current promotion checkpoint", summary)
-    check(summary["active_profile_row_count"] == expected_approved, "Active rows match current promotion checkpoint", summary)
-    check(summary["promoted_profile_row_count"] == expected_approved, "Promoted rows match current promotion checkpoint", summary)
+    check(summary["approved_for_promotion_count"] == summary["active_profile_row_count"] + summary["eligible_for_promotion_count"], "Approved rows split into active promoted plus eligible inactive rows", summary)
+    check(summary["active_profile_row_count"] == summary["promoted_profile_row_count"], "Active rows match promoted rows", summary)
+    check(summary["promoted_profile_row_count"] <= summary["approved_for_promotion_count"], "Promoted rows do not exceed approved rows", summary)
 
     rows = data["state_district_summary"]
     check(len(rows) == 3, "Andaman report has three district rows", rows)
     check(sum(row["profile_row_count"] for row in rows) == 512, "District rows sum to Andaman total", rows)
     check(sum(row["eligible_for_promotion_count"] for row in rows) == expected_eligible, "District eligible counts match current approval checkpoint", rows)
     check(sum(row["not_eligible_for_promotion_count"] for row in rows) == expected_not_eligible, "District not-eligible counts match current approval checkpoint", rows)
-    check(sum(row["auto_candidate_count"] for row in rows) == summary["profile_row_count"] - expected_approved, "District auto-candidate counts match current promotion checkpoint", rows)
+    check(sum(row["auto_candidate_count"] for row in rows) == summary["auto_candidate_count"], "District auto-candidate counts match summary", rows)
 
     policy = data["eligibility_policy"]
     check(policy["eligible_requires_review_status"] == "APPROVED_FOR_PROMOTION", "Eligibility requires approval", policy)

@@ -38,7 +38,10 @@ def profile_counts() -> dict:
             select
               count(*) as profile_row_count,
               count(*) filter (where is_active = true) as active_profile_row_count,
-              count(*) filter (where promotion_status = 'PROMOTED') as promoted_profile_row_count
+              count(*) filter (where promotion_status = 'PROMOTED') as promoted_profile_row_count,
+              count(*) filter (where review_status = 'AUTO_CANDIDATE') as auto_candidate_count,
+              count(*) filter (where review_status = 'APPROVED_FOR_PROMOTION') as approved_for_promotion_count,
+              count(*) filter (where review_status = 'MANUAL_REVIEW') as manual_review_count
             from geography_village_demographic_profiles
         """)).mappings().first())
 
@@ -205,12 +208,10 @@ def assert_current_baseline_contract(client: TestClient, headers: dict, before: 
         check(field in fields, f"Future preview field present: {field}", data["future_preview_fields"])
 
     summary = data["summary"]
-    expected_approved = 5 if before["profile_row_count"] == 453036 else 0
-    expected_auto_candidates = before["profile_row_count"] - expected_approved
-    check(summary["auto_candidate_count"] == expected_auto_candidates, "Summary auto candidate count matches current checkpoint", summary)
-    check(summary["approved_for_promotion_count"] == expected_approved, "Summary approved count matches current checkpoint", summary)
-    check(summary["manual_review_count"] == 0, "Summary manual review count remains zero", summary)
-    check(data["approved_vs_manual_review"] == {"approved_for_promotion_count": expected_approved, "manual_review_count": 0}, "Approved versus manual review summary matches current checkpoint", data["approved_vs_manual_review"])
+    check(summary["auto_candidate_count"] == before["auto_candidate_count"], "Summary auto candidate count matches current baseline", summary)
+    check(summary["approved_for_promotion_count"] == before["approved_for_promotion_count"], "Summary approved count matches current baseline", summary)
+    check(summary["manual_review_count"] == before["manual_review_count"], "Summary manual review count matches current baseline", summary)
+    check(data["approved_vs_manual_review"] == {"approved_for_promotion_count": before["approved_for_promotion_count"], "manual_review_count": before["manual_review_count"]}, "Approved versus manual review summary matches current baseline", data["approved_vs_manual_review"])
     check((len(data["state_district_summary"]) > 0) is (before["profile_row_count"] > 0), "State/district summary matches imported baseline", data["state_district_summary"][:5])
     check((len(data["items"]) > 0) is (before["profile_row_count"] > 0), "Preview items match imported baseline", data["items"][:5])
 

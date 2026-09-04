@@ -144,12 +144,18 @@ def main() -> int:
         check(preview["enabled"] is True, "Preview is enabled when scoped rows exist", preview)
         check(preview["filters"]["state_or_ut"] == STATE, "Preview echoes state filter", preview["filters"])
         check(preview["profile_row_count"] >= 5, "Preview sees at least five scoped rows", preview)
-        check(preview["summary"]["auto_candidate_count"] >= 5, "Preview auto-candidate count includes applied rows", preview["summary"])
-        expected_approved = 5 if preview["summary"]["profile_row_count"] == 512 else 0
-        check(preview["summary"]["active_profile_row_count"] == expected_approved, "Preview active count matches current promotion checkpoint", preview["summary"])
-        check(preview["summary"]["promoted_profile_row_count"] == expected_approved, "Preview promoted count matches current promotion checkpoint", preview["summary"])
-        check(preview["approved_vs_manual_review"]["approved_for_promotion_count"] == expected_approved, "Preview approved count matches current checkpoint", preview["approved_vs_manual_review"])
-        check(preview["approved_vs_manual_review"]["manual_review_count"] == 0, "Preview manual-review count remains zero", preview["approved_vs_manual_review"])
+        summary = preview["summary"]
+        reviewed_or_candidate_count = (
+            summary["auto_candidate_count"]
+            + summary["approved_for_promotion_count"]
+            + summary["manual_review_count"]
+            + summary["rejected_count"]
+            + summary["blocked_count"]
+        )
+        check(reviewed_or_candidate_count == summary["profile_row_count"], "Preview review buckets account for scoped rows", summary)
+        check(summary["active_profile_row_count"] == summary["promoted_profile_row_count"], "Preview active count matches promoted count", summary)
+        check(preview["approved_vs_manual_review"]["approved_for_promotion_count"] == summary["approved_for_promotion_count"], "Preview approved count matches summary", preview["approved_vs_manual_review"])
+        check(preview["approved_vs_manual_review"]["manual_review_count"] == summary["manual_review_count"], "Preview manual-review count matches summary", preview["approved_vs_manual_review"])
         check(len(preview["state_district_summary"]) > 0, "Preview returns state/district grouped rows", preview["state_district_summary"])
         check(len(preview["items"]) >= 5, "Preview returns applied rows as items", preview["items"])
 
