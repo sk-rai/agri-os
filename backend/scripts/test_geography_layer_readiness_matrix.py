@@ -48,6 +48,7 @@ def main() -> int:
 
     data = json.loads(json_path.read_text(encoding="utf-8"))
     summary = data["summary"]
+    gap_accounting = data["gap_accounting"]
 
     check(proc.returncode == 0, "Matrix exits zero", data)
     check(data["schema_version"] == "geography_layer_readiness_matrix.v1", "Schema version is stable", data)
@@ -65,6 +66,11 @@ def main() -> int:
     check(summary["boundary_runtime_feature_count"] >= 0, "Boundary runtime pilot count is readable", summary)
     check(summary["project_boundary_match_count"] >= 0, "Project boundary match count is readable", summary)
     check(summary["climate_mapping_count"] >= 0, "Climate mapping count is readable", summary)
+    check(gap_accounting["boundary_candidate_raw_count"] >= summary["boundary_candidate_count"], "Boundary raw count covers matrix count", gap_accounting)
+    check(gap_accounting["boundary_candidate_outside_state_district_matrix_count"] >= 0, "Boundary outside-matrix gap is reported", gap_accounting)
+    check(gap_accounting["boundary_candidate_outside_state_district_matrix_count"] > 0, "Boundary outside-matrix gap is visible", gap_accounting)
+    check(gap_accounting["demographic_profile_raw_count"] == summary["demographic_profile_row_count"], "Demographic profiles are fully placeable in matrix", gap_accounting)
+    check(gap_accounting["pin_link_raw_count"] == summary["pin_link_count"], "Pin links are fully placeable in matrix", gap_accounting)
 
     posture = data["source_posture"]
     check(posture["lgd_is_canonical_runtime_identity"] is True, "LGD is canonical runtime identity", posture)

@@ -270,6 +270,62 @@ def main() -> int:
     for key in summary_keys:
         summary[key] = sum(row[key] for row in normalized)
 
+    raw_totals_sql = """
+        select
+          (select count(*)::bigint from geography_boundary_crosswalk_candidates) as raw_boundary_candidate_count,
+          (select count(*)::bigint from geography_boundary_crosswalk_candidates where review_status = 'AUTO_CANDIDATE') as raw_boundary_auto_candidate_count,
+          (select count(*)::bigint from geography_boundary_crosswalk_candidates where review_status = 'MANUAL_REVIEW') as raw_boundary_manual_review_count,
+          (select count(*)::bigint from geography_boundary_crosswalk_candidates where review_status = 'BLOCKED') as raw_boundary_blocked_count,
+          (select count(*)::bigint from geography_boundary_crosswalk_candidates where candidate_bucket = 'DIRECT_VLCODE_MATCH') as raw_boundary_direct_vlcode_match_count,
+          (select count(*)::bigint from geography_boundary_crosswalk_candidates where promotion_status = 'PROMOTED') as raw_boundary_promoted_candidate_count,
+          (select count(*)::bigint from geography_village_demographic_profiles where source_system = :source_system and source_version = :source_version) as raw_demographic_profile_row_count,
+          (select count(*)::bigint from geography_village_demographic_profiles where source_system = :source_system and source_version = :source_version and review_status = 'APPROVED_FOR_PROMOTION' and promotion_status = 'PROMOTED' and is_active = true) as raw_demographic_active_promoted_count,
+          (select count(*)::bigint from geography_village_pin_links where is_active = true and match_status = 'MATCHED') as raw_pin_link_count,
+          (select count(distinct geography_village_id)::bigint from geography_village_pin_links where is_active = true and match_status = 'MATCHED') as raw_pin_linked_village_count
+    """
+    with engine.connect() as conn:
+        raw_totals = dict(conn.execute(text(raw_totals_sql), {
+            "source_system": SOURCE_SYSTEM,
+            "source_version": SOURCE_VERSION,
+        }).mappings().one())
+
+    raw_totals = {key: i(value) for key, value in raw_totals.items()}
+
+    gap_accounting = {
+        "boundary_candidate_raw_count": raw_totals["raw_boundary_candidate_count"],
+        "boundary_candidate_matrix_count": summary["boundary_candidate_count"],
+        "boundary_candidate_outside_state_district_matrix_count": max(
+            raw_totals["raw_boundary_candidate_count"] - summary["boundary_candidate_count"],
+            0,
+        ),
+        "boundary_auto_candidate_raw_count": raw_totals["raw_boundary_auto_candidate_count"],
+        "boundary_auto_candidate_matrix_count": summary["boundary_auto_candidate_count"],
+        "boundary_manual_review_raw_count": raw_totals["raw_boundary_manual_review_count"],
+        "boundary_manual_review_matrix_count": summary["boundary_manual_review_count"],
+        "boundary_blocked_raw_count": raw_totals["raw_boundary_blocked_count"],
+        "boundary_blocked_matrix_count": summary["boundary_blocked_count"],
+        "boundary_direct_vlcode_match_raw_count": raw_totals["raw_boundary_direct_vlcode_match_count"],
+        "boundary_direct_vlcode_match_matrix_count": summary["boundary_direct_vlcode_match_count"],
+        "boundary_promoted_candidate_raw_count": raw_totals["raw_boundary_promoted_candidate_count"],
+        "boundary_promoted_candidate_matrix_count": summary["boundary_promoted_candidate_count"],
+        "demographic_profile_raw_count": raw_totals["raw_demographic_profile_row_count"],
+        "demographic_profile_matrix_count": summary["demographic_profile_row_count"],
+        "demographic_profile_outside_state_district_matrix_count": max(
+            raw_totals["raw_demographic_profile_row_count"] - summary["demographic_profile_row_count"],
+            0,
+        ),
+        "demographic_active_promoted_raw_count": raw_totals["raw_demographic_active_promoted_count"],
+        "demographic_active_promoted_matrix_count": summary["demographic_active_promoted_count"],
+        "pin_link_raw_count": raw_totals["raw_pin_link_count"],
+        "pin_link_matrix_count": summary["pin_link_count"],
+        "pin_link_outside_state_district_matrix_count": max(
+            raw_totals["raw_pin_link_count"] - summary["pin_link_count"],
+            0,
+        ),
+        "pin_linked_village_raw_count": raw_totals["raw_pin_linked_village_count"],
+        "pin_linked_village_matrix_count": summary["pin_linked_village_count"],
+    }
+
     result = {
         "schema_version": "geography_layer_readiness_matrix.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -281,6 +337,7 @@ def main() -> int:
             "limit": args.limit,
         },
         "summary": summary,
+        "gap_accounting": gap_accounting,
         "rows": normalized,
         "source_posture": {
             "lgd_is_canonical_runtime_identity": True,
@@ -325,6 +382,7 @@ def main() -> int:
         "json": str(json_path),
         "csv": str(csv_path),
         "summary": summary,
+        "gap_accounting": gap_accounting,
         "sample_rows": normalized[:5],
     }, indent=2, sort_keys=True))
     return 0 if result["healthy"] else 1
