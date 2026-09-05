@@ -287,7 +287,39 @@ def _build_geography_layer_readiness_matrix(
           (select count(*)::bigint from geography_village_demographic_profiles where source_system = :source_system and source_version = :source_version) as raw_demographic_profile_row_count,
           (select count(*)::bigint from geography_village_demographic_profiles where source_system = :source_system and source_version = :source_version and review_status = 'APPROVED_FOR_PROMOTION' and promotion_status = 'PROMOTED' and is_active = true) as raw_demographic_active_promoted_count,
           (select count(*)::bigint from geography_village_pin_links where is_active = true and match_status = 'MATCHED') as raw_pin_link_count,
-          (select count(distinct geography_village_id)::bigint from geography_village_pin_links where is_active = true and match_status = 'MATCHED') as raw_pin_linked_village_count
+          (select count(distinct geography_village_id)::bigint from geography_village_pin_links where is_active = true and match_status = 'MATCHED') as raw_pin_linked_village_count,
+          (select count(*)::bigint from geography_climate_regions where is_active = true) as raw_active_climate_region_count,
+          (select count(distinct region_system)::bigint from geography_climate_regions where is_active = true) as raw_active_region_system_count,
+          (select count(*)::bigint from geography_climate_region_mappings where is_active = true) as raw_active_climate_mapping_count,
+          (select count(*)::bigint from geography_climate_region_mappings where is_active = true and scope_level = 'STATE') as raw_state_scope_climate_mapping_count,
+          (select count(*)::bigint from geography_climate_region_mappings where is_active = true and scope_level = 'DISTRICT') as raw_district_scope_climate_mapping_count,
+          (select count(*)::bigint from geography_climate_region_mappings where is_active = true and scope_level = 'VILLAGE') as raw_village_scope_climate_mapping_count,
+          (select count(*)::bigint from crop_climate_suitability_rules where is_active = true) as raw_active_crop_climate_rule_count,
+          (select count(distinct crop_code)::bigint from crop_climate_suitability_rules where is_active = true) as raw_crops_with_climate_rule_count,
+          (select count(*)::bigint from crops where is_active = true) as raw_active_crop_count,
+          (select count(*)::bigint from crop_climate_suitability_overrides where is_active = true) as raw_active_crop_climate_override_count,
+          (
+            select count(*)::bigint
+            from geography_climate_regions r
+            where r.is_active = true
+              and not exists (
+                select 1
+                from crop_climate_suitability_rules rule
+                where rule.region_code = r.region_code
+                  and rule.is_active = true
+              )
+          ) as raw_regions_without_active_rules_count,
+          (
+            select count(*)::bigint
+            from crops c
+            where c.is_active = true
+              and not exists (
+                select 1
+                from crop_climate_suitability_rules rule
+                where rule.crop_code = c.code
+                  and rule.is_active = true
+              )
+          ) as raw_active_crops_without_climate_rules_count
     """
     raw_totals = {
         key: int(value or 0)
@@ -320,6 +352,40 @@ def _build_geography_layer_readiness_matrix(
         "pin_linked_village_matrix_count": summary["pin_linked_village_count"],
     }
 
+    districts_with_climate_mapping = sum(1 for row in normalized if row["climate_mapping_count"] > 0)
+    districts_with_crop_climate_rules = sum(1 for row in normalized if row["crop_climate_rule_count"] > 0)
+    districts_without_climate_mapping = len(normalized) - districts_with_climate_mapping
+    districts_without_crop_climate_rules = len(normalized) - districts_with_crop_climate_rules
+
+    climate_readiness = {
+        "active_climate_region_count": raw_totals["raw_active_climate_region_count"],
+        "active_region_system_count": raw_totals["raw_active_region_system_count"],
+        "active_climate_mapping_count": raw_totals["raw_active_climate_mapping_count"],
+        "state_scope_mapping_count": raw_totals["raw_state_scope_climate_mapping_count"],
+        "district_scope_mapping_count": raw_totals["raw_district_scope_climate_mapping_count"],
+        "village_scope_mapping_count": raw_totals["raw_village_scope_climate_mapping_count"],
+        "active_crop_climate_rule_count": raw_totals["raw_active_crop_climate_rule_count"],
+        "active_crop_count": raw_totals["raw_active_crop_count"],
+        "crops_with_climate_rule_count": raw_totals["raw_crops_with_climate_rule_count"],
+        "active_crops_without_climate_rules_count": raw_totals["raw_active_crops_without_climate_rules_count"],
+        "active_crop_climate_override_count": raw_totals["raw_active_crop_climate_override_count"],
+        "regions_without_active_rules_count": raw_totals["raw_regions_without_active_rules_count"],
+        "districts_with_climate_mapping": districts_with_climate_mapping,
+        "districts_without_climate_mapping": districts_without_climate_mapping,
+        "districts_with_crop_climate_rules": districts_with_crop_climate_rules,
+        "districts_without_crop_climate_rules": districts_without_crop_climate_rules,
+        "climate_mapping_district_coverage_ratio": round(districts_with_climate_mapping / len(normalized), 6) if normalized else 0.0,
+        "crop_climate_rule_district_coverage_ratio": round(districts_with_crop_climate_rules / len(normalized), 6) if normalized else 0.0,
+        "ready_for_admin_review": raw_totals["raw_active_climate_mapping_count"] > 0,
+        "ready_for_runtime_enablement": (
+            districts_without_climate_mapping == 0
+            and districts_without_crop_climate_rules == 0
+            and raw_totals["raw_regions_without_active_rules_count"] == 0
+            and raw_totals["raw_active_crops_without_climate_rules_count"] == 0
+        ),
+        "ready_for_android_behavior_change": False,
+    }
+
     return {
         "schema_version": "geography_layer_readiness_matrix.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -332,6 +398,7 @@ def _build_geography_layer_readiness_matrix(
         },
         "summary": summary,
         "gap_accounting": gap_accounting,
+        "climate_readiness": climate_readiness,
         "rows": normalized,
         "source_posture": {
             "lgd_is_canonical_runtime_identity": True,
