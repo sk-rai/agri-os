@@ -154,7 +154,7 @@ export default function GeographyLayerReadinessPage() {
     void loadMatrix();
   }
 
-  const rows = data?.rows ?? [];
+  const rows = useMemo(() => data?.rows ?? [], [data?.rows]);
   const summary = data?.summary ?? {};
   const gap = data?.gap_accounting ?? {};
 
