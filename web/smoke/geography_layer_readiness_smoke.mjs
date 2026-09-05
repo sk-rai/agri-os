@@ -74,6 +74,9 @@ try {
     "NWDP boundary runtime-disabled",
     "SOI direct join blocked",
     "BharatAtlas review source",
+    "Climate/agro-ecology readiness",
+    "Climate runtime enablement",
+    "Districts missing mapping",
   ]) {
     if (!bodyText.includes(expected)) {
       throw new Error(`Expected readiness posture text missing: ${expected}`);

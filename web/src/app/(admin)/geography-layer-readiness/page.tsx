@@ -52,6 +52,30 @@ type MatrixRow = {
   bharatlas_operational_review_source: boolean;
 };
 
+type ClimateReadiness = {
+  active_climate_region_count: number;
+  active_region_system_count: number;
+  active_climate_mapping_count: number;
+  state_scope_mapping_count: number;
+  district_scope_mapping_count: number;
+  village_scope_mapping_count: number;
+  active_crop_climate_rule_count: number;
+  active_crop_count: number;
+  crops_with_climate_rule_count: number;
+  active_crops_without_climate_rules_count: number;
+  active_crop_climate_override_count: number;
+  regions_without_active_rules_count: number;
+  districts_with_climate_mapping: number;
+  districts_without_climate_mapping: number;
+  districts_with_crop_climate_rules: number;
+  districts_without_crop_climate_rules: number;
+  climate_mapping_district_coverage_ratio: number;
+  crop_climate_rule_district_coverage_ratio: number;
+  ready_for_admin_review: boolean;
+  ready_for_runtime_enablement: boolean;
+  ready_for_android_behavior_change: boolean;
+};
+
 type MatrixResponse = {
   schema_version: string;
   generated_at: string;
@@ -64,6 +88,7 @@ type MatrixResponse = {
   };
   summary: Record<string, number>;
   gap_accounting: Record<string, number>;
+  climate_readiness: ClimateReadiness;
   rows: MatrixRow[];
   source_posture: Record<string, boolean>;
   guardrails: Record<string, boolean>;
@@ -157,6 +182,7 @@ export default function GeographyLayerReadinessPage() {
   const rows = useMemo(() => data?.rows ?? [], [data?.rows]);
   const summary = data?.summary ?? {};
   const gap = data?.gap_accounting ?? {};
+  const climate = data?.climate_readiness;
 
   const stateOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.state_or_ut))).sort(),
@@ -300,6 +326,51 @@ export default function GeographyLayerReadinessPage() {
               note="Expected zero after full admin rollout"
             />
           </section>
+
+          {climate && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-amber-950">Climate/agro-ecology readiness</h2>
+                  <p className="mt-1 text-sm text-amber-900">
+                    Climate data is available for admin review, but it is not runtime-ready until district
+                    coverage and crop/region rule gaps are closed.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill ready={climate.ready_for_admin_review} label="Climate admin review" />
+                  <StatusPill ready={climate.ready_for_runtime_enablement} label="Climate runtime enablement" />
+                  <StatusPill ready={!climate.ready_for_android_behavior_change} label="Android unchanged" />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Districts with mapping"
+                  value={climate.districts_with_climate_mapping}
+                  tone="blue"
+                  note={`${formatPercent(climate.districts_with_climate_mapping, summary.state_district_row_count)} district coverage`}
+                />
+                <StatCard
+                  label="Districts missing mapping"
+                  value={climate.districts_without_climate_mapping}
+                  tone="amber"
+                  note="Coverage gap before runtime use"
+                />
+                <StatCard
+                  label="Active climate regions"
+                  value={climate.active_climate_region_count}
+                  tone="blue"
+                  note={`${formatNumber(climate.regions_without_active_rules_count)} regions lack active rules`}
+                />
+                <StatCard
+                  label="Crop climate rules"
+                  value={climate.active_crop_climate_rule_count}
+                  tone="blue"
+                  note={`${formatNumber(climate.active_crops_without_climate_rules_count)} active crops lack rules`}
+                />
+              </div>
+            </section>
+          )}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-base font-semibold text-slate-950">Recommended next steps</h2>
