@@ -52,6 +52,44 @@ type MatrixRow = {
   bharatlas_operational_review_source: boolean;
 };
 
+type ProjectBoundaryReadiness = {
+  summary: {
+    active_project_count: number;
+    projects_with_non_empty_geography_scope_count: number;
+    active_project_boundary_match_count: number;
+    raw_boundary_candidate_count: number;
+    raw_eligible_boundary_candidate_count: number;
+    project_count_in_rollup: number;
+    projects_with_resolved_scope_count: number;
+    projects_ready_for_project_boundary_dry_run_count: number;
+    scope_resolved_village_count: number;
+    scope_villages_with_eligible_boundary_count: number;
+    scope_villages_without_eligible_boundary_count: number;
+    scope_eligible_boundary_candidate_count: number;
+  };
+  readiness: {
+    ready_for_admin_review: boolean;
+    ready_for_project_boundary_dry_run: boolean;
+    ready_for_project_boundary_apply: boolean;
+    ready_for_selected_boundary_runtime_promotion: boolean;
+    ready_for_runtime_spatial_matching: boolean;
+    ready_for_android_behavior_change: boolean;
+  };
+  top_projects: Array<{
+    project_id: string;
+    tenant_id: string;
+    project_name: string;
+    project_status: string;
+    scope_resolved_village_count: number;
+    villages_with_eligible_boundary_count: number;
+    villages_without_eligible_boundary_count: number;
+    eligible_boundary_candidate_count: number;
+    eligible_boundary_coverage_ratio: number;
+    scope_sources: string[];
+    ready_for_project_boundary_dry_run: boolean;
+  }>;
+};
+
 type ClimateReadiness = {
   active_climate_region_count: number;
   active_region_system_count: number;
@@ -89,6 +127,7 @@ type MatrixResponse = {
   summary: Record<string, number>;
   gap_accounting: Record<string, number>;
   climate_readiness: ClimateReadiness;
+  project_boundary_readiness: ProjectBoundaryReadiness;
   rows: MatrixRow[];
   source_posture: Record<string, boolean>;
   guardrails: Record<string, boolean>;
@@ -183,6 +222,7 @@ export default function GeographyLayerReadinessPage() {
   const summary = data?.summary ?? {};
   const gap = data?.gap_accounting ?? {};
   const climate = data?.climate_readiness;
+  const projectBoundary = data?.project_boundary_readiness;
 
   const stateOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.state_or_ut))).sort(),
@@ -369,6 +409,91 @@ export default function GeographyLayerReadinessPage() {
                   note={`${formatNumber(climate.active_crops_without_climate_rules_count)} active crops lack rules`}
                 />
               </div>
+            </section>
+          )}
+
+          {projectBoundary && (
+            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-blue-950">Project boundary readiness</h2>
+                  <p className="mt-1 text-sm text-blue-900">
+                    Project geography is resolved from project scope metadata and checked against eligible
+                    NWDP direct-code boundary candidates. Apply, runtime spatial lookup, and Android behavior remain disabled.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill ready={projectBoundary.readiness.ready_for_admin_review} label="Project boundary admin review" />
+                  <StatusPill ready={projectBoundary.readiness.ready_for_project_boundary_dry_run} label="Dry-run ready" />
+                  <StatusPill ready={projectBoundary.readiness.ready_for_project_boundary_apply} label="Apply enabled" />
+                  <StatusPill ready={projectBoundary.readiness.ready_for_runtime_spatial_matching} label="Runtime spatial matching" />
+                  <StatusPill ready={!projectBoundary.readiness.ready_for_android_behavior_change} label="Android unchanged" />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Scoped projects"
+                  value={projectBoundary.summary.projects_with_non_empty_geography_scope_count}
+                  tone="blue"
+                  note={`${formatNumber(projectBoundary.summary.projects_with_resolved_scope_count)} resolve to LGD villages`}
+                />
+                <StatCard
+                  label="Resolved project villages"
+                  value={projectBoundary.summary.scope_resolved_village_count}
+                  tone="blue"
+                  note={`${formatNumber(projectBoundary.summary.scope_villages_with_eligible_boundary_count)} with eligible boundary`}
+                />
+                <StatCard
+                  label="Eligible project candidates"
+                  value={projectBoundary.summary.scope_eligible_boundary_candidate_count}
+                  tone="emerald"
+                  note={`${formatNumber(projectBoundary.summary.projects_ready_for_project_boundary_dry_run_count)} projects dry-run ready`}
+                />
+                <StatCard
+                  label="Project boundary matches"
+                  value={projectBoundary.summary.active_project_boundary_match_count}
+                  tone="rose"
+                  note="Apply not started"
+                />
+              </div>
+
+              {projectBoundary.top_projects.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-blue-100 bg-white">
+                  <table className="min-w-full divide-y divide-blue-100 text-sm">
+                    <thead className="bg-blue-50 text-left text-xs font-semibold uppercase tracking-wide text-blue-700">
+                      <tr>
+                        <th className="px-3 py-2">Project</th>
+                        <th className="px-3 py-2">Scope source</th>
+                        <th className="px-3 py-2">Resolved villages</th>
+                        <th className="px-3 py-2">Eligible boundary</th>
+                        <th className="px-3 py-2">Dry-run</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-blue-50">
+                      {projectBoundary.top_projects.slice(0, 5).map((project) => (
+                        <tr key={project.project_id}>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-slate-950">{project.project_name}</div>
+                            <div className="text-xs text-slate-500">{project.project_status} · {project.tenant_id}</div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{project.scope_sources.join(", ") || "Unresolved"}</td>
+                          <td className="px-3 py-2">{formatNumber(project.scope_resolved_village_count)}</td>
+                          <td className="px-3 py-2">
+                            <div>{formatNumber(project.eligible_boundary_candidate_count)} candidates</div>
+                            <div className="text-xs text-slate-500">
+                              {formatPercent(project.villages_with_eligible_boundary_count, project.scope_resolved_village_count)} coverage
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <StatusPill ready={project.ready_for_project_boundary_dry_run} label={project.ready_for_project_boundary_dry_run ? "Ready" : "Not ready"} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           )}
 

@@ -68,6 +68,17 @@ def main() -> int:
         check(gap["demographic_profile_outside_state_district_matrix_count"] == 0, "Demographic profiles are fully placeable", gap)
         check(gap["pin_link_outside_state_district_matrix_count"] == 0, "PIN links are fully placeable", gap)
 
+        project_boundary = data["project_boundary_readiness"]
+        project_boundary_summary = project_boundary["summary"]
+        check(project_boundary_summary["active_project_count"] >= 0, "Project boundary active project count is visible", project_boundary_summary)
+        check(project_boundary_summary["raw_boundary_candidate_count"] > 0, "Project boundary raw candidates are visible", project_boundary_summary)
+        check(project_boundary_summary["raw_eligible_boundary_candidate_count"] > 0, "Project boundary eligible candidates are visible", project_boundary_summary)
+        check(project_boundary_summary["projects_with_resolved_scope_count"] >= 0, "Project boundary resolved project scope count is visible", project_boundary_summary)
+        check(project_boundary_summary["projects_ready_for_project_boundary_dry_run_count"] >= 0, "Project boundary dry-run project count is visible", project_boundary_summary)
+        check(project_boundary["readiness"]["ready_for_project_boundary_apply"] is False, "Project boundary apply remains disabled", project_boundary["readiness"])
+        check(project_boundary["readiness"]["ready_for_runtime_spatial_matching"] is False, "Project boundary runtime spatial matching remains disabled", project_boundary["readiness"])
+        check(project_boundary["readiness"]["ready_for_android_behavior_change"] is False, "Project boundary keeps Android unchanged", project_boundary["readiness"])
+
         posture = data["source_posture"]
         check(posture["lgd_is_canonical_runtime_identity"] is True, "LGD remains canonical runtime identity", posture)
         check(posture["village_pin_codes_android_ready"] is True, "PIN-code layer remains Android-ready", posture)

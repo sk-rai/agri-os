@@ -23,6 +23,12 @@ from pydantic import BaseModel, Field
 
 from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
+from scripts.report_project_boundary_readiness import (
+    SOURCE_SYSTEM as PROJECT_BOUNDARY_SOURCE_SYSTEM,
+    rows as _project_boundary_rows,
+    scope_counts_for_project as _project_boundary_scope_counts_for_project,
+)
+
 from app.modules.master_data.models import (
     GeographyState,
     GeographyDistrict,
@@ -33,6 +39,119 @@ from app.modules.master_data.models import (
 )
 
 router = APIRouter(prefix="/geography", tags=["geography"])
+
+
+def _build_project_boundary_readiness_rollup(db: Session) -> dict[str, Any]:
+    """Read-only project boundary readiness rollup for the geography admin matrix."""
+
+    projects = _project_boundary_rows(
+        db,
+        """
+        select
+          id::text as project_id,
+          tenant_id::text as tenant_id,
+          name as project_name,
+          status::text as project_status,
+          geography_scope
+        from projects
+        where is_active = true
+        order by created_at desc nulls last, name asc
+        limit 200
+        """,
+    )
+
+    raw = dict(
+        db.execute(
+            text("""
+                select
+                  (select count(*)::bigint from projects where is_active = true) as active_project_count,
+                  (select count(*)::bigint from projects where is_active = true and geography_scope is not null and geography_scope::text not in ('{}', 'null', '[]')) as projects_with_non_empty_geography_scope_count,
+                  (select count(*)::bigint from geography_boundary_project_matches where is_active = true) as active_project_boundary_match_count,
+                  (select count(*)::bigint from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system) as raw_boundary_candidate_count,
+                  (select count(*)::bigint from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system and c.candidate_bucket = 'DIRECT_VLCODE_MATCH' and c.review_status = 'AUTO_CANDIDATE' and c.promotion_status = 'NOT_PROMOTED' and c.is_active = false and c.proposed_village_id is not null) as raw_eligible_boundary_candidate_count
+            """),
+            {"source_system": PROJECT_BOUNDARY_SOURCE_SYSTEM},
+        ).mappings().one()
+    )
+
+    project_rows: list[dict[str, Any]] = []
+    for project in projects:
+        scope = project.get("geography_scope") or {}
+        if isinstance(scope, str):
+            try:
+                scope = json.loads(scope)
+            except Exception:
+                scope = {}
+        if not isinstance(scope, dict):
+            scope = {}
+
+        counts = _project_boundary_scope_counts_for_project(db, project["project_id"], scope)
+        resolved = int(counts["scope_resolved_village_count"] or 0)
+        covered = int(counts["scope_villages_with_eligible_boundary_count"] or 0)
+        eligible = int(counts["scope_eligible_boundary_candidate_count"] or 0)
+
+        project_rows.append({
+            "project_id": project["project_id"],
+            "tenant_id": project["tenant_id"],
+            "project_name": project["project_name"],
+            "project_status": project["project_status"],
+            "scope_resolved_village_count": resolved,
+            "villages_with_eligible_boundary_count": covered,
+            "villages_without_eligible_boundary_count": max(resolved - covered, 0),
+            "eligible_boundary_candidate_count": eligible,
+            "eligible_boundary_coverage_ratio": round(covered / resolved, 6) if resolved else 0,
+            "scope_sources": counts.get("scope_sources", []),
+            "ready_for_project_boundary_dry_run": resolved > 0 and eligible > 0,
+            "ready_for_project_boundary_apply": False,
+            "ready_for_runtime_spatial_matching": False,
+            "ready_for_android_behavior_change": False,
+        })
+
+    project_rows.sort(
+        key=lambda row: (
+            -int(row["scope_resolved_village_count"] or 0),
+            -int(row["eligible_boundary_candidate_count"] or 0),
+            row["project_name"],
+        )
+    )
+
+    summary = {key: int(value or 0) for key, value in raw.items()}
+    summary.update({
+        "project_count_in_rollup": len(project_rows),
+        "projects_with_resolved_scope_count": sum(1 for row in project_rows if row["scope_resolved_village_count"] > 0),
+        "projects_ready_for_project_boundary_dry_run_count": sum(1 for row in project_rows if row["ready_for_project_boundary_dry_run"]),
+        "scope_resolved_village_count": sum(row["scope_resolved_village_count"] for row in project_rows),
+        "scope_villages_with_eligible_boundary_count": sum(row["villages_with_eligible_boundary_count"] for row in project_rows),
+        "scope_villages_without_eligible_boundary_count": sum(row["villages_without_eligible_boundary_count"] for row in project_rows),
+        "scope_eligible_boundary_candidate_count": sum(row["eligible_boundary_candidate_count"] for row in project_rows),
+    })
+
+    return {
+        "summary": summary,
+        "top_projects": project_rows[:10],
+        "scope_resolution_policy": {
+            "state_scope_used_only_without_narrower_scope": True,
+            "state_field_qualifies_district_and_village_name_scopes": True,
+            "supported_scope_keys": [
+                "village_lgd_codes",
+                "village_names",
+                "pin_codes",
+                "district_lgd_codes",
+                "districts",
+                "state_lgd_codes",
+                "state_ids",
+                "state",
+            ],
+        },
+        "readiness": {
+            "ready_for_admin_review": True,
+            "ready_for_project_boundary_dry_run": summary["projects_ready_for_project_boundary_dry_run_count"] > 0,
+            "ready_for_project_boundary_apply": False,
+            "ready_for_selected_boundary_runtime_promotion": False,
+            "ready_for_runtime_spatial_matching": False,
+            "ready_for_android_behavior_change": False,
+        },
+    }
 
 
 def _build_geography_layer_readiness_matrix(
@@ -386,6 +505,8 @@ def _build_geography_layer_readiness_matrix(
         "ready_for_android_behavior_change": False,
     }
 
+    project_boundary_readiness = _build_project_boundary_readiness_rollup(db)
+
     return {
         "schema_version": "geography_layer_readiness_matrix.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -399,6 +520,7 @@ def _build_geography_layer_readiness_matrix(
         "summary": summary,
         "gap_accounting": gap_accounting,
         "climate_readiness": climate_readiness,
+        "project_boundary_readiness": project_boundary_readiness,
         "rows": normalized,
         "source_posture": {
             "lgd_is_canonical_runtime_identity": True,

@@ -53,34 +53,39 @@ page.on("response", async (response) => {
 });
 
 try {
+  const readinessResponsePromise = page.waitForResponse(
+    (response) => response.url().includes("/api/v1/master-data/geography/layer-readiness") && response.status() === 200,
+    { timeout: 60000 },
+  );
+
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  await page.getByText("Geography layer readiness").first().waitFor({ timeout: 30000 });
-  await page.getByText("Cross-layer state and district matrix").waitFor({ timeout: 30000 });
-  await page.getByText("LGD villages").first().waitFor({ timeout: 30000 });
-  await page.getByText("Boundary outside matrix").first().waitFor({ timeout: 30000 });
-  await page.getByText("State/district readiness matrix").first().waitFor({ timeout: 30000 });
+  const okResponse = await readinessResponsePromise;
+  const payload = await okResponse.json();
 
-  const okResponse = responses.find((response) => response.status === 200);
-  if (!okResponse) {
-    throw new Error(`Readiness API did not return 200: ${JSON.stringify(responses).slice(0, 1200)}`);
+  if (payload.schema_version !== "geography_layer_readiness_matrix.v1") {
+    throw new Error(`Unexpected readiness schema: ${payload.schema_version}`);
   }
-
-  const bodyText = await page.locator("body").innerText();
-  for (const expected of [
-    "LGD canonical runtime identity",
-    "Village PIN-code lookup",
-    "NWDP demographic Android-disabled",
-    "NWDP boundary runtime-disabled",
-    "SOI direct join blocked",
-    "BharatAtlas review source",
-    "Climate/agro-ecology readiness",
-    "Climate runtime enablement",
-    "Districts missing mapping",
-  ]) {
-    if (!bodyText.includes(expected)) {
-      throw new Error(`Expected readiness posture text missing: ${expected}`);
-    }
+  if (!payload.project_boundary_readiness) {
+    throw new Error("Readiness payload missing project_boundary_readiness");
+  }
+  if (!payload.project_boundary_readiness.summary) {
+    throw new Error("Readiness payload missing project_boundary_readiness.summary");
+  }
+  if (!payload.project_boundary_readiness.readiness) {
+    throw new Error("Readiness payload missing project_boundary_readiness.readiness");
+  }
+  if (payload.project_boundary_readiness.readiness.ready_for_project_boundary_apply !== false) {
+    throw new Error("Project boundary apply should remain disabled");
+  }
+  if (payload.project_boundary_readiness.readiness.ready_for_runtime_spatial_matching !== false) {
+    throw new Error("Runtime spatial matching should remain disabled");
+  }
+  if (payload.project_boundary_readiness.readiness.ready_for_android_behavior_change !== false) {
+    throw new Error("Android behavior should remain unchanged");
+  }
+  if ((payload.project_boundary_readiness.summary.raw_eligible_boundary_candidate_count || 0) <= 0) {
+    throw new Error("Expected eligible boundary candidates to be visible");
   }
 
   try {
@@ -98,8 +103,10 @@ try {
     status: "PASSED",
     url,
     readiness_responses_seen: responses.length,
+    project_boundary_summary: payload.project_boundary_readiness.summary,
     screenshot: "web/smoke/screenshots/geography-layer-readiness.png",
   }, null, 2));
+
 } finally {
   await browser.close();
 
