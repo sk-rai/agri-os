@@ -69,6 +69,8 @@ Known passing validations include:
 | Project boundary matching dry-run | `backend/scripts/plan_nwdp_boundary_project_matching_apply_dry_run.py` | Dry-run only | Implemented; resolves project geography scope. |
 | Project boundary disabled apply guard | `backend/scripts/apply_nwdp_boundary_project_matching_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
+| Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
+| Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
 | Selected boundary runtime readiness | `backend/scripts/report_selected_boundary_runtime_promotion_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Selected boundary runtime disabled guard | `backend/scripts/apply_selected_boundary_runtime_promotion_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
 | External API readiness report | `backend/scripts/report_external_api_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
@@ -181,6 +183,23 @@ Current blocker posture:
 - Android remains unchanged
 
 This report separates geometry repair planning from runtime promotion. Geometry validation/repair must be solved before selected boundary runtime promotion can move beyond disabled guards.
+
+Boundary geometry repair classification is also now implemented and surfaced in the admin matrix/page. It splits the boundary backlog into validation, repair/re-import, runtime eligibility review, missing village/crosswalk review, manual review, and policy exclusion buckets.
+
+A disabled boundary geometry repair guard is committed. It requires explicit apply intent, state/district scope, geometry-repair policy flag, runtime-eligibility policy flag, rollback/supersession token, classification review, and admin confirmation, but still refuses real mutation by policy.
+
+The guardrails remain:
+
+- geometry repair attempted: false
+- geometry validation status changed: false
+- source runtime eligibility changed: false
+- source features changed: false
+- boundary candidates promoted: false
+- boundary candidates activated: false
+- runtime tables written: false
+- runtime lookup enabled: false
+- Android behavior changed: false
+- LGD geography overwritten: false
 
 ## Selected boundary runtime promotion posture
 
@@ -329,11 +348,20 @@ The page remains read-only.
 ## Recommended next implementation sequence
 
 1. Keep this document as the committed readiness baseline.
-2. Add boundary geometry validation repair classification:
-   - identify repairable vs non-repairable invalid geometry
-   - classify source features requiring re-import, transform repair, topology repair, or permanent exclusion
-   - keep runtime promotion disabled
-3. Add project boundary matching real-apply design document:
+2. Add project boundary matching real-apply design document:
+   - exact target table
+   - uniqueness/idempotency policy
+   - rollback/supersession plan
+   - audit event model
+   - admin confirmation requirements
+3. Add boundary geometry repair real-apply design document:
+   - exact fields allowed to change
+   - geometry validation/re-import/repair policy
+   - runtime eligibility status policy
+   - rollback/supersession plan
+   - proof that selected runtime promotion remains separately gated
+4. Only after design review, implement tiny-fixture repair apply regression before any broad repair.
+5. Continue climate gap closure:
    - exact target table
    - uniqueness/idempotency policy
    - rollback/supersession plan
