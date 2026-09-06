@@ -28,6 +28,11 @@ from scripts.report_project_boundary_readiness import (
     rows as _project_boundary_rows,
     scope_counts_for_project as _project_boundary_scope_counts_for_project,
 )
+from scripts.report_external_api_readiness import (
+    safe_count as _external_api_safe_count,
+    soil_provider_rows as _external_api_soil_provider_rows,
+    weather_rows as _external_api_weather_rows,
+)
 
 from app.modules.master_data.models import (
     GeographyState,
@@ -39,6 +44,64 @@ from app.modules.master_data.models import (
 )
 
 router = APIRouter(prefix="/geography", tags=["geography"])
+
+
+def _build_external_api_readiness_rollup(db: Session) -> dict[str, Any]:
+    """Read-only external API/provider readiness rollup for the geography admin matrix."""
+
+    weather = _external_api_weather_rows(db)
+    soil = _external_api_soil_provider_rows(db)
+    provider_rows = weather + soil
+
+    summary = {
+        "provider_surface_count": len(provider_rows),
+        "weather_provider_config_count": len(weather),
+        "weather_provider_enabled_count": sum(1 for row in weather if row["is_enabled"]),
+        "weather_live_execution_enabled_count": sum(1 for row in weather if row["live_execution_enabled"]),
+        "weather_demo_mode_provider_count": sum(1 for row in weather if row["demo_mode"]),
+        "soil_provider_surface_count": len(soil),
+        "soil_live_execution_enabled_count": 0,
+        "weather_snapshot_count": _external_api_safe_count(db, "weather_snapshots"),
+        "weather_fresh_snapshot_count": _external_api_safe_count(db, "weather_snapshots", "expires_at is null or expires_at > now()"),
+        "soil_enrichment_snapshot_count": _external_api_safe_count(db, "soil_enrichment_snapshots"),
+        "soil_enrichment_available_snapshot_count": _external_api_safe_count(db, "soil_enrichment_snapshots", "status = 'AVAILABLE'"),
+        "soil_enrichment_job_audit_count": _external_api_safe_count(db, "soil_enrichment_job_audit_events"),
+        "soil_enrichment_failed_job_audit_count": _external_api_safe_count(db, "soil_enrichment_job_audit_events", "status = 'FAILED'"),
+        "field_event_external_api_count": _external_api_safe_count(db, "field_event_reports", "source = 'EXTERNAL_API'"),
+        "providers_ready_for_live_runtime_count": sum(1 for row in provider_rows if row["ready_for_runtime_use"]),
+    }
+
+    return {
+        "summary": summary,
+        "provider_rows": provider_rows[:20],
+        "readiness": {
+            "ready_for_admin_review": True,
+            "ready_for_weather_runtime_provider_execution": summary["weather_live_execution_enabled_count"] > 0,
+            "ready_for_soil_runtime_provider_execution": False,
+            "ready_for_external_api_runtime_use": summary["providers_ready_for_live_runtime_count"] > 0,
+            "ready_for_android_behavior_change": False,
+            "requires_provider_credentials_review": True,
+            "requires_live_execution_policy_approval": True,
+            "requires_rate_limit_and_cost_guardrails": True,
+            "requires_worker_scheduler_enablement_review": True,
+            "requires_failure_retry_audit_review": True,
+        },
+        "runtime_policy": {
+            "central_http_boundary": "app.modules.media.provider_http_client.execute_provider_http_request",
+            "live_execution_default": "BLOCKED_UNTIL_APPROVED",
+            "retryable_http_statuses": [408, 425, 429, 500, 502, 503, 504],
+            "non_retryable_http_statuses": [400, 401, 403, 404, 422],
+        },
+        "guardrails": {
+            "external_api_called": False,
+            "provider_worker_executed": False,
+            "provider_config_changed": False,
+            "provider_live_execution_enabled": False,
+            "db_writes_attempted": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
 
 
 def _build_project_boundary_readiness_rollup(db: Session) -> dict[str, Any]:
@@ -620,6 +683,7 @@ def _build_geography_layer_readiness_matrix(
 
     project_boundary_readiness = _build_project_boundary_readiness_rollup(db)
     selected_boundary_runtime_promotion_readiness = _build_selected_boundary_runtime_promotion_readiness_rollup(db, state_or_ut, district)
+    external_api_readiness = _build_external_api_readiness_rollup(db)
 
     return {
         "schema_version": "geography_layer_readiness_matrix.v1",
@@ -636,6 +700,7 @@ def _build_geography_layer_readiness_matrix(
         "climate_readiness": climate_readiness,
         "project_boundary_readiness": project_boundary_readiness,
         "selected_boundary_runtime_promotion_readiness": selected_boundary_runtime_promotion_readiness,
+        "external_api_readiness": external_api_readiness,
         "rows": normalized,
         "source_posture": {
             "lgd_is_canonical_runtime_identity": True,
@@ -658,6 +723,7 @@ def _build_geography_layer_readiness_matrix(
             "Use this read-only endpoint to power the admin geography layer readiness page.",
             "Prioritize boundary outside-matrix gaps before broad runtime boundary promotion.",
             "Keep selected boundary runtime promotion blocked until source geometry is validated and marked runtime eligible.",
+            "Keep external provider execution blocked until credentials, live-execution policy, rate-limit, cost, scheduler, and failure-audit guardrails are reviewed.",
             "Implement project boundary matching only through dry-run, explicit apply flag, audit output, and rollback/supersession plan.",
             "Keep NWDP demographic and NWDP boundary data disabled for Android unless explicitly changed later.",
         ],

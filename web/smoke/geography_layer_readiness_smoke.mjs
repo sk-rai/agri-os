@@ -99,6 +99,21 @@ try {
   if (payload.selected_boundary_runtime_promotion_readiness.readiness.ready_for_android_behavior_change !== false) {
     throw new Error("Selected boundary runtime should keep Android unchanged");
   }
+  if (!payload.external_api_readiness) {
+    throw new Error("Readiness payload missing external_api_readiness");
+  }
+  if (payload.external_api_readiness.readiness.ready_for_android_behavior_change !== false) {
+    throw new Error("External API readiness should keep Android unchanged");
+  }
+  if (payload.external_api_readiness.guardrails.external_api_called !== false) {
+    throw new Error("External API readiness should not call external APIs");
+  }
+  if (payload.external_api_readiness.guardrails.provider_worker_executed !== false) {
+    throw new Error("External API readiness should not run provider workers");
+  }
+  if ((payload.external_api_readiness.summary.provider_surface_count || 0) <= 0) {
+    throw new Error("Expected external API provider surfaces to be visible");
+  }
 
   try {
     await page.screenshot({
@@ -117,6 +132,7 @@ try {
     readiness_responses_seen: responses.length,
     project_boundary_summary: payload.project_boundary_readiness.summary,
     selected_boundary_runtime_summary: payload.selected_boundary_runtime_promotion_readiness.summary,
+    external_api_summary: payload.external_api_readiness.summary,
     screenshot: "web/smoke/screenshots/geography-layer-readiness.png",
   }, null, 2));
 

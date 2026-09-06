@@ -147,6 +147,53 @@ type ClimateReadiness = {
   ready_for_android_behavior_change: boolean;
 };
 
+type ExternalApiReadiness = {
+  summary: {
+    provider_surface_count: number;
+    weather_provider_config_count: number;
+    weather_provider_enabled_count: number;
+    weather_live_execution_enabled_count: number;
+    weather_demo_mode_provider_count: number;
+    soil_provider_surface_count: number;
+    soil_live_execution_enabled_count: number;
+    weather_snapshot_count: number;
+    weather_fresh_snapshot_count: number;
+    soil_enrichment_snapshot_count: number;
+    soil_enrichment_available_snapshot_count: number;
+    soil_enrichment_job_audit_count: number;
+    soil_enrichment_failed_job_audit_count: number;
+    field_event_external_api_count: number;
+    providers_ready_for_live_runtime_count: number;
+  };
+  readiness: {
+    ready_for_admin_review: boolean;
+    ready_for_weather_runtime_provider_execution: boolean;
+    ready_for_soil_runtime_provider_execution: boolean;
+    ready_for_external_api_runtime_use: boolean;
+    ready_for_android_behavior_change: boolean;
+    requires_provider_credentials_review: boolean;
+    requires_live_execution_policy_approval: boolean;
+    requires_rate_limit_and_cost_guardrails: boolean;
+    requires_worker_scheduler_enablement_review: boolean;
+    requires_failure_retry_audit_review: boolean;
+  };
+  provider_rows: Array<{
+    surface: string;
+    tenant_id: string | null;
+    provider_code: string;
+    display_name: string;
+    provider_type: string;
+    is_enabled: boolean;
+    demo_mode: boolean;
+    live_execution_enabled: boolean;
+    live_execution_status: string;
+    ready_for_runtime_use: boolean;
+    ready_for_android_behavior_change: boolean;
+  }>;
+  runtime_policy: Record<string, string | number[]>;
+  guardrails: Record<string, boolean>;
+};
+
 type MatrixResponse = {
   schema_version: string;
   generated_at: string;
@@ -162,6 +209,7 @@ type MatrixResponse = {
   climate_readiness: ClimateReadiness;
   project_boundary_readiness: ProjectBoundaryReadiness;
   selected_boundary_runtime_promotion_readiness: SelectedBoundaryRuntimePromotionReadiness;
+  external_api_readiness: ExternalApiReadiness;
   rows: MatrixRow[];
   source_posture: Record<string, boolean>;
   guardrails: Record<string, boolean>;
@@ -258,6 +306,7 @@ export default function GeographyLayerReadinessPage() {
   const climate = data?.climate_readiness;
   const projectBoundary = data?.project_boundary_readiness;
   const selectedBoundaryRuntime = data?.selected_boundary_runtime_promotion_readiness;
+  const externalApi = data?.external_api_readiness;
 
   const stateOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.state_or_ut))).sort(),
@@ -444,6 +493,88 @@ export default function GeographyLayerReadinessPage() {
                   note={`${formatNumber(climate.active_crops_without_climate_rules_count)} active crops lack rules`}
                 />
               </div>
+            </section>
+          )}
+
+          {externalApi && (
+            <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-violet-950">External API readiness</h2>
+                  <p className="mt-1 text-sm text-violet-900">
+                    Weather, soil enrichment, and external provider surfaces are visible for admin review.
+                    Live provider execution, worker execution, runtime enablement, and Android behavior remain blocked until policy review.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill ready={externalApi.readiness.ready_for_admin_review} label="Provider admin review" />
+                  <StatusPill ready={externalApi.readiness.ready_for_external_api_runtime_use} label="Runtime provider use" />
+                  <StatusPill ready={externalApi.readiness.ready_for_weather_runtime_provider_execution} label="Weather live execution" />
+                  <StatusPill ready={externalApi.readiness.ready_for_soil_runtime_provider_execution} label="Soil live execution" />
+                  <StatusPill ready={!externalApi.readiness.ready_for_android_behavior_change} label="Android unchanged" />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Provider surfaces"
+                  value={externalApi.summary.provider_surface_count}
+                  tone="blue"
+                  note={`${formatNumber(externalApi.summary.providers_ready_for_live_runtime_count)} live-runtime ready`}
+                />
+                <StatCard
+                  label="Weather snapshots"
+                  value={externalApi.summary.weather_snapshot_count}
+                  tone="emerald"
+                  note={`${formatNumber(externalApi.summary.weather_fresh_snapshot_count)} fresh/non-expired`}
+                />
+                <StatCard
+                  label="Soil enrichment snapshots"
+                  value={externalApi.summary.soil_enrichment_snapshot_count}
+                  tone="emerald"
+                  note={`${formatNumber(externalApi.summary.soil_enrichment_available_snapshot_count)} available`}
+                />
+                <StatCard
+                  label="Provider failures"
+                  value={externalApi.summary.soil_enrichment_failed_job_audit_count}
+                  tone="rose"
+                  note="Audit-visible; no workers run here"
+                />
+              </div>
+
+              {externalApi.provider_rows.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-violet-100 bg-white">
+                  <table className="min-w-full divide-y divide-violet-100 text-sm">
+                    <thead className="bg-violet-50 text-left text-xs font-semibold uppercase tracking-wide text-violet-700">
+                      <tr>
+                        <th className="px-3 py-2">Surface</th>
+                        <th className="px-3 py-2">Provider</th>
+                        <th className="px-3 py-2">Enabled</th>
+                        <th className="px-3 py-2">Live execution</th>
+                        <th className="px-3 py-2">Runtime</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-violet-50">
+                      {externalApi.provider_rows.slice(0, 6).map((provider, index) => (
+                        <tr key={`${provider.surface}-${provider.provider_code}-${provider.tenant_id ?? index}`}>
+                          <td className="px-3 py-2 text-slate-700">{provider.surface}</td>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-slate-900">{provider.display_name || provider.provider_code}</div>
+                            <div className="text-xs text-slate-500">{provider.provider_code}</div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <StatusPill ready={provider.is_enabled} label={provider.is_enabled ? "Enabled" : "Disabled"} />
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">{provider.live_execution_status}</td>
+                          <td className="px-3 py-2">
+                            <StatusPill ready={provider.ready_for_runtime_use} label={provider.ready_for_runtime_use ? "Ready" : "Blocked"} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           )}
 

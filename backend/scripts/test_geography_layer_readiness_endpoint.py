@@ -90,6 +90,21 @@ def main() -> int:
         check(selected_runtime["readiness"]["ready_for_android_behavior_change"] is False, "Selected boundary runtime keeps Android unchanged", selected_runtime["readiness"])
         check(selected_runtime["guardrails"]["db_writes_attempted"] is False, "Selected boundary runtime rollup is read-only", selected_runtime["guardrails"])
 
+        external_api = data["external_api_readiness"]
+        external_summary = external_api["summary"]
+        check(external_summary["provider_surface_count"] >= 1, "External API provider surfaces are visible", external_summary)
+        check(external_summary["weather_provider_config_count"] >= 0, "Weather provider config count is visible", external_summary)
+        check(external_summary["soil_provider_surface_count"] >= 1, "Soil provider surface count is visible", external_summary)
+        check(external_summary["weather_snapshot_count"] >= 0, "Weather snapshot count is visible", external_summary)
+        check(external_summary["soil_enrichment_snapshot_count"] >= 0, "Soil enrichment snapshot count is visible", external_summary)
+        check(external_api["readiness"]["ready_for_admin_review"] is True, "External API readiness is admin-visible", external_api["readiness"])
+        check(external_api["readiness"]["ready_for_android_behavior_change"] is False, "External API keeps Android unchanged", external_api["readiness"])
+        check(external_api["readiness"]["requires_live_execution_policy_approval"] is True, "External API live execution approval is required", external_api["readiness"])
+        check(external_api["guardrails"]["external_api_called"] is False, "Endpoint makes no external API calls", external_api["guardrails"])
+        check(external_api["guardrails"]["provider_worker_executed"] is False, "Endpoint runs no provider workers", external_api["guardrails"])
+        check(external_api["guardrails"]["provider_live_execution_enabled"] is False, "Endpoint enables no provider live execution", external_api["guardrails"])
+        check(external_api["guardrails"]["android_behavior_changed"] is False, "External API rollup keeps Android unchanged", external_api["guardrails"])
+
         posture = data["source_posture"]
         check(posture["lgd_is_canonical_runtime_identity"] is True, "LGD remains canonical runtime identity", posture)
         check(posture["village_pin_codes_android_ready"] is True, "PIN-code layer remains Android-ready", posture)
