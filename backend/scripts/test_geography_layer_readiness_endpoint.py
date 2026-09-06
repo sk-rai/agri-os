@@ -68,6 +68,20 @@ def main() -> int:
         check(gap["demographic_profile_outside_state_district_matrix_count"] == 0, "Demographic profiles are fully placeable", gap)
         check(gap["pin_link_outside_state_district_matrix_count"] == 0, "PIN links are fully placeable", gap)
 
+        boundary_geometry = data["boundary_geometry_validation_readiness"]
+        boundary_geometry_summary = boundary_geometry["summary"]
+        check(boundary_geometry_summary["candidate_count"] > 0, "Boundary geometry candidate count is visible", boundary_geometry_summary)
+        check(boundary_geometry_summary["invalid_geometry_count"] > 0, "Boundary invalid geometry blockers are visible", boundary_geometry_summary)
+        check(boundary_geometry_summary["not_runtime_eligible_source_count"] > 0, "Boundary runtime-ineligible source blockers are visible", boundary_geometry_summary)
+        check(boundary_geometry_summary["selected_runtime_promotable_count"] == 0, "Boundary geometry confirms no selected runtime promotable rows", boundary_geometry_summary)
+        check(boundary_geometry["readiness"]["ready_for_admin_geometry_review"] is True, "Boundary geometry admin review is ready", boundary_geometry["readiness"])
+        check(boundary_geometry["readiness"]["ready_for_geometry_repair_plan"] is True, "Boundary geometry repair planning is ready", boundary_geometry["readiness"])
+        check(boundary_geometry["readiness"]["ready_for_selected_runtime_promotion_apply"] is False, "Boundary geometry runtime apply remains disabled", boundary_geometry["readiness"])
+        check(boundary_geometry["guardrails"]["db_writes_attempted"] is False, "Boundary geometry rollup writes no DB rows", boundary_geometry["guardrails"])
+        check(boundary_geometry["guardrails"]["geometry_repair_attempted"] is False, "Boundary geometry rollup repairs no geometry", boundary_geometry["guardrails"])
+        check(boundary_geometry["guardrails"]["runtime_lookup_enabled"] is False, "Boundary geometry rollup keeps runtime lookup disabled", boundary_geometry["guardrails"])
+        check(boundary_geometry["guardrails"]["android_behavior_changed"] is False, "Boundary geometry rollup keeps Android unchanged", boundary_geometry["guardrails"])
+
         project_boundary = data["project_boundary_readiness"]
         project_boundary_summary = project_boundary["summary"]
         check(project_boundary_summary["active_project_count"] >= 0, "Project boundary active project count is visible", project_boundary_summary)

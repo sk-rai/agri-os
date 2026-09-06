@@ -90,6 +90,59 @@ type ProjectBoundaryReadiness = {
   }>;
 };
 
+type BoundaryGeometryValidationReadiness = {
+  summary: {
+    candidate_count: number;
+    missing_source_feature_count: number;
+    missing_village_id_count: number;
+    valid_geometry_count: number;
+    invalid_geometry_count: number;
+    unknown_geometry_status_count: number;
+    runtime_eligible_source_count: number;
+    not_runtime_eligible_source_count: number;
+    transformed_centroid_count: number;
+    transformed_bbox_count: number;
+    direct_vlcode_match_count: number;
+    auto_candidate_count: number;
+    manual_review_count: number;
+    blocked_count: number;
+    promoted_candidate_count: number;
+    active_candidate_count: number;
+    valid_runtime_eligible_candidate_count: number;
+    selected_runtime_promotable_count: number;
+    selected_runtime_promotable_village_count: number;
+    existing_runtime_set_count: number;
+    existing_runtime_feature_count: number;
+    existing_runtime_crosswalk_count: number;
+    active_runtime_set_count: number;
+    active_runtime_feature_count: number;
+    active_runtime_crosswalk_count: number;
+  };
+  readiness: {
+    ready_for_admin_geometry_review: boolean;
+    ready_for_geometry_repair_plan: boolean;
+    ready_for_selected_runtime_promotion_dry_run: boolean;
+    ready_for_selected_runtime_promotion_apply: boolean;
+    ready_for_runtime_lookup_enablement: boolean;
+    ready_for_android_behavior_change: boolean;
+    requires_valid_geometry_before_runtime_promotion: boolean;
+    requires_runtime_eligible_source_before_runtime_promotion: boolean;
+    requires_state_or_district_scope_before_apply: boolean;
+    requires_rollback_or_supersession_plan: boolean;
+  };
+  status_rows: Array<{
+    geometry_validation_status: string;
+    eligible_for_runtime_after_promotion: boolean;
+    candidate_count: number;
+    direct_vlcode_match_count: number;
+    auto_candidate_count: number;
+    manual_review_count: number;
+    blocked_count: number;
+  }>;
+  validation_policy: Record<string, string | boolean | string[]>;
+  guardrails: Record<string, boolean>;
+};
+
 type SelectedBoundaryRuntimePromotionReadiness = {
   summary: {
     candidate_count: number;
@@ -208,6 +261,7 @@ type MatrixResponse = {
   gap_accounting: Record<string, number>;
   climate_readiness: ClimateReadiness;
   project_boundary_readiness: ProjectBoundaryReadiness;
+  boundary_geometry_validation_readiness: BoundaryGeometryValidationReadiness;
   selected_boundary_runtime_promotion_readiness: SelectedBoundaryRuntimePromotionReadiness;
   external_api_readiness: ExternalApiReadiness;
   rows: MatrixRow[];
@@ -305,6 +359,7 @@ export default function GeographyLayerReadinessPage() {
   const gap = data?.gap_accounting ?? {};
   const climate = data?.climate_readiness;
   const projectBoundary = data?.project_boundary_readiness;
+  const boundaryGeometry = data?.boundary_geometry_validation_readiness;
   const selectedBoundaryRuntime = data?.selected_boundary_runtime_promotion_readiness;
   const externalApi = data?.external_api_readiness;
 
@@ -568,6 +623,84 @@ export default function GeographyLayerReadinessPage() {
                           <td className="px-3 py-2 text-slate-700">{provider.live_execution_status}</td>
                           <td className="px-3 py-2">
                             <StatusPill ready={provider.ready_for_runtime_use} label={provider.ready_for_runtime_use ? "Ready" : "Blocked"} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {boundaryGeometry && (
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-rose-950">Boundary geometry validation</h2>
+                  <p className="mt-1 text-sm text-rose-900">
+                    NWDP boundary runtime promotion is blocked until source geometry is valid and source features are marked runtime eligible.
+                    This rollup is read-only and performs no geometry repair or runtime writes.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill ready={boundaryGeometry.readiness.ready_for_admin_geometry_review} label="Geometry admin review" />
+                  <StatusPill ready={boundaryGeometry.readiness.ready_for_geometry_repair_plan} label="Repair planning" />
+                  <StatusPill ready={boundaryGeometry.readiness.ready_for_selected_runtime_promotion_apply} label="Runtime apply" />
+                  <StatusPill ready={!boundaryGeometry.readiness.ready_for_android_behavior_change} label="Android unchanged" />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Invalid geometry"
+                  value={boundaryGeometry.summary.invalid_geometry_count}
+                  tone="rose"
+                  note={`${formatNumber(boundaryGeometry.summary.valid_geometry_count)} valid geometry candidates`}
+                />
+                <StatCard
+                  label="Not runtime eligible"
+                  value={boundaryGeometry.summary.not_runtime_eligible_source_count}
+                  tone="rose"
+                  note={`${formatNumber(boundaryGeometry.summary.runtime_eligible_source_count)} runtime-eligible source rows`}
+                />
+                <StatCard
+                  label="Runtime promotable"
+                  value={boundaryGeometry.summary.selected_runtime_promotable_count}
+                  tone="amber"
+                  note={`${formatNumber(boundaryGeometry.summary.selected_runtime_promotable_village_count)} promotable villages`}
+                />
+                <StatCard
+                  label="Active runtime features"
+                  value={boundaryGeometry.summary.active_runtime_feature_count}
+                  tone="blue"
+                  note={`${formatNumber(boundaryGeometry.summary.existing_runtime_feature_count)} existing pilot feature rows`}
+                />
+              </div>
+
+              {boundaryGeometry.status_rows.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-rose-100 bg-white">
+                  <table className="min-w-full divide-y divide-rose-100 text-sm">
+                    <thead className="bg-rose-50 text-left text-xs font-semibold uppercase tracking-wide text-rose-700">
+                      <tr>
+                        <th className="px-3 py-2">Geometry status</th>
+                        <th className="px-3 py-2">Runtime eligible</th>
+                        <th className="px-3 py-2">Candidates</th>
+                        <th className="px-3 py-2">Direct code</th>
+                        <th className="px-3 py-2">Review blockers</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-rose-50">
+                      {boundaryGeometry.status_rows.slice(0, 6).map((row) => (
+                        <tr key={`${row.geometry_validation_status}-${row.eligible_for_runtime_after_promotion}`}>
+                          <td className="px-3 py-2 font-medium text-slate-900">{row.geometry_validation_status}</td>
+                          <td className="px-3 py-2">
+                            <StatusPill ready={row.eligible_for_runtime_after_promotion} label={row.eligible_for_runtime_after_promotion ? "Eligible" : "Blocked"} />
+                          </td>
+                          <td className="px-3 py-2">{formatNumber(row.candidate_count)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.direct_vlcode_match_count)}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {formatNumber(row.manual_review_count)} manual · {formatNumber(row.blocked_count)} blocked
                           </td>
                         </tr>
                       ))}

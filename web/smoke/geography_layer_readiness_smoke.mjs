@@ -87,6 +87,27 @@ try {
   if ((payload.project_boundary_readiness.summary.raw_eligible_boundary_candidate_count || 0) <= 0) {
     throw new Error("Expected eligible boundary candidates to be visible");
   }
+  if (!payload.boundary_geometry_validation_readiness) {
+    throw new Error("Readiness payload missing boundary_geometry_validation_readiness");
+  }
+  if ((payload.boundary_geometry_validation_readiness.summary.invalid_geometry_count || 0) <= 0) {
+    throw new Error("Expected boundary invalid geometry blockers to be visible");
+  }
+  if ((payload.boundary_geometry_validation_readiness.summary.not_runtime_eligible_source_count || 0) <= 0) {
+    throw new Error("Expected boundary runtime eligibility blockers to be visible");
+  }
+  if (payload.boundary_geometry_validation_readiness.summary.selected_runtime_promotable_count !== 0) {
+    throw new Error("Boundary geometry should confirm no selected runtime promotable rows yet");
+  }
+  if (payload.boundary_geometry_validation_readiness.readiness.ready_for_selected_runtime_promotion_apply !== false) {
+    throw new Error("Boundary geometry runtime promotion apply should remain disabled");
+  }
+  if (payload.boundary_geometry_validation_readiness.guardrails.geometry_repair_attempted !== false) {
+    throw new Error("Boundary geometry readiness should not repair geometry");
+  }
+  if (payload.boundary_geometry_validation_readiness.guardrails.android_behavior_changed !== false) {
+    throw new Error("Boundary geometry readiness should keep Android unchanged");
+  }
   if (!payload.selected_boundary_runtime_promotion_readiness) {
     throw new Error("Readiness payload missing selected_boundary_runtime_promotion_readiness");
   }
@@ -131,6 +152,7 @@ try {
     url,
     readiness_responses_seen: responses.length,
     project_boundary_summary: payload.project_boundary_readiness.summary,
+    boundary_geometry_summary: payload.boundary_geometry_validation_readiness.summary,
     selected_boundary_runtime_summary: payload.selected_boundary_runtime_promotion_readiness.summary,
     external_api_summary: payload.external_api_readiness.summary,
     screenshot: "web/smoke/screenshots/geography-layer-readiness.png",
