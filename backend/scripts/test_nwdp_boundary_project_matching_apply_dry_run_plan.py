@@ -56,6 +56,10 @@ def main() -> int:
     summary = data["summary"]
     check(summary["project_village_count"] >= 0, "Summary reports project villages", summary)
     check(summary["dry_run_candidate_selection_count"] >= 0, "Summary reports dry-run selected candidates", summary)
+    check("project_scope_resolved_village_count" in summary, "Summary reports resolved project geography scope", summary)
+    check("project_scope_eligible_boundary_candidate_count" in summary, "Summary reports scope eligible candidates", summary)
+    check(data["candidate_selection_policy"]["supports_project_geography_scope_resolution"] is True, "Dry-run supports project geography scope resolution", data["candidate_selection_policy"])
+    check(data["candidate_selection_policy"]["state_scope_used_only_without_narrower_scope"] is True, "Dry-run preserves narrow scope precedence", data["candidate_selection_policy"])
     check(summary["apply_would_write_project_matching_records"] is False, "Dry-run writes no project matching records", summary)
     check(summary["apply_is_implemented"] is False, "Apply remains unimplemented", summary)
     check(summary["rollback_policy_required_before_apply"] is True, "Rollback policy required before apply", summary)

@@ -21,6 +21,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.core.config import settings
+from scripts.report_project_boundary_readiness import (
+    SOURCE_SYSTEM,
+    build_scope_village_sql,
+    scope_counts_for_project,
+)
 
 
 def db_url_from_settings() -> str:
@@ -36,6 +41,37 @@ def db_url_from_settings() -> str:
 
 def json_default(value: Any) -> str:
     return str(value)
+
+
+
+def project_villages_sql_for_scope(scope: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    scope_sql, scope_params, _sources = build_scope_village_sql(scope)
+
+    parts = [PROJECT_VILLAGES_SQL]
+    params: dict[str, Any] = {}
+
+    if scope_sql:
+        parts.append(f"""
+            select :project_id as project_id, scope_villages.village_id
+            from (
+                {scope_sql}
+            ) scope_villages
+        """)
+        params.update(scope_params)
+
+    return "\nunion\n".join(parts), params
+
+
+def normalize_project_scope(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
 
 
 PROJECT_VILLAGES_SQL = """
@@ -132,9 +168,13 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
                 },
             }
 
+        project_scope = normalize_project_scope(project.get("geography_scope"))
+        project_villages_sql, project_scope_params = project_villages_sql_for_scope(project_scope)
+        query_params = {"project_id": selected_project_id, **project_scope_params}
+
         summary = conn.execute(text(f"""
             with project_villages as (
-                {PROJECT_VILLAGES_SQL}
+                {project_villages_sql}
             ),
             eligible as (
                 select
@@ -172,11 +212,11 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
             from project_villages pv
             left join eligible on eligible.proposed_village_id = pv.village_id
             left join excluded on excluded.proposed_village_id = pv.village_id
-        """), {"project_id": selected_project_id}).mappings().one()
+        """), query_params).mappings().one()
 
         selected = conn.execute(text(f"""
             with project_villages as (
-                {PROJECT_VILLAGES_SQL}
+                {project_villages_sql}
             )
             select
               b.state_or_ut,
@@ -203,7 +243,9 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
               and c.proposed_village_id is not null
             order by b.state_or_ut, f.source_feature_index
             limit :limit
-        """), {"project_id": selected_project_id, "limit": limit}).mappings().all()
+        """), {**query_params, "limit": limit}).mappings().all()
+
+        project_scope_counts = scope_counts_for_project(conn, selected_project_id, project_scope)
 
     summary_dict = dict(summary)
     return {
@@ -219,6 +261,8 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
             "required_is_active": False,
             "required_promotion_status": "NOT_PROMOTED",
             "requires_project_scope": True,
+            "supports_project_geography_scope_resolution": True,
+            "state_scope_used_only_without_narrower_scope": True,
             "requires_proposed_village_id": True,
             "manual_review_candidates_excluded": True,
             "blocked_candidates_excluded": True,
@@ -226,6 +270,9 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
         },
         "summary": {
             **summary_dict,
+            "project_scope_resolved_village_count": project_scope_counts["scope_resolved_village_count"],
+            "project_scope_eligible_boundary_candidate_count": project_scope_counts["scope_eligible_boundary_candidate_count"],
+            "project_geography_scope_used": bool(project_scope),
             "apply_would_write_project_matching_records": False,
             "apply_is_implemented": False,
             "rollback_policy_required_before_apply": True,
