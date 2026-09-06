@@ -143,6 +143,49 @@ type BoundaryGeometryValidationReadiness = {
   guardrails: Record<string, boolean>;
 };
 
+type BoundaryGeometryRepairClassification = {
+  summary: {
+    candidate_count: number;
+    no_repair_needed_runtime_promotable_count: number;
+    validate_geometry_and_runtime_eligibility_count: number;
+    validate_geometry_status_count: number;
+    repair_or_reimport_invalid_geometry_count: number;
+    source_runtime_eligibility_review_count: number;
+    reimport_missing_source_feature_count: number;
+    crosswalk_review_missing_proposed_village_count: number;
+    crosswalk_review_non_direct_bucket_count: number;
+    manual_review_required_count: number;
+    permanent_or_policy_exclusion_count: number;
+    invalid_or_unknown_geometry_count: number;
+    runtime_ineligible_source_count: number;
+    direct_auto_not_promoted_inactive_count: number;
+    promoted_candidate_count: number;
+    active_candidate_count: number;
+    active_runtime_feature_count: number;
+    active_runtime_crosswalk_count: number;
+  };
+  readiness: {
+    ready_for_admin_repair_planning: boolean;
+    ready_for_geometry_validation_pipeline_design: boolean;
+    ready_for_runtime_eligibility_review: boolean;
+    ready_for_selected_runtime_promotion_dry_run: boolean;
+    ready_for_selected_runtime_promotion_apply: boolean;
+    ready_for_runtime_lookup_enablement: boolean;
+    ready_for_android_behavior_change: boolean;
+  };
+  classification_rows: Array<{
+    repair_classification: string;
+    recommended_action: string;
+    candidate_count: number;
+    direct_vlcode_match_count: number;
+    auto_candidate_count: number;
+    manual_review_count: number;
+    blocked_count: number;
+  }>;
+  classification_policy: Record<string, string | boolean | string[]>;
+  guardrails: Record<string, boolean>;
+};
+
 type SelectedBoundaryRuntimePromotionReadiness = {
   summary: {
     candidate_count: number;
@@ -262,6 +305,7 @@ type MatrixResponse = {
   climate_readiness: ClimateReadiness;
   project_boundary_readiness: ProjectBoundaryReadiness;
   boundary_geometry_validation_readiness: BoundaryGeometryValidationReadiness;
+  boundary_geometry_repair_classification: BoundaryGeometryRepairClassification;
   selected_boundary_runtime_promotion_readiness: SelectedBoundaryRuntimePromotionReadiness;
   external_api_readiness: ExternalApiReadiness;
   rows: MatrixRow[];
@@ -360,6 +404,7 @@ export default function GeographyLayerReadinessPage() {
   const climate = data?.climate_readiness;
   const projectBoundary = data?.project_boundary_readiness;
   const boundaryGeometry = data?.boundary_geometry_validation_readiness;
+  const boundaryRepair = data?.boundary_geometry_repair_classification;
   const selectedBoundaryRuntime = data?.selected_boundary_runtime_promotion_readiness;
   const externalApi = data?.external_api_readiness;
 
@@ -702,6 +747,83 @@ export default function GeographyLayerReadinessPage() {
                           <td className="px-3 py-2 text-slate-600">
                             {formatNumber(row.manual_review_count)} manual · {formatNumber(row.blocked_count)} blocked
                           </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {boundaryRepair && (
+            <section className="rounded-2xl border border-orange-200 bg-orange-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-orange-950">Boundary geometry repair classification</h2>
+                  <p className="mt-1 text-sm text-orange-900">
+                    Read-only classification of NWDP boundary blockers into geometry validation, re-import,
+                    runtime eligibility review, crosswalk review, manual review, and policy exclusion buckets.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill ready={boundaryRepair.readiness.ready_for_admin_repair_planning} label="Repair planning" />
+                  <StatusPill ready={boundaryRepair.readiness.ready_for_geometry_validation_pipeline_design} label="Validation design" />
+                  <StatusPill ready={boundaryRepair.readiness.ready_for_runtime_eligibility_review} label="Runtime eligibility review" />
+                  <StatusPill ready={boundaryRepair.readiness.ready_for_selected_runtime_promotion_apply} label="Runtime apply" />
+                  <StatusPill ready={!boundaryRepair.readiness.ready_for_android_behavior_change} label="Android unchanged" />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Validate geometry + eligibility"
+                  value={boundaryRepair.summary.validate_geometry_and_runtime_eligibility_count}
+                  tone="rose"
+                  note="Main blocker bucket before runtime"
+                />
+                <StatCard
+                  label="Invalid/unknown geometry"
+                  value={boundaryRepair.summary.invalid_or_unknown_geometry_count}
+                  tone="rose"
+                  note="Needs validation/repair classification"
+                />
+                <StatCard
+                  label="Runtime eligibility review"
+                  value={boundaryRepair.summary.runtime_ineligible_source_count}
+                  tone="amber"
+                  note="Source feature runtime flag is false"
+                />
+                <StatCard
+                  label="Already promotable"
+                  value={boundaryRepair.summary.no_repair_needed_runtime_promotable_count}
+                  tone="blue"
+                  note="Still requires separate selected dry-run/apply"
+                />
+              </div>
+
+              {boundaryRepair.classification_rows.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-orange-100 bg-white">
+                  <table className="min-w-full divide-y divide-orange-100 text-sm">
+                    <thead className="bg-orange-50 text-left text-xs font-semibold uppercase tracking-wide text-orange-700">
+                      <tr>
+                        <th className="px-3 py-2">Classification</th>
+                        <th className="px-3 py-2">Candidates</th>
+                        <th className="px-3 py-2">Direct code</th>
+                        <th className="px-3 py-2">Review blockers</th>
+                        <th className="px-3 py-2">Recommended action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-orange-50">
+                      {boundaryRepair.classification_rows.slice(0, 6).map((row) => (
+                        <tr key={row.repair_classification}>
+                          <td className="px-3 py-2 font-medium text-slate-900">{row.repair_classification}</td>
+                          <td className="px-3 py-2">{formatNumber(row.candidate_count)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.direct_vlcode_match_count)}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {formatNumber(row.manual_review_count)} manual · {formatNumber(row.blocked_count)} blocked
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{row.recommended_action}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -108,6 +108,30 @@ try {
   if (payload.boundary_geometry_validation_readiness.guardrails.android_behavior_changed !== false) {
     throw new Error("Boundary geometry readiness should keep Android unchanged");
   }
+  if (!payload.boundary_geometry_repair_classification) {
+    throw new Error("Readiness payload missing boundary_geometry_repair_classification");
+  }
+  if ((payload.boundary_geometry_repair_classification.summary.invalid_or_unknown_geometry_count || 0) <= 0) {
+    throw new Error("Expected boundary repair classification geometry work to be visible");
+  }
+  if ((payload.boundary_geometry_repair_classification.summary.runtime_ineligible_source_count || 0) <= 0) {
+    throw new Error("Expected boundary repair classification runtime eligibility work to be visible");
+  }
+  if (payload.boundary_geometry_repair_classification.summary.no_repair_needed_runtime_promotable_count !== 0) {
+    throw new Error("Boundary repair classification should confirm no promotable rows yet");
+  }
+  if (payload.boundary_geometry_repair_classification.readiness.ready_for_selected_runtime_promotion_apply !== false) {
+    throw new Error("Boundary repair classification runtime promotion apply should remain disabled");
+  }
+  if (payload.boundary_geometry_repair_classification.guardrails.geometry_repair_attempted !== false) {
+    throw new Error("Boundary repair classification should not repair geometry");
+  }
+  if (payload.boundary_geometry_repair_classification.guardrails.source_runtime_eligibility_changed !== false) {
+    throw new Error("Boundary repair classification should not change runtime eligibility");
+  }
+  if (payload.boundary_geometry_repair_classification.guardrails.android_behavior_changed !== false) {
+    throw new Error("Boundary repair classification should keep Android unchanged");
+  }
   if (!payload.selected_boundary_runtime_promotion_readiness) {
     throw new Error("Readiness payload missing selected_boundary_runtime_promotion_readiness");
   }
@@ -153,6 +177,7 @@ try {
     readiness_responses_seen: responses.length,
     project_boundary_summary: payload.project_boundary_readiness.summary,
     boundary_geometry_summary: payload.boundary_geometry_validation_readiness.summary,
+    boundary_repair_summary: payload.boundary_geometry_repair_classification.summary,
     selected_boundary_runtime_summary: payload.selected_boundary_runtime_promotion_readiness.summary,
     external_api_summary: payload.external_api_readiness.summary,
     screenshot: "web/smoke/screenshots/geography-layer-readiness.png",

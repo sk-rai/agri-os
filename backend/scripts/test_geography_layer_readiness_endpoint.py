@@ -82,6 +82,23 @@ def main() -> int:
         check(boundary_geometry["guardrails"]["runtime_lookup_enabled"] is False, "Boundary geometry rollup keeps runtime lookup disabled", boundary_geometry["guardrails"])
         check(boundary_geometry["guardrails"]["android_behavior_changed"] is False, "Boundary geometry rollup keeps Android unchanged", boundary_geometry["guardrails"])
 
+        boundary_repair = data["boundary_geometry_repair_classification"]
+        boundary_repair_summary = boundary_repair["summary"]
+        check(boundary_repair_summary["candidate_count"] > 0, "Boundary repair classification candidate count is visible", boundary_repair_summary)
+        check(boundary_repair_summary["invalid_or_unknown_geometry_count"] > 0, "Boundary repair classification geometry work is visible", boundary_repair_summary)
+        check(boundary_repair_summary["runtime_ineligible_source_count"] > 0, "Boundary repair classification runtime eligibility work is visible", boundary_repair_summary)
+        check(boundary_repair_summary["validate_geometry_and_runtime_eligibility_count"] > 0, "Boundary repair classification combined validation bucket is visible", boundary_repair_summary)
+        check(boundary_repair_summary["no_repair_needed_runtime_promotable_count"] == 0, "Boundary repair classification confirms no promotable rows", boundary_repair_summary)
+        check(boundary_repair["readiness"]["ready_for_admin_repair_planning"] is True, "Boundary repair planning is admin-ready", boundary_repair["readiness"])
+        check(boundary_repair["readiness"]["ready_for_geometry_validation_pipeline_design"] is True, "Boundary validation pipeline design is ready", boundary_repair["readiness"])
+        check(boundary_repair["readiness"]["ready_for_selected_runtime_promotion_apply"] is False, "Boundary repair classification apply remains disabled", boundary_repair["readiness"])
+        check(boundary_repair["guardrails"]["db_writes_attempted"] is False, "Boundary repair classification writes no DB rows", boundary_repair["guardrails"])
+        check(boundary_repair["guardrails"]["geometry_repair_attempted"] is False, "Boundary repair classification repairs no geometry", boundary_repair["guardrails"])
+        check(boundary_repair["guardrails"]["geometry_validation_status_changed"] is False, "Boundary repair classification changes no validation status", boundary_repair["guardrails"])
+        check(boundary_repair["guardrails"]["source_runtime_eligibility_changed"] is False, "Boundary repair classification changes no runtime eligibility", boundary_repair["guardrails"])
+        check(boundary_repair["guardrails"]["runtime_lookup_enabled"] is False, "Boundary repair classification keeps runtime lookup disabled", boundary_repair["guardrails"])
+        check(boundary_repair["guardrails"]["android_behavior_changed"] is False, "Boundary repair classification keeps Android unchanged", boundary_repair["guardrails"])
+
         project_boundary = data["project_boundary_readiness"]
         project_boundary_summary = project_boundary["summary"]
         check(project_boundary_summary["active_project_count"] >= 0, "Project boundary active project count is visible", project_boundary_summary)
