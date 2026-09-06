@@ -68,6 +68,7 @@ Known passing validations include:
 | Project boundary readiness report | `backend/scripts/report_project_boundary_readiness.py` | Read-only JSON/CSV | Implemented with geography_scope resolution. |
 | Project boundary matching dry-run | `backend/scripts/plan_nwdp_boundary_project_matching_apply_dry_run.py` | Dry-run only | Implemented; resolves project geography scope. |
 | Project boundary disabled apply guard | `backend/scripts/apply_nwdp_boundary_project_matching_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
+| Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Selected boundary runtime readiness | `backend/scripts/report_selected_boundary_runtime_promotion_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Selected boundary runtime disabled guard | `backend/scripts/apply_selected_boundary_runtime_promotion_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
 | External API readiness report | `backend/scripts/report_external_api_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
@@ -164,6 +165,22 @@ Current matrix-placeable posture:
 - outside matrix gap: 73,656
 
 The selected boundary runtime promotion readiness report currently shows that selected runtime promotion is not ready because selected promotable count is 0, invalid geometry count is positive, and non-runtime-eligible source count is positive.
+
+## Boundary geometry validation posture
+
+Boundary geometry validation readiness is now implemented as both a standalone read-only report and a rollup in the admin matrix/page.
+
+Current blocker posture:
+
+- invalid geometry blockers are visible
+- runtime-ineligible source blockers are visible
+- selected runtime promotable rows remain 0
+- geometry repair is not attempted by the report
+- runtime promotion remains disabled
+- runtime lookup remains disabled
+- Android remains unchanged
+
+This report separates geometry repair planning from runtime promotion. Geometry validation/repair must be solved before selected boundary runtime promotion can move beyond disabled guards.
 
 ## Selected boundary runtime promotion posture
 
@@ -300,6 +317,7 @@ Implemented admin UI:
   - NWDP boundary
   - climate/agro-ecology
   - project boundary readiness
+  - boundary geometry validation readiness
   - selected boundary runtime promotion readiness
   - external API readiness
   - gap accounting
@@ -311,19 +329,11 @@ The page remains read-only.
 ## Recommended next implementation sequence
 
 1. Keep this document as the committed readiness baseline.
-2. Add the external API disabled enablement guard:
-   - no live provider call without explicit policy flag
-   - missing provider scope exits non-zero
-   - missing rollback/supersession plan exits non-zero
-   - JSON/CSV audit
-   - no credentials printed
-   - no scheduler or Android behavior change
-3. Add boundary geometry validation readiness:
-   - validate geometry status by source/state/district
-   - expose invalid geometry blockers
-   - identify repairable vs non-repairable candidates
+2. Add boundary geometry validation repair classification:
+   - identify repairable vs non-repairable invalid geometry
+   - classify source features requiring re-import, transform repair, topology repair, or permanent exclusion
    - keep runtime promotion disabled
-4. Add project boundary matching real-apply design document:
+3. Add project boundary matching real-apply design document:
    - exact target table
    - uniqueness/idempotency policy
    - rollback/supersession plan
