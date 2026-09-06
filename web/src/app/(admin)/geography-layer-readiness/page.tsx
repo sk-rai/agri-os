@@ -90,6 +90,39 @@ type ProjectBoundaryReadiness = {
   }>;
 };
 
+type SelectedBoundaryRuntimePromotionReadiness = {
+  summary: {
+    candidate_count: number;
+    direct_vlcode_match_count: number;
+    auto_candidate_count: number;
+    manual_review_count: number;
+    blocked_count: number;
+    missing_village_id_count: number;
+    missing_source_feature_count: number;
+    not_runtime_eligible_source_count: number;
+    invalid_geometry_count: number;
+    selected_runtime_promotable_count: number;
+    selected_runtime_promotable_village_count: number;
+    existing_runtime_set_count: number;
+    existing_runtime_feature_count: number;
+    existing_runtime_crosswalk_count: number;
+    active_runtime_set_count: number;
+    active_runtime_feature_count: number;
+    active_runtime_crosswalk_count: number;
+  };
+  readiness: {
+    ready_for_selected_runtime_promotion_dry_run: boolean;
+    ready_for_selected_runtime_promotion_apply: boolean;
+    ready_for_runtime_lookup_enablement: boolean;
+    ready_for_android_behavior_change: boolean;
+    requires_admin_review_before_apply: boolean;
+    requires_rollback_or_supersession_plan: boolean;
+    requires_state_or_district_scope_before_apply: boolean;
+  };
+  guardrails: Record<string, boolean>;
+  candidate_policy: Record<string, string | boolean | string[]>;
+};
+
 type ClimateReadiness = {
   active_climate_region_count: number;
   active_region_system_count: number;
@@ -128,6 +161,7 @@ type MatrixResponse = {
   gap_accounting: Record<string, number>;
   climate_readiness: ClimateReadiness;
   project_boundary_readiness: ProjectBoundaryReadiness;
+  selected_boundary_runtime_promotion_readiness: SelectedBoundaryRuntimePromotionReadiness;
   rows: MatrixRow[];
   source_posture: Record<string, boolean>;
   guardrails: Record<string, boolean>;
@@ -223,6 +257,7 @@ export default function GeographyLayerReadinessPage() {
   const gap = data?.gap_accounting ?? {};
   const climate = data?.climate_readiness;
   const projectBoundary = data?.project_boundary_readiness;
+  const selectedBoundaryRuntime = data?.selected_boundary_runtime_promotion_readiness;
 
   const stateOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.state_or_ut))).sort(),
@@ -407,6 +442,53 @@ export default function GeographyLayerReadinessPage() {
                   value={climate.active_crop_climate_rule_count}
                   tone="blue"
                   note={`${formatNumber(climate.active_crops_without_climate_rules_count)} active crops lack rules`}
+                />
+              </div>
+            </section>
+          )}
+
+          {selectedBoundaryRuntime && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-amber-950">Selected boundary runtime promotion</h2>
+                  <p className="mt-1 text-sm text-amber-900">
+                    Runtime promotion remains blocked until selected NWDP boundary source features are geometry-validated
+                    and explicitly marked runtime eligible. Existing pilot rows stay inactive; lookup and Android remain unchanged.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill ready={selectedBoundaryRuntime.readiness.ready_for_selected_runtime_promotion_dry_run} label="Selected dry-run ready" />
+                  <StatusPill ready={selectedBoundaryRuntime.readiness.ready_for_selected_runtime_promotion_apply} label="Apply enabled" />
+                  <StatusPill ready={selectedBoundaryRuntime.readiness.ready_for_runtime_lookup_enablement} label="Runtime lookup" />
+                  <StatusPill ready={!selectedBoundaryRuntime.readiness.ready_for_android_behavior_change} label="Android unchanged" />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Runtime promotable"
+                  value={selectedBoundaryRuntime.summary.selected_runtime_promotable_count}
+                  tone="amber"
+                  note={`${formatNumber(selectedBoundaryRuntime.summary.selected_runtime_promotable_village_count)} villages`}
+                />
+                <StatCard
+                  label="Invalid geometry blockers"
+                  value={selectedBoundaryRuntime.summary.invalid_geometry_count}
+                  tone="rose"
+                  note="Must be validated before runtime"
+                />
+                <StatCard
+                  label="Not runtime eligible"
+                  value={selectedBoundaryRuntime.summary.not_runtime_eligible_source_count}
+                  tone="rose"
+                  note="Source feature flag still false"
+                />
+                <StatCard
+                  label="Inactive pilot runtime rows"
+                  value={selectedBoundaryRuntime.summary.existing_runtime_feature_count}
+                  tone="blue"
+                  note={`${formatNumber(selectedBoundaryRuntime.summary.active_runtime_feature_count)} active runtime features`}
                 />
               </div>
             </section>

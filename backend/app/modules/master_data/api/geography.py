@@ -154,6 +154,119 @@ def _build_project_boundary_readiness_rollup(db: Session) -> dict[str, Any]:
     }
 
 
+def _build_selected_boundary_runtime_promotion_readiness_rollup(
+    db: Session,
+    state_or_ut: Optional[str] = None,
+    district: Optional[str] = None,
+) -> dict[str, Any]:
+    """Read-only selected NWDP boundary runtime promotion readiness rollup."""
+
+    where = ["b.source_system = :source_system"]
+    params: dict[str, Any] = {
+        "source_system": "NWDP_GSI_VILLAGE_BOUNDARY",
+        "state_or_ut": (state_or_ut or "").strip(),
+        "district": (district or "").strip(),
+    }
+
+    if params["state_or_ut"]:
+        where.append("lower(trim(coalesce(s.canonical_name, sf.source_state_name, b.state_or_ut))) = lower(trim(:state_or_ut))")
+    if params["district"]:
+        where.append("lower(trim(coalesce(d.canonical_name, sf.source_district_name))) = lower(trim(:district))")
+
+    where_sql = " and ".join(where)
+
+    summary = dict(db.execute(text(f"""
+        with candidates as (
+          select
+            c.id,
+            c.source_feature_id,
+            c.candidate_bucket,
+            c.review_status,
+            c.promotion_status,
+            c.is_active,
+            c.proposed_village_id,
+            sf.geometry_validation_status,
+            sf.eligible_for_runtime_after_promotion
+          from geography_boundary_import_batches b
+          join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+          left join geography_boundary_source_features sf on sf.id = c.source_feature_id
+          left join geography_states s on s.lgd_code::text = c.proposed_state_lgd_code::text
+          left join geography_districts d
+            on d.state_id = s.id
+           and d.lgd_code::text = c.proposed_district_lgd_code::text
+          where {where_sql}
+        ),
+        promotable as (
+          select *
+          from candidates
+          where candidate_bucket = 'DIRECT_VLCODE_MATCH'
+            and review_status = 'AUTO_CANDIDATE'
+            and promotion_status = 'NOT_PROMOTED'
+            and is_active = false
+            and proposed_village_id is not null
+            and source_feature_id is not null
+            and coalesce(eligible_for_runtime_after_promotion, false) = true
+            and coalesce(geometry_validation_status, 'UNKNOWN') in ('VALID', 'VALIDATED', 'VALID_WITH_WARNINGS')
+        )
+        select
+          count(*)::bigint as candidate_count,
+          count(*) filter (where candidate_bucket = 'DIRECT_VLCODE_MATCH')::bigint as direct_vlcode_match_count,
+          count(*) filter (where review_status = 'AUTO_CANDIDATE')::bigint as auto_candidate_count,
+          count(*) filter (where review_status = 'MANUAL_REVIEW')::bigint as manual_review_count,
+          count(*) filter (where review_status = 'BLOCKED')::bigint as blocked_count,
+          count(*) filter (where promotion_status = 'PROMOTED')::bigint as promoted_candidate_count,
+          count(*) filter (where is_active = true)::bigint as active_candidate_count,
+          count(*) filter (where proposed_village_id is null)::bigint as missing_village_id_count,
+          count(*) filter (where source_feature_id is null)::bigint as missing_source_feature_count,
+          count(*) filter (where coalesce(eligible_for_runtime_after_promotion, false) = false)::bigint as not_runtime_eligible_source_count,
+          count(*) filter (where coalesce(geometry_validation_status, 'UNKNOWN') not in ('VALID', 'VALIDATED', 'VALID_WITH_WARNINGS'))::bigint as invalid_geometry_count,
+          (select count(*)::bigint from promotable)::bigint as selected_runtime_promotable_count,
+          (select count(distinct proposed_village_id)::bigint from promotable)::bigint as selected_runtime_promotable_village_count,
+          (select count(*)::bigint from geography_boundary_runtime_sets)::bigint as existing_runtime_set_count,
+          (select count(*)::bigint from geography_boundary_runtime_features)::bigint as existing_runtime_feature_count,
+          (select count(*)::bigint from geography_boundary_runtime_crosswalks)::bigint as existing_runtime_crosswalk_count,
+          (select count(*)::bigint from geography_boundary_runtime_promotion_events)::bigint as existing_runtime_promotion_event_count,
+          (select count(*)::bigint from geography_boundary_runtime_sets where is_active = true)::bigint as active_runtime_set_count,
+          (select count(*)::bigint from geography_boundary_runtime_features where is_active = true)::bigint as active_runtime_feature_count,
+          (select count(*)::bigint from geography_boundary_runtime_crosswalks where is_active = true)::bigint as active_runtime_crosswalk_count
+        from candidates
+    """), params).mappings().one())
+
+    summary = {key: int(value or 0) for key, value in summary.items()}
+    return {
+        "summary": summary,
+        "candidate_policy": {
+            "source_system": "NWDP_GSI_VILLAGE_BOUNDARY",
+            "candidate_bucket": "DIRECT_VLCODE_MATCH",
+            "review_status": "AUTO_CANDIDATE",
+            "promotion_status": "NOT_PROMOTED",
+            "required_is_active": False,
+            "requires_proposed_village_id": True,
+            "requires_source_feature": True,
+            "requires_runtime_eligible_source_feature": True,
+            "allowed_geometry_validation_statuses": ["VALID", "VALIDATED", "VALID_WITH_WARNINGS"],
+        },
+        "readiness": {
+            "ready_for_selected_runtime_promotion_dry_run": summary["selected_runtime_promotable_count"] > 0,
+            "ready_for_selected_runtime_promotion_apply": False,
+            "ready_for_runtime_lookup_enablement": False,
+            "ready_for_android_behavior_change": False,
+            "requires_admin_review_before_apply": True,
+            "requires_rollback_or_supersession_plan": True,
+            "requires_state_or_district_scope_before_apply": True,
+        },
+        "guardrails": {
+            "db_writes_attempted": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "boundary_candidates_promoted": False,
+            "boundary_candidates_activated": False,
+            "android_behavior_changed": False,
+            "lgd_geography_overwritten": False,
+        },
+    }
+
+
 def _build_geography_layer_readiness_matrix(
     db: Session,
     state_or_ut: Optional[str] = None,
@@ -506,6 +619,7 @@ def _build_geography_layer_readiness_matrix(
     }
 
     project_boundary_readiness = _build_project_boundary_readiness_rollup(db)
+    selected_boundary_runtime_promotion_readiness = _build_selected_boundary_runtime_promotion_readiness_rollup(db, state_or_ut, district)
 
     return {
         "schema_version": "geography_layer_readiness_matrix.v1",
@@ -521,6 +635,7 @@ def _build_geography_layer_readiness_matrix(
         "gap_accounting": gap_accounting,
         "climate_readiness": climate_readiness,
         "project_boundary_readiness": project_boundary_readiness,
+        "selected_boundary_runtime_promotion_readiness": selected_boundary_runtime_promotion_readiness,
         "rows": normalized,
         "source_posture": {
             "lgd_is_canonical_runtime_identity": True,
@@ -542,6 +657,7 @@ def _build_geography_layer_readiness_matrix(
         "recommended_next_steps": [
             "Use this read-only endpoint to power the admin geography layer readiness page.",
             "Prioritize boundary outside-matrix gaps before broad runtime boundary promotion.",
+            "Keep selected boundary runtime promotion blocked until source geometry is validated and marked runtime eligible.",
             "Implement project boundary matching only through dry-run, explicit apply flag, audit output, and rollback/supersession plan.",
             "Keep NWDP demographic and NWDP boundary data disabled for Android unless explicitly changed later.",
         ],

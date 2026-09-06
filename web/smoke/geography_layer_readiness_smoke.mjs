@@ -87,6 +87,18 @@ try {
   if ((payload.project_boundary_readiness.summary.raw_eligible_boundary_candidate_count || 0) <= 0) {
     throw new Error("Expected eligible boundary candidates to be visible");
   }
+  if (!payload.selected_boundary_runtime_promotion_readiness) {
+    throw new Error("Readiness payload missing selected_boundary_runtime_promotion_readiness");
+  }
+  if (payload.selected_boundary_runtime_promotion_readiness.readiness.ready_for_selected_runtime_promotion_apply !== false) {
+    throw new Error("Selected boundary runtime promotion apply should remain disabled");
+  }
+  if (payload.selected_boundary_runtime_promotion_readiness.readiness.ready_for_runtime_lookup_enablement !== false) {
+    throw new Error("Selected boundary runtime lookup should remain disabled");
+  }
+  if (payload.selected_boundary_runtime_promotion_readiness.readiness.ready_for_android_behavior_change !== false) {
+    throw new Error("Selected boundary runtime should keep Android unchanged");
+  }
 
   try {
     await page.screenshot({
@@ -104,6 +116,7 @@ try {
     url,
     readiness_responses_seen: responses.length,
     project_boundary_summary: payload.project_boundary_readiness.summary,
+    selected_boundary_runtime_summary: payload.selected_boundary_runtime_promotion_readiness.summary,
     screenshot: "web/smoke/screenshots/geography-layer-readiness.png",
   }, null, 2));
 

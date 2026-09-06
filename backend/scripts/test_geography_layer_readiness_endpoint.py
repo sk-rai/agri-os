@@ -79,6 +79,17 @@ def main() -> int:
         check(project_boundary["readiness"]["ready_for_runtime_spatial_matching"] is False, "Project boundary runtime spatial matching remains disabled", project_boundary["readiness"])
         check(project_boundary["readiness"]["ready_for_android_behavior_change"] is False, "Project boundary keeps Android unchanged", project_boundary["readiness"])
 
+        selected_runtime = data["selected_boundary_runtime_promotion_readiness"]
+        selected_summary = selected_runtime["summary"]
+        check(selected_summary["candidate_count"] >= 0, "Selected boundary runtime candidate count is visible", selected_summary)
+        check(selected_summary["invalid_geometry_count"] >= 0, "Selected boundary invalid geometry blockers are visible", selected_summary)
+        check(selected_summary["not_runtime_eligible_source_count"] >= 0, "Selected boundary runtime eligibility blockers are visible", selected_summary)
+        check(selected_summary["existing_runtime_feature_count"] >= 0, "Existing runtime feature count is visible", selected_summary)
+        check(selected_runtime["readiness"]["ready_for_selected_runtime_promotion_apply"] is False, "Selected boundary runtime apply remains disabled", selected_runtime["readiness"])
+        check(selected_runtime["readiness"]["ready_for_runtime_lookup_enablement"] is False, "Selected boundary runtime lookup remains disabled", selected_runtime["readiness"])
+        check(selected_runtime["readiness"]["ready_for_android_behavior_change"] is False, "Selected boundary runtime keeps Android unchanged", selected_runtime["readiness"])
+        check(selected_runtime["guardrails"]["db_writes_attempted"] is False, "Selected boundary runtime rollup is read-only", selected_runtime["guardrails"])
+
         posture = data["source_posture"]
         check(posture["lgd_is_canonical_runtime_identity"] is True, "LGD remains canonical runtime identity", posture)
         check(posture["village_pin_codes_android_ready"] is True, "PIN-code layer remains Android-ready", posture)
