@@ -72,7 +72,7 @@ def main() -> int:
     readiness = data["readiness"]
     guardrails = data["guardrails"]
 
-    check(data["schema_version"] == "project_boundary_readiness_report.v1", "Schema version is stable", data)
+    check(data["schema_version"] == "project_boundary_readiness_report.v2", "Schema version is stable", data)
     check(data["mode"] == "READ_ONLY_PROJECT_BOUNDARY_READINESS_REPORT", "Report is read-only mode", data["mode"])
     check(data["healthy"] is True, "Report is healthy", data["healthy"])
 
