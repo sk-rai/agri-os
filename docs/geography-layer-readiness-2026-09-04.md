@@ -67,7 +67,8 @@ Known passing validations include:
 | Climate disabled apply guard | `backend/scripts/apply_climate_agro_ecology_runtime_enablement_disabled.py` | Disabled apply guard | Implemented; rejects real apply and preserves guardrails. |
 | Project boundary readiness report | `backend/scripts/report_project_boundary_readiness.py` | Read-only JSON/CSV | Implemented with geography_scope resolution. |
 | Project boundary matching dry-run | `backend/scripts/plan_nwdp_boundary_project_matching_apply_dry_run.py` | Dry-run only | Implemented; resolves project geography scope. |
-| Project boundary disabled apply guard | `backend/scripts/apply_nwdp_boundary_project_matching_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
+| Project boundary disabled apply guard | `backend/scripts/apply_nwdp_boundary_project_matching_disabled.py` | Disabled apply guard | Implemented; rejects broad real apply and writes audit. |
+| Tiny-fixture project boundary apply | `backend/scripts/apply_nwdp_boundary_project_matching_tiny_fixture.py` | Fixture-only apply | Implemented; writes only `geography_boundary_project_matches`, proves idempotency and rollback, then returns DB counts to baseline. |
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
@@ -237,7 +238,20 @@ Guardrails remain:
 
 - Project boundary apply design: `docs/project-boundary-matching-apply-design-2026-09-07.md`
 
-Project boundary matching now has read-only readiness, scope resolution, dry-run planning, and disabled apply guard coverage.
+Project boundary matching now has read-only readiness, scope resolution, dry-run planning, disabled broad-apply guard coverage, and a green tiny-fixture apply path.
+
+Tiny-fixture apply proof:
+
+- committed in `173d19b` and repaired in `b0b2ce8`
+- regression: `NWDP BOUNDARY PROJECT MATCHING TINY FIXTURE APPLY REGRESSION PASSED`
+- target table only: `geography_boundary_project_matches`
+- idempotency proved by deterministic match IDs
+- rollback/supersession proved by rollback token
+- boundary candidates were not promoted or activated
+- runtime boundary tables were not written
+- lookup/runtime spatial matching stayed disabled
+- Android behavior stayed unchanged
+- regression cleanup returned DB counts to baseline
 
 Current project-boundary readiness:
 
@@ -350,11 +364,13 @@ The page remains read-only.
 ## Recommended next implementation sequence
 
 1. Keep this document as the committed readiness baseline.
-2. Implement tiny-fixture project boundary matching apply:
-   - write only `geography_boundary_project_matches`
-   - prove idempotency
-   - prove rollback/supersession
-   - keep runtime lookup and Android unchanged
+2. Keep broad project boundary matching apply disabled until a scoped rollout plan is approved:
+   - tenant/project/state/district scope
+   - max-row caps
+   - rollback/supersession token
+   - admin confirmation
+   - audit JSON/CSV
+   - no runtime lookup or Android behavior change
 3. Add boundary geometry repair real-apply design document:
    - exact fields allowed to change
    - geometry validation/re-import/repair policy
