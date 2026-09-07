@@ -97,8 +97,8 @@ def create_fixture_project(db, candidate: dict) -> None:
     scope = {
         "source": FIXTURE_SOURCE,
         "state_or_ut": candidate["state_or_ut"],
-        "village_id": candidate["village_id"],
-        "village_lgd_code": candidate["proposed_village_lgd_code"],
+        "village_ids": [candidate["village_id"]],
+        "village_lgd_codes": [candidate["proposed_village_lgd_code"]],
     }
 
     db.execute(text("""
