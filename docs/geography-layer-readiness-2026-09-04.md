@@ -72,6 +72,7 @@ Known passing validations include:
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
+| Boundary geometry repair apply design | `docs/boundary-geometry-repair-apply-design-2026-09-07.md` | Design baseline | Added; defines repair taxonomy, mutation boundaries, audit/rollback policy, and runtime/Android guardrails. |
 | Selected boundary runtime readiness | `backend/scripts/report_selected_boundary_runtime_promotion_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Selected boundary runtime disabled guard | `backend/scripts/apply_selected_boundary_runtime_promotion_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
 | External API readiness report | `backend/scripts/report_external_api_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
@@ -185,7 +186,9 @@ Current blocker posture:
 
 This report separates geometry repair planning from runtime promotion. Geometry validation/repair must be solved before selected boundary runtime promotion can move beyond disabled guards.
 
-Boundary geometry repair classification is also now implemented and surfaced in the admin matrix/page. It splits the boundary backlog into validation, repair/re-import, runtime eligibility review, missing village/crosswalk review, manual review, and policy exclusion buckets.
+Boundary geometry repair classification is also now implemented and surfaced in the admin matrix/page.
+
+Boundary geometry repair apply design: `docs/boundary-geometry-repair-apply-design-2026-09-07.md` It splits the boundary backlog into validation, repair/re-import, runtime eligibility review, missing village/crosswalk review, manual review, and policy exclusion buckets.
 
 A disabled boundary geometry repair guard is committed. It requires explicit apply intent, state/district scope, geometry-repair policy flag, runtime-eligibility policy flag, rollback/supersession token, classification review, and admin confirmation, but still refuses real mutation by policy.
 
@@ -371,9 +374,11 @@ The page remains read-only.
    - admin confirmation
    - audit JSON/CSV
    - no runtime lookup or Android behavior change
-3. Add boundary geometry repair real-apply design document:
-   - exact fields allowed to change
-   - geometry validation/re-import/repair policy
+3. Implement a tiny-fixture boundary geometry repair apply only after schema target is confirmed:
+   - mutate only repair metadata or dedicated repair event rows
+   - prove idempotency and rollback
+   - keep selected runtime promotion disabled
+   - keep runtime lookup and Android unchanged
    - runtime eligibility status policy
    - rollback/supersession plan
    - proof that selected runtime promotion remains separately gated
