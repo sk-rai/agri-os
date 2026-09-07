@@ -99,6 +99,61 @@ def main() -> int:
         check(boundary_repair["guardrails"]["runtime_lookup_enabled"] is False, "Boundary repair classification keeps runtime lookup disabled", boundary_repair["guardrails"])
         check(boundary_repair["guardrails"]["android_behavior_changed"] is False, "Boundary repair classification keeps Android unchanged", boundary_repair["guardrails"])
 
+        repair_events = data["boundary_geometry_repair_events"]
+        repair_event_summary = repair_events["summary"]
+        check(
+            isinstance(
+                repair_event_summary["repair_event_table_present"],
+                bool,
+            ),
+            "Boundary repair event table presence is readable",
+            repair_event_summary,
+        )
+        check(
+            repair_event_summary["repair_event_count"] >= 0,
+            "Boundary repair event count is readable",
+            repair_event_summary,
+        )
+        check(
+            repair_event_summary["active_repair_event_count"] >= 0,
+            "Active boundary repair event count is readable",
+            repair_event_summary,
+        )
+        check(
+            repair_event_summary["rolled_back_repair_event_count"] >= 0,
+            "Rolled-back boundary repair event count is readable",
+            repair_event_summary,
+        )
+        check(
+            repair_events["readiness"][
+                "ready_for_broad_geometry_repair_apply"
+            ] is False,
+            "Broad boundary geometry repair remains disabled",
+            repair_events["readiness"],
+        )
+        check(
+            repair_events["readiness"][
+                "ready_for_selected_runtime_promotion_apply"
+            ] is False,
+            "Repair events do not enable runtime promotion",
+            repair_events["readiness"],
+        )
+        check(
+            repair_events["guardrails"]["db_writes_attempted"] is False,
+            "Boundary repair event rollup is read-only",
+            repair_events["guardrails"],
+        )
+        check(
+            repair_events["guardrails"]["runtime_lookup_enabled"] is False,
+            "Boundary repair events keep runtime lookup disabled",
+            repair_events["guardrails"],
+        )
+        check(
+            repair_events["guardrails"]["android_behavior_changed"] is False,
+            "Boundary repair events keep Android unchanged",
+            repair_events["guardrails"],
+        )
+
         project_boundary = data["project_boundary_readiness"]
         project_boundary_summary = project_boundary["summary"]
         check(project_boundary_summary["active_project_count"] >= 0, "Project boundary active project count is visible", project_boundary_summary)

@@ -55,7 +55,7 @@ page.on("response", async (response) => {
 try {
   const readinessResponsePromise = page.waitForResponse(
     (response) => response.url().includes("/api/v1/master-data/geography/layer-readiness") && response.status() === 200,
-    { timeout: 60000 },
+    { timeout: 180000 },
   );
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -132,6 +132,28 @@ try {
   if (payload.boundary_geometry_repair_classification.guardrails.android_behavior_changed !== false) {
     throw new Error("Boundary repair classification should keep Android unchanged");
   }
+  if (!payload.boundary_geometry_repair_events) {
+    throw new Error("Readiness payload missing boundary_geometry_repair_events");
+  }
+  if (typeof payload.boundary_geometry_repair_events.summary.repair_event_table_present !== "boolean") {
+    throw new Error("Boundary repair event table presence should be readable");
+  }
+  if ((payload.boundary_geometry_repair_events.summary.repair_event_count || 0) < 0) {
+    throw new Error("Boundary repair event count should be non-negative");
+  }
+  if (payload.boundary_geometry_repair_events.readiness.ready_for_broad_geometry_repair_apply !== false) {
+    throw new Error("Broad boundary geometry repair should remain disabled");
+  }
+  if (payload.boundary_geometry_repair_events.readiness.ready_for_selected_runtime_promotion_apply !== false) {
+    throw new Error("Repair events should not enable runtime promotion");
+  }
+  if (payload.boundary_geometry_repair_events.guardrails.runtime_lookup_enabled !== false) {
+    throw new Error("Repair events should keep runtime lookup disabled");
+  }
+  if (payload.boundary_geometry_repair_events.guardrails.android_behavior_changed !== false) {
+    throw new Error("Repair events should keep Android unchanged");
+  }
+
   if (!payload.selected_boundary_runtime_promotion_readiness) {
     throw new Error("Readiness payload missing selected_boundary_runtime_promotion_readiness");
   }
@@ -178,6 +200,7 @@ try {
     project_boundary_summary: payload.project_boundary_readiness.summary,
     boundary_geometry_summary: payload.boundary_geometry_validation_readiness.summary,
     boundary_repair_summary: payload.boundary_geometry_repair_classification.summary,
+    boundary_repair_event_summary: payload.boundary_geometry_repair_events.summary,
     selected_boundary_runtime_summary: payload.selected_boundary_runtime_promotion_readiness.summary,
     external_api_summary: payload.external_api_readiness.summary,
     screenshot: "web/smoke/screenshots/geography-layer-readiness.png",

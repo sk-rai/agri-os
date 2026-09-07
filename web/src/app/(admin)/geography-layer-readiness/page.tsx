@@ -186,6 +186,41 @@ type BoundaryGeometryRepairClassification = {
   guardrails: Record<string, boolean>;
 };
 
+type BoundaryGeometryRepairEvents = {
+  summary: {
+    repair_event_table_present: boolean;
+    repair_event_count: number;
+    active_repair_event_count: number;
+    applied_repair_event_count: number;
+    rolled_back_repair_event_count: number;
+    tiny_fixture_repair_event_count: number;
+    active_tiny_fixture_repair_event_count: number;
+  };
+  recent_events: Array<{
+    repair_event_id: string;
+    source_feature_id: string;
+    source_system: string;
+    state_or_ut: string | null;
+    district: string | null;
+    repair_action: string;
+    repair_status: string;
+    repair_method: string;
+    rollback_token: string;
+    applied_at: string | null;
+    rolled_back_at: string | null;
+    is_active: boolean;
+  }>;
+  readiness: {
+    ready_for_admin_audit_review: boolean;
+    ready_for_broad_geometry_repair_apply: boolean;
+    ready_for_selected_runtime_promotion_apply: boolean;
+    ready_for_runtime_lookup_enablement: boolean;
+    ready_for_android_behavior_change: boolean;
+  };
+  audit_policy: Record<string, string | boolean>;
+  guardrails: Record<string, boolean>;
+};
+
 type SelectedBoundaryRuntimePromotionReadiness = {
   summary: {
     candidate_count: number;
@@ -306,6 +341,7 @@ type MatrixResponse = {
   project_boundary_readiness: ProjectBoundaryReadiness;
   boundary_geometry_validation_readiness: BoundaryGeometryValidationReadiness;
   boundary_geometry_repair_classification: BoundaryGeometryRepairClassification;
+  boundary_geometry_repair_events: BoundaryGeometryRepairEvents;
   selected_boundary_runtime_promotion_readiness: SelectedBoundaryRuntimePromotionReadiness;
   external_api_readiness: ExternalApiReadiness;
   rows: MatrixRow[];
@@ -405,6 +441,7 @@ export default function GeographyLayerReadinessPage() {
   const projectBoundary = data?.project_boundary_readiness;
   const boundaryGeometry = data?.boundary_geometry_validation_readiness;
   const boundaryRepair = data?.boundary_geometry_repair_classification;
+  const boundaryRepairEvents = data?.boundary_geometry_repair_events;
   const selectedBoundaryRuntime = data?.selected_boundary_runtime_promotion_readiness;
   const externalApi = data?.external_api_readiness;
 
@@ -824,6 +861,106 @@ export default function GeographyLayerReadinessPage() {
                             {formatNumber(row.manual_review_count)} manual · {formatNumber(row.blocked_count)} blocked
                           </td>
                           <td className="px-3 py-2 text-slate-600">{row.recommended_action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {boundaryRepairEvents && (
+            <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-violet-950">
+                    Boundary geometry repair audit
+                  </h2>
+                  <p className="mt-1 text-sm text-violet-900">
+                    Read-only audit of fixture repair events. Broad geometry repair,
+                    runtime promotion, lookup, and Android behavior remain disabled.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill
+                    ready={boundaryRepairEvents.readiness.ready_for_admin_audit_review}
+                    label="Audit visible"
+                  />
+                  <StatusPill
+                    ready={boundaryRepairEvents.readiness.ready_for_broad_geometry_repair_apply}
+                    label="Broad repair apply"
+                  />
+                  <StatusPill
+                    ready={boundaryRepairEvents.readiness.ready_for_selected_runtime_promotion_apply}
+                    label="Runtime promotion"
+                  />
+                  <StatusPill
+                    ready={!boundaryRepairEvents.readiness.ready_for_android_behavior_change}
+                    label="Android unchanged"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <StatCard
+                  label="Repair audit events"
+                  value={boundaryRepairEvents.summary.repair_event_count}
+                  tone="blue"
+                  note={
+                    boundaryRepairEvents.summary.repair_event_table_present
+                      ? "Dedicated audit table present"
+                      : "Audit table not created"
+                  }
+                />
+                <StatCard
+                  label="Active repair events"
+                  value={boundaryRepairEvents.summary.active_repair_event_count}
+                  tone="amber"
+                  note="Expected zero after fixture rollback"
+                />
+                <StatCard
+                  label="Rolled-back events"
+                  value={boundaryRepairEvents.summary.rolled_back_repair_event_count}
+                  tone="blue"
+                  note="Rollback audit history"
+                />
+                <StatCard
+                  label="Tiny-fixture events"
+                  value={boundaryRepairEvents.summary.tiny_fixture_repair_event_count}
+                  tone="blue"
+                  note="Fixture-only repair metadata"
+                />
+              </div>
+
+              {boundaryRepairEvents.recent_events.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-violet-100 bg-white">
+                  <table className="min-w-full divide-y divide-violet-100 text-sm">
+                    <thead className="bg-violet-50 text-left text-xs font-semibold uppercase tracking-wide text-violet-700">
+                      <tr>
+                        <th className="px-3 py-2">State / district</th>
+                        <th className="px-3 py-2">Action</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Method</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-violet-50">
+                      {boundaryRepairEvents.recent_events.slice(0, 6).map((event) => (
+                        <tr key={event.repair_event_id}>
+                          <td className="px-3 py-2 text-slate-700">
+                            {event.state_or_ut || "Unscoped"}
+                            {event.district ? ` · ${event.district}` : ""}
+                          </td>
+                          <td className="px-3 py-2">{event.repair_action}</td>
+                          <td className="px-3 py-2">
+                            <StatusPill
+                              ready={!event.is_active}
+                              label={event.repair_status}
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {event.repair_method}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

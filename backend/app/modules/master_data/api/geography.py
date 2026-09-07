@@ -552,6 +552,158 @@ def _build_boundary_geometry_repair_classification_rollup(
         },
     }
 
+def _build_boundary_geometry_repair_event_rollup(
+    db: Session,
+    state_or_ut: Optional[str] = None,
+    district: Optional[str] = None,
+) -> dict[str, Any]:
+    """Read-only audit rollup for boundary geometry repair events."""
+
+    table_present = bool(
+        db.execute(
+            text(
+                "select to_regclass("
+                "'public.geography_boundary_geometry_repair_events'"
+                ") is not null"
+            )
+        ).scalar()
+    )
+
+    summary = {
+        "repair_event_table_present": table_present,
+        "repair_event_count": 0,
+        "active_repair_event_count": 0,
+        "applied_repair_event_count": 0,
+        "rolled_back_repair_event_count": 0,
+        "tiny_fixture_repair_event_count": 0,
+        "active_tiny_fixture_repair_event_count": 0,
+    }
+    recent_events: list[dict[str, Any]] = []
+
+    if table_present:
+        where = ["1 = 1"]
+        params: dict[str, Any] = {
+            "state_or_ut": (state_or_ut or "").strip(),
+            "district": (district or "").strip(),
+            "tiny_fixture_method": "TINY_FIXTURE_BOUNDARY_GEOMETRY_REPAIR_APPLY",
+        }
+
+        if params["state_or_ut"]:
+            where.append(
+                "lower(trim(coalesce(state_or_ut, ''))) = "
+                "lower(trim(:state_or_ut))"
+            )
+        if params["district"]:
+            where.append(
+                "lower(trim(coalesce(district, ''))) = "
+                "lower(trim(:district))"
+            )
+
+        where_sql = " and ".join(where)
+
+        counts = dict(
+            db.execute(
+                text(f"""
+                    select
+                      count(*)::bigint as repair_event_count,
+                      count(*) filter (
+                        where is_active = true
+                      )::bigint as active_repair_event_count,
+                      count(*) filter (
+                        where repair_status = 'APPLIED'
+                      )::bigint as applied_repair_event_count,
+                      count(*) filter (
+                        where repair_status = 'ROLLED_BACK'
+                      )::bigint as rolled_back_repair_event_count,
+                      count(*) filter (
+                        where repair_method = :tiny_fixture_method
+                      )::bigint as tiny_fixture_repair_event_count,
+                      count(*) filter (
+                        where repair_method = :tiny_fixture_method
+                          and is_active = true
+                      )::bigint as active_tiny_fixture_repair_event_count
+                    from geography_boundary_geometry_repair_events
+                    where {where_sql}
+                """),
+                params,
+            ).mappings().one()
+        )
+
+        summary.update({
+            key: int(value or 0)
+            for key, value in counts.items()
+        })
+
+        recent_events = [
+            dict(row)
+            for row in db.execute(
+                text(f"""
+                    select
+                      id::text as repair_event_id,
+                      source_feature_id::text as source_feature_id,
+                      source_system,
+                      state_or_ut,
+                      district,
+                      repair_action,
+                      repair_status,
+                      repair_method,
+                      rollback_token,
+                      applied_at,
+                      rolled_back_at,
+                      is_active
+                    from geography_boundary_geometry_repair_events
+                    where {where_sql}
+                    order by coalesce(
+                      rolled_back_at,
+                      applied_at,
+                      created_at
+                    ) desc, id
+                    limit 20
+                """),
+                params,
+            ).mappings()
+        ]
+
+        for row in recent_events:
+            for key in ("applied_at", "rolled_back_at"):
+                if row.get(key) is not None:
+                    row[key] = row[key].isoformat()
+
+    return {
+        "summary": summary,
+        "recent_events": recent_events,
+        "audit_policy": {
+            "read_only_rollup": True,
+            "target_table": "geography_boundary_geometry_repair_events",
+            "tiny_fixture_repair_method": (
+                "TINY_FIXTURE_BOUNDARY_GEOMETRY_REPAIR_APPLY"
+            ),
+            "broad_geometry_repair_enabled": False,
+            "selected_runtime_promotion_separately_gated": True,
+        },
+        "readiness": {
+            "ready_for_admin_audit_review": table_present,
+            "ready_for_broad_geometry_repair_apply": False,
+            "ready_for_selected_runtime_promotion_apply": False,
+            "ready_for_runtime_lookup_enablement": False,
+            "ready_for_android_behavior_change": False,
+        },
+        "guardrails": {
+            "db_writes_attempted": False,
+            "geometry_repair_attempted": False,
+            "geometry_validation_status_changed": False,
+            "source_runtime_eligibility_changed": False,
+            "source_features_changed": False,
+            "boundary_candidates_promoted": False,
+            "boundary_candidates_activated": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+            "lgd_geography_overwritten": False,
+        },
+    }
+
+
 def _build_selected_boundary_runtime_promotion_readiness_rollup(
     db: Session,
     state_or_ut: Optional[str] = None,
@@ -1019,6 +1171,7 @@ def _build_geography_layer_readiness_matrix(
     project_boundary_readiness = _build_project_boundary_readiness_rollup(db)
     boundary_geometry_validation_readiness = _build_boundary_geometry_validation_readiness_rollup(db, state_or_ut, district)
     boundary_geometry_repair_classification = _build_boundary_geometry_repair_classification_rollup(db, state_or_ut, district)
+    boundary_geometry_repair_events = _build_boundary_geometry_repair_event_rollup(db, state_or_ut, district)
     selected_boundary_runtime_promotion_readiness = _build_selected_boundary_runtime_promotion_readiness_rollup(db, state_or_ut, district)
     external_api_readiness = _build_external_api_readiness_rollup(db)
 
@@ -1038,6 +1191,7 @@ def _build_geography_layer_readiness_matrix(
         "project_boundary_readiness": project_boundary_readiness,
         "boundary_geometry_validation_readiness": boundary_geometry_validation_readiness,
         "boundary_geometry_repair_classification": boundary_geometry_repair_classification,
+        "boundary_geometry_repair_events": boundary_geometry_repair_events,
         "selected_boundary_runtime_promotion_readiness": selected_boundary_runtime_promotion_readiness,
         "external_api_readiness": external_api_readiness,
         "rows": normalized,
