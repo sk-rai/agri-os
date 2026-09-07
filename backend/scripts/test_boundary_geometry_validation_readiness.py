@@ -149,7 +149,8 @@ def main() -> int:
         scoped_data = json.loads(json_path.read_text(encoding="utf-8"))
         check(scoped_data["filters"]["district"] == "Nicobars", "Scoped report records district filter", scoped_data["filters"])
         check(scoped_data["summary"]["candidate_count"] > 0, "Scoped report sees candidates", scoped_data["summary"])
-        check(scoped_data["summary"]["invalid_geometry_count"] > 0, "Scoped report sees invalid geometry blockers", scoped_data["summary"])
+        check(scoped_data["summary"]["not_validated_geometry_count"] > 0, "Scoped report sees not-validated geometry backlog", scoped_data["summary"])
+        check(scoped_data["summary"]["confirmed_invalid_geometry_count"] == 0, "Scoped report distinguishes explicitly invalid database rows", scoped_data["summary"])
 
         after = table_counts(db)
         check(after == before, "Readiness report leaves DB counts unchanged", {"before": before, "after": after})

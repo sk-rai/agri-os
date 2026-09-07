@@ -70,6 +70,7 @@ Known passing validations include:
 | Project boundary disabled apply guard | `backend/scripts/apply_nwdp_boundary_project_matching_disabled.py` | Disabled apply guard | Implemented; rejects broad real apply and writes audit. |
 | Tiny-fixture project boundary apply | `backend/scripts/apply_nwdp_boundary_project_matching_tiny_fixture.py` | Fixture-only apply | Implemented; writes only `geography_boundary_project_matches`, proves idempotency and rollback, then returns DB counts to baseline. |
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
+| National boundary geometry validation evidence | `docs/boundary-geometry-national-validation-evidence-2026-09-07.md` | Evidence baseline | Records 654,285 source features: 654,093 valid and 192 repairable invalid, with zero manual or CRS blockers. |
 | Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
 | Boundary geometry repair apply design | `docs/boundary-geometry-repair-apply-design-2026-09-07.md` | Design baseline | Added; defines repair taxonomy, mutation boundaries, audit/rollback policy, and runtime/Android guardrails. |
@@ -175,15 +176,15 @@ The selected boundary runtime promotion readiness report currently shows that se
 
 Boundary geometry validation readiness is now implemented as both a standalone read-only report and a rollup in the admin matrix/page.
 
-Current blocker posture:
+Current evidence posture:
 
-- invalid geometry blockers are visible
-- runtime-ineligible source blockers are visible
-- selected runtime promotable rows remain 0
-- geometry repair is not attempted by the report
-- runtime promotion remains disabled
-- runtime lookup remains disabled
-- Android remains unchanged
+- 654,275 database rows are `NOT_VALIDATED`, not confirmed invalid
+- 10 database rows are `VALIDATED`
+- national source-file validation covered all 654,285 features
+- 654,093 source geometries are valid without repair
+- 192 source geometries are repairable with in-memory `make_valid()`
+- no feature requires manual repair, reimport, or CRS review
+- runtime promotion, runtime lookup, and Android changes remain disabled
 
 This report separates geometry repair planning from runtime promotion. Geometry validation/repair must be solved before selected boundary runtime promotion can move beyond disabled guards.
 
