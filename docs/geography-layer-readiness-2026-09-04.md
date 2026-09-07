@@ -235,6 +235,8 @@ Guardrails remain:
 
 ## Project boundary matching posture
 
+- Project boundary apply design: `docs/project-boundary-matching-apply-design-2026-09-07.md`
+
 Project boundary matching now has read-only readiness, scope resolution, dry-run planning, and disabled apply guard coverage.
 
 Current project-boundary readiness:
@@ -348,12 +350,11 @@ The page remains read-only.
 ## Recommended next implementation sequence
 
 1. Keep this document as the committed readiness baseline.
-2. Add project boundary matching real-apply design document:
-   - exact target table
-   - uniqueness/idempotency policy
-   - rollback/supersession plan
-   - audit event model
-   - admin confirmation requirements
+2. Implement tiny-fixture project boundary matching apply:
+   - write only `geography_boundary_project_matches`
+   - prove idempotency
+   - prove rollback/supersession
+   - keep runtime lookup and Android unchanged
 3. Add boundary geometry repair real-apply design document:
    - exact fields allowed to change
    - geometry validation/re-import/repair policy
