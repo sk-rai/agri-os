@@ -188,7 +188,9 @@ This report separates geometry repair planning from runtime promotion. Geometry 
 
 Boundary geometry repair classification is also now implemented and surfaced in the admin matrix/page.
 
-Boundary geometry repair apply design: `docs/boundary-geometry-repair-apply-design-2026-09-07.md` It splits the boundary backlog into validation, repair/re-import, runtime eligibility review, missing village/crosswalk review, manual review, and policy exclusion buckets.
+Boundary geometry repair apply design: `docs/boundary-geometry-repair-apply-design-2026-09-07.md`
+
+The classification report splits the boundary backlog into validation, repair/re-import, runtime eligibility review, missing village/crosswalk review, manual review, and policy exclusion buckets.
 
 A disabled boundary geometry repair guard is committed. It requires explicit apply intent, state/district scope, geometry-repair policy flag, runtime-eligibility policy flag, rollback/supersession token, classification review, and admin confirmation, but still refuses real mutation by policy.
 
