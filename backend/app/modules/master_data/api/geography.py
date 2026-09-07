@@ -292,6 +292,8 @@ def _build_boundary_geometry_validation_readiness_rollup(
           count(*) filter (where proposed_village_id is null)::bigint as missing_village_id_count,
           count(*) filter (where coalesce(geometry_validation_status, 'UNKNOWN') in ('VALID', 'VALIDATED', 'VALID_WITH_WARNINGS'))::bigint as valid_geometry_count,
           count(*) filter (where coalesce(geometry_validation_status, 'UNKNOWN') not in ('VALID', 'VALIDATED', 'VALID_WITH_WARNINGS'))::bigint as invalid_geometry_count,
+          count(*) filter (where coalesce(geometry_validation_status, 'UNKNOWN') in ('NOT_VALIDATED', 'UNKNOWN'))::bigint as not_validated_geometry_count,
+          count(*) filter (where coalesce(geometry_validation_status, 'UNKNOWN') in ('INVALID', 'INVALID_GEOMETRY', 'VALIDATION_FAILED'))::bigint as confirmed_invalid_geometry_count,
           count(*) filter (where coalesce(geometry_validation_status, 'UNKNOWN') = 'UNKNOWN')::bigint as unknown_geometry_status_count,
           count(*) filter (where coalesce(eligible_for_runtime_after_promotion, false) = true)::bigint as runtime_eligible_source_count,
           count(*) filter (where coalesce(eligible_for_runtime_after_promotion, false) = false)::bigint as not_runtime_eligible_source_count,
@@ -365,7 +367,7 @@ def _build_boundary_geometry_validation_readiness_rollup(
         },
         "readiness": {
             "ready_for_admin_geometry_review": summary["candidate_count"] > 0,
-            "ready_for_geometry_repair_plan": summary["invalid_geometry_count"] > 0 or summary["not_runtime_eligible_source_count"] > 0,
+            "ready_for_geometry_repair_plan": summary["not_validated_geometry_count"] > 0 or summary["confirmed_invalid_geometry_count"] > 0 or summary["not_runtime_eligible_source_count"] > 0,
             "ready_for_selected_runtime_promotion_dry_run": summary["selected_runtime_promotable_count"] > 0,
             "ready_for_selected_runtime_promotion_apply": False,
             "ready_for_runtime_lookup_enablement": False,

@@ -97,6 +97,8 @@ type BoundaryGeometryValidationReadiness = {
     missing_village_id_count: number;
     valid_geometry_count: number;
     invalid_geometry_count: number;
+    not_validated_geometry_count: number;
+    confirmed_invalid_geometry_count: number;
     unknown_geometry_status_count: number;
     runtime_eligible_source_count: number;
     not_runtime_eligible_source_count: number;
@@ -735,10 +737,10 @@ export default function GeographyLayerReadinessPage() {
 
               <div className="mt-4 grid gap-3 md:grid-cols-4">
                 <StatCard
-                  label="Invalid geometry"
-                  value={boundaryGeometry.summary.invalid_geometry_count}
+                  label="Not DB-validated"
+                  value={boundaryGeometry.summary.not_validated_geometry_count}
                   tone="rose"
-                  note={`${formatNumber(boundaryGeometry.summary.valid_geometry_count)} valid geometry candidates`}
+                  note={`${formatNumber(boundaryGeometry.summary.confirmed_invalid_geometry_count)} explicitly invalid; ${formatNumber(boundaryGeometry.summary.valid_geometry_count)} DB-validated`}
                 />
                 <StatCard
                   label="Not runtime eligible"

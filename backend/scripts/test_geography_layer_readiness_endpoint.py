@@ -71,7 +71,10 @@ def main() -> int:
         boundary_geometry = data["boundary_geometry_validation_readiness"]
         boundary_geometry_summary = boundary_geometry["summary"]
         check(boundary_geometry_summary["candidate_count"] > 0, "Boundary geometry candidate count is visible", boundary_geometry_summary)
-        check(boundary_geometry_summary["invalid_geometry_count"] > 0, "Boundary invalid geometry blockers are visible", boundary_geometry_summary)
+        check(boundary_geometry_summary["not_validated_geometry_count"] > 0, "Boundary not-validated geometry backlog is visible", boundary_geometry_summary)
+        check(boundary_geometry_summary["confirmed_invalid_geometry_count"] == 0, "No database rows are explicitly marked invalid", boundary_geometry_summary)
+        check(boundary_geometry_summary["valid_geometry_count"] == 10, "Database-validated geometry count is visible", boundary_geometry_summary)
+        check(boundary_geometry_summary["invalid_geometry_count"] == boundary_geometry_summary["not_validated_geometry_count"], "Legacy non-valid count remains compatible", boundary_geometry_summary)
         check(boundary_geometry_summary["not_runtime_eligible_source_count"] > 0, "Boundary runtime-ineligible source blockers are visible", boundary_geometry_summary)
         check(boundary_geometry_summary["selected_runtime_promotable_count"] == 0, "Boundary geometry confirms no selected runtime promotable rows", boundary_geometry_summary)
         check(boundary_geometry["readiness"]["ready_for_admin_geometry_review"] is True, "Boundary geometry admin review is ready", boundary_geometry["readiness"])
