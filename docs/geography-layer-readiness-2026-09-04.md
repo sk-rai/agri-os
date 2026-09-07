@@ -73,6 +73,7 @@ Known passing validations include:
 | Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
 | Boundary geometry repair apply design | `docs/boundary-geometry-repair-apply-design-2026-09-07.md` | Design baseline | Added; defines repair taxonomy, mutation boundaries, audit/rollback policy, and runtime/Android guardrails. |
+| Tiny-fixture boundary geometry repair apply | `backend/scripts/apply_boundary_geometry_repair_tiny_fixture.py` | Fixture-only apply | Implemented; writes only repair-event metadata, proves idempotency and rollback, and returns fixture rows to baseline. |
 | Selected boundary runtime readiness | `backend/scripts/report_selected_boundary_runtime_promotion_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Selected boundary runtime disabled guard | `backend/scripts/apply_selected_boundary_runtime_promotion_disabled.py` | Disabled apply guard | Implemented; rejects real apply and writes audit. |
 | External API readiness report | `backend/scripts/report_external_api_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
@@ -193,6 +194,18 @@ Boundary geometry repair apply design: `docs/boundary-geometry-repair-apply-desi
 The classification report splits the boundary backlog into validation, repair/re-import, runtime eligibility review, missing village/crosswalk review, manual review, and policy exclusion buckets.
 
 A disabled boundary geometry repair guard is committed. It requires explicit apply intent, state/district scope, geometry-repair policy flag, runtime-eligibility policy flag, rollback/supersession token, classification review, and admin confirmation, but still refuses real mutation by policy.
+
+Tiny-fixture repair apply proof:
+
+- committed in `361bf09`
+- regression passed
+- dedicated repair-event metadata is the only apply target
+- idempotency and rollback are proved
+- source geometry, validation status, and runtime eligibility are unchanged
+- boundary candidates are neither promoted nor activated
+- runtime tables and lookup remain unchanged
+- LGD geography and Android behavior remain unchanged
+- fixture repair-event rows return to baseline after cleanup
 
 The guardrails remain:
 
