@@ -76,6 +76,9 @@ Known passing validations include:
 | Boundary validation metadata disabled guard | `backend/scripts/apply_boundary_geometry_validation_metadata_disabled.py` | Disabled apply guard | Implemented; validates scope, checksum, review, rollback, and admin gates while refusing every real write. |
 | Tiny-fixture boundary validation metadata apply | `backend/scripts/apply_boundary_geometry_validation_metadata_tiny_fixture.py` | Fixture-only apply | Implemented; updates one controlled source-feature row, proves idempotency and exact rollback, and restores database counts to baseline. |
 | Bounded state validation metadata rollout design | `docs/boundary-validation-metadata-bounded-state-rollout-design-2026-09-08.md` | Design baseline | Defines checksum-pinned state batches of at most 500 valid-without-repair rows, immutable audit evidence, atomic apply, and exact rollback while broad apply remains disabled. |
+| Bounded state validation metadata planner | `backend/scripts/plan_boundary_geometry_validation_metadata_bounded_state.py` | Read-only JSON/CSV | Implemented; deterministically selects checksum-pinned batches of at most 500 valid-without-repair rows with cursor continuation. |
+| Validation metadata event schema | `backend/alembic/versions/058_add_boundary_validation_metadata_events.py` | Immutable audit schema | Implemented with apply-identity uniqueness, one-active-event-per-source enforcement, before/planned/after snapshots, and rollback evidence. |
+| Bounded state validation metadata disabled guard | `backend/scripts/apply_boundary_geometry_validation_metadata_bounded_state_disabled.py` | Disabled apply guard | Implemented; verifies plan content checksum, source checksum, scope, approvals, event schema, and row policy while refusing every mutation. |
 | Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
 | Boundary geometry repair apply design | `docs/boundary-geometry-repair-apply-design-2026-09-07.md` | Design baseline | Added; defines repair taxonomy, mutation boundaries, audit/rollback policy, and runtime/Android guardrails. |
@@ -216,6 +219,33 @@ guarded stages:
 
 Broad validation-metadata apply remains disabled. The fixture proof authorizes
 neither national metadata application nor runtime boundary promotion.
+
+### Bounded state validation metadata control proof
+
+The bounded state control layer is now implemented without enabling real apply:
+
+- rollout design committed in `93bd4a6`
+- bounded read-only planner committed in `edfca74`
+- planner formatting cleanup committed in `cf97886`
+- immutable validation metadata event schema committed in `8496c39`
+- checksum-hardened disabled bounded apply guard committed in `95b578b`
+- Andaman batch 1 deterministically selects 500 rows
+- batch 1 plan checksum:
+  `822ed7575c67de714e1599de243d7ecbd77828471de308c1a087ff38de12ef4d`
+- batch 1 advances the cursor to source feature index 506
+- batch 2 deterministically selects the remaining 160 safe rows
+- the combined batches contain 660 unique valid-without-repair rows
+- all 9 repair-required rows are excluded
+- repeated planning produces the same rows, batch identity, and checksum
+- edited plan content is rejected with `PLAN_CONTENT_CHECKSUM_MISMATCH`
+- validation event rows remain 0
+- source-feature, candidate, runtime, LGD, lookup, and Android state remain
+  unchanged
+- fully confirmed bounded apply still exits non-zero by policy
+
+The event schema is available for future controlled transaction evidence, but
+its existence does not authorize metadata application. Broad and 500-row apply
+remain disabled.
 
 This report separates geometry repair planning from runtime promotion. Geometry validation/repair must be solved before selected boundary runtime promotion can move beyond disabled guards.
 
@@ -413,27 +443,29 @@ The page remains read-only.
 
 ## Recommended next implementation sequence
 
-1. Keep this document and the national validation evidence as the committed
-   readiness baseline.
-2. Design a bounded state-scoped validation-metadata rollout:
-   - exact source checksum
-   - one aligned import batch
-   - explicit state scope
-   - maximum row cap
-   - dry-run review
-   - rollback/supersession token
-   - admin confirmation
-   - JSON/CSV audit
-3. Keep the broad validation-metadata apply path disabled until that rollout
-   design and regression coverage are approved.
-4. Keep geometry repair separate from validation metadata:
-   - 654,093 source geometries require no repair
-   - 192 source geometries require controlled `make_valid()` handling
-   - repaired geometry must be reviewed before persistence
-5. Resolve boundary runtime eligibility independently after validation metadata:
-   - do not infer runtime eligibility from geometry validity
-   - keep candidate promotion and activation disabled
-   - keep runtime sets, features, and crosswalks unchanged
+1. Keep this roadmap, national source validation, and bounded planner outputs
+   as the committed readiness baseline.
+2. Implement a small multi-row validation-metadata transaction fixture:
+   - use a fresh plan with substantially fewer than 500 rows
+   - write source validation metadata and immutable event rows atomically
+   - prove exact affected-row accounting
+   - prove deterministic idempotency
+   - prove full transaction rollback on a forced mid-batch failure
+   - prove explicit rollback from event `before_values`
+   - prove repeated rollback is an idempotent no-op
+3. Keep the 500-row and broad state apply paths disabled after the fixture:
+   - require separate administrative approval
+   - require reviewed planner JSON and exact plan checksum
+   - require pinned source checksum and aligned import batch
+   - require rollback token and named operator
+4. Keep repair-required geometry separate:
+   - do not include the 192 repairable-invalid rows in metadata apply
+   - do not persist `make_valid()` output through validation metadata
+   - retain separate geometry-repair review and apply controls
+5. Resolve runtime eligibility only in a later independent workflow:
+   - geometry validity must not grant runtime eligibility
+   - candidate promotion and activation remain disabled
+   - runtime tables and lookup remain unchanged
 6. Continue project-boundary, climate, SOI/BharatAtlas, and external-provider
    gap closure behind their existing dry-run and disabled-apply gates.
 7. Keep Android behavior unchanged until a separate Android-intended runtime
