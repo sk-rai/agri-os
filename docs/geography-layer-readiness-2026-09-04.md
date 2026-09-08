@@ -1,7 +1,7 @@
 # Geography layer readiness and enablement roadmap
 
-Status date: 2026-09-06  
-Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, selected boundary runtime readiness, climate runtime dry-run, and external API readiness work.
+Status date: 2026-09-08  
+Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, and external API readiness work.
 
 ## Executive decision
 
@@ -72,6 +72,9 @@ Known passing validations include:
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | National boundary geometry validation evidence | `docs/boundary-geometry-national-validation-evidence-2026-09-07.md` | Evidence baseline | Records 654,285 source features: 654,093 valid and 192 repairable invalid, with zero manual or CRS blockers. |
 | Boundary validation metadata apply design | `docs/boundary-geometry-validation-metadata-apply-design-2026-09-07.md` | Design baseline | Defines scoped validation-status metadata writes, idempotency, audit/rollback, and strict runtime/Android separation. |
+| Boundary validation metadata dry-run | `backend/scripts/plan_boundary_geometry_validation_metadata_dry_run.py` | Read-only JSON/CSV | Implemented; computes canonical geometry metadata and planned validation status without database writes. |
+| Boundary validation metadata disabled guard | `backend/scripts/apply_boundary_geometry_validation_metadata_disabled.py` | Disabled apply guard | Implemented; validates scope, checksum, review, rollback, and admin gates while refusing every real write. |
+| Tiny-fixture boundary validation metadata apply | `backend/scripts/apply_boundary_geometry_validation_metadata_tiny_fixture.py` | Fixture-only apply | Implemented; updates one controlled source-feature row, proves idempotency and exact rollback, and restores database counts to baseline. |
 | Boundary geometry repair classification | `backend/scripts/report_boundary_geometry_repair_classification.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | Boundary geometry repair disabled guard | `backend/scripts/apply_boundary_geometry_repair_disabled.py` | Disabled apply guard | Implemented; rejects real repair/status/eligibility writes and writes audit. |
 | Boundary geometry repair apply design | `docs/boundary-geometry-repair-apply-design-2026-09-07.md` | Design baseline | Added; defines repair taxonomy, mutation boundaries, audit/rollback policy, and runtime/Android guardrails. |
@@ -186,6 +189,32 @@ Current evidence posture:
 - 192 source geometries are repairable with in-memory `make_valid()`
 - no feature requires manual repair, reimport, or CRS review
 - runtime promotion, runtime lookup, and Android changes remain disabled
+
+### Boundary validation metadata lifecycle proof
+
+The validation-metadata workflow is now implemented through three separately
+guarded stages:
+
+- read-only dry-run committed in `faaa666`
+- disabled broad-apply guard committed in `fa396ea`
+- tiny-fixture apply committed in `110ce32`
+- fixture source feature: `9a18114f-5350-5173-97df-f24e1e64c30b`
+- source checksum:
+  `46236e51de89a034b99863600b9f46d24a4ed3e01905362fc90ac4b73de20591`
+- first apply changed exactly one row from `NOT_VALIDATED` to `VALIDATED`
+- canonical geometry hash, source bounding box, transformed bounding box, and
+  transformed centroid were written
+- repeated apply produced `IDEMPOTENT_NO_OP` and changed zero rows
+- wrong-token rollback was rejected
+- confirmed rollback restored the exact original row and national counts
+- national counts returned to 654,275 `NOT_VALIDATED` and 10 `VALIDATED`
+- source GeoJSON checksum remained unchanged
+- runtime eligibility remained false
+- candidates, runtime tables, runtime lookup, LGD geography, and Android
+  behavior remained unchanged
+
+Broad validation-metadata apply remains disabled. The fixture proof authorizes
+neither national metadata application nor runtime boundary promotion.
 
 This report separates geometry repair planning from runtime promotion. Geometry validation/repair must be solved before selected boundary runtime promotion can move beyond disabled guards.
 
@@ -383,36 +412,31 @@ The page remains read-only.
 
 ## Recommended next implementation sequence
 
-1. Keep this document as the committed readiness baseline.
-2. Keep broad project boundary matching apply disabled until a scoped rollout plan is approved:
-   - tenant/project/state/district scope
-   - max-row caps
+1. Keep this document and the national validation evidence as the committed
+   readiness baseline.
+2. Design a bounded state-scoped validation-metadata rollout:
+   - exact source checksum
+   - one aligned import batch
+   - explicit state scope
+   - maximum row cap
+   - dry-run review
    - rollback/supersession token
    - admin confirmation
-   - audit JSON/CSV
-   - no runtime lookup or Android behavior change
-3. Implement a tiny-fixture boundary geometry repair apply only after schema target is confirmed:
-   - mutate only repair metadata or dedicated repair event rows
-   - prove idempotency and rollback
-   - keep selected runtime promotion disabled
-   - keep runtime lookup and Android unchanged
-   - runtime eligibility status policy
-   - rollback/supersession plan
-   - proof that selected runtime promotion remains separately gated
-4. Only after design review, implement tiny-fixture repair apply regression before any broad repair.
-5. Continue climate gap closure:
-   - exact target table
-   - uniqueness/idempotency policy
-   - rollback/supersession plan
-   - audit event model
-   - admin confirmation requirements
-5. Only after the design is reviewed, implement tiny-fixture apply regressions before any broad project-boundary apply.
-6. Continue climate gap closure:
-   - fill missing district mappings
-   - fill crop/rule gaps
-   - then run dry-run again
-   - keep disabled apply guard until coverage is acceptable.
-7. Keep Android unchanged until a separate Android runtime enablement story is explicitly approved.
+   - JSON/CSV audit
+3. Keep the broad validation-metadata apply path disabled until that rollout
+   design and regression coverage are approved.
+4. Keep geometry repair separate from validation metadata:
+   - 654,093 source geometries require no repair
+   - 192 source geometries require controlled `make_valid()` handling
+   - repaired geometry must be reviewed before persistence
+5. Resolve boundary runtime eligibility independently after validation metadata:
+   - do not infer runtime eligibility from geometry validity
+   - keep candidate promotion and activation disabled
+   - keep runtime sets, features, and crosswalks unchanged
+6. Continue project-boundary, climate, SOI/BharatAtlas, and external-provider
+   gap closure behind their existing dry-run and disabled-apply gates.
+7. Keep Android behavior unchanged until a separate Android-intended runtime
+   enablement is explicitly approved.
 
 ## Current conclusion
 
