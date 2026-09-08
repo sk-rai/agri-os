@@ -1,6 +1,6 @@
 # Geography layer readiness and enablement roadmap
 
-Status date: 2026-09-08  
+Status date: 2026-09-08
 Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, and external API readiness work.
 
 ## Executive decision
