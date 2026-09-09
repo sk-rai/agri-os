@@ -1,7 +1,7 @@
 # Andaman batch 1 boundary validation metadata approval candidate
 
-Status date: 2026-09-09  
-Approval status: `PENDING_ADMIN_APPROVAL`  
+Status date: 2026-09-09
+Approval status: `PENDING_ADMIN_APPROVAL`
 Write authorization: `NOT_GRANTED`
 
 ## Purpose
