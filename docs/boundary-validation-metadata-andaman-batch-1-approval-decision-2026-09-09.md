@@ -1,8 +1,8 @@
 # Andaman batch 1 boundary validation metadata approval decision
 
 Status date: 2026-09-09
-Approval status: `CONDITIONALLY_APPROVED_FOR_EXACT_BATCH`
-Write authorization: `GRANTED_AFTER_ENABLED_IMPLEMENTATION_REVIEW`
+Approval status: `EXACT_BATCH_APPLIED`
+Write authorization: `CONSUMED_BY_EXACT_BATCH_APPLY`
 
 ## Purpose
 
@@ -213,7 +213,7 @@ Before approval, reviewers must receive:
 - named operator
 - named approver
 
-## Pending administrative fields
+## Execution record
 
 | Field | Status |
 | --- | --- |
@@ -222,24 +222,28 @@ Before approval, reviewers must receive:
 | Approval timestamp | `2026-09-09` |
 | Approval reference | `user-authorization-2026-09-09` |
 | Final rollback token confirmation | `andaman-boundary-validation-metadata-batch-1-20260909` |
-| Pre-apply database baseline recapture | `REQUIRED_IMMEDIATELY_BEFORE_APPLY` |
+| Pre-apply database baseline recapture | `PASSED` |
 | Complete 500-row plan review | `TECHNICAL_EVIDENCE_PASSED_24_OF_24` |
-| Enabled implementation review | `REQUIRED_BEFORE_APPLY` |
+| Enabled implementation review | `PASSED`, commit `4165140` |
+| Production apply result | `APPLIED`, 500 source rows and 500 validation events |
+| Production evidence | `docs/evidence/andaman-boundary-validation-metadata-batch-1-apply-2026-09-09.json` |
 
 ## Decision
 
 Current decision:
 
-`CONDITIONALLY_APPROVED_FOR_EXACT_BATCH`
+`EXACT_BATCH_APPLIED`
 
 Current readiness:
 
-- ready for administrative evidence review: yes
-- ready for enabled bounded apply implementation: yes
-- ready for real 500-row apply: only after implementation regression and immediate baseline recapture
+- exact approved 500-row batch applied: yes
+- exact-batch write authorization consumed: yes
+- validated source rows after apply: 510
+- active validation metadata events after apply: 500
+- remaining safe Andaman rows pending a separate batch: 160
 - ready for broad validation metadata apply: no
 - ready for runtime eligibility changes: no
 - ready for runtime lookup enablement: no
 - ready for Android behavior changes: no
 
-This decision authorizes implementation and, after its regression passes, one exact 500-row apply using the recorded checksums and rollback token. It does not authorize another batch, runtime eligibility, candidate promotion, runtime lookup, or Android behavior changes.
+The one exact 500-row authorization has been consumed. The apply changed 500 source rows and created 500 active immutable validation events while runtime eligibility remained false. It does not authorize a retry, another batch, runtime eligibility, candidate promotion, runtime lookup, or Android behavior changes.
