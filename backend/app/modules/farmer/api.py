@@ -279,6 +279,11 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 
+class ProjectGeographyScopeUpdate(BaseModel):
+    village_lgd_codes: list[str] = Field(..., min_length=1, max_length=500)
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
 class ProjectAppConfigPatch(BaseModel):
     branding: Optional[dict] = None
     localization: Optional[dict] = None
@@ -2719,6 +2724,123 @@ def get_project_edit_policy(
     if not project:
         raise HTTPException(404, "Project not found")
     return _project_edit_policy(db, project, x_tenant_id)
+
+
+@router.patch(
+    "/projects/{project_id}/geography-scope",
+    response_model=ProjectResponse,
+)
+def update_project_geography_scope(
+    project_id: uuid.UUID,
+    body: ProjectGeographyScopeUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Update a planned project's canonical LGD village scope."""
+
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.tenant_id == x_tenant_id,
+    ).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    edit_policy = _project_edit_policy(db, project, x_tenant_id)
+    if not edit_policy["can_edit_core_config"]:
+        raise HTTPException(409, {
+            "error": "PROJECT_GEOGRAPHY_SCOPE_LOCKED",
+            "message": (
+                "Geography scope is locked after project activation "
+                "or operational data enrollment."
+            ),
+            "edit_policy": edit_policy,
+        })
+
+    codes = sorted({
+        str(code).strip()
+        for code in body.village_lgd_codes
+        if str(code).strip()
+    })
+    if not codes:
+        raise HTTPException(400, "At least one village LGD code is required")
+
+    rows = db.execute(text("""
+        select
+          v.id::text as village_id,
+          v.lgd_code::text as village_lgd_code,
+          v.canonical_name as village_name,
+          s.canonical_name as state_name
+        from geography_villages v
+        join geography_districts d on d.id = v.district_id
+        join geography_states s on s.id = d.state_id
+        where v.is_active = true
+          and d.is_active = true
+          and s.is_active = true
+          and v.lgd_code::text = any(:codes)
+        order by v.lgd_code::text
+    """), {"codes": codes}).mappings().all()
+
+    found_codes = {
+        str(row["village_lgd_code"])
+        for row in rows
+    }
+    missing_codes = sorted(set(codes) - found_codes)
+    if missing_codes:
+        raise HTTPException(422, {
+            "error": "UNKNOWN_VILLAGE_LGD_CODES",
+            "missing_village_lgd_codes": missing_codes,
+        })
+
+    states = sorted({
+        str(row["state_name"])
+        for row in rows
+        if row["state_name"]
+    })
+    before_scope = project.geography_scope or {}
+    after_scope = {
+        "source": "admin_project_geography_scope_editor",
+        "village_ids": [row["village_id"] for row in rows],
+        "village_lgd_codes": [
+            str(row["village_lgd_code"])
+            for row in rows
+        ],
+        "village_names": [row["village_name"] for row in rows],
+        "states": states,
+    }
+    if len(states) == 1:
+        after_scope["state"] = states[0]
+        after_scope["state_or_ut"] = states[0]
+
+    now = datetime.now(timezone.utc)
+    project.geography_scope = after_scope
+    project.updated_at = now
+
+    db.add(ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="UPDATE_PROJECT_GEOGRAPHY_SCOPE",
+        patched_sections=["geography_scope"],
+        before_config={"geography_scope": before_scope},
+        after_config={"geography_scope": after_scope},
+        config_patch={
+            "village_lgd_codes": codes,
+            "resolved_village_count": len(rows),
+        },
+        reason=body.reason,
+        created_at=now,
+    ))
+
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 @router.patch("/projects/{project_id}/app-config", response_model=ProjectAppConfigResponse)

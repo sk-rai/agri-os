@@ -2002,6 +2002,18 @@ export const tenantsApi = {
 export const projectsApi = {
   list: () => api<Project[]>("/api/v1/projects"),
   create: (data: Partial<Project>) => api<Project>("/api/v1/projects", { method: "POST", body: data }),
+  updateGeographyScope: (
+    projectId: string,
+    villageLgdCodes: string[],
+    reason: string,
+  ) =>
+    api<Project>(`/api/v1/projects/${projectId}/geography-scope`, {
+      method: "PATCH",
+      body: {
+        village_lgd_codes: villageLgdCodes,
+        reason,
+      },
+    }),
   assignRole: (projectId: string, data: { user_id: string; role: string; territory_scope: Record<string, unknown> }) =>
     api(`/api/v1/projects/${projectId}/roles`, { method: "POST", body: data }),
   downloadEnrollmentTemplate: (projectId: string) =>

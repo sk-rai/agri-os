@@ -13,6 +13,12 @@ export default function ProjectsPage() {
     name: "", start_date: "", end_date: "", crop_scope: "",
   });
   const [error, setError] = useState("");
+  const [scopeProjectId, setScopeProjectId] = useState("");
+  const [scopeVillageCodes, setScopeVillageCodes] = useState("");
+  const [scopeReason, setScopeReason] = useState(
+    "Configure project villages for validated boundary assignment",
+  );
+  const [scopeSaving, setScopeSaving] = useState(false);
   const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
   const canCreateProjects = hasAdminPermission(adminProfile, "PROJECT_EDIT") || hasAdminPermission(adminProfile, "EDIT");
 
@@ -42,6 +48,55 @@ export default function ProjectsPage() {
       loadProjects();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create project");
+    }
+  };
+
+  const openScopeEditor = (project: Project) => {
+    const codes = Array.isArray(
+      project.geography_scope?.village_lgd_codes,
+    )
+      ? project.geography_scope.village_lgd_codes
+          .map(String)
+          .join(", ")
+      : "";
+    setScopeProjectId(project.id);
+    setScopeVillageCodes(codes);
+    setError("");
+  };
+
+  const saveGeographyScope = async (projectId: string) => {
+    const codes = scopeVillageCodes
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean);
+
+    if (!codes.length) {
+      setError("Enter at least one canonical village LGD code.");
+      return;
+    }
+    if (scopeReason.trim().length < 3) {
+      setError("A scope update reason is required.");
+      return;
+    }
+
+    setScopeSaving(true);
+    setError("");
+    try {
+      await projectsApi.updateGeographyScope(
+        projectId,
+        codes,
+        scopeReason.trim(),
+      );
+      setScopeProjectId("");
+      loadProjects();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update project geography scope",
+      );
+    } finally {
+      setScopeSaving(false);
     }
   };
 
@@ -123,8 +178,73 @@ export default function ProjectsPage() {
                     {p.status}
                   </span>
                   <Link href={`/project-compliance/${p.id}`} className="text-xs text-blue-600 hover:underline">Compliance</Link>
+                  <button
+                    type="button"
+                    disabled={!canCreateProjects || p.status !== "PLANNED"}
+                    title={
+                      p.status === "PLANNED"
+                        ? "Configure canonical LGD village scope"
+                        : "Geography scope is locked after activation"
+                    }
+                    onClick={() => openScopeEditor(p)}
+                    className="text-xs text-green-700 hover:underline disabled:text-gray-400 disabled:no-underline"
+                  >
+                    Geography scope
+                  </button>
                 </div>
               </div>
+
+              {scopeProjectId === p.id ? (
+                <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
+                  <h4 className="text-sm font-semibold text-green-900">
+                    Project village scope
+                  </h4>
+                  <p className="mt-1 text-xs text-green-800">
+                    Enter canonical LGD village codes. Only planned projects
+                    without operational data can change geography scope.
+                  </p>
+                  <label className="mt-3 block text-xs font-medium text-gray-700">
+                    Village LGD codes
+                    <textarea
+                      value={scopeVillageCodes}
+                      onChange={(event) =>
+                        setScopeVillageCodes(event.target.value)
+                      }
+                      placeholder="645063, 645105"
+                      rows={3}
+                      className="mt-1 w-full rounded border bg-white px-3 py-2 font-mono text-sm"
+                    />
+                  </label>
+                  <label className="mt-3 block text-xs font-medium text-gray-700">
+                    Change reason
+                    <input
+                      value={scopeReason}
+                      onChange={(event) =>
+                        setScopeReason(event.target.value)
+                      }
+                      className="mt-1 w-full rounded border bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={scopeSaving}
+                      onClick={() => void saveGeographyScope(p.id)}
+                      className="rounded bg-green-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {scopeSaving ? "Saving…" : "Save geography scope"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={scopeSaving}
+                      onClick={() => setScopeProjectId("")}
+                      className="rounded border px-3 py-2 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ))}
           {projects.length === 0 && (
