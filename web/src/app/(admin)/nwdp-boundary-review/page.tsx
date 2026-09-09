@@ -133,7 +133,9 @@ type EligibleProjectCandidate = {
   source_feature_index: number;
   candidate_bucket: string;
   review_status: string;
+  proposed_village_id: string;
   proposed_village_lgd_code?: string | null;
+  geometry_validation_status: string;
   source_vlcode?: string | null;
   source_district_name?: string | null;
   source_subdistrict_name?: string | null;
@@ -203,6 +205,39 @@ type ProjectBoundaryPreviewResponse = {
     ready_for_project_matching_apply: boolean;
     ready_for_runtime_spatial_matching: boolean;
   };
+};
+
+type ProjectBoundaryAssignment = {
+  match_id: string;
+  project_id: string;
+  village_id: string;
+  boundary_candidate_id: string;
+  match_status: string;
+  rollback_token: string;
+  geometry_validation_status: string;
+  is_active: boolean;
+  applied_at?: string | null;
+  rolled_back_at?: string | null;
+};
+
+type ProjectBoundaryAssignmentsResponse = {
+  schema_version: string;
+  project_id: string;
+  tenant_id: string;
+  active_count: number;
+  count: number;
+  items: ProjectBoundaryAssignment[];
+};
+
+type ProjectBoundaryAssignmentMutationResponse = {
+  schema_version: string;
+  action:
+    | "APPLIED"
+    | "SUPERSEDED_AND_APPLIED"
+    | "IDEMPOTENT_NO_OP"
+    | "ROLLED_BACK"
+    | "IDEMPOTENT_ROLLBACK_NO_OP";
+  assignment: ProjectBoundaryAssignment;
 };
 
 const BUCKETS = [
@@ -283,6 +318,8 @@ export default function NwdpBoundaryReviewPage() {
   const [eligibleData, setEligibleData] = useState<EligibleProjectCandidatesResponse | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectPreview, setProjectPreview] = useState<ProjectBoundaryPreviewResponse | null>(null);
+  const [projectAssignments, setProjectAssignments] = useState<ProjectBoundaryAssignmentsResponse | null>(null);
+  const [assignmentBusyVillage, setAssignmentBusyVillage] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [eligibleLoading, setEligibleLoading] = useState(false);
@@ -438,14 +475,90 @@ export default function NwdpBoundaryReviewPage() {
     setError(null);
     try {
       const params = new URLSearchParams({ project_id: selectedProjectId, limit: "25" });
-      const response = await api<ProjectBoundaryPreviewResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?${params.toString()}`);
-      setProjectPreview(response);
+      const [preview, assignments] = await Promise.all([
+        api<ProjectBoundaryPreviewResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?${params.toString()}`),
+        api<ProjectBoundaryAssignmentsResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/projects/${selectedProjectId}/assignments`),
+      ]);
+      setProjectPreview(preview);
+      setProjectAssignments(assignments);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load project boundary preview");
     } finally {
       setProjectPreviewLoading(false);
     }
   }, [selectedProjectId]);
+
+  const assignProjectBoundary = useCallback(async (
+    villageId: string,
+    candidateId: string,
+  ) => {
+    if (!selectedProjectId) return;
+    const reason = window.prompt(
+      "Reason for assigning this validated boundary to the project:",
+      "Assign validated NWDP village boundary",
+    );
+    if (!reason || reason.trim().length < 3) return;
+    if (!window.confirm(
+      "Assign this validated boundary to the selected project village? This does not enable runtime lookup or Android behavior.",
+    )) return;
+
+    const rollbackToken = [
+      "project-boundary",
+      selectedProjectId,
+      villageId,
+      Date.now().toString(),
+    ].join("-");
+
+    setAssignmentBusyVillage(villageId);
+    setError(null);
+    try {
+      const response = await api<ProjectBoundaryAssignmentMutationResponse>(
+        `/api/v1/master-data/geography/nwdp-boundary-project-matching/projects/${selectedProjectId}/villages/${villageId}`,
+        {
+          method: "PUT",
+          body: {
+            candidate_id: candidateId,
+            rollback_token: rollbackToken,
+            reason: reason.trim(),
+            supersede_existing: false,
+          },
+        },
+      );
+      setMessage(`Boundary assignment: ${response.action}`);
+      await loadProjectPreview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to assign project boundary");
+    } finally {
+      setAssignmentBusyVillage("");
+    }
+  }, [loadProjectPreview, selectedProjectId]);
+
+  const unassignProjectBoundary = useCallback(async (
+    assignment: ProjectBoundaryAssignment,
+  ) => {
+    if (!selectedProjectId) return;
+    if (!window.confirm(
+      "Unassign this boundary from the project village? Immutable assignment history will be retained.",
+    )) return;
+
+    setAssignmentBusyVillage(assignment.village_id);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        rollback_token: assignment.rollback_token,
+      });
+      const response = await api<ProjectBoundaryAssignmentMutationResponse>(
+        `/api/v1/master-data/geography/nwdp-boundary-project-matching/projects/${selectedProjectId}/villages/${assignment.village_id}?${params.toString()}`,
+        { method: "DELETE" },
+      );
+      setMessage(`Boundary assignment: ${response.action}`);
+      await loadProjectPreview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unassign project boundary");
+    } finally {
+      setAssignmentBusyVillage("");
+    }
+  }, [loadProjectPreview, selectedProjectId]);
 
   const loadDetail = useCallback(async (candidateId: string) => {
     setDetailLoading(true);
@@ -612,7 +725,7 @@ export default function NwdpBoundaryReviewPage() {
       {message ? <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-700">{message}</div> : null}
 
       <section className="grid gap-4 md:grid-cols-4">
-        <Card label="Staged states/UTs" value={stateSummary?.totals.state_count ?? batches.length || "—"} />
+        <Card label="Staged states/UTs" value={stateSummary?.totals.state_count ?? (batches.length || "—")} />
         <Card label="Inactive candidates" value={stateSummary?.totals.candidates ?? data?.summary.total ?? "—"} />
         <Card label="Future match-ready" value={stateSummary?.totals.future_match_ready_candidates ?? data?.summary.auto_candidate_count ?? "—"} tone="safe" />
         <Card label="Active / promoted" value={`${stateSummary?.totals.active_candidates ?? data?.summary.active_candidate_count ?? 0} / ${stateSummary?.totals.promoted_candidates ?? data?.summary.promoted_candidate_count ?? 0}`} tone="safe" />
@@ -723,6 +836,7 @@ export default function NwdpBoundaryReviewPage() {
                   <th className="px-4 py-3">Village</th>
                   <th className="px-4 py-3">Boundary coverage</th>
                   <th className="px-4 py-3">Sample source</th>
+                  <th className="px-4 py-3">Assignment</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -746,11 +860,47 @@ export default function NwdpBoundaryReviewPage() {
                         </button>
                       ) : "—"}
                     </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {(() => {
+                        const assignment = projectAssignments?.items.find(
+                          (item) => item.village_id === row.village_id && item.is_active,
+                        );
+                        if (assignment) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <Badge className="border-blue-200 bg-blue-50 text-blue-700">Assigned</Badge>
+                              <button
+                                type="button"
+                                className="rounded border border-red-200 px-2 py-1 font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                disabled={assignmentBusyVillage === row.village_id}
+                                onClick={() => void unassignProjectBoundary(assignment)}
+                              >
+                                {assignmentBusyVillage === row.village_id ? "Working…" : "Unassign"}
+                              </button>
+                            </div>
+                          );
+                        }
+                        if (!row.sample_candidate_id) return "—";
+                        return (
+                          <button
+                            type="button"
+                            className="rounded border border-green-300 px-2 py-1 font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50"
+                            disabled={assignmentBusyVillage === row.village_id}
+                            onClick={() => void assignProjectBoundary(
+                              row.village_id,
+                              row.sample_candidate_id || "",
+                            )}
+                          >
+                            {assignmentBusyVillage === row.village_id ? "Working…" : "Assign"}
+                          </button>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 ))}
                 {!projectPreviewLoading && projectPreview?.items.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-6 text-sm text-gray-500" colSpan={3}>No project villages available for this preview.</td>
+                    <td className="px-4 py-6 text-sm text-gray-500" colSpan={4}>No project villages available for this preview.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -758,7 +908,7 @@ export default function NwdpBoundaryReviewPage() {
           </div>
 
           <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Project coverage preview is inspection-only. Manual-review and blocked candidates remain excluded, and apply/runtime matching stays disabled.
+            Assignments are project-scoped and require PROJECT_EDIT permission. Only VALIDATED direct-code candidates can be assigned. Candidate promotion, runtime eligibility, global lookup, and Android behavior remain unchanged.
           </p>
         </div>
       </section>
@@ -987,7 +1137,7 @@ export default function NwdpBoundaryReviewPage() {
     </div>
   );
 }
-function Card({ label, value, tone }: { label: string; value: string | number; tone?: "safe" }) {
+function Card({ label, value, tone }: { label: string; value: string | number; tone?: "safe" | "danger" }) {
   return (
     <div className={`rounded-xl border bg-white p-5 shadow-sm ${tone === "safe" ? "border-green-200" : ""}`}>
       <p className="text-sm text-gray-500">{label}</p>
