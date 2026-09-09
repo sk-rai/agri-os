@@ -78,6 +78,7 @@ Known passing validations include:
 | Bounded state validation metadata rollout design | `docs/boundary-validation-metadata-bounded-state-rollout-design-2026-09-08.md` | Design baseline | Defines checksum-pinned state batches of at most 500 valid-without-repair rows, immutable audit evidence, atomic apply, and exact rollback while broad apply remains disabled. |
 | Production-shaped bounded validation metadata apply | `docs/boundary-validation-metadata-production-apply-design-2026-09-09.md` | Design and disabled control | Records the production transaction, preflight, idempotency, rollback, and batch-approval contract. The existing bounded apply remains disabled. |
 | Andaman bounded validation metadata batch 1 approval candidate | `docs/boundary-validation-metadata-andaman-batch-1-approval-candidate-2026-09-09.md` | Pending administrative review | Records the checksum-pinned 500-row candidate, expected accounting, rollback contract, prohibited mutations, and unresolved approval fields. It grants no write authorization. |
+| Andaman bounded validation metadata batch 1 approval decision | `docs/boundary-validation-metadata-andaman-batch-1-approval-decision-2026-09-09.md` | Conditional exact-batch approval | Authorizes implementation and one exact 500-row apply only after enabled-implementation regression and immediate baseline recapture. Runtime eligibility, promotion, lookup, and Android changes remain prohibited. |
 | Bounded state validation metadata planner | `backend/scripts/plan_boundary_geometry_validation_metadata_bounded_state.py` | Read-only JSON/CSV | Implemented; deterministically selects checksum-pinned batches of at most 500 valid-without-repair rows with cursor continuation. |
 | Validation metadata event schema | `backend/alembic/versions/058_add_boundary_validation_metadata_events.py` | Immutable audit schema | Implemented with apply-identity uniqueness, one-active-event-per-source enforcement, before/planned/after snapshots, and rollback evidence. |
 | Bounded state validation metadata disabled guard | `backend/scripts/apply_boundary_geometry_validation_metadata_bounded_state_disabled.py` | Disabled apply guard | Implemented; verifies plan content checksum, source checksum, scope, approvals, event schema, and row policy while refusing every mutation. |
@@ -454,15 +455,16 @@ The page remains read-only.
    - apply and rollback idempotency passed
    - wrong-token rollback was rejected without writes
    - regression cleanup restored exact database counts
-3. The Andaman batch 1 approval candidate is prepared:
-   - status remains `PENDING_ADMIN_APPROVAL`
-   - source and plan checksums are pinned
+3. Andaman batch 1 is conditionally approved for the exact pinned batch:
+   - operator and approver: `admin-regression`
+   - approval reference: `user-authorization-2026-09-09`
+   - final rollback token:
+     `andaman-boundary-validation-metadata-batch-1-20260909`
+   - source and plan checksums remain pinned
    - all 9 repair-required rows remain excluded
-   - expected 500-row source and event accounting is recorded
+   - enabled-implementation regression must pass before apply
+   - database baseline must be recaptured immediately before apply
    - runtime eligibility and downstream behavior remain unchanged
-   - operator, approver, approval reference, final rollback token, baseline
-     recapture, complete plan review, and enabled implementation review remain
-     pending
 4. Keep the 500-row and broad state apply paths disabled until that approval
    artifact is separately reviewed.
 5. Keep repair-required geometry separate:
