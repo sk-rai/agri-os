@@ -503,10 +503,10 @@ export default function NwdpBoundaryReviewPage() {
     )) return;
 
     const rollbackToken = [
-      "project-boundary",
-      selectedProjectId,
-      villageId,
-      Date.now().toString(),
+      "pb",
+      selectedProjectId.slice(0, 8),
+      villageId.slice(0, 8),
+      Date.now().toString(36),
     ].join("-");
 
     setAssignmentBusyVillage(villageId);

@@ -232,6 +232,52 @@ def main():
             db, role="ENTERPRISE_ADMIN", tenant_id=TENANT_ID
         )
 
+        preview = client.get(
+            "/api/v1/master-data/geography/"
+            "nwdp-boundary-project-matching/project-preview",
+            params={"project_id": project_id, "limit": 25},
+            headers=headers,
+        )
+        preview_data = preview.json()
+        check(
+            preview.status_code == 200,
+            "Scope-only project preview succeeds",
+            preview_data,
+        )
+        check(
+            preview_data["summary"]["project_village_count"] == 2,
+            "Project preview combines scope and relational villages",
+            preview_data["summary"],
+        )
+        check(
+            preview_data["summary"]["villages_with_eligible_boundary"] == 1,
+            "Geography-scope village has validated boundary",
+            preview_data["summary"],
+        )
+        check(
+            preview_data["summary"]["villages_without_eligible_boundary"] == 1,
+            "Unsafe relational village remains ineligible",
+            preview_data["summary"],
+        )
+        check(
+            any(
+                item["village_id"] == candidate["village_id"]
+                and item["sample_candidate_id"] == candidate["candidate_id"]
+                for item in preview_data["items"]
+            ),
+            "Scope village selects exact validated candidate",
+            preview_data["items"],
+        )
+        check(
+            any(
+                item["village_id"] == unsafe_candidate["village_id"]
+                and item["sample_candidate_id"] is None
+                for item in preview_data["items"]
+            ),
+            "Non-validated relational village has no eligible candidate",
+            preview_data["items"],
+        )
+
         wrong_tenant_headers = dict(headers)
         wrong_tenant_headers["X-Tenant-ID"] = "wrong-tenant"
         wrong_tenant = client.put(url, json=body, headers=wrong_tenant_headers)

@@ -1890,7 +1890,34 @@ def _nwdp_boundary_project_matching_project_preview(
           and p.village_id is not null
     """
 
-    params = {"project_id": str(project_id), "limit": limit}
+    scope = project.get("geography_scope") or {}
+    if isinstance(scope, str):
+        try:
+            scope = json.loads(scope)
+        except Exception:
+            scope = {}
+    if not isinstance(scope, dict):
+        scope = {}
+
+    scope_sql, scope_params, _scope_sources = (
+        _build_project_boundary_scope_village_sql(scope)
+    )
+    if scope_sql:
+        project_villages_sql += f"""
+            union
+
+            select cast(:project_id as uuid) as project_id,
+                   scoped.village_id
+            from (
+                {scope_sql}
+            ) scoped
+        """
+
+    params = {
+        "project_id": str(project_id),
+        "limit": limit,
+        **scope_params,
+    }
 
     totals = db.execute(text(f"""
         with project_villages as (
