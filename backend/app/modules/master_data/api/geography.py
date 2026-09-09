@@ -13,10 +13,10 @@ import io
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.responses import StreamingResponse
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Header, Query, HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
 from scripts.report_project_boundary_readiness import (
     SOURCE_SYSTEM as PROJECT_BOUNDARY_SOURCE_SYSTEM,
+    build_scope_village_sql as _build_project_boundary_scope_village_sql,
     rows as _project_boundary_rows,
     scope_counts_for_project as _project_boundary_scope_counts_for_project,
 )
@@ -2215,6 +2216,471 @@ def get_nwdp_boundary_runtime_promotion_dry_run(
         },
     }
 
+
+
+class ProjectBoundaryAssignmentRequest(BaseModel):
+    candidate_id: UUID
+    rollback_token: str = Field(min_length=8, max_length=80)
+    reason: str = Field(min_length=3, max_length=500)
+    supersede_existing: bool = False
+
+
+def _project_boundary_assignment_payload(db: Session, match_id: UUID | str) -> dict:
+    row = db.execute(text("""
+        select
+          pm.id::text as match_id,
+          pm.tenant_id,
+          pm.project_id::text,
+          pm.village_id::text,
+          pm.boundary_candidate_id::text,
+          pm.source_system,
+          pm.match_source,
+          pm.match_status,
+          pm.applied_by,
+          pm.applied_at,
+          pm.rolled_back_by,
+          pm.rolled_back_at,
+          pm.rollback_token,
+          pm.metadata,
+          pm.is_active,
+          pm.created_at,
+          pm.updated_at,
+          sf.geometry_validation_status
+        from geography_boundary_project_matches pm
+        join geography_boundary_crosswalk_candidates c
+          on c.id = pm.boundary_candidate_id
+        join geography_boundary_source_features sf
+          on sf.id = c.source_feature_id
+        where pm.id = :match_id
+    """), {"match_id": str(match_id)}).mappings().one()
+    return dict(row)
+
+
+def _project_contains_village(
+    db: Session,
+    project_id: UUID,
+    village_id: UUID,
+) -> bool:
+    directly_linked = bool(db.execute(text("""
+        select exists (
+          select 1
+          from farmer_project_enrollments e
+          join farmers f on f.id = e.farmer_id
+          where e.project_id = :project_id
+            and e.is_active = true
+            and f.is_active = true
+            and f.village_id = :village_id
+
+          union
+
+          select 1
+          from farmers f
+          where f.project_id = :project_id
+            and f.is_active = true
+            and f.village_id = :village_id
+
+          union
+
+          select 1
+          from parcels p
+          where p.project_id = :project_id
+            and p.is_active = true
+            and p.village_id = :village_id
+
+          union
+
+          select 1
+          from farmer_project_enrollments e
+          join parcels p on p.farmer_id = e.farmer_id
+          where e.project_id = :project_id
+            and e.is_active = true
+            and p.is_active = true
+            and p.village_id = :village_id
+        )
+    """), {
+        "project_id": str(project_id),
+        "village_id": str(village_id),
+    }).scalar())
+
+    if directly_linked:
+        return True
+
+    project = db.execute(text("""
+        select geography_scope
+        from projects
+        where id = :project_id
+    """), {"project_id": str(project_id)}).mappings().first()
+    if not project:
+        return False
+
+    scope = project.get("geography_scope") or {}
+    if isinstance(scope, str):
+        try:
+            scope = json.loads(scope)
+        except Exception:
+            scope = {}
+    if not isinstance(scope, dict):
+        return False
+
+    scope_sql, scope_params, _sources = (
+        _build_project_boundary_scope_village_sql(scope)
+    )
+    if not scope_sql:
+        return False
+
+    return bool(db.execute(text(f"""
+        select exists (
+          select 1
+          from (
+            {scope_sql}
+          ) scope_villages
+          where scope_villages.village_id = :assigned_village_id
+        )
+    """), {
+        **scope_params,
+        "assigned_village_id": str(village_id),
+    }).scalar())
+
+
+def _project_boundary_assignment_guardrails(written: bool) -> dict:
+    return {
+        "db_writes_attempted": written,
+        "project_matching_records_written": written,
+        "candidate_activation_changed": False,
+        "candidate_promotion_changed": False,
+        "source_runtime_eligibility_changed": False,
+        "runtime_tables_written": False,
+        "runtime_spatial_matching_changed": False,
+        "lookup_api_enabled": False,
+        "lgd_geography_overwritten": False,
+        "android_behavior_changed": False,
+    }
+
+
+@router.get(
+    "/nwdp-boundary-project-matching/projects/{project_id}/assignments"
+)
+def list_nwdp_boundary_project_assignments(
+    project_id: UUID,
+    include_inactive: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal=Depends(
+        require_admin_permission(AdminPermission.VIEW, project_scoped=True)
+    ),
+):
+    where_active = "" if include_inactive else "and pm.is_active = true"
+    rows = db.execute(text(f"""
+        select
+          pm.id::text as match_id,
+          pm.tenant_id,
+          pm.project_id::text,
+          pm.village_id::text,
+          pm.boundary_candidate_id::text,
+          pm.source_system,
+          pm.match_source,
+          pm.match_status,
+          pm.applied_by,
+          pm.applied_at,
+          pm.rolled_back_by,
+          pm.rolled_back_at,
+          pm.rollback_token,
+          pm.metadata,
+          pm.is_active,
+          pm.created_at,
+          pm.updated_at,
+          sf.geometry_validation_status
+        from geography_boundary_project_matches pm
+        join geography_boundary_crosswalk_candidates c
+          on c.id = pm.boundary_candidate_id
+        join geography_boundary_source_features sf
+          on sf.id = c.source_feature_id
+        where pm.project_id = :project_id
+          and pm.tenant_id = :tenant_id
+          {where_active}
+        order by pm.is_active desc, pm.created_at desc
+    """), {
+        "project_id": str(project_id),
+        "tenant_id": x_tenant_id,
+    }).mappings().all()
+
+    items = [dict(row) for row in rows]
+    return {
+        "schema_version": "nwdp_boundary_project_assignments.v1",
+        "mode": "PROJECT_SCOPED_BOUNDARY_ASSIGNMENTS",
+        "project_id": str(project_id),
+        "tenant_id": x_tenant_id,
+        "active_count": sum(1 for row in items if row["is_active"]),
+        "count": len(items),
+        "items": items,
+        "guardrails": _project_boundary_assignment_guardrails(False),
+    }
+
+
+@router.put(
+    "/nwdp-boundary-project-matching/projects/{project_id}/villages/{village_id}"
+)
+def assign_nwdp_boundary_to_project_village(
+    project_id: UUID,
+    village_id: UUID,
+    body: ProjectBoundaryAssignmentRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal=Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    if not _project_contains_village(db, project_id, village_id):
+        raise HTTPException(
+            status_code=409,
+            detail="VILLAGE_NOT_IN_PROJECT_SCOPE",
+        )
+
+    candidate = db.execute(text("""
+        select
+          c.id::text as candidate_id,
+          c.proposed_village_id::text as village_id,
+          c.proposed_village_lgd_code,
+          c.candidate_bucket,
+          c.review_status,
+          c.promotion_status,
+          c.is_active as candidate_is_active,
+          b.source_system,
+          b.state_or_ut,
+          sf.geometry_validation_status,
+          sf.eligible_for_runtime_after_promotion
+        from geography_boundary_crosswalk_candidates c
+        join geography_boundary_import_batches b on b.id = c.import_batch_id
+        join geography_boundary_source_features sf on sf.id = c.source_feature_id
+        where c.id = :candidate_id
+    """), {"candidate_id": str(body.candidate_id)}).mappings().first()
+
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Boundary candidate not found")
+
+    eligible = (
+        candidate["source_system"] == "NWDP_GSI_VILLAGE_BOUNDARY"
+        and candidate["village_id"] == str(village_id)
+        and candidate["candidate_bucket"] == "DIRECT_VLCODE_MATCH"
+        and candidate["review_status"] == "AUTO_CANDIDATE"
+        and candidate["promotion_status"] == "NOT_PROMOTED"
+        and candidate["candidate_is_active"] is False
+        and candidate["geometry_validation_status"] == "VALIDATED"
+    )
+    if not eligible:
+        raise HTTPException(
+            status_code=409,
+            detail="BOUNDARY_CANDIDATE_NOT_ASSIGNABLE",
+        )
+
+    existing = db.execute(text("""
+        select id::text, boundary_candidate_id::text, rollback_token
+        from geography_boundary_project_matches
+        where tenant_id = :tenant_id
+          and project_id = :project_id
+          and village_id = :village_id
+          and source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+          and is_active = true
+        for update
+    """), {
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "village_id": str(village_id),
+    }).mappings().first()
+
+    if existing and existing["boundary_candidate_id"] == str(body.candidate_id):
+        return {
+            "schema_version": "nwdp_boundary_project_assignment.v1",
+            "action": "IDEMPOTENT_NO_OP",
+            "assignment": _project_boundary_assignment_payload(
+                db, existing["id"]
+            ),
+            "guardrails": _project_boundary_assignment_guardrails(False),
+        }
+
+    if existing and not body.supersede_existing:
+        raise HTTPException(
+            status_code=409,
+            detail="ACTIVE_PROJECT_VILLAGE_BOUNDARY_MATCH_EXISTS",
+        )
+
+    actor = str(principal.user_id)
+
+    if existing:
+        db.execute(text("""
+            update geography_boundary_project_matches
+            set
+              is_active = false,
+              match_status = 'ROLLED_BACK',
+              rolled_back_by = :actor,
+              rolled_back_at = now(),
+              rollback_report = jsonb_build_object(
+                'reason', 'EXPLICIT_SUPERSESSION',
+                'superseded_by_candidate_id', :candidate_id,
+                'actor', :actor
+              ),
+              updated_at = now()
+            where id = :match_id
+        """), {
+            "actor": actor,
+            "candidate_id": str(body.candidate_id),
+            "match_id": existing["id"],
+        })
+
+    match_id = uuid4()
+    metadata = {
+        "reason": body.reason,
+        "assignment_source": "admin_project_boundary_api",
+        "geometry_validation_status": "VALIDATED",
+        "runtime_eligibility_changed": False,
+    }
+    apply_report = {
+        "schema_version": "nwdp_boundary_project_assignment.v1",
+        "project_id": str(project_id),
+        "village_id": str(village_id),
+        "candidate_id": str(body.candidate_id),
+        "applied_by": actor,
+        "superseded_existing": bool(existing),
+    }
+
+    db.execute(text("""
+        insert into geography_boundary_project_matches (
+          id, tenant_id, project_id, village_id, boundary_candidate_id,
+          source_system, match_source, match_status, applied_by, applied_at,
+          rollback_token, dry_run_report, apply_report, rollback_report,
+          metadata, is_active, created_at, updated_at, version
+        )
+        values (
+          :id, :tenant_id, :project_id, :village_id, :candidate_id,
+          'NWDP_GSI_VILLAGE_BOUNDARY', 'ADMIN_PROJECT_MATCHING', 'APPLIED',
+          :actor, now(), :rollback_token, '{}'::jsonb,
+          cast(:apply_report as jsonb), '{}'::jsonb,
+          cast(:metadata as jsonb), true, now(), now(), 'v1.0'
+        )
+    """), {
+        "id": str(match_id),
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "village_id": str(village_id),
+        "candidate_id": str(body.candidate_id),
+        "actor": actor,
+        "rollback_token": body.rollback_token,
+        "apply_report": json.dumps(apply_report),
+        "metadata": json.dumps(metadata),
+    })
+    db.commit()
+
+    return {
+        "schema_version": "nwdp_boundary_project_assignment.v1",
+        "action": "SUPERSEDED_AND_APPLIED" if existing else "APPLIED",
+        "assignment": _project_boundary_assignment_payload(db, match_id),
+        "guardrails": _project_boundary_assignment_guardrails(True),
+    }
+
+
+@router.delete(
+    "/nwdp-boundary-project-matching/projects/{project_id}/villages/{village_id}"
+)
+def unassign_nwdp_boundary_from_project_village(
+    project_id: UUID,
+    village_id: UUID,
+    rollback_token: str = Query(min_length=8, max_length=80),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal=Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    existing = db.execute(text("""
+        select id::text, rollback_token
+        from geography_boundary_project_matches
+        where tenant_id = :tenant_id
+          and project_id = :project_id
+          and village_id = :village_id
+          and source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+          and is_active = true
+        for update
+    """), {
+        "tenant_id": x_tenant_id,
+        "project_id": str(project_id),
+        "village_id": str(village_id),
+    }).mappings().first()
+
+    if not existing:
+        rolled_back = db.execute(text("""
+            select id::text
+            from geography_boundary_project_matches
+            where tenant_id = :tenant_id
+              and project_id = :project_id
+              and village_id = :village_id
+              and source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+              and rollback_token = :rollback_token
+              and match_status = 'ROLLED_BACK'
+            order by rolled_back_at desc nulls last
+            limit 1
+        """), {
+            "tenant_id": x_tenant_id,
+            "project_id": str(project_id),
+            "village_id": str(village_id),
+            "rollback_token": rollback_token,
+        }).mappings().first()
+
+        if not rolled_back:
+            raise HTTPException(
+                status_code=404,
+                detail="ACTIVE_PROJECT_BOUNDARY_ASSIGNMENT_NOT_FOUND",
+            )
+        return {
+            "schema_version": "nwdp_boundary_project_assignment.v1",
+            "action": "IDEMPOTENT_ROLLBACK_NO_OP",
+            "assignment": _project_boundary_assignment_payload(
+                db, rolled_back["id"]
+            ),
+            "guardrails": _project_boundary_assignment_guardrails(False),
+        }
+
+    if existing["rollback_token"] != rollback_token:
+        raise HTTPException(
+            status_code=409,
+            detail="ROLLBACK_TOKEN_MISMATCH",
+        )
+
+    actor = str(principal.user_id)
+    db.execute(text("""
+        update geography_boundary_project_matches
+        set
+          is_active = false,
+          match_status = 'ROLLED_BACK',
+          rolled_back_by = :actor,
+          rolled_back_at = now(),
+          rollback_report = jsonb_build_object(
+            'reason', 'ADMIN_PROJECT_UNASSIGNMENT',
+            'rollback_token', :rollback_token,
+            'actor', :actor
+          ),
+          updated_at = now()
+        where id = :match_id
+    """), {
+        "actor": actor,
+        "rollback_token": rollback_token,
+        "match_id": existing["id"],
+    })
+    db.commit()
+
+    return {
+        "schema_version": "nwdp_boundary_project_assignment.v1",
+        "action": "ROLLED_BACK",
+        "assignment": _project_boundary_assignment_payload(
+            db, existing["id"]
+        ),
+        "guardrails": _project_boundary_assignment_guardrails(True),
+    }
 
 
 @router.post("/nwdp-boundary-project-matching/apply")
