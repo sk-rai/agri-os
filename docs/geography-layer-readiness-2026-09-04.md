@@ -76,6 +76,7 @@ Known passing validations include:
 | Boundary validation metadata disabled guard | `backend/scripts/apply_boundary_geometry_validation_metadata_disabled.py` | Disabled apply guard | Implemented; validates scope, checksum, review, rollback, and admin gates while refusing every real write. |
 | Tiny-fixture boundary validation metadata apply | `backend/scripts/apply_boundary_geometry_validation_metadata_tiny_fixture.py` | Fixture-only apply | Implemented; updates one controlled source-feature row, proves idempotency and exact rollback, and restores database counts to baseline. |
 | Bounded state validation metadata rollout design | `docs/boundary-validation-metadata-bounded-state-rollout-design-2026-09-08.md` | Design baseline | Defines checksum-pinned state batches of at most 500 valid-without-repair rows, immutable audit evidence, atomic apply, and exact rollback while broad apply remains disabled. |
+| Production-shaped bounded validation metadata apply | `docs/boundary-validation-metadata-production-apply-design-2026-09-09.md` | Design and disabled control | Records the production transaction, preflight, idempotency, rollback, and batch-approval contract. The existing bounded apply remains disabled. |
 | Bounded state validation metadata planner | `backend/scripts/plan_boundary_geometry_validation_metadata_bounded_state.py` | Read-only JSON/CSV | Implemented; deterministically selects checksum-pinned batches of at most 500 valid-without-repair rows with cursor continuation. |
 | Validation metadata event schema | `backend/alembic/versions/058_add_boundary_validation_metadata_events.py` | Immutable audit schema | Implemented with apply-identity uniqueness, one-active-event-per-source enforcement, before/planned/after snapshots, and rollback evidence. |
 | Bounded state validation metadata disabled guard | `backend/scripts/apply_boundary_geometry_validation_metadata_bounded_state_disabled.py` | Disabled apply guard | Implemented; verifies plan content checksum, source checksum, scope, approvals, event schema, and row policy while refusing every mutation. |
@@ -443,32 +444,35 @@ The page remains read-only.
 
 ## Recommended next implementation sequence
 
-1. Keep this roadmap, national source validation, and bounded planner outputs
-   as the committed readiness baseline.
-2. Implement a small multi-row validation-metadata transaction fixture:
-   - use a fresh plan with substantially fewer than 500 rows
-   - write source validation metadata and immutable event rows atomically
-   - prove exact affected-row accounting
-   - prove deterministic idempotency
-   - prove full transaction rollback on a forced mid-batch failure
-   - prove explicit rollback from event `before_values`
-   - prove repeated rollback is an idempotent no-op
-3. Keep the 500-row and broad state apply paths disabled after the fixture:
-   - require separate administrative approval
-   - require reviewed planner JSON and exact plan checksum
-   - require pinned source checksum and aligned import batch
-   - require rollback token and named operator
-4. Keep repair-required geometry separate:
+1. Keep this roadmap, national source validation, bounded planner outputs, and
+   production-shaped apply design as the committed readiness baseline.
+2. The multi-row validation-metadata transaction fixture is complete:
+   - commit `2e8a111`
+   - three source rows and three immutable events were written atomically
+   - forced mid-batch failure restored the complete baseline
+   - apply and rollback idempotency passed
+   - wrong-token rollback was rejected without writes
+   - regression cleanup restored exact database counts
+3. Produce and review a batch-specific administrative approval artifact:
+   - identify the exact state, import batch, and operator
+   - pin the source checksum and plan checksum
+   - record expected before and after counts
+   - record the rollback token and rollback procedure
+   - confirm all 9 repair-required Andaman rows remain excluded
+   - confirm runtime eligibility and downstream behavior remain unchanged
+4. Keep the 500-row and broad state apply paths disabled until that approval
+   artifact is separately reviewed.
+5. Keep repair-required geometry separate:
    - do not include the 192 repairable-invalid rows in metadata apply
    - do not persist `make_valid()` output through validation metadata
    - retain separate geometry-repair review and apply controls
-5. Resolve runtime eligibility only in a later independent workflow:
+6. Resolve runtime eligibility only in a later independent workflow:
    - geometry validity must not grant runtime eligibility
    - candidate promotion and activation remain disabled
    - runtime tables and lookup remain unchanged
-6. Continue project-boundary, climate, SOI/BharatAtlas, and external-provider
+7. Continue project-boundary, climate, SOI/BharatAtlas, and external-provider
    gap closure behind their existing dry-run and disabled-apply gates.
-7. Keep Android behavior unchanged until a separate Android-intended runtime
+8. Keep Android behavior unchanged until a separate Android-intended runtime
    enablement is explicitly approved.
 
 ## Current conclusion
