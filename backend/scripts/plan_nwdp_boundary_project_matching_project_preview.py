@@ -158,7 +158,9 @@ def build_preview(project_id: str | None, limit: int) -> dict[str, Any]:
                   c.is_active
                 from geography_boundary_import_batches b
                 join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+                join geography_boundary_source_features f on f.id = c.source_feature_id
                 where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+                  and f.geometry_validation_status = 'VALIDATED'
                   and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
                   and c.review_status = 'AUTO_CANDIDATE'
                   and c.is_active = false
@@ -206,11 +208,13 @@ def build_preview(project_id: str | None, limit: int) -> dict[str, Any]:
                   f.source_vlcode,
                   f.source_district_name,
                   f.source_subdistrict_name,
-                  f.source_village_name
+                  f.source_village_name,
+                  f.geometry_validation_status
                 from geography_boundary_import_batches b
                 join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
                 join geography_boundary_source_features f on f.id = c.source_feature_id
                 where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+                  and f.geometry_validation_status = 'VALIDATED'
                   and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
                   and c.review_status = 'AUTO_CANDIDATE'
                   and c.is_active = false
@@ -252,6 +256,8 @@ def build_preview(project_id: str | None, limit: int) -> dict[str, Any]:
             "coverage_ratio": (eligible_villages / project_village_count) if project_village_count else 0,
             "manual_review_excluded_from_matching": True,
             "blocked_excluded_from_matching": True,
+            "non_validated_geometry_excluded_from_matching": True,
+            "required_geometry_validation_status": "VALIDATED",
         },
         "items": [dict(row) for row in rows],
         "guardrails": {

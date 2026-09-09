@@ -266,7 +266,9 @@ def scope_counts_for_project(db, project_id: str, scope: dict[str, Any]) -> dict
                 select c.id, c.proposed_village_id
                 from geography_boundary_import_batches b
                 join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+                join geography_boundary_source_features f on f.id = c.source_feature_id
                 where b.source_system = :source_system
+                  and f.geometry_validation_status = 'VALIDATED'
                   and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
                   and c.review_status = 'AUTO_CANDIDATE'
                   and c.promotion_status = 'NOT_PROMOTED'
@@ -385,7 +387,7 @@ def main() -> int:
                   (select count(*) from projects where is_active = true and geography_scope is not null and geography_scope::text not in ('{}', 'null', '[]'))::bigint as projects_with_non_empty_geography_scope_count,
                   (select count(*) from geography_boundary_project_matches where is_active = true)::bigint as active_project_boundary_match_count,
                   (select count(*) from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system)::bigint as raw_boundary_candidate_count,
-                  (select count(*) from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system and c.candidate_bucket = 'DIRECT_VLCODE_MATCH' and c.review_status = 'AUTO_CANDIDATE' and c.promotion_status = 'NOT_PROMOTED' and c.is_active = false and c.proposed_village_id is not null)::bigint as raw_eligible_boundary_candidate_count,
+                  (select count(*) from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id join geography_boundary_source_features f on f.id = c.source_feature_id where b.source_system = :source_system and f.geometry_validation_status = 'VALIDATED' and c.candidate_bucket = 'DIRECT_VLCODE_MATCH' and c.review_status = 'AUTO_CANDIDATE' and c.promotion_status = 'NOT_PROMOTED' and c.is_active = false and c.proposed_village_id is not null)::bigint as raw_eligible_boundary_candidate_count,
                   (select count(*) from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system and c.review_status = 'MANUAL_REVIEW')::bigint as raw_manual_review_candidate_count,
                   (select count(*) from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system and c.review_status = 'BLOCKED')::bigint as raw_blocked_candidate_count,
                   (select count(*) from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system and c.candidate_bucket <> 'DIRECT_VLCODE_MATCH')::bigint as raw_non_direct_candidate_count

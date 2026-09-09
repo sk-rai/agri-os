@@ -182,7 +182,9 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
                   c.proposed_village_id
                 from geography_boundary_import_batches b
                 join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+                join geography_boundary_source_features f on f.id = c.source_feature_id
                 where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+                  and f.geometry_validation_status = 'VALIDATED'
                   and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
                   and c.review_status = 'AUTO_CANDIDATE'
                   and c.is_active = false
@@ -230,12 +232,14 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
               f.source_vlcode,
               f.source_district_name,
               f.source_subdistrict_name,
-              f.source_village_name
+              f.source_village_name,
+              f.geometry_validation_status
             from project_villages pv
             join geography_boundary_crosswalk_candidates c on c.proposed_village_id = pv.village_id
             join geography_boundary_import_batches b on b.id = c.import_batch_id
             join geography_boundary_source_features f on f.id = c.source_feature_id
             where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+              and f.geometry_validation_status = 'VALIDATED'
               and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
               and c.review_status = 'AUTO_CANDIDATE'
               and c.is_active = false
@@ -264,6 +268,8 @@ def build_plan(project_id: str | None, limit: int) -> dict[str, Any]:
             "supports_project_geography_scope_resolution": True,
             "state_scope_used_only_without_narrower_scope": True,
             "requires_proposed_village_id": True,
+            "required_geometry_validation_status": "VALIDATED",
+            "non_validated_geometry_excluded": True,
             "manual_review_candidates_excluded": True,
             "blocked_candidates_excluded": True,
             "non_direct_candidates_excluded": True,

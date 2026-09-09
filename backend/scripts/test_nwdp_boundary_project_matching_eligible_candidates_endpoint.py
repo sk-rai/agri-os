@@ -48,7 +48,7 @@ def main() -> int:
         before = staging_summary(db)
 
         denied = client.get(
-            "/api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates?state_or_ut=Karnataka&limit=5",
+            "/api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates?state_or_ut=Andaman%20and%20Nicobar%20Islands&limit=5",
             headers={"X-Tenant-ID": "default"},
         )
         check(denied.status_code in {401, 403}, "Unauthenticated eligible-candidates request is denied", denied.text[:500])
@@ -62,7 +62,7 @@ def main() -> int:
         check(missing_scope.status_code == 400, "Endpoint requires bounded state or village scope", missing_scope.text[:500])
 
         response = client.get(
-            "/api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates?state_or_ut=Karnataka&limit=5",
+            "/api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates?state_or_ut=Andaman%20and%20Nicobar%20Islands&limit=5",
             headers=headers,
         )
         data = response.json()
@@ -70,11 +70,13 @@ def main() -> int:
         check(response.status_code == 200, "Admin viewer can query eligible candidates", response.text[:1000])
         check(data["schema_version"] == "nwdp_boundary_project_matching_eligible_candidates.v1", "Schema version is stable", data)
         check(data["mode"] == "READ_ONLY_PROJECT_MATCHING_ELIGIBLE_CANDIDATES", "Endpoint is read-only mode", data)
-        check(data["filters"]["state_or_ut"] == "Karnataka", "Endpoint applies state filter", data["filters"])
-        check(data["summary"]["eligible_candidate_count"] > 0, "Endpoint finds eligible Karnataka candidates", data["summary"])
+        check(data["filters"]["state_or_ut"] == "Andaman and Nicobar Islands", "Endpoint applies state filter", data["filters"])
+        check(data["summary"]["eligible_candidate_count"] > 0, "Endpoint finds validated Andaman candidates", data["summary"])
         check(data["summary"]["returned_count"] <= 5, "Endpoint honors limit", data["summary"])
         check(data["summary"]["manual_review_excluded"] is True, "Manual review candidates are excluded", data["summary"])
         check(data["summary"]["blocked_excluded"] is True, "Blocked candidates are excluded", data["summary"])
+        check(data["summary"]["non_validated_geometry_excluded"] is True, "Non-validated geometry is excluded", data["summary"])
+        check(data["summary"]["required_geometry_validation_status"] == "VALIDATED", "Endpoint requires VALIDATED geometry", data["summary"])
         check(data["summary"]["runtime_tables_written"] is False, "Endpoint writes no runtime tables", data["summary"])
         check(data["summary"]["runtime_spatial_matching_changed"] is False, "Endpoint keeps spatial matching disabled", data["summary"])
         check(data["summary"]["lookup_api_enabled"] is False, "Endpoint keeps lookup disabled", data["summary"])
@@ -88,6 +90,12 @@ def main() -> int:
         check(first["review_status"] == "AUTO_CANDIDATE", "Returned rows are auto candidates", first)
         check(first["promotion_status"] == "NOT_PROMOTED", "Returned rows are not promoted", first)
         check(first["proposed_village_id"], "Returned rows include proposed village id", first)
+        check(first["geometry_validation_status"] == "VALIDATED", "Returned row has validated geometry", first)
+        check(
+            all(item["geometry_validation_status"] == "VALIDATED" for item in data["items"]),
+            "Every returned row has validated geometry",
+            data["items"],
+        )
 
         village_response = client.get(
             f"/api/v1/master-data/geography/nwdp-boundary-project-matching/eligible-candidates?village_id={first['proposed_village_id']}&limit=10",

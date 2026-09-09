@@ -138,7 +138,7 @@ def _build_project_boundary_readiness_rollup(db: Session) -> dict[str, Any]:
                   (select count(*)::bigint from projects where is_active = true and geography_scope is not null and geography_scope::text not in ('{}', 'null', '[]')) as projects_with_non_empty_geography_scope_count,
                   (select count(*)::bigint from geography_boundary_project_matches where is_active = true) as active_project_boundary_match_count,
                   (select count(*)::bigint from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system) as raw_boundary_candidate_count,
-                  (select count(*)::bigint from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id where b.source_system = :source_system and c.candidate_bucket = 'DIRECT_VLCODE_MATCH' and c.review_status = 'AUTO_CANDIDATE' and c.promotion_status = 'NOT_PROMOTED' and c.is_active = false and c.proposed_village_id is not null) as raw_eligible_boundary_candidate_count
+                  (select count(*)::bigint from geography_boundary_import_batches b join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id join geography_boundary_source_features f on f.id = c.source_feature_id where b.source_system = :source_system and f.geometry_validation_status = 'VALIDATED' and c.candidate_bucket = 'DIRECT_VLCODE_MATCH' and c.review_status = 'AUTO_CANDIDATE' and c.promotion_status = 'NOT_PROMOTED' and c.is_active = false and c.proposed_village_id is not null) as raw_eligible_boundary_candidate_count
             """),
             {"source_system": PROJECT_BOUNDARY_SOURCE_SYSTEM},
         ).mappings().one()
@@ -1734,7 +1734,9 @@ def _nwdp_boundary_project_matching_eligible_candidates(
         select count(*)::bigint
         from geography_boundary_import_batches b
         join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+        join geography_boundary_source_features f on f.id = c.source_feature_id
         where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+          and f.geometry_validation_status = 'VALIDATED'
           and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
           and c.review_status = 'AUTO_CANDIDATE'
           and c.is_active = false
@@ -1765,11 +1767,13 @@ def _nwdp_boundary_project_matching_eligible_candidates(
           f.source_district_name,
           f.source_subdistrict_name,
           f.source_block_name,
-          f.source_village_name
+          f.source_village_name,
+          f.geometry_validation_status
         from geography_boundary_import_batches b
         join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
         join geography_boundary_source_features f on f.id = c.source_feature_id
         where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+          and f.geometry_validation_status = 'VALIDATED'
           and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
           and c.review_status = 'AUTO_CANDIDATE'
           and c.is_active = false
@@ -1803,7 +1807,7 @@ def list_nwdp_boundary_project_matching_eligible_candidates(
     return {
         "schema_version": "nwdp_boundary_project_matching_eligible_candidates.v1",
         "mode": "READ_ONLY_PROJECT_MATCHING_ELIGIBLE_CANDIDATES",
-        "claim_boundary": "Read-only admin/project matching candidate read model. It returns inactive DIRECT_VLCODE_MATCH AUTO_CANDIDATE rows only. It excludes manual review and blocked candidates and does not activate candidates, promote candidates, write runtime tables, enable lookup behavior, or change Android behavior.",
+        "claim_boundary": "Read-only admin/project matching candidate read model. It returns inactive DIRECT_VLCODE_MATCH AUTO_CANDIDATE rows backed by VALIDATED source geometry only. It excludes manual review and blocked candidates and does not activate candidates, promote candidates, write runtime tables, enable lookup behavior, or change Android behavior.",
         "governance": _nwdp_boundary_governance(),
         "filters": {
             "state_or_ut": state_or_ut,
@@ -1815,6 +1819,8 @@ def list_nwdp_boundary_project_matching_eligible_candidates(
             "returned_count": result["returned"],
             "manual_review_excluded": True,
             "blocked_excluded": True,
+            "non_validated_geometry_excluded": True,
+            "required_geometry_validation_status": "VALIDATED",
             "candidate_activation_changed": False,
             "candidate_promotion_changed": False,
             "runtime_tables_written": False,
@@ -1895,7 +1901,9 @@ def _nwdp_boundary_project_matching_project_preview(
               c.proposed_village_id
             from geography_boundary_import_batches b
             join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
+            join geography_boundary_source_features f on f.id = c.source_feature_id
             where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+              and f.geometry_validation_status = 'VALIDATED'
               and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
               and c.review_status = 'AUTO_CANDIDATE'
               and c.is_active = false
@@ -1943,11 +1951,13 @@ def _nwdp_boundary_project_matching_project_preview(
               f.source_vlcode,
               f.source_district_name,
               f.source_subdistrict_name,
-              f.source_village_name
+              f.source_village_name,
+              f.geometry_validation_status
             from geography_boundary_import_batches b
             join geography_boundary_crosswalk_candidates c on c.import_batch_id = b.id
             join geography_boundary_source_features f on f.id = c.source_feature_id
             where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+              and f.geometry_validation_status = 'VALIDATED'
               and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
               and c.review_status = 'AUTO_CANDIDATE'
               and c.is_active = false
@@ -1985,6 +1995,8 @@ def _nwdp_boundary_project_matching_project_preview(
             "coverage_ratio": (eligible_villages / project_village_count) if project_village_count else 0,
             "manual_review_excluded_from_matching": True,
             "blocked_excluded_from_matching": True,
+            "non_validated_geometry_excluded_from_matching": True,
+            "required_geometry_validation_status": "VALIDATED",
         },
         "items": [dict(row) for row in items],
     }
@@ -2001,7 +2013,7 @@ def get_nwdp_boundary_project_matching_project_preview(
     return {
         "schema_version": "nwdp_boundary_project_matching_project_preview.v1",
         "mode": "READ_ONLY_PROJECT_MATCHING_PROJECT_PREVIEW",
-        "claim_boundary": "Read-only project-scoped NWDP boundary coverage preview. It inspects inactive direct-code candidates for project villages only. It does not activate candidates, promote candidates, write runtime tables, enable lookup behavior, or change Android behavior.",
+        "claim_boundary": "Read-only project-scoped NWDP boundary coverage preview. It inspects inactive direct-code candidates backed by VALIDATED source geometry for project villages only. It does not activate candidates, promote candidates, write runtime tables, enable lookup behavior, or change Android behavior.",
         "governance": _nwdp_boundary_governance(),
         **result,
         "guardrails": {
