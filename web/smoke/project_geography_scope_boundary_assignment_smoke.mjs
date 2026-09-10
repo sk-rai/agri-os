@@ -44,6 +44,23 @@ const page = await browser.newPage({
 });
 
 const browserEvents = [];
+let readinessRequestCount = 0;
+let projectCardPreviewRequestCount = 0;
+
+page.on("request", (request) => {
+  const url = request.url();
+  if (url.includes("/project-geography-readiness")) {
+    readinessRequestCount += 1;
+  }
+  if (
+    url.includes(
+      "/nwdp-boundary-project-matching/project-preview",
+    ) &&
+    url.includes("limit=1")
+  ) {
+    projectCardPreviewRequestCount += 1;
+  }
+});
 
 page.on("console", (message) => {
   browserEvents.push({
@@ -295,6 +312,19 @@ try {
     })
     .waitFor({ timeout: 30000 });
 
+  if (readinessRequestCount < 1) {
+    throw new Error(
+      "Projects page did not request batched geography readiness",
+    );
+  }
+
+  if (projectCardPreviewRequestCount !== 0) {
+    throw new Error(
+      `Projects page made ${projectCardPreviewRequestCount} ` +
+        "per-card boundary preview request(s)",
+    );
+  }
+
   const reviewBoundariesLink = geographySummary.getByRole("link", {
     name: "Review boundaries",
     exact: true,
@@ -359,6 +389,8 @@ try {
         persisted_after_reload: true,
     geography_summary_verified: true,
     boundary_review_deep_link_verified: true,
+    batched_readiness_request_verified: true,
+    per_card_preview_request_count: projectCardPreviewRequestCount,
         screenshot: scopeScreenshot,
         guardrails: {
           candidate_activation_changed: false,

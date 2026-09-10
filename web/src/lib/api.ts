@@ -2034,7 +2034,40 @@ export interface GeographyVillageSearchResult {
   similarity: number;
 }
 
+export interface ProjectGeographyReadinessItem {
+  project_id: string;
+  project_name: string;
+  project_status: string;
+  scoped_village_code_count: number;
+  resolved_village_count: number;
+  unresolved_village_code_count: number;
+  villages_with_eligible_boundary: number;
+  villages_without_eligible_boundary: number;
+  eligible_candidate_count: number;
+  coverage_ratio: number;
+  state_names: string[];
+  district_names: string[];
+}
+
+export interface ProjectGeographyReadinessResponse {
+  schema_version: string;
+  tenant_id: string;
+  project_count: number;
+  items: ProjectGeographyReadinessItem[];
+  guardrails: {
+    db_writes_attempted: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
 export const geographyApi = {
+  listProjectGeographyReadiness: () =>
+    api<ProjectGeographyReadinessResponse>(
+      "/api/v1/master-data/geography/project-geography-readiness",
+    ),
   listStates: () =>
     api<GeographyState[]>("/api/v1/master-data/geography/states"),
   listDistricts: (stateId: string) =>

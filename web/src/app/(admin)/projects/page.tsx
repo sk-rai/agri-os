@@ -2,13 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { projectsApi, type Project } from "@/lib/api";
+import {
+  geographyApi,
+  projectsApi,
+  type Project,
+  type ProjectGeographyReadinessItem,
+} from "@/lib/api";
 import { GeographyVillagePicker } from "@/components/geography-village-picker";
 import { ProjectGeographySummary } from "@/components/project-geography-summary";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [geographyReadiness, setGeographyReadiness] = useState<
+    Record<string, ProjectGeographyReadinessItem>
+  >({});
+  const [geographyReadinessLoading, setGeographyReadinessLoading] =
+    useState(true);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -24,8 +34,28 @@ export default function ProjectsPage() {
   const { profile: adminProfile, loading: adminProfileLoading } = useAdminProfile();
   const canCreateProjects = hasAdminPermission(adminProfile, "PROJECT_EDIT") || hasAdminPermission(adminProfile, "EDIT");
 
-  const loadProjects = () => {
-    projectsApi.list().then(setProjects).catch(() => {}).finally(() => setLoading(false));
+  const loadProjects = async () => {
+    setGeographyReadinessLoading(true);
+    try {
+      const [projectRows, readiness] = await Promise.all([
+        projectsApi.list(),
+        geographyApi
+          .listProjectGeographyReadiness()
+          .catch(() => null),
+      ]);
+      setProjects(projectRows);
+      setGeographyReadiness(
+        Object.fromEntries(
+          (readiness?.items || []).map((item) => [
+            item.project_id,
+            item,
+          ]),
+        ),
+      );
+    } finally {
+      setLoading(false);
+      setGeographyReadinessLoading(false);
+    }
   };
 
   useEffect(() => { loadProjects(); }, []);
@@ -188,7 +218,11 @@ export default function ProjectsPage() {
                 </div>
               </div>
 
-              <ProjectGeographySummary project={p} />
+              <ProjectGeographySummary
+                project={p}
+                summary={geographyReadiness[p.id]}
+                loading={geographyReadinessLoading}
+              />
 
 
               {scopeProjectId === p.id ? (

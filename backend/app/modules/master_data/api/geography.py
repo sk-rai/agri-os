@@ -2031,6 +2031,156 @@ def _nwdp_boundary_project_matching_project_preview(
     }
 
 
+@router.get("/project-geography-readiness")
+def get_project_geography_readiness(
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+) -> dict:
+    """Return set-based geography and boundary readiness for project cards."""
+    rows = db.execute(text("""
+        with project_scope as (
+            select
+              p.id as project_id,
+              p.name as project_name,
+              p.status as project_status,
+              scope_code.value as village_lgd_code
+            from projects p
+            left join lateral jsonb_array_elements_text(
+              case
+                when jsonb_typeof(
+                  coalesce(p.geography_scope, '{}'::jsonb)
+                  -> 'village_lgd_codes'
+                ) = 'array'
+                then p.geography_scope -> 'village_lgd_codes'
+                else '[]'::jsonb
+              end
+            ) scope_code(value) on true
+            where p.tenant_id = :tenant_id
+              and p.is_active = true
+        ),
+        resolved as (
+            select
+              ps.project_id,
+              ps.village_lgd_code,
+              v.id as village_id,
+              s.canonical_name as state_name,
+              d.canonical_name as district_name
+            from project_scope ps
+            join geography_villages v
+              on v.lgd_code = ps.village_lgd_code
+             and v.is_active = true
+            join geography_blocks b
+              on b.id = v.block_id
+             and b.is_active = true
+            join geography_districts d
+              on d.id = v.district_id
+             and d.is_active = true
+            join geography_states s
+              on s.id = d.state_id
+             and s.is_active = true
+        ),
+        eligible as (
+            select distinct
+              c.id as candidate_id,
+              c.proposed_village_id as village_id
+            from geography_boundary_import_batches batch
+            join geography_boundary_crosswalk_candidates c
+              on c.import_batch_id = batch.id
+            join geography_boundary_source_features feature
+              on feature.id = c.source_feature_id
+            where batch.source_system =
+                    'NWDP_GSI_VILLAGE_BOUNDARY'
+              and feature.geometry_validation_status = 'VALIDATED'
+              and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
+              and c.review_status = 'AUTO_CANDIDATE'
+              and c.promotion_status = 'NOT_PROMOTED'
+              and c.is_active = false
+              and c.proposed_village_id is not null
+        )
+        select
+          ps.project_id::text,
+          min(ps.project_name) as project_name,
+          min(ps.project_status) as project_status,
+          count(distinct ps.village_lgd_code)
+            filter (where ps.village_lgd_code is not null)
+            ::bigint as scoped_village_code_count,
+          count(distinct r.village_id)
+            ::bigint as resolved_village_count,
+          count(distinct r.village_id)
+            filter (where e.village_id is not null)
+            ::bigint as villages_with_eligible_boundary,
+          (
+            count(distinct r.village_id)
+            - count(distinct r.village_id)
+              filter (where e.village_id is not null)
+          )::bigint as villages_without_eligible_boundary,
+          count(distinct e.candidate_id)
+            ::bigint as eligible_candidate_count,
+          array_remove(
+            array_agg(distinct r.state_name),
+            null
+          ) as state_names,
+          array_remove(
+            array_agg(
+              distinct r.district_name || ', ' || r.state_name
+            ),
+            null
+          ) as district_names
+        from project_scope ps
+        left join resolved r
+          on r.project_id = ps.project_id
+         and r.village_lgd_code = ps.village_lgd_code
+        left join eligible e
+          on e.village_id = r.village_id
+        group by ps.project_id
+        order by min(ps.project_name), ps.project_id
+        limit :limit
+    """), {
+        "tenant_id": x_tenant_id,
+        "limit": limit,
+    }).mappings().all()
+
+    items = []
+    for raw_row in rows:
+        row = dict(raw_row)
+        scoped = int(row["scoped_village_code_count"] or 0)
+        resolved = int(row["resolved_village_count"] or 0)
+        covered = int(row["villages_with_eligible_boundary"] or 0)
+        missing = int(row["villages_without_eligible_boundary"] or 0)
+
+        items.append({
+            **row,
+            "scoped_village_code_count": scoped,
+            "resolved_village_count": resolved,
+            "unresolved_village_code_count": max(scoped - resolved, 0),
+            "villages_with_eligible_boundary": covered,
+            "villages_without_eligible_boundary": missing,
+            "eligible_candidate_count": int(
+                row["eligible_candidate_count"] or 0
+            ),
+            "coverage_ratio": covered / resolved if resolved else 0,
+            "state_names": sorted(row["state_names"] or []),
+            "district_names": sorted(row["district_names"] or []),
+        })
+
+    return {
+        "schema_version": "project_geography_readiness.v1",
+        "tenant_id": x_tenant_id,
+        "project_count": len(items),
+        "items": items,
+        "guardrails": {
+            "db_writes_attempted": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
+
 @router.get("/nwdp-boundary-project-matching/project-preview")
 def get_nwdp_boundary_project_matching_project_preview(
     project_id: UUID = Query(...),
