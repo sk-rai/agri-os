@@ -144,32 +144,42 @@ try {
     })
     .click();
 
-  const stateSelect = projectCard.getByLabel(
-    "State / Union Territory",
+  const existingVillageSelection = projectCard.getByRole(
+    "button",
+    { name: `Remove village LGD ${villageLgdCode}` },
   );
-  await stateSelect.waitFor({ timeout: 30000 });
-  await stateSelect.selectOption(stateId);
 
-  const districtSelect = projectCard.getByLabel("District");
-  await districtSelect.waitFor({ timeout: 30000 });
-  await districtSelect.selectOption(districtId);
+  if ((await existingVillageSelection.count()) === 0) {
+    const stateSelect = projectCard.getByLabel(
+      "State / Union Territory",
+    );
+    await stateSelect.waitFor({ timeout: 30000 });
+    await stateSelect.selectOption(stateId);
 
-  const villageSearchInput = projectCard.getByLabel("Search villages");
-  await villageSearchInput.fill(villageSearch);
+    const districtSelect = projectCard.getByLabel("District");
+    await districtSelect.waitFor({ timeout: 30000 });
+    await districtSelect.selectOption(districtId);
 
-  const villageResult = projectCard
-    .getByLabel("Village search results")
-    .getByRole("button")
-    .filter({ hasText: `LGD ${villageLgdCode}` })
-    .first();
+    const villageSearchInput = projectCard.getByLabel("Search villages");
+    await villageSearchInput.fill(villageSearch);
 
-  await villageResult.waitFor({ timeout: 30000 });
-  await villageResult.click();
+    const villageResult = projectCard
+      .getByLabel("Village search results")
+      .getByRole("button")
+      .filter({ hasText: `LGD ${villageLgdCode}` })
+      .first();
 
-  await projectCard
-    .getByText(`LGD ${villageLgdCode}`, { exact: false })
-    .last()
-    .waitFor({ timeout: 30000 });
+    await villageResult.waitFor({ timeout: 30000 });
+    await villageResult.click();
+
+    await projectCard
+      .getByText(`LGD ${villageLgdCode}`, { exact: false })
+      .last()
+      .waitFor({ timeout: 30000 });
+
+  } else {
+    await existingVillageSelection.waitFor({ timeout: 30000 });
+  }
 
   await projectCard
     .getByLabel("Change reason")
@@ -268,6 +278,72 @@ try {
     fullPage: true,
   });
 
+  const geographySummary = reloadedCard.getByLabel(
+    "Project geography summary",
+  );
+  await geographySummary.waitFor({ timeout: 30000 });
+
+  await geographySummary
+    .getByText("1 of 1 villages have an eligible boundary", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await geographySummary
+    .getByText("1 state · 1 district · 0 missing", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  const reviewBoundariesLink = geographySummary.getByRole("link", {
+    name: "Review boundaries",
+    exact: true,
+  });
+  const reviewHref = await reviewBoundariesLink.getAttribute("href");
+
+  if (
+    reviewHref !==
+    `/nwdp-boundary-review?project_id=${project.id}#project-coverage-preview`
+  ) {
+    throw new Error(
+      `Unexpected project boundary-review link: ${reviewHref}`,
+    );
+  }
+
+  await Promise.all([
+    page.waitForURL(
+      (url) =>
+        url.pathname === "/nwdp-boundary-review" &&
+        url.searchParams.get("project_id") === project.id,
+      { timeout: 30000 },
+    ),
+    reviewBoundariesLink.click(),
+  ]);
+
+  const projectPreviewSection = page.locator(
+    "#project-coverage-preview",
+  );
+  await projectPreviewSection.waitFor({ timeout: 30000 });
+
+  const deepLinkedProjectSelect = projectPreviewSection
+    .getByLabel("Project");
+
+  const deepLinkedProjectOption = deepLinkedProjectSelect.locator(
+    `option[value="${project.id}"]:checked`,
+  );
+  await deepLinkedProjectOption.waitFor({
+    state: "attached",
+    timeout: 30000,
+  });
+
+  const deepLinkedProjectId = await deepLinkedProjectSelect.inputValue();
+
+  if (deepLinkedProjectId !== project.id) {
+    throw new Error(
+      `Boundary review selected ${deepLinkedProjectId}; expected ${project.id}`,
+    );
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -281,6 +357,8 @@ try {
         scope_source:
           scopeResponseBody.geography_scope?.source,
         persisted_after_reload: true,
+    geography_summary_verified: true,
+    boundary_review_deep_link_verified: true,
         screenshot: scopeScreenshot,
         guardrails: {
           candidate_activation_changed: false,

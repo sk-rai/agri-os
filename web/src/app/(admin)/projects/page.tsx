@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { projectsApi, type Project } from "@/lib/api";
 import { GeographyVillagePicker } from "@/components/geography-village-picker";
+import { ProjectGeographySummary } from "@/components/project-geography-summary";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
@@ -186,6 +187,9 @@ export default function ProjectsPage() {
                   </button>
                 </div>
               </div>
+
+              <ProjectGeographySummary project={p} />
+
 
               {scopeProjectId === p.id ? (
                 <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">

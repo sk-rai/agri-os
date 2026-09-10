@@ -424,7 +424,19 @@ export default function NwdpBoundaryReviewPage() {
     try {
       const response = await projectsApi.list();
       setProjects(response);
-      if (!selectedProjectId && response.length > 0) setSelectedProjectId(response[0].id);
+      const requestedProjectId =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("project_id")
+          : null;
+      const requestedProjectExists =
+        requestedProjectId &&
+        response.some((project) => project.id === requestedProjectId);
+
+      if (!selectedProjectId && requestedProjectExists) {
+        setSelectedProjectId(requestedProjectId);
+      } else if (!selectedProjectId && response.length > 0) {
+        setSelectedProjectId(response[0].id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects");
     }
@@ -798,7 +810,10 @@ export default function NwdpBoundaryReviewPage() {
             </tbody>
           </table>
         </div>
-        <div className="mt-5 rounded-lg border border-green-200 bg-white p-4">
+        <div
+          id="project-coverage-preview"
+          className="mt-5 scroll-mt-4 rounded-lg border border-green-200 bg-white p-4"
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="font-semibold text-gray-900">Project coverage preview</h3>

@@ -6,6 +6,8 @@ page = (ROOT / "web/src/app/(admin)/projects/page.tsx").read_text(encoding="utf-
 api = (ROOT / "web/src/lib/api.ts").read_text(encoding="utf-8")
 
 picker = Path("web/src/components/geography-village-picker.tsx").read_text()
+summary = Path("web/src/components/project-geography-summary.tsx").read_text()
+boundary_page = Path("web/src/app/(admin)/nwdp-boundary-review/page.tsx").read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -25,6 +27,12 @@ checks = [
     ("Picker supports multiple selected villages", "Selected villages" in picker),
     ("Picker supports village removal", "removeVillage" in picker),
     ("Picker prevents duplicate village selection", "selectedCodes.has" in picker),
+    ("Project cards expose geography summary", "ProjectGeographySummary" in page),
+    ("Summary reuses boundary preview endpoint", "project-preview" in summary),
+    ("Summary resolves state and district labels", "state_name" in summary and "district_name" in summary),
+    ("Summary shows eligible and missing boundaries", "villages_with_eligible_boundary" in summary and "villages_without_eligible_boundary" in summary),
+    ("Summary exposes project-filtered boundary review", "Review boundaries" in summary and "project_id=" in summary),
+    ("Boundary review accepts project deep links", 'get("project_id")' in boundary_page),
     ("Projects page requires a reason", "Change reason" in page),
     ("Projects page invokes guarded API", "projectsApi.updateGeographyScope" in page),
     ("Existing scope is loaded into editor", "village_lgd_codes" in page),
