@@ -167,18 +167,37 @@ try {
   );
 
   if ((await existingVillageSelection.count()) === 0) {
-    const stateSelect = projectCard.getByLabel(
-      "State / Union Territory",
+    await projectCard
+      .getByRole("button", {
+        name: "Search across India",
+        exact: true,
+      })
+      .click();
+
+    const globalSearchResponse = page.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname.endsWith(
+            "/api/v1/master-data/geography/villages/search",
+          ) &&
+          url.searchParams.get("q") === villageSearch &&
+          !url.searchParams.has("district_id")
+        );
+      },
+      { timeout: 30000 },
     );
-    await stateSelect.waitFor({ timeout: 30000 });
-    await stateSelect.selectOption(stateId);
 
-    const districtSelect = projectCard.getByLabel("District");
-    await districtSelect.waitFor({ timeout: 30000 });
-    await districtSelect.selectOption(districtId);
+    await projectCard
+      .getByLabel("Search villages")
+      .fill(villageSearch);
 
-    const villageSearchInput = projectCard.getByLabel("Search villages");
-    await villageSearchInput.fill(villageSearch);
+    const searchResponse = await globalSearchResponse;
+    if (searchResponse.status() !== 200) {
+      throw new Error(
+        `Global village search returned ${searchResponse.status()}`,
+      );
+    }
 
     const villageResult = projectCard
       .getByLabel("Village search results")
@@ -187,13 +206,24 @@ try {
       .first();
 
     await villageResult.waitFor({ timeout: 30000 });
+
+    const resultText = await villageResult.innerText();
+    if (
+      !resultText.includes("Andaman And Nicobar Islands") ||
+      !resultText.includes("Nicobars") ||
+      !resultText.includes("Nancowry")
+    ) {
+      throw new Error(
+        `Global result is missing hierarchy labels: ${resultText}`,
+      );
+    }
+
     await villageResult.click();
 
     await projectCard
       .getByText(`LGD ${villageLgdCode}`, { exact: false })
       .last()
       .waitFor({ timeout: 30000 });
-
   } else {
     await existingVillageSelection.waitFor({ timeout: 30000 });
   }
@@ -389,6 +419,8 @@ try {
         persisted_after_reload: true,
     geography_summary_verified: true,
     boundary_review_deep_link_verified: true,
+    nationwide_village_name_search_verified: true,
+    nationwide_result_hierarchy_verified: true,
     batched_readiness_request_verified: true,
     per_card_preview_request_count: projectCardPreviewRequestCount,
         screenshot: scopeScreenshot,

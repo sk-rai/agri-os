@@ -1279,8 +1279,12 @@ class VillageSearchResult(BaseModel):
     id: UUID
     lgd_code: str
     canonical_name: str
+    block_id: UUID
     block_name: str
+    district_id: UUID
     district_name: str
+    state_id: UUID
+    state_name: str
     pin_codes: Optional[list[str]] = None
     similarity: float
 
@@ -5027,15 +5031,23 @@ def search_villages(
                     v.lgd_code,
                     v.canonical_name,
                     v.pin_codes,
+                    v.block_id,
                     b.canonical_name as block_name,
+                    v.district_id,
                     d.canonical_name as district_name,
+                    s.id as state_id,
+                    s.canonical_name as state_name,
                     similarity(v.canonical_name, :query) as sim
                 FROM geography_villages v
                 JOIN geography_blocks b ON b.id = v.block_id
                 JOIN geography_districts d ON d.id = v.district_id
+                JOIN geography_states s ON s.id = d.state_id
                 WHERE v.canonical_name % :query
                 AND v.district_id = :district_id
                 AND v.is_active = true
+                AND b.is_active = true
+                AND d.is_active = true
+                AND s.is_active = true
                 ORDER BY sim DESC
                 LIMIT :limit
             """),
@@ -5049,14 +5061,22 @@ def search_villages(
                     v.lgd_code,
                     v.canonical_name,
                     v.pin_codes,
+                    v.block_id,
                     b.canonical_name as block_name,
+                    v.district_id,
                     d.canonical_name as district_name,
+                    s.id as state_id,
+                    s.canonical_name as state_name,
                     similarity(v.canonical_name, :query) as sim
                 FROM geography_villages v
                 JOIN geography_blocks b ON b.id = v.block_id
                 JOIN geography_districts d ON d.id = v.district_id
+                JOIN geography_states s ON s.id = d.state_id
                 WHERE v.canonical_name % :query
                 AND v.is_active = true
+                AND b.is_active = true
+                AND d.is_active = true
+                AND s.is_active = true
                 ORDER BY sim DESC
                 LIMIT :limit
             """),
@@ -5068,8 +5088,12 @@ def search_villages(
             id=r.id,
             lgd_code=r.lgd_code,
             canonical_name=r.canonical_name,
+            block_id=r.block_id,
             block_name=r.block_name,
+            district_id=r.district_id,
             district_name=r.district_name,
+            state_id=r.state_id,
+            state_name=r.state_name,
             pin_codes=r.pin_codes,
             similarity=round(r.sim, 3),
         )

@@ -30,6 +30,9 @@ export function GeographyVillagePicker({
 }: GeographyVillagePickerProps) {
   const [states, setStates] = useState<GeographyState[]>([]);
   const [districts, setDistricts] = useState<GeographyDistrict[]>([]);
+  const [searchMode, setSearchMode] = useState<
+    "district" | "india"
+  >("district");
   const [stateId, setStateId] = useState("");
   const [districtId, setDistrictId] = useState("");
   const [query, setQuery] = useState("");
@@ -145,7 +148,10 @@ export function GeographyVillagePicker({
 
   useEffect(() => {
     const trimmedQuery = query.trim();
-    if (!districtId || trimmedQuery.length < 2) {
+    if (
+      trimmedQuery.length < 2 ||
+      (searchMode === "district" && !districtId)
+    ) {
       setResults([]);
       setSearching(false);
       return;
@@ -156,7 +162,10 @@ export function GeographyVillagePicker({
       setSearching(true);
       setError("");
       geographyApi
-        .searchVillages(trimmedQuery, districtId)
+        .searchVillages(
+          trimmedQuery,
+          searchMode === "district" ? districtId : undefined,
+        )
         .then((rows) => {
           if (active) setResults(rows);
         })
@@ -177,7 +186,7 @@ export function GeographyVillagePicker({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [districtId, query]);
+  }, [districtId, query, searchMode]);
 
   const selectVillage = (village: GeographyVillageSearchResult) => {
     setKnownVillages((current) => ({
@@ -187,6 +196,7 @@ export function GeographyVillagePicker({
         name: village.canonical_name,
         blockName: village.block_name,
         districtName: village.district_name,
+        stateName: village.state_name,
       },
     }));
     if (!selectedCodes.has(village.lgd_code)) {
@@ -200,7 +210,48 @@ export function GeographyVillagePicker({
 
   return (
     <div className="mt-3">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div
+        aria-label="Village search mode"
+        className="flex flex-wrap gap-2"
+      >
+        <button
+          type="button"
+          aria-pressed={searchMode === "district"}
+          disabled={disabled}
+          onClick={() => {
+            setSearchMode("district");
+            setQuery("");
+            setResults([]);
+          }}
+          className={`rounded border px-3 py-2 text-xs font-semibold ${
+            searchMode === "district"
+              ? "border-green-700 bg-green-700 text-white"
+              : "border-gray-300 bg-white text-gray-700"
+          }`}
+        >
+          Search by state and district
+        </button>
+        <button
+          type="button"
+          aria-pressed={searchMode === "india"}
+          disabled={disabled}
+          onClick={() => {
+            setSearchMode("india");
+            setQuery("");
+            setResults([]);
+          }}
+          className={`rounded border px-3 py-2 text-xs font-semibold ${
+            searchMode === "india"
+              ? "border-green-700 bg-green-700 text-white"
+              : "border-gray-300 bg-white text-gray-700"
+          }`}
+        >
+          Search across India
+        </button>
+      </div>
+
+      {searchMode === "district" ? (
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         <label className="block text-xs font-medium text-gray-700">
           State / Union Territory
           <select
@@ -245,6 +296,12 @@ export function GeographyVillagePicker({
           </select>
         </label>
       </div>
+      ) : (
+        <p className="mt-3 text-xs text-gray-600">
+          Search all active canonical villages by name. Confirm the state,
+          district, block, and LGD code before selecting.
+        </p>
+      )}
 
       <label className="mt-3 block text-xs font-medium text-gray-700">
         Search villages
@@ -252,12 +309,17 @@ export function GeographyVillagePicker({
           type="search"
           aria-label="Search villages"
           value={query}
-          disabled={disabled || !districtId}
+          disabled={
+            disabled ||
+            (searchMode === "district" && !districtId)
+          }
           onChange={(event) => setQuery(event.target.value)}
           placeholder={
-            districtId
-              ? "Type at least 2 characters"
-              : "Select a state and district first"
+            searchMode === "india"
+              ? "Search village names across India"
+              : districtId
+                ? "Type at least 2 characters"
+                : "Select a state and district first"
           }
           className="mt-1 w-full rounded border bg-white px-3 py-2 text-sm"
         />
@@ -267,7 +329,9 @@ export function GeographyVillagePicker({
         <p className="mt-2 text-xs text-gray-500">Searching villages…</p>
       ) : null}
 
-      {!searching && districtId && query.trim().length >= 2 ? (
+      {!searching &&
+      query.trim().length >= 2 &&
+      (searchMode === "india" || districtId) ? (
         <div
           aria-label="Village search results"
           className="mt-2 max-h-56 overflow-y-auto rounded border bg-white"
@@ -288,7 +352,8 @@ export function GeographyVillagePicker({
                       {village.canonical_name}
                     </span>
                     <span className="block text-xs text-gray-500">
-                      {village.district_name} / {village.block_name}
+                      {village.state_name} / {village.district_name} /{" "}
+                      {village.block_name}
                     </span>
                   </span>
                   <span className="shrink-0 font-mono text-xs text-gray-600">

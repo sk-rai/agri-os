@@ -2028,8 +2028,12 @@ export interface GeographyVillageSearchResult {
   id: string;
   lgd_code: string;
   canonical_name: string;
+  block_id: string;
   block_name: string;
+  district_id: string;
   district_name: string;
+  state_id: string;
+  state_name: string;
   pin_codes?: string[] | null;
   similarity: number;
 }
@@ -2082,12 +2086,12 @@ export const geographyApi = {
       `/api/v1/master-data/geography/villages/by-lgd-codes?${params.toString()}`,
     );
   },
-  searchVillages: (query: string, districtId: string) => {
+  searchVillages: (query: string, districtId?: string) => {
     const params = new URLSearchParams({
       q: query,
-      district_id: districtId,
       limit: "30",
     });
+    if (districtId) params.set("district_id", districtId);
     return api<GeographyVillageSearchResult[]>(
       `/api/v1/master-data/geography/villages/search?${params.toString()}`,
     );
