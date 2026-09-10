@@ -23,6 +23,8 @@ interface GeographyVillagePickerProps {
   disabled?: boolean;
 }
 
+const MAX_SELECTED_VILLAGES = 500;
+
 export function GeographyVillagePicker({
   value,
   onChange,
@@ -46,6 +48,8 @@ export function GeographyVillagePicker({
   const [searching, setSearching] = useState(false);
   const [hydratingCodes, setHydratingCodes] = useState(false);
   const [error, setError] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState("");
+  const [confirmRemoveAll, setConfirmRemoveAll] = useState(false);
 
   const selectedCodes = useMemo(() => new Set(value), [value]);
 
@@ -198,25 +202,99 @@ export function GeographyVillagePicker({
     };
   }, [districtId, query, searchMode]);
 
-  const selectVillage = (village: GeographyVillageSearchResult) => {
+  const rememberVillages = (
+    villages: GeographyVillageSearchResult[],
+  ) => {
     setKnownVillages((current) => ({
       ...current,
-      [village.lgd_code]: {
-        lgdCode: village.lgd_code,
-        name: village.canonical_name,
-        blockName: village.block_name,
-        districtName: village.district_name,
-        stateName: village.state_name,
-      },
+      ...Object.fromEntries(
+        villages.map((village) => [
+          village.lgd_code,
+          {
+            lgdCode: village.lgd_code,
+            name: village.canonical_name,
+            blockName: village.block_name,
+            districtName: village.district_name,
+            stateName: village.state_name,
+          },
+        ]),
+      ),
     }));
-    if (!selectedCodes.has(village.lgd_code)) {
-      onChange([...value, village.lgd_code]);
+  };
+
+  const selectVillage = (village: GeographyVillageSearchResult) => {
+    rememberVillages([village]);
+
+    if (selectedCodes.has(village.lgd_code)) return;
+
+    if (value.length >= MAX_SELECTED_VILLAGES) {
+      setError(
+        `A project can include at most ${MAX_SELECTED_VILLAGES} villages.`,
+      );
+      return;
     }
+
+    setError("");
+    onChange([...value, village.lgd_code]);
   };
 
   const removeVillage = (lgdCode: string) => {
     onChange(value.filter((code) => code !== lgdCode));
+    setConfirmRemoveAll(false);
   };
+
+  const toggleVillage = (village: GeographyVillageSearchResult) => {
+    if (selectedCodes.has(village.lgd_code)) {
+      removeVillage(village.lgd_code);
+    } else {
+      selectVillage(village);
+    }
+  };
+
+  const selectAllDisplayed = () => {
+    const additions = results.filter(
+      (village) => !selectedCodes.has(village.lgd_code),
+    );
+    const available = Math.max(
+      MAX_SELECTED_VILLAGES - value.length,
+      0,
+    );
+    const accepted = additions.slice(0, available);
+
+    rememberVillages(accepted);
+
+    if (accepted.length) {
+      onChange([
+        ...value,
+        ...accepted.map((village) => village.lgd_code),
+      ]);
+    }
+
+    if (accepted.length < additions.length) {
+      setError(
+        `Selected ${accepted.length} displayed villages; ` +
+          `the project limit is ${MAX_SELECTED_VILLAGES}.`,
+      );
+    } else {
+      setError("");
+    }
+  };
+
+  const filteredSelectedCodes = value.filter((code) => {
+    const filter = selectedFilter.trim().toLocaleLowerCase();
+    if (!filter) return true;
+
+    const village = knownVillages[code];
+    return [
+      code,
+      village?.name,
+      village?.blockName,
+      village?.districtName,
+      village?.stateName,
+    ].some((field) =>
+      field?.toLocaleLowerCase().includes(filter),
+    );
+  });
 
   return (
     <div className="mt-3">
@@ -326,7 +404,13 @@ export function GeographyVillagePicker({
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (!results.length) return;
-            if (event.key === "ArrowDown") {
+            if (
+              (event.ctrlKey || event.metaKey) &&
+              event.key.toLocaleLowerCase() === "a"
+            ) {
+              event.preventDefault();
+              selectAllDisplayed();
+            } else if (event.key === "ArrowDown") {
               event.preventDefault();
               setActiveResultIndex((current) =>
                 Math.min(current + 1, results.length - 1),
@@ -338,7 +422,7 @@ export function GeographyVillagePicker({
               );
             } else if (event.key === "Enter") {
               event.preventDefault();
-              selectVillage(results[activeResultIndex]);
+              toggleVillage(results[activeResultIndex]);
             } else if (event.key === "Escape") {
               setResults([]);
               setQuery("");
@@ -374,44 +458,85 @@ export function GeographyVillagePicker({
           id="village-search-results"
           role="listbox"
           aria-label="Village search results"
-          className="mt-2 max-h-56 overflow-y-auto rounded border bg-white"
+          className="mt-2 rounded border bg-white"
         >
           {results.length ? (
-            results.map((village, index) => {
-              const selected = selectedCodes.has(village.lgd_code);
-              return (
+            <>
+              <div className="flex items-center justify-between gap-3 border-b bg-gray-50 px-3 py-2">
+                <span className="text-xs text-gray-600">
+                  {results.length} displayed · {value.length}/
+                  {MAX_SELECTED_VILLAGES} selected
+                </span>
                 <button
-                  id={`village-result-${village.id}`}
-                  key={village.id}
                   type="button"
-                  role="option"
-                  aria-selected={selected}
-                  disabled={disabled || selected}
-                  onClick={() => selectVillage(village)}
-                  className={`flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-green-50 disabled:bg-gray-50 ${
-                    index === activeResultIndex ? "bg-green-50" : ""
-                  }`}
+                  disabled={
+                    disabled ||
+                    value.length >= MAX_SELECTED_VILLAGES ||
+                    results.every((village) =>
+                      selectedCodes.has(village.lgd_code),
+                    )
+                  }
+                  onClick={selectAllDisplayed}
+                  className="text-xs font-semibold text-green-700 hover:text-green-900 disabled:text-gray-400"
                 >
-                  <span>
-                    <span className="block text-sm font-medium text-gray-900">
-                      {village.canonical_name}
-                    </span>
-                    <span className="block text-xs text-gray-500">
-                      {village.state_name} / {village.district_name} /{" "}
-                      {village.block_name}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-xs text-gray-600">
-                    <span className="block">
-                      {selected ? "Selected" : `LGD ${village.lgd_code}`}
-                    </span>
-                    <span className="mt-1 block text-[10px] text-gray-400">
-                      {village.match_type.replaceAll("_", " ")}
-                    </span>
-                  </span>
+                  Select all displayed
                 </button>
-              );
-            })
+              </div>
+
+              <div className="max-h-56 overflow-y-auto">
+                {results.map((village, index) => {
+                  const selected = selectedCodes.has(
+                    village.lgd_code,
+                  );
+                  return (
+                    <button
+                      id={`village-result-${village.id}`}
+                      key={village.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      disabled={disabled}
+                      onClick={() => toggleVillage(village)}
+                      className={`flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-green-50 disabled:bg-gray-50 ${
+                        index === activeResultIndex
+                          ? "bg-green-50"
+                          : ""
+                      }`}
+                    >
+                      <span className="flex items-start gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="mt-0.5 text-sm text-green-700"
+                        >
+                          {selected ? "☑" : "☐"}
+                        </span>
+                        <span>
+                          <span className="block text-sm font-medium text-gray-900">
+                            {village.canonical_name}
+                          </span>
+                          <span className="block text-xs text-gray-500">
+                            {village.state_name} /{" "}
+                            {village.district_name} /{" "}
+                            {village.block_name}
+                          </span>
+                        </span>
+                      </span>
+
+                      <span className="shrink-0 font-mono text-xs text-gray-600">
+                        <span className="block">
+                          {selected
+                            ? "Selected"
+                            : `LGD ${village.lgd_code}`}
+                        </span>
+                        <span className="mt-1 block text-[10px] text-gray-400">
+                          {village.match_type.replaceAll("_", " ")}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           ) : (
             <p className="px-3 py-4 text-sm text-gray-500">
               No matching active villages found.
@@ -422,7 +547,7 @@ export function GeographyVillagePicker({
 
       <div className="mt-4">
         <p className="text-xs font-medium text-gray-700">
-          Selected villages ({value.length})
+          Selected villages ({value.length}/{MAX_SELECTED_VILLAGES})
           {hydratingCodes ? (
             <span className="ml-2 font-normal text-gray-500">
               Resolving saved names…
@@ -430,8 +555,67 @@ export function GeographyVillagePicker({
           ) : null}
         </p>
         {value.length ? (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {value.map((code) => {
+          <>
+            <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+              <label className="text-xs font-medium text-gray-700">
+                Filter selected villages
+                <input
+                  type="search"
+                  aria-label="Filter selected villages"
+                  value={selectedFilter}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setSelectedFilter(event.target.value)
+                  }
+                  placeholder="Name, hierarchy, or LGD code"
+                  className="mt-1 block rounded border bg-white px-3 py-2 text-sm"
+                />
+              </label>
+
+              {confirmRemoveAll ? (
+                <span className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setConfirmRemoveAll(false)}
+                    className="rounded border px-3 py-2 text-xs font-semibold text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      onChange([]);
+                      setConfirmRemoveAll(false);
+                      setSelectedFilter("");
+                    }}
+                    className="rounded bg-red-600 px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    Confirm remove all
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setConfirmRemoveAll(true)}
+                  className="rounded border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"
+                >
+                  Remove all
+                </button>
+              )}
+            </div>
+
+            {selectedFilter.trim() &&
+            !filteredSelectedCodes.length ? (
+              <p className="mt-2 text-xs text-gray-500">
+                No selected villages match this filter.
+              </p>
+            ) : null}
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {filteredSelectedCodes.map((code) => {
               const village = knownVillages[code];
               return (
                 <span
@@ -461,8 +645,9 @@ export function GeographyVillagePicker({
                   </button>
                 </span>
               );
-            })}
-          </div>
+              })}
+            </div>
+          </>
         ) : (
           <p className="mt-2 text-xs text-gray-500">
             No villages selected. Search above to add one or more villages.
