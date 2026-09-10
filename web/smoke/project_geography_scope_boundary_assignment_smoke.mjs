@@ -16,6 +16,16 @@ const fixtureName =
 
 const villageLgdCode =
   process.env.WEB_SCOPE_VILLAGE_LGD_CODE || "645063";
+const villageName =
+  process.env.WEB_SCOPE_VILLAGE_NAME || "Hoipoh*";
+const villageSearch =
+  process.env.WEB_SCOPE_VILLAGE_SEARCH || "Hoipoh";
+const stateId =
+  process.env.WEB_SCOPE_STATE_ID ||
+  "c29469a4-5655-4385-8fbb-40d2fbcdd132";
+const districtId =
+  process.env.WEB_SCOPE_DISTRICT_ID ||
+  "2fe15657-3321-41b5-8b9c-698afeab1632";
 
 if (!token || !actorId) {
   throw new Error(
@@ -134,9 +144,32 @@ try {
     })
     .click();
 
+  const stateSelect = projectCard.getByLabel(
+    "State / Union Territory",
+  );
+  await stateSelect.waitFor({ timeout: 30000 });
+  await stateSelect.selectOption(stateId);
+
+  const districtSelect = projectCard.getByLabel("District");
+  await districtSelect.waitFor({ timeout: 30000 });
+  await districtSelect.selectOption(districtId);
+
+  const villageSearchInput = projectCard.getByLabel("Search villages");
+  await villageSearchInput.fill(villageSearch);
+
+  const villageResult = projectCard
+    .getByLabel("Village search results")
+    .getByRole("button")
+    .filter({ hasText: `LGD ${villageLgdCode}` })
+    .first();
+
+  await villageResult.waitFor({ timeout: 30000 });
+  await villageResult.click();
+
   await projectCard
-    .getByLabel("Village LGD codes")
-    .fill(villageLgdCode);
+    .getByText(`LGD ${villageLgdCode}`, { exact: false })
+    .last()
+    .waitFor({ timeout: 30000 });
 
   await projectCard
     .getByLabel("Change reason")
@@ -205,16 +238,15 @@ try {
     })
     .click();
 
-  const persistedValue = await reloadedCard
-    .getByLabel("Village LGD codes")
-    .inputValue();
+  const persistedVillage = reloadedCard
+    .getByText(`LGD ${villageLgdCode}`, { exact: false })
+    .first();
 
-  const persistedCodes = persistedValue
-    .split(",")
-    .map((code) => code.trim())
-    .filter(Boolean);
+  const persistedAfterReload =
+    (await persistedVillage.count()) > 0 &&
+    (await persistedVillage.isVisible());
 
-  if (!persistedCodes.includes(villageLgdCode)) {
+  if (!persistedAfterReload) {
     throw new Error(
       `LGD code ${villageLgdCode} did not persist after reload`,
     );
@@ -239,6 +271,7 @@ try {
         project_id: project.id,
         project_name: project.name,
         village_lgd_code: villageLgdCode,
+    village_name: villageName,
         scope_source:
           scopeResponseBody.geography_scope?.source,
         persisted_after_reload: true,

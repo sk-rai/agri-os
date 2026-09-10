@@ -1998,6 +1998,48 @@ export const tenantsApi = {
     api<Tenant>("/api/v1/tenants", { method: "POST", body: data }),
 };
 
+export interface GeographyState {
+  id: string;
+  lgd_code: string;
+  canonical_name: string;
+}
+
+export interface GeographyDistrict {
+  id: string;
+  lgd_code: string;
+  state_id: string;
+  canonical_name: string;
+}
+
+export interface GeographyVillageSearchResult {
+  id: string;
+  lgd_code: string;
+  canonical_name: string;
+  block_name: string;
+  district_name: string;
+  pin_codes?: string[] | null;
+  similarity: number;
+}
+
+export const geographyApi = {
+  listStates: () =>
+    api<GeographyState[]>("/api/v1/master-data/geography/states"),
+  listDistricts: (stateId: string) =>
+    api<GeographyDistrict[]>(
+      `/api/v1/master-data/geography/districts?state_id=${encodeURIComponent(stateId)}`,
+    ),
+  searchVillages: (query: string, districtId: string) => {
+    const params = new URLSearchParams({
+      q: query,
+      district_id: districtId,
+      limit: "30",
+    });
+    return api<GeographyVillageSearchResult[]>(
+      `/api/v1/master-data/geography/villages/search?${params.toString()}`,
+    );
+  },
+};
+
 // Projects
 export const projectsApi = {
   list: () => api<Project[]>("/api/v1/projects"),

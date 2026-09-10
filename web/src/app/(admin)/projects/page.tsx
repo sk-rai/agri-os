@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { projectsApi, type Project } from "@/lib/api";
+import { GeographyVillagePicker } from "@/components/geography-village-picker";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
@@ -14,7 +15,7 @@ export default function ProjectsPage() {
   });
   const [error, setError] = useState("");
   const [scopeProjectId, setScopeProjectId] = useState("");
-  const [scopeVillageCodes, setScopeVillageCodes] = useState("");
+  const [scopeVillageCodes, setScopeVillageCodes] = useState<string[]>([]);
   const [scopeReason, setScopeReason] = useState(
     "Configure project villages for validated boundary assignment",
   );
@@ -54,24 +55,16 @@ export default function ProjectsPage() {
   const openScopeEditor = (project: Project) => {
     const codes = Array.isArray(
       project.geography_scope?.village_lgd_codes,
-    )
-      ? project.geography_scope.village_lgd_codes
-          .map(String)
-          .join(", ")
+    ) ? project.geography_scope.village_lgd_codes.map(String)
       : "";
     setScopeProjectId(project.id);
-    setScopeVillageCodes(codes);
+    setScopeVillageCodes(Array.isArray(codes) ? codes : []);
     setError("");
   };
 
   const saveGeographyScope = async (projectId: string) => {
-    const codes = scopeVillageCodes
-      .split(",")
-      .map((code) => code.trim())
-      .filter(Boolean);
-
-    if (!codes.length) {
-      setError("Enter at least one canonical village LGD code.");
+    if (!scopeVillageCodes.length) {
+      setError("Select at least one canonical village.");
       return;
     }
     if (scopeReason.trim().length < 3) {
@@ -84,7 +77,7 @@ export default function ProjectsPage() {
     try {
       await projectsApi.updateGeographyScope(
         projectId,
-        codes,
+        scopeVillageCodes,
         scopeReason.trim(),
       );
       setScopeProjectId("");
@@ -200,21 +193,15 @@ export default function ProjectsPage() {
                     Project village scope
                   </h4>
                   <p className="mt-1 text-xs text-green-800">
-                    Enter canonical LGD village codes. Only planned projects
-                    without operational data can change geography scope.
+                    Select canonical villages from the LGD geography master.
+                    Only planned projects without operational data can change
+                    geography scope.
                   </p>
-                  <label className="mt-3 block text-xs font-medium text-gray-700">
-                    Village LGD codes
-                    <textarea
-                      value={scopeVillageCodes}
-                      onChange={(event) =>
-                        setScopeVillageCodes(event.target.value)
-                      }
-                      placeholder="645063, 645105"
-                      rows={3}
-                      className="mt-1 w-full rounded border bg-white px-3 py-2 font-mono text-sm"
-                    />
-                  </label>
+                  <GeographyVillagePicker
+                    value={scopeVillageCodes}
+                    onChange={setScopeVillageCodes}
+                    disabled={scopeSaving}
+                  />
                   <label className="mt-3 block text-xs font-medium text-gray-700">
                     Change reason
                     <input
