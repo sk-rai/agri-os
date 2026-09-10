@@ -5,6 +5,7 @@ import {
   geographyApi,
   type GeographyDistrict,
   type GeographyState,
+  type GeographyVillageDetails,
   type GeographyVillageSearchResult,
 } from "@/lib/api";
 
@@ -13,6 +14,7 @@ interface SelectedVillage {
   name?: string;
   blockName?: string;
   districtName?: string;
+  stateName?: string;
 }
 
 interface GeographyVillagePickerProps {
@@ -38,9 +40,55 @@ export function GeographyVillagePicker({
   const [loadingStates, setLoadingStates] = useState(true);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [hydratingCodes, setHydratingCodes] = useState(false);
   const [error, setError] = useState("");
 
   const selectedCodes = useMemo(() => new Set(value), [value]);
+
+  useEffect(() => {
+    const missingCodes = value.filter((code) => !knownVillages[code]);
+    if (!missingCodes.length) {
+      setHydratingCodes(false);
+      return;
+    }
+
+    let active = true;
+    setHydratingCodes(true);
+    geographyApi
+      .resolveVillagesByLgdCodes(missingCodes)
+      .then((rows: GeographyVillageDetails[]) => {
+        if (!active || !rows.length) return;
+        setKnownVillages((current) => {
+          const hydrated = { ...current };
+          rows.forEach((village) => {
+            hydrated[village.lgd_code] = {
+              lgdCode: village.lgd_code,
+              name: village.canonical_name,
+              blockName: village.block_name,
+              districtName: village.district_name,
+              stateName: village.state_name,
+            };
+          });
+          return hydrated;
+        });
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to resolve saved villages",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setHydratingCodes(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [knownVillages, value]);
 
   useEffect(() => {
     let active = true;
@@ -260,6 +308,11 @@ export function GeographyVillagePicker({
       <div className="mt-4">
         <p className="text-xs font-medium text-gray-700">
           Selected villages ({value.length})
+          {hydratingCodes ? (
+            <span className="ml-2 font-normal text-gray-500">
+              Resolving saved names…
+            </span>
+          ) : null}
         </p>
         {value.length ? (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -271,8 +324,16 @@ export function GeographyVillagePicker({
                   className="inline-flex items-center gap-2 rounded-full border border-green-300 bg-white px-3 py-1 text-xs text-green-900"
                 >
                   <span>
-                    {village?.name ? `${village.name} · ` : ""}
-                    LGD {code}
+                    <span className="block font-medium">
+                      {village?.name || "Unresolved village"} · LGD {code}
+                    </span>
+                    {village ? (
+                      <span className="block text-[11px] text-gray-500">
+                        {[village.stateName, village.districtName, village.blockName]
+                          .filter(Boolean)
+                          .join(" / ")}
+                      </span>
+                    ) : null}
                   </span>
                   <button
                     type="button"

@@ -238,13 +238,19 @@ try {
     })
     .click();
 
-  const persistedVillage = reloadedCard
+  const persistedVillageName = reloadedCard
+    .getByText(villageName, { exact: false })
+    .first();
+  await persistedVillageName.waitFor({ timeout: 30000 });
+
+  const persistedVillageCode = reloadedCard
     .getByText(`LGD ${villageLgdCode}`, { exact: false })
     .first();
+  await persistedVillageCode.waitFor({ timeout: 30000 });
 
   const persistedAfterReload =
-    (await persistedVillage.count()) > 0 &&
-    (await persistedVillage.isVisible());
+    await persistedVillageName.isVisible() &&
+    await persistedVillageCode.isVisible();
 
   if (!persistedAfterReload) {
     throw new Error(

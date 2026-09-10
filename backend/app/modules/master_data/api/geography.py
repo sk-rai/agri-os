@@ -6,6 +6,7 @@ GET /api/v1/master-data/geography/blocks?district_id=
 GET /api/v1/master-data/geography/villages?block_id=  (block-scoped)
 GET /api/v1/master-data/geography/villages?district_id=  (district-wide, for offline cache)
 GET /api/v1/master-data/geography/villages/search?q=&district_id=  (fuzzy, optionally scoped)
+GET /api/v1/master-data/geography/villages/by-lgd-codes?lgd_codes=  (bulk canonical lookup)
 """
 
 import csv
@@ -4639,6 +4640,91 @@ def list_villages(
         .limit(limit)
         .all()
     )
+
+
+@router.get(
+    "/villages/by-lgd-codes",
+    response_model=list[PinCodeVillageResponse],
+)
+def villages_by_lgd_codes(
+    lgd_codes: str = Query(
+        ...,
+        min_length=1,
+        description="Comma-separated canonical village LGD codes",
+    ),
+    db: Session = Depends(get_db),
+):
+    """Resolve saved village LGD codes to their canonical hierarchy labels."""
+    requested_codes = list(dict.fromkeys(
+        code.strip()
+        for code in lgd_codes.split(",")
+        if code.strip()
+    ))
+
+    if not requested_codes:
+        raise HTTPException(400, "At least one village LGD code is required")
+    if len(requested_codes) > 500:
+        raise HTTPException(400, "At most 500 village LGD codes may be resolved")
+    if any(not code.isdigit() for code in requested_codes):
+        raise HTTPException(
+            400,
+            "Village LGD codes must contain digits only",
+        )
+
+    rows = (
+        db.query(
+            GeographyVillage,
+            GeographyBlock.canonical_name.label("block_name"),
+            GeographyDistrict.canonical_name.label("district_name"),
+            GeographyState.id.label("state_id"),
+            GeographyState.canonical_name.label("state_name"),
+        )
+        .join(
+            GeographyBlock,
+            GeographyBlock.id == GeographyVillage.block_id,
+        )
+        .join(
+            GeographyDistrict,
+            GeographyDistrict.id == GeographyVillage.district_id,
+        )
+        .join(
+            GeographyState,
+            GeographyState.id == GeographyDistrict.state_id,
+        )
+        .filter(
+            GeographyVillage.lgd_code.in_(requested_codes),
+            GeographyVillage.is_active == True,
+            GeographyBlock.is_active == True,
+            GeographyDistrict.is_active == True,
+            GeographyState.is_active == True,
+        )
+        .all()
+    )
+
+    rows_by_code = {
+        row.GeographyVillage.lgd_code: row
+        for row in rows
+    }
+
+    return [
+        PinCodeVillageResponse(
+            id=rows_by_code[code].GeographyVillage.id,
+            lgd_code=rows_by_code[code].GeographyVillage.lgd_code,
+            canonical_name=(
+                rows_by_code[code].GeographyVillage.canonical_name
+            ),
+            block_id=rows_by_code[code].GeographyVillage.block_id,
+            block_name=rows_by_code[code].block_name,
+            district_id=rows_by_code[code].GeographyVillage.district_id,
+            district_name=rows_by_code[code].district_name,
+            state_id=rows_by_code[code].state_id,
+            state_name=rows_by_code[code].state_name,
+            pin_codes=rows_by_code[code].GeographyVillage.pin_codes,
+        )
+        for code in requested_codes
+        if code in rows_by_code
+    ]
+
 
 
 @router.get("/villages/by-pin-code", response_model=PinCodeLookupResponse)

@@ -2011,6 +2011,19 @@ export interface GeographyDistrict {
   canonical_name: string;
 }
 
+export interface GeographyVillageDetails {
+  id: string;
+  lgd_code: string;
+  canonical_name: string;
+  block_id: string;
+  block_name: string;
+  district_id: string;
+  district_name: string;
+  state_id: string;
+  state_name: string;
+  pin_codes?: string[] | null;
+}
+
 export interface GeographyVillageSearchResult {
   id: string;
   lgd_code: string;
@@ -2028,6 +2041,14 @@ export const geographyApi = {
     api<GeographyDistrict[]>(
       `/api/v1/master-data/geography/districts?state_id=${encodeURIComponent(stateId)}`,
     ),
+  resolveVillagesByLgdCodes: (codes: string[]) => {
+    const params = new URLSearchParams({
+      lgd_codes: codes.join(","),
+    });
+    return api<GeographyVillageDetails[]>(
+      `/api/v1/master-data/geography/villages/by-lgd-codes?${params.toString()}`,
+    );
+  },
   searchVillages: (query: string, districtId: string) => {
     const params = new URLSearchParams({
       q: query,
