@@ -152,7 +152,23 @@ try {
     })
     .first();
 
-  await projectCard.waitFor({ timeout: 30000 });
+  try {
+    await projectCard.waitFor({ timeout: 30000 });
+  } catch {
+    const body = await page.locator("body").innerText().catch(() => "");
+    if (!body.includes("Loading...")) throw new Error(
+      `Fixture project card did not render: ${body.slice(-1000)}`,
+    );
+
+    await page.reload({
+      waitUntil: "domcontentloaded",
+      timeout: 45000,
+    });
+    await page
+      .getByRole("heading", { name: "Projects", exact: true })
+      .waitFor({ timeout: 30000 });
+    await projectCard.waitFor({ timeout: 30000 });
+  }
 
   await projectCard
     .getByRole("button", {
@@ -174,9 +190,11 @@ try {
       })
       .click();
 
-    const globalSearchResponse = page.waitForResponse(
-      (response) => {
-        const url = new URL(response.url());
+    const searchInput = projectCard.getByLabel("Search villages");
+
+    const staleNameRequest = page.waitForRequest(
+      (request) => {
+        const url = new URL(request.url());
         return (
           url.pathname.endsWith(
             "/api/v1/master-data/geography/villages/search",
@@ -188,20 +206,35 @@ try {
       { timeout: 30000 },
     );
 
-    await projectCard
-      .getByLabel("Search villages")
-      .fill(villageSearch);
+    await searchInput.fill(villageSearch);
+    await staleNameRequest;
 
-    const searchResponse = await globalSearchResponse;
+    const lgdSearchResponse = page.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname.endsWith(
+            "/api/v1/master-data/geography/villages/search",
+          ) &&
+          url.searchParams.get("q") === villageLgdCode &&
+          !url.searchParams.has("district_id")
+        );
+      },
+      { timeout: 30000 },
+    );
+
+    await searchInput.fill(villageLgdCode);
+
+    const searchResponse = await lgdSearchResponse;
     if (searchResponse.status() !== 200) {
       throw new Error(
-        `Global village search returned ${searchResponse.status()}`,
+        `LGD village search returned ${searchResponse.status()}`,
       );
     }
 
     const villageResult = projectCard
       .getByLabel("Village search results")
-      .getByRole("button")
+      .getByRole("option")
       .filter({ hasText: `LGD ${villageLgdCode}` })
       .first();
 
@@ -217,8 +250,13 @@ try {
         `Global result is missing hierarchy labels: ${resultText}`,
       );
     }
+    if (!resultText.includes("EXACT LGD")) {
+      throw new Error(
+        `Exact LGD result is missing its match label: ${resultText}`,
+      );
+    }
 
-    await villageResult.click();
+    await searchInput.press("Enter");
 
     await projectCard
       .getByText(`LGD ${villageLgdCode}`, { exact: false })
@@ -421,6 +459,9 @@ try {
     boundary_review_deep_link_verified: true,
     nationwide_village_name_search_verified: true,
     nationwide_result_hierarchy_verified: true,
+    exact_lgd_search_verified: true,
+    keyboard_selection_verified: true,
+    rapid_search_replacement_verified: true,
     batched_readiness_request_verified: true,
     per_card_preview_request_count: projectCardPreviewRequestCount,
         screenshot: scopeScreenshot,

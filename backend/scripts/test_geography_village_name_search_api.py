@@ -126,6 +126,38 @@ def main():
         scoped_payload,
     )
 
+    lgd_response = client.get(
+        ENDPOINT,
+        params={"q": fixture["lgd_code"], "limit": 10},
+    )
+    lgd_payload = lgd_response.json()
+
+    check(
+        lgd_response.status_code == 200,
+        "Direct LGD-code search succeeds",
+        lgd_payload,
+    )
+    check(
+        lgd_payload[0]["lgd_code"] == fixture["lgd_code"],
+        "Exact LGD result ranks first",
+        lgd_payload,
+    )
+    check(
+        lgd_payload[0]["match_type"] == "EXACT_LGD",
+        "Exact LGD match type is reported",
+        lgd_payload[0],
+    )
+    check(
+        global_match["match_type"] in {
+            "EXACT_NAME",
+            "PREFIX_NAME",
+            "SUBSTRING_NAME",
+            "FUZZY_NAME",
+        },
+        "Name match type is reported",
+        global_match,
+    )
+
     short_query = client.get(ENDPOINT, params={"q": "H"})
     check(short_query.status_code == 422, "One-character query is rejected")
 

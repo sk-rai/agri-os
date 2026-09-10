@@ -10,6 +10,7 @@ interface ApiOptions {
   body?: unknown;
   headers?: Record<string, string>;
   noAuth?: boolean;
+  signal?: AbortSignal;
 }
 
 export type ApiErrorDetail =
@@ -71,7 +72,13 @@ export async function api<T = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, headers = {}, noAuth = false } = options;
+  const {
+    method = "GET",
+    body,
+    headers = {},
+    noAuth = false,
+    signal,
+  } = options;
 
   const fetchHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -83,6 +90,7 @@ export async function api<T = unknown>(
     method,
     headers: fetchHeaders,
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   if (res.status === 401 && typeof window !== "undefined") {
@@ -2036,6 +2044,7 @@ export interface GeographyVillageSearchResult {
   state_name: string;
   pin_codes?: string[] | null;
   similarity: number;
+  match_type: string;
 }
 
 export interface ProjectGeographyReadinessItem {
@@ -2086,7 +2095,11 @@ export const geographyApi = {
       `/api/v1/master-data/geography/villages/by-lgd-codes?${params.toString()}`,
     );
   },
-  searchVillages: (query: string, districtId?: string) => {
+  searchVillages: (
+    query: string,
+    districtId?: string,
+    signal?: AbortSignal,
+  ) => {
     const params = new URLSearchParams({
       q: query,
       limit: "30",
@@ -2094,6 +2107,7 @@ export const geographyApi = {
     if (districtId) params.set("district_id", districtId);
     return api<GeographyVillageSearchResult[]>(
       `/api/v1/master-data/geography/villages/search?${params.toString()}`,
+      { signal },
     );
   },
 };

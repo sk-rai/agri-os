@@ -1287,6 +1287,7 @@ class VillageSearchResult(BaseModel):
     state_name: str
     pin_codes: Optional[list[str]] = None
     similarity: float
+    match_type: str
 
     class Config:
         from_attributes = True
@@ -5037,21 +5038,51 @@ def search_villages(
                     d.canonical_name as district_name,
                     s.id as state_id,
                     s.canonical_name as state_name,
-                    similarity(v.canonical_name, :query) as sim
+                    similarity(v.canonical_name, :query) as sim,
+                    case
+                      when v.lgd_code = :query then 'EXACT_LGD'
+                      when lower(v.canonical_name) = lower(:query)
+                        then 'EXACT_NAME'
+                      when v.canonical_name ilike :prefix_query
+                        then 'PREFIX_NAME'
+                      when v.canonical_name ilike :substring_query
+                        then 'SUBSTRING_NAME'
+                      else 'FUZZY_NAME'
+                    end as match_type
                 FROM geography_villages v
                 JOIN geography_blocks b ON b.id = v.block_id
                 JOIN geography_districts d ON d.id = v.district_id
                 JOIN geography_states s ON s.id = d.state_id
-                WHERE v.canonical_name % :query
+                WHERE (
+                    v.lgd_code = :query
+                    OR v.canonical_name % :query
+                    OR v.canonical_name ilike :substring_query
+                )
                 AND v.district_id = :district_id
                 AND v.is_active = true
                 AND b.is_active = true
                 AND d.is_active = true
                 AND s.is_active = true
-                ORDER BY sim DESC
+                ORDER BY
+                  case
+                    when v.lgd_code = :query then 0
+                    when lower(v.canonical_name) = lower(:query) then 1
+                    when v.canonical_name ilike :prefix_query then 2
+                    when v.canonical_name ilike :substring_query then 3
+                    else 4
+                  end,
+                  sim desc,
+                  v.canonical_name,
+                  v.lgd_code
                 LIMIT :limit
             """),
-            {"query": q, "limit": limit, "district_id": str(district_id)},
+            {
+                "query": q,
+                "prefix_query": f"{q}%",
+                "substring_query": f"%{q}%",
+                "limit": limit,
+                "district_id": str(district_id),
+            },
         ).fetchall()
     else:
         results = db.execute(
@@ -5067,20 +5098,49 @@ def search_villages(
                     d.canonical_name as district_name,
                     s.id as state_id,
                     s.canonical_name as state_name,
-                    similarity(v.canonical_name, :query) as sim
+                    similarity(v.canonical_name, :query) as sim,
+                    case
+                      when v.lgd_code = :query then 'EXACT_LGD'
+                      when lower(v.canonical_name) = lower(:query)
+                        then 'EXACT_NAME'
+                      when v.canonical_name ilike :prefix_query
+                        then 'PREFIX_NAME'
+                      when v.canonical_name ilike :substring_query
+                        then 'SUBSTRING_NAME'
+                      else 'FUZZY_NAME'
+                    end as match_type
                 FROM geography_villages v
                 JOIN geography_blocks b ON b.id = v.block_id
                 JOIN geography_districts d ON d.id = v.district_id
                 JOIN geography_states s ON s.id = d.state_id
-                WHERE v.canonical_name % :query
+                WHERE (
+                    v.lgd_code = :query
+                    OR v.canonical_name % :query
+                    OR v.canonical_name ilike :substring_query
+                )
                 AND v.is_active = true
                 AND b.is_active = true
                 AND d.is_active = true
                 AND s.is_active = true
-                ORDER BY sim DESC
+                ORDER BY
+                  case
+                    when v.lgd_code = :query then 0
+                    when lower(v.canonical_name) = lower(:query) then 1
+                    when v.canonical_name ilike :prefix_query then 2
+                    when v.canonical_name ilike :substring_query then 3
+                    else 4
+                  end,
+                  sim desc,
+                  v.canonical_name,
+                  v.lgd_code
                 LIMIT :limit
             """),
-            {"query": q, "limit": limit},
+            {
+                "query": q,
+                "prefix_query": f"{q}%",
+                "substring_query": f"%{q}%",
+                "limit": limit,
+            },
         ).fetchall()
 
     return [
@@ -5096,6 +5156,7 @@ def search_villages(
             state_name=r.state_name,
             pin_codes=r.pin_codes,
             similarity=round(r.sim, 3),
+            match_type=r.match_type,
         )
         for r in results
     ]

@@ -37,6 +37,7 @@ export function GeographyVillagePicker({
   const [districtId, setDistrictId] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeographyVillageSearchResult[]>([]);
+  const [activeResultIndex, setActiveResultIndex] = useState(0);
   const [knownVillages, setKnownVillages] = useState<
     Record<string, SelectedVillage>
   >({});
@@ -158,6 +159,7 @@ export function GeographyVillagePicker({
     }
 
     let active = true;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setSearching(true);
       setError("");
@@ -165,12 +167,19 @@ export function GeographyVillagePicker({
         .searchVillages(
           trimmedQuery,
           searchMode === "district" ? districtId : undefined,
+          controller.signal,
         )
         .then((rows) => {
-          if (active) setResults(rows);
+          if (active) {
+            setResults(rows);
+            setActiveResultIndex(0);
+          }
         })
         .catch((err: unknown) => {
-          if (active) {
+          if (
+            active &&
+            !(err instanceof DOMException && err.name === "AbortError")
+          ) {
             setResults([]);
             setError(
               err instanceof Error ? err.message : "Village search failed",
@@ -185,6 +194,7 @@ export function GeographyVillagePicker({
     return () => {
       active = false;
       window.clearTimeout(timer);
+      controller.abort();
     };
   }, [districtId, query, searchMode]);
 
@@ -314,6 +324,34 @@ export function GeographyVillagePicker({
             (searchMode === "district" && !districtId)
           }
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (!results.length) return;
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveResultIndex((current) =>
+                Math.min(current + 1, results.length - 1),
+              );
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveResultIndex((current) =>
+                Math.max(current - 1, 0),
+              );
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              selectVillage(results[activeResultIndex]);
+            } else if (event.key === "Escape") {
+              setResults([]);
+              setQuery("");
+            }
+          }}
+          role="combobox"
+          aria-expanded={results.length > 0}
+          aria-controls="village-search-results"
+          aria-activedescendant={
+            results.length
+              ? `village-result-${results[activeResultIndex].id}`
+              : undefined
+          }
           placeholder={
             searchMode === "india"
               ? "Search village names across India"
@@ -333,19 +371,26 @@ export function GeographyVillagePicker({
       query.trim().length >= 2 &&
       (searchMode === "india" || districtId) ? (
         <div
+          id="village-search-results"
+          role="listbox"
           aria-label="Village search results"
           className="mt-2 max-h-56 overflow-y-auto rounded border bg-white"
         >
           {results.length ? (
-            results.map((village) => {
+            results.map((village, index) => {
               const selected = selectedCodes.has(village.lgd_code);
               return (
                 <button
+                  id={`village-result-${village.id}`}
                   key={village.id}
                   type="button"
+                  role="option"
+                  aria-selected={selected}
                   disabled={disabled || selected}
                   onClick={() => selectVillage(village)}
-                  className="flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-green-50 disabled:bg-gray-50"
+                  className={`flex w-full items-start justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-green-50 disabled:bg-gray-50 ${
+                    index === activeResultIndex ? "bg-green-50" : ""
+                  }`}
                 >
                   <span>
                     <span className="block text-sm font-medium text-gray-900">
@@ -357,7 +402,12 @@ export function GeographyVillagePicker({
                     </span>
                   </span>
                   <span className="shrink-0 font-mono text-xs text-gray-600">
-                    {selected ? "Selected" : `LGD ${village.lgd_code}`}
+                    <span className="block">
+                      {selected ? "Selected" : `LGD ${village.lgd_code}`}
+                    </span>
+                    <span className="mt-1 block text-[10px] text-gray-400">
+                      {village.match_type.replaceAll("_", " ")}
+                    </span>
                   </span>
                 </button>
               );
