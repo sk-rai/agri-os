@@ -1721,6 +1721,54 @@ export interface Project {
   crop_scope: string[];
 }
 
+export interface ProjectGeographyScopeImportVillage {
+  village_id: string;
+  village_lgd_code: string;
+  village_name: string;
+  block_name: string;
+  district_id: string;
+  district_name: string;
+  state_id: string;
+  state_name: string;
+}
+
+export interface ProjectGeographyScopeImportPreview {
+  schema_version: string;
+  project: {
+    id: string;
+    name: string;
+    status: string;
+  };
+  mode: "READ_ONLY_IMPORT_PREVIEW";
+  summary: {
+    input_row_count: number;
+    unique_code_count: number;
+    accepted_count: number;
+    duplicate_count: number;
+    invalid_count: number;
+    unknown_count: number;
+    maximum_village_count: number;
+    limit_exceeded: boolean;
+    can_apply: boolean;
+  };
+  accepted_villages: ProjectGeographyScopeImportVillage[];
+  duplicate_village_lgd_codes: string[];
+  invalid_village_lgd_codes: string[];
+  unknown_village_lgd_codes: string[];
+  normalized_village_lgd_codes: string[];
+  edit_policy: {
+    can_edit_core_config: boolean;
+    lock_state: string;
+  };
+  governance: {
+    database_write_performed: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_eligibility_changed: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
 export interface SyncHealth {
   total_events_processed: number;
   committed: number;
@@ -2128,6 +2176,24 @@ export const projectsApi = {
         reason,
       },
     }),
+  previewGeographyScopeImport: (
+    projectId: string,
+    villageLgdCodes: string[],
+  ) =>
+    api<ProjectGeographyScopeImportPreview>(
+      `/api/v1/projects/${projectId}/geography-scope/import-preview`,
+      {
+        method: "POST",
+        body: {
+          village_lgd_codes: villageLgdCodes,
+        },
+      },
+    ),
+  downloadGeographyScopeCsv: (projectId: string) =>
+    apiDownload(
+      `/api/v1/projects/${projectId}/geography-scope/export.csv`,
+      `project-${projectId}-geography-scope.csv`,
+    ),
   assignRole: (projectId: string, data: { user_id: string; role: string; territory_scope: Record<string, unknown> }) =>
     api(`/api/v1/projects/${projectId}/roles`, { method: "POST", body: data }),
   downloadEnrollmentTemplate: (projectId: string) =>

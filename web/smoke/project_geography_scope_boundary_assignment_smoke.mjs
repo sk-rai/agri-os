@@ -177,6 +177,157 @@ try {
     })
     .click();
 
+  const csvInput = projectCard.getByLabel(
+    "Import village scope CSV",
+  );
+
+  const invalidPreviewResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${project.id}/geography-scope/import-preview`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await csvInput.setInputFiles({
+    name: "project-geography-invalid.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      "village_lgd_code\n" +
+        `${villageLgdCode}\n` +
+        `${villageLgdCode}\n` +
+        "not-an-lgd-code\n" +
+        "999999999\n",
+    ),
+  });
+
+  const invalidPreview = await invalidPreviewResponse;
+  if (invalidPreview.status() !== 200) {
+    throw new Error(
+      `Invalid CSV preview returned ${invalidPreview.status()}`,
+    );
+  }
+
+  await projectCard
+    .getByText("Duplicate codes ignored (1)", { exact: true })
+    .waitFor({ timeout: 30000 });
+  await projectCard
+    .getByText("Malformed codes (1)", { exact: true })
+    .waitFor({ timeout: 30000 });
+  await projectCard
+    .getByText("Unknown canonical villages (1)", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  const invalidUseButton = projectCard.getByRole("button", {
+    name: "Use 1 accepted villages",
+    exact: true,
+  });
+  if (!(await invalidUseButton.isDisabled())) {
+    throw new Error(
+      "Invalid geography CSV unexpectedly allowed apply",
+    );
+  }
+
+  const validPreviewResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${project.id}/geography-scope/import-preview`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await csvInput.setInputFiles({
+    name: "project-geography-valid.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `village_lgd_code\n${villageLgdCode}\n`,
+    ),
+  });
+
+  const validPreview = await validPreviewResponse;
+  if (validPreview.status() !== 200) {
+    throw new Error(
+      `Valid CSV preview returned ${validPreview.status()}`,
+    );
+  }
+
+  await projectCard
+    .getByText(villageName, { exact: true })
+    .last()
+    .waitFor({ timeout: 30000 });
+  await projectCard
+    .getByText("Andaman And Nicobar Islands / Nicobars / Nancowry", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await projectCard
+    .getByRole("button", {
+      name: "Use 1 accepted villages",
+      exact: true,
+    })
+    .click();
+
+  await projectCard
+    .getByText("Selected villages (1/500)", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  const selectedFilter = projectCard.getByLabel(
+    "Filter selected villages",
+  );
+  await selectedFilter.fill("definitely-not-this-village");
+  await projectCard
+    .getByText("No selected villages match this filter.", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+  await selectedFilter.fill("");
+
+  await projectCard
+    .getByRole("button", {
+      name: "Remove all",
+      exact: true,
+    })
+    .click();
+  await projectCard
+    .getByRole("button", {
+      name: "Confirm remove all",
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+  await projectCard
+    .getByRole("button", {
+      name: "Cancel",
+      exact: true,
+    })
+    .first()
+    .click();
+
+  await projectCard
+    .getByRole("button", {
+      name: `Remove village LGD ${villageLgdCode}`,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await projectCard
+    .getByRole("button", {
+      name: "Remove all",
+      exact: true,
+    })
+    .click();
+  await projectCard
+    .getByRole("button", {
+      name: "Confirm remove all",
+      exact: true,
+    })
+    .click();
+
+  await projectCard
+    .getByText("Selected villages (0/500)", { exact: true })
+    .waitFor({ timeout: 30000 });
+
   const existingVillageSelection = projectCard.getByRole(
     "button",
     { name: `Remove village LGD ${villageLgdCode}` },
@@ -256,11 +407,21 @@ try {
       );
     }
 
-    await searchInput.press("Enter");
+    await projectCard
+      .getByRole("button", {
+        name: "Select all displayed",
+        exact: true,
+      })
+      .click();
 
     await projectCard
-      .getByText(`LGD ${villageLgdCode}`, { exact: false })
-      .last()
+      .getByText("Selected villages (1/500)", { exact: true })
+      .waitFor({ timeout: 30000 });
+
+    await projectCard
+      .getByRole("button", {
+        name: `Remove village LGD ${villageLgdCode}`,
+      })
       .waitFor({ timeout: 30000 });
   } else {
     await existingVillageSelection.waitFor({ timeout: 30000 });
@@ -350,6 +511,34 @@ try {
   if (!persistedAfterReload) {
     throw new Error(
       `LGD code ${villageLgdCode} did not persist after reload`,
+    );
+  }
+
+  const downloadPromise = page.waitForEvent("download", {
+    timeout: 30000,
+  });
+
+  await reloadedCard
+    .getByRole("button", {
+      name: "Export current scope CSV",
+      exact: true,
+    })
+    .click();
+
+  const exportDownload = await downloadPromise;
+  const exportPath = await exportDownload.path();
+  if (!exportPath) {
+    throw new Error("CSV export did not produce a local file");
+  }
+
+  const exportedCsv = await fs.readFile(exportPath, "utf-8");
+  if (
+    !exportedCsv.includes("village_lgd_code") ||
+    !exportedCsv.includes(villageLgdCode) ||
+    !exportedCsv.includes(villageName)
+  ) {
+    throw new Error(
+      `Exported geography CSV is incomplete: ${exportedCsv}`,
     );
   }
 
@@ -461,6 +650,9 @@ try {
     nationwide_result_hierarchy_verified: true,
     exact_lgd_search_verified: true,
     keyboard_selection_verified: true,
+    csv_invalid_preview_verified: true,
+    csv_valid_preview_verified: true,
+    csv_export_verified: true,
     bulk_selection_verified: true,
     selected_village_filter_verified: true,
     guarded_remove_all_verified: true,

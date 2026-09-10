@@ -8,6 +8,7 @@ api = (ROOT / "web/src/lib/api.ts").read_text(encoding="utf-8")
 picker = Path("web/src/components/geography-village-picker.tsx").read_text()
 summary = Path("web/src/components/project-geography-summary.tsx").read_text()
 boundary_page = Path("web/src/app/(admin)/nwdp-boundary-review/page.tsx").read_text()
+csv_tools = Path("web/src/components/project-geography-scope-csv.tsx").read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -37,6 +38,17 @@ checks = [
     ("Picker supports keyboard bulk selection", "event.ctrlKey" in picker and "selectAllDisplayed();" in picker),
     ("Picker filters selected villages", "Filter selected villages" in picker and "filteredSelectedCodes" in picker),
     ("Picker guards remove all", "Confirm remove all" in picker and "confirmRemoveAll" in picker),
+    ("Projects page exposes geography CSV tools", "ProjectGeographyScopeCsv" in page),
+    ("API exposes geography import preview", "previewGeographyScopeImport" in api and "import-preview" in api),
+    ("API exposes geography scope export", "downloadGeographyScopeCsv" in api and "export.csv" in api),
+    ("CSV import requires an LGD-code header", "village_lgd_code" in csv_tools and "lgd_code" in csv_tools),
+    ("CSV import limits upload size", "MAX_CSV_BYTES" in csv_tools),
+    ("CSV import shows accepted and rejected counts", "Accepted" in csv_tools and "Rejected" in csv_tools),
+    ("CSV import reports duplicate codes", "Duplicate codes ignored" in csv_tools),
+    ("CSV import reports malformed codes", "Malformed codes" in csv_tools),
+    ("CSV import reports unknown villages", "Unknown canonical villages" in csv_tools),
+    ("CSV preview loads accepted codes into picker", "onUseAcceptedCodes" in csv_tools and "normalized_village_lgd_codes" in csv_tools),
+    ("CSV preview preserves audited save boundary", "performed no database write" in csv_tools and "Save geography scope" in page),
     ("Picker supports multiple selected villages", "Selected villages" in picker),
     ("Picker supports village removal", "removeVillage" in picker),
     ("Picker prevents duplicate village selection", "selectedCodes.has" in picker),

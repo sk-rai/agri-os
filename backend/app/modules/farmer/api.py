@@ -284,6 +284,13 @@ class ProjectGeographyScopeUpdate(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
+class ProjectGeographyScopeImportPreviewRequest(BaseModel):
+    village_lgd_codes: list[str] = Field(
+        default_factory=list,
+        max_length=2000,
+    )
+
+
 class ProjectAppConfigPatch(BaseModel):
     branding: Optional[dict] = None
     localization: Optional[dict] = None
@@ -2724,6 +2731,237 @@ def get_project_edit_policy(
     if not project:
         raise HTTPException(404, "Project not found")
     return _project_edit_policy(db, project, x_tenant_id)
+
+
+@router.get(
+    "/projects/{project_id}/geography-scope/export.csv",
+)
+def export_project_geography_scope_csv(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    """Export the current canonical village scope as CSV."""
+
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.tenant_id == x_tenant_id,
+    ).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    scope = project.geography_scope or {}
+    raw_codes = scope.get("village_lgd_codes") or []
+    codes = list(dict.fromkeys(
+        str(code).strip()
+        for code in raw_codes
+        if str(code).strip()
+    ))
+
+    rows = []
+    if codes:
+        rows = db.execute(text("""
+            select
+              v.lgd_code::text as village_lgd_code,
+              v.canonical_name as village_name,
+              b.canonical_name as block_name,
+              d.canonical_name as district_name,
+              s.canonical_name as state_name
+            from geography_villages v
+            join geography_blocks b on b.id = v.block_id
+            join geography_districts d on d.id = v.district_id
+            join geography_states s on s.id = d.state_id
+            where v.lgd_code::text = any(:codes)
+            order by array_position(
+              cast(:codes as text[]),
+              v.lgd_code::text
+            )
+        """), {"codes": codes}).mappings().all()
+
+    rows_by_code = {
+        str(row["village_lgd_code"]): row
+        for row in rows
+    }
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "village_lgd_code",
+        "village_name",
+        "block_name",
+        "district_name",
+        "state_name",
+    ])
+
+    for code in codes:
+        row = rows_by_code.get(code)
+        writer.writerow([
+            code,
+            row["village_name"] if row else "",
+            row["block_name"] if row else "",
+            row["district_name"] if row else "",
+            row["state_name"] if row else "",
+        ])
+
+    filename = (
+        f"project-{project_id}-geography-scope.csv"
+    )
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{filename}"',
+            "X-Project-Geography-Scope-Count": str(len(codes)),
+        },
+    )
+
+
+@router.post(
+    "/projects/{project_id}/geography-scope/import-preview",
+)
+def preview_project_geography_scope_import(
+    project_id: uuid.UUID,
+    body: ProjectGeographyScopeImportPreviewRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Validate canonical village LGD codes without changing scope."""
+
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.tenant_id == x_tenant_id,
+    ).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    edit_policy = _project_edit_policy(
+        db,
+        project,
+        x_tenant_id,
+    )
+
+    raw_codes = [
+        str(code).strip()
+        for code in body.village_lgd_codes
+        if str(code).strip()
+    ]
+
+    seen = set()
+    duplicate_codes = []
+    unique_codes = []
+    for code in raw_codes:
+        if code in seen:
+            if code not in duplicate_codes:
+                duplicate_codes.append(code)
+            continue
+        seen.add(code)
+        unique_codes.append(code)
+
+    invalid_codes = [
+        code for code in unique_codes
+        if not code.isdigit()
+    ]
+    valid_codes = [
+        code for code in unique_codes
+        if code.isdigit()
+    ]
+
+    rows = []
+    if valid_codes:
+        rows = db.execute(text("""
+            select
+              v.id::text as village_id,
+              v.lgd_code::text as village_lgd_code,
+              v.canonical_name as village_name,
+              b.canonical_name as block_name,
+              d.id::text as district_id,
+              d.canonical_name as district_name,
+              s.id::text as state_id,
+              s.canonical_name as state_name
+            from geography_villages v
+            join geography_blocks b on b.id = v.block_id
+            join geography_districts d on d.id = v.district_id
+            join geography_states s on s.id = d.state_id
+            where v.is_active = true
+              and b.is_active = true
+              and d.is_active = true
+              and s.is_active = true
+              and v.lgd_code::text = any(:codes)
+        """), {"codes": valid_codes}).mappings().all()
+
+    rows_by_code = {
+        str(row["village_lgd_code"]): dict(row)
+        for row in rows
+    }
+    accepted_rows = [
+        rows_by_code[code]
+        for code in valid_codes
+        if code in rows_by_code
+    ]
+    unknown_codes = [
+        code for code in valid_codes
+        if code not in rows_by_code
+    ]
+
+    limit_exceeded = len(unique_codes) > 500
+    can_apply = (
+        bool(accepted_rows)
+        and not invalid_codes
+        and not unknown_codes
+        and not limit_exceeded
+        and bool(edit_policy["can_edit_core_config"])
+    )
+
+    return {
+        "schema_version":
+            "project_geography_scope_import_preview.v1",
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+        },
+        "mode": "READ_ONLY_IMPORT_PREVIEW",
+        "summary": {
+            "input_row_count": len(raw_codes),
+            "unique_code_count": len(unique_codes),
+            "accepted_count": len(accepted_rows),
+            "duplicate_count": len(duplicate_codes),
+            "invalid_count": len(invalid_codes),
+            "unknown_count": len(unknown_codes),
+            "maximum_village_count": 500,
+            "limit_exceeded": limit_exceeded,
+            "can_apply": can_apply,
+        },
+        "accepted_villages": accepted_rows,
+        "duplicate_village_lgd_codes": duplicate_codes,
+        "invalid_village_lgd_codes": invalid_codes,
+        "unknown_village_lgd_codes": unknown_codes,
+        "normalized_village_lgd_codes": [
+            row["village_lgd_code"]
+            for row in accepted_rows
+        ],
+        "edit_policy": edit_policy,
+        "governance": {
+            "database_write_performed": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_eligibility_changed": False,
+            "android_behavior_changed": False,
+        },
+    }
 
 
 @router.patch(

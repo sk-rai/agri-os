@@ -9,6 +9,7 @@ import {
   type ProjectGeographyReadinessItem,
 } from "@/lib/api";
 import { GeographyVillagePicker } from "@/components/geography-village-picker";
+import { ProjectGeographyScopeCsv } from "@/components/project-geography-scope-csv";
 import { ProjectGeographySummary } from "@/components/project-geography-summary";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
@@ -235,6 +236,11 @@ export default function ProjectsPage() {
                     Only planned projects without operational data can change
                     geography scope.
                   </p>
+                  <ProjectGeographyScopeCsv
+                    projectId={p.id}
+                    disabled={scopeSaving}
+                    onUseAcceptedCodes={setScopeVillageCodes}
+                  />
                   <GeographyVillagePicker
                     value={scopeVillageCodes}
                     onChange={setScopeVillageCodes}
