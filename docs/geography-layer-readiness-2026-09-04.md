@@ -1,7 +1,7 @@
 # Geography layer readiness and enablement roadmap
 
-Status date: 2026-09-08
-Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, and external API readiness work.
+Status date: 2026-09-10
+Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, external API readiness, and the project geography-scope administration milestone completed on 2026-09-10.
 
 ## Executive decision
 
@@ -35,6 +35,15 @@ Recent committed baseline:
 - fd7d7e7 feat: surface external API readiness in geography matrix
 - c929c1e feat: add climate runtime enablement dry-run plan
 - e14d46b feat: add disabled climate runtime enablement guard
+- aef1ae5 test: cover project scope to boundary assignment workflow
+- 007175a feat: add searchable project village picker
+- 94a9068 feat: hydrate project village selections
+- 2235a0b feat: show project geography readiness
+- 8a43f29 perf: batch project geography readiness
+- 1d94115 feat: add nationwide village name search
+- 6a41327 feat: improve village search quality
+- 248e74f feat: add bulk project village selection
+- 52c4d09 feat: add project geography scope CSV tools
 
 Known passing validations include:
 
@@ -51,6 +60,15 @@ Known passing validations include:
 - External API readiness report regression passed.
 - Climate runtime enablement dry-run regression passed.
 - Disabled climate runtime enablement apply guard regression passed.
+- Geography village LGD bulk-lookup API regression passed.
+- Geography village nationwide name/LGD search API regression passed.
+- Project geography readiness batch API regression passed.
+- Project geography-scope editor UI contract regression passed.
+- Project geography-scope CSV import/export API regression passed.
+- Next.js optimized production build passed after the complete project-scope UI changes.
+- Authenticated Playwright project-scope-to-boundary-assignment smoke passed.
+- The smoke proved village search, exact LGD ranking, hierarchy labels, stale-request cancellation, keyboard selection, bulk selection, selected-scope filtering, guarded remove-all, CSV invalid/valid preview, audited scope save, persistence, readiness summary, deep linking, CSV export, project-boundary assignment, rollback, and fixture cleanup.
+- Smoke guardrails proved no candidate activation, candidate promotion, runtime eligibility, runtime lookup, or Android behavior change.
 
 ## Implemented committed surfaces
 
@@ -69,6 +87,15 @@ Known passing validations include:
 | Project boundary matching dry-run | `backend/scripts/plan_nwdp_boundary_project_matching_apply_dry_run.py` | Dry-run only | Implemented; resolves project geography scope. |
 | Project boundary disabled apply guard | `backend/scripts/apply_nwdp_boundary_project_matching_disabled.py` | Disabled apply guard | Implemented; rejects broad real apply and writes audit. |
 | Tiny-fixture project boundary apply | `backend/scripts/apply_nwdp_boundary_project_matching_tiny_fixture.py` | Fixture-only apply | Implemented; writes only `geography_boundary_project_matches`, proves idempotency and rollback, then returns DB counts to baseline. |
+| Project geography-scope editor | `web/src/app/(admin)/projects/page.tsx` | Guarded admin UI | PLANNED projects can configure canonical LGD village scope through the existing audited PATCH. |
+| Canonical village picker | `web/src/components/geography-village-picker.tsx` | Admin UI | Supports state/district search, nationwide name or exact-LGD search, hierarchy labels, saved-code hydration, stale-request cancellation, keyboard navigation, bulk selection, filtering, guarded removal, and a 500-village limit. |
+| Village LGD bulk lookup | `backend/app/modules/master_data/api/geography.py` | Read-only API | Hydrates persisted LGD codes with canonical village, block, district, and state labels. |
+| Nationwide village search | `backend/app/modules/master_data/api/geography.py` | Read-only API | Uses indexed exact-LGD, exact/prefix/substring name, and `pg_trgm` fuzzy matching with deterministic ranking and match-type evidence. |
+| Batched project geography readiness | `backend/app/modules/master_data/api/geography.py` | Read-only API | Returns tenant-scoped project readiness in one request and avoids per-card boundary-preview requests. |
+| Project geography summary | `web/src/components/project-geography-summary.tsx` | Read-only admin UI | Shows states, districts, eligible boundaries, missing boundaries, and a project-filtered boundary-review deep link. |
+| Geography-scope CSV preview/export | `backend/app/modules/farmer/api.py`, `web/src/components/project-geography-scope-csv.tsx` | Read-only preview/export plus guarded apply handoff | Reports duplicate, malformed, unknown, and over-limit rows; exports canonical hierarchy; accepted codes still require the existing audited save. |
+| Geography-scope CSV API regression | `backend/scripts/test_project_geography_scope_import_export_api.py` | Authenticated regression | Proves tenant scope, read-only preview, lock policy, canonical export, and exactly one audit event on guarded PATCH apply. |
+| Project scope-to-boundary Playwright smoke | `web/smoke/project_geography_scope_boundary_assignment_smoke.mjs` | Authenticated end-to-end smoke | Proves scope configuration through assignment and rollback while preserving runtime and Android guardrails. |
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | National boundary geometry validation evidence | `docs/boundary-geometry-national-validation-evidence-2026-09-07.md` | Evidence baseline | Records 654,285 source features: 654,093 valid and 192 repairable invalid, with zero manual or CRS blockers. |
 | Boundary validation metadata apply design | `docs/boundary-geometry-validation-metadata-apply-design-2026-09-07.md` | Design baseline | Defines scoped validation-status metadata writes, idempotency, audit/rollback, and strict runtime/Android separation. |
@@ -100,7 +127,7 @@ Known passing validations include:
 | NWDP demographics | 453,036 rows; 450,026 approved/active/promoted; 1,570 blocked; 0 remaining eligible | Keep disabled for Android | Ready | Admin/web preview only; expose duplicate-blocked diagnostics. |
 | NWDP/GSI boundary staging | 654,285 raw candidates; 580,629 district-placeable matrix candidates | Not broadly ready | Ready for review | Continue review, geometry validation, and controlled promotion planning. |
 | Boundary runtime | Existing tiny inactive pilot footprint: 1 set, 10 features, 10 crosswalks; active runtime counts remain 0 | Disabled | Pilot verification only | Validate geometries and source eligibility before any runtime promotion. |
-| Project boundary matches | 0 active project boundary matches | Not ready | Readiness/dry-run visible | Keep apply disabled until policy, rollback, and exact project scope are approved. |
+| Project boundary matches | 0 active matches after regression rollback/cleanup | Broad/runtime apply disabled | Readiness plus guarded project-scoped assignment/rollback available | Allow only permission-checked assignment of VALIDATED direct-code candidates within exact project scope; keep broad batch apply and runtime lookup disabled. |
 | Climate/agro-ecology | 50 active regions, 231 active mappings, 45 active crop-climate rules | Broad runtime disabled | Readiness/dry-run visible | Fill district/rule gaps before runtime activation. |
 | SOI ABDB | Official reference, but staged extract has unsafe LGD/name mismatch posture | Not safe for direct runtime joins | Reference/review only | Build reviewed SOI-to-backend-LGD crosswalk. |
 | BharatAtlas | Operational LGD-like boundary review source | Not authoritative by itself | Review/overlay source | Use with provenance caveats and review gates. |
@@ -322,7 +349,7 @@ Guardrails remain:
 
 - Project boundary apply design: `docs/project-boundary-matching-apply-design-2026-09-07.md`
 
-Project boundary matching now has read-only readiness, scope resolution, dry-run planning, disabled broad-apply guard coverage, and a green tiny-fixture apply path.
+Project boundary matching now has read-only readiness, scope resolution, dry-run planning, disabled broad-apply guard coverage, a green tiny-fixture apply path, and a guarded project-scoped assignment/rollback path for VALIDATED direct-code candidates.
 
 Tiny-fixture apply proof:
 
@@ -352,7 +379,47 @@ Important scope rule:
 
 - Broad state scope is used only when no narrower district/PIN/village scope is present.
 
-The dry-run can select eligible direct-VLCode auto-candidates for scoped projects, but real apply remains disabled. No project boundary match rows, runtime tables, lookup API enablement, candidate activation, candidate promotion, or Android behavior changes are allowed yet.
+The dry-run can select eligible direct-VLCode auto-candidates for scoped projects. A permission-checked admin/API path may now write and roll back project-scoped match history for an exact scoped village and a VALIDATED direct-code candidate. Broad or batch project-boundary apply remains disabled. Runtime tables, lookup enablement, candidate activation, candidate promotion, and Android behavior changes remain prohibited.
+
+### Project geography-scope administration milestone — 2026-09-10
+
+Nine commits completed the admin workflow from canonical village discovery through guarded project-boundary assignment:
+
+1. `aef1ae5` added an authenticated Playwright workflow covering project geography-scope persistence, boundary assignment, rollback, immutable history, and unchanged runtime/Android guardrails.
+2. `007175a` replaced manual scope entry with a reusable canonical village picker.
+3. `94a9068` added LGD-code hydration so persisted selections render canonical village and hierarchy labels.
+4. `2235a0b` added per-project geography and boundary-readiness summaries plus project-filtered boundary-review deep links.
+5. `8a43f29` replaced per-card preview calls with one tenant-scoped batched readiness request and added tenant-isolation regression coverage.
+6. `1d94115` added nationwide village-name search while retaining state/district search as the default workflow.
+7. `6a41327` added exact-LGD search, deterministic ranking, backend match-type evidence, indexed query coverage, stale-request cancellation, keyboard navigation, and improved combobox semantics.
+8. `248e74f` added checkbox-style result toggling, select-all-displayed, selected-scope filtering, guarded remove-all, keyboard bulk selection, and the explicit 500-village limit.
+9. `52c4d09` added read-only CSV import preview and canonical CSV export. Preview reports duplicates, malformed codes, unknown villages, and limit violations. Accepted rows load into the picker but do not write the database; the existing permission-checked PATCH and audit reason remain mandatory.
+
+Operational behavior now proved:
+
+- canonical village names are searchable globally and within a district
+- exact LGD codes rank first and expose match evidence
+- saved project scopes hydrate to canonical hierarchy labels
+- multiple villages can be selected and managed up to the 500-village API limit
+- project cards use one batched readiness request
+- readiness identifies eligible and missing boundary coverage
+- boundary review accepts an exact project deep link
+- CSV preview is read-only and CSV export includes canonical hierarchy
+- project geography scope remains editable only under the existing edit policy
+- applying scope creates exactly one immutable project configuration audit event
+- validated direct-code project-boundary assignment and rollback work end to end
+- fixture cleanup restores project, assignment-history, and audit counts to zero
+
+Explicit non-effects retained throughout:
+
+- no geography master overwrite
+- no boundary candidate activation
+- no boundary candidate promotion
+- no boundary runtime-table write
+- no runtime spatial lookup enablement
+- no Android behavior change
+
+This milestone makes project geography administration operationally usable without changing the broader boundary-runtime posture. Broad project-boundary apply remains independently gated.
 
 ## Climate, ecology, and biosphere layers
 
@@ -443,7 +510,22 @@ Implemented admin UI:
   - recommended next steps
   - state/district rows
 
-The page remains read-only.
+The geography-layer-readiness page remains read-only.
+
+The `/projects` admin page now additionally provides:
+
+- canonical state/district village search
+- nationwide village-name and exact-LGD search
+- persisted selection hydration
+- keyboard and bulk village selection
+- selected-scope filtering and guarded removal
+- per-project geography/boundary readiness summaries
+- project-filtered boundary-review links
+- read-only CSV import preview
+- canonical CSV export
+- an audited save action governed by project edit policy
+
+The project editor changes only project configuration. Boundary promotion, runtime lookup, and Android behavior remain outside this surface.
 
 ## Recommended next implementation sequence
 
@@ -482,10 +564,13 @@ The page remains read-only.
    - geometry validity must not grant runtime eligibility
    - candidate promotion and activation remain disabled
    - runtime tables and lookup remain unchanged
-7. Continue project-boundary, climate, SOI/BharatAtlas, and external-provider
-   gap closure behind their existing dry-run and disabled-apply gates.
-8. Keep Android behavior unchanged until a separate Android-intended runtime
-   enablement is explicitly approved.
+7. Treat the 2026-09-10 project geography-scope administration milestone as complete:
+   - canonical search, hydration, bulk management, readiness, CSV preview/export, audited save, assignment, rollback, and cleanup are proved
+   - keep broad project-boundary runtime enablement separate
+8. Add project geography-scope audit-history visibility and before/after village comparison before expanding operational rollout.
+9. Consider district/block bulk selection and project-creation-time geography configuration, retaining the 500-village and edit-policy controls.
+10. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
+11. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
 
@@ -493,4 +578,6 @@ The application is ready to use LGD and village PIN-code geography for Android/r
 
 NWDP demographic profiles are ready for admin/web preview only.
 
-NWDP boundary, project boundary matching, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation now have committed visibility and guard rails, but should remain blocked from runtime application behavior until their dry-run, policy, rollback, and promotion workflows are separately approved.
+Project geography-scope administration is now operational for guarded PLANNED-project configuration: canonical search and hydration, readiness summaries, bulk management, CSV preview/export, audited persistence, project-boundary assignment, rollback, and cleanup all have committed regression evidence.
+
+NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.
