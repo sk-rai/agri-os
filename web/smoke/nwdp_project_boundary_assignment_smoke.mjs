@@ -12,6 +12,7 @@ const apiBaseUrl =
 const reviewUrl =
   process.env.WEB_NWDP_BOUNDARY_REVIEW_URL ||
   `${baseUrl}/nwdp-boundary-review`;
+const requestedProjectId = process.env.WEB_PROJECT_ID || "";
 
 if (!token || !actorId) {
   console.error(
@@ -164,7 +165,17 @@ async function findAssignableProject() {
       .filter((option) => option.value),
   );
 
-  for (const option of options) {
+  const candidates = requestedProjectId
+    ? options.filter((option) => option.value === requestedProjectId)
+    : options;
+
+  if (requestedProjectId && candidates.length !== 1) {
+    throw new Error(
+      `Requested project ${requestedProjectId} is absent from the project selector`,
+    );
+  }
+
+  for (const option of candidates) {
     await selectProject(option.value);
 
     const assignButtons = page.getByRole("button", {
