@@ -2133,6 +2133,67 @@ export interface GeographyDistrict {
   canonical_name: string;
 }
 
+export interface GeographyBlock {
+  id: string;
+  lgd_code: string;
+  district_id: string;
+  canonical_name: string;
+}
+
+export type GeographyBulkBoundaryStatus =
+  | "ELIGIBLE"
+  | "MISSING"
+  | "BLOCKED";
+
+export interface GeographyVillageBulkSelectionItem {
+  village_id: string;
+  village_lgd_code: string;
+  village_name: string;
+  block_id: string;
+  block_lgd_code: string;
+  block_name: string;
+  district_id: string;
+  district_name: string;
+  state_id: string;
+  state_name: string;
+  boundary_status: GeographyBulkBoundaryStatus;
+}
+
+export interface GeographyVillageBulkSelectionPreview {
+  schema_version: string;
+  mode: string;
+  scope: {
+    scope_type: "DISTRICT" | "BLOCK";
+    scope_id: string;
+    scope_lgd_code: string;
+    scope_name: string;
+    district_id: string;
+    district_name: string;
+    state_id: string;
+    state_name: string;
+  };
+  summary: {
+    total_village_count: number;
+    returned_village_count: number;
+    eligible_village_count: number;
+    missing_village_count: number;
+    blocked_village_count: number;
+    selection_limit: number;
+    scope_within_selection_limit: boolean;
+    can_select_entire_scope: boolean;
+  };
+  items: GeographyVillageBulkSelectionItem[];
+  guardrails: {
+    database_write_performed: boolean;
+    results_truncated: boolean;
+    oversized_scope_rejected: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
 export interface GeographyVillageDetails {
   id: string;
   lgd_code: string;
@@ -2201,6 +2262,26 @@ export const geographyApi = {
     api<GeographyDistrict[]>(
       `/api/v1/master-data/geography/districts?state_id=${encodeURIComponent(stateId)}`,
     ),
+  listBlocks: (districtId: string) =>
+    api<GeographyBlock[]>(
+      `/api/v1/master-data/geography/blocks?district_id=${encodeURIComponent(districtId)}`,
+    ),
+  previewVillageBulkSelection: (
+    scope:
+      | { districtId: string; blockId?: never }
+      | { blockId: string; districtId?: never },
+  ) => {
+    const params = new URLSearchParams();
+    if (scope.districtId) {
+      params.set("district_id", scope.districtId);
+    }
+    if (scope.blockId) {
+      params.set("block_id", scope.blockId);
+    }
+    return api<GeographyVillageBulkSelectionPreview>(
+      `/api/v1/master-data/geography/villages/bulk-selection-preview?${params.toString()}`,
+    );
+  },
   resolveVillagesByLgdCodes: (codes: string[]) => {
     const params = new URLSearchParams({
       lgd_codes: codes.join(","),

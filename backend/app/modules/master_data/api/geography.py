@@ -4739,6 +4739,246 @@ def list_districts(
     )
 
 
+
+@router.get("/villages/bulk-selection-preview")
+def preview_village_bulk_selection(
+    district_id: Optional[UUID] = Query(None),
+    block_id: Optional[UUID] = Query(None),
+    limit: int = Query(500, ge=1, le=500),
+    db: Session = Depends(get_db),
+    principal=Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
+) -> dict:
+    """Preview canonical villages under one district or block."""
+    if (district_id is None) == (block_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Provide exactly one of district_id or block_id"
+            ),
+        )
+
+    if block_id is not None:
+        scope = db.execute(text("""
+            select
+              'BLOCK'::text as scope_type,
+              block.id::text as scope_id,
+              block.lgd_code::text as scope_lgd_code,
+              block.canonical_name as scope_name,
+              district.id::text as district_id,
+              district.canonical_name as district_name,
+              state.id::text as state_id,
+              state.canonical_name as state_name
+            from geography_blocks block
+            join geography_districts district
+              on district.id = block.district_id
+             and district.is_active = true
+            join geography_states state
+              on state.id = district.state_id
+             and state.is_active = true
+            where block.id = :scope_id
+              and block.is_active = true
+        """), {"scope_id": str(block_id)}).mappings().first()
+        village_filter = "village.block_id = :scope_id"
+        scope_id = str(block_id)
+    else:
+        scope = db.execute(text("""
+            select
+              'DISTRICT'::text as scope_type,
+              district.id::text as scope_id,
+              district.lgd_code::text as scope_lgd_code,
+              district.canonical_name as scope_name,
+              district.id::text as district_id,
+              district.canonical_name as district_name,
+              state.id::text as state_id,
+              state.canonical_name as state_name
+            from geography_districts district
+            join geography_states state
+              on state.id = district.state_id
+             and state.is_active = true
+            where district.id = :scope_id
+              and district.is_active = true
+        """), {"scope_id": str(district_id)}).mappings().first()
+        village_filter = "village.district_id = :scope_id"
+        scope_id = str(district_id)
+
+    if not scope:
+        raise HTTPException(404, "Geography scope not found")
+
+    rows = db.execute(text(f"""
+        with scoped_villages as (
+            select
+              village.id as village_id,
+              village.lgd_code::text as village_lgd_code,
+              village.canonical_name as village_name,
+              block.id as block_id,
+              block.lgd_code::text as block_lgd_code,
+              block.canonical_name as block_name,
+              district.id as district_id,
+              district.canonical_name as district_name,
+              state.id as state_id,
+              state.canonical_name as state_name
+            from geography_villages village
+            join geography_blocks block
+              on block.id = village.block_id
+             and block.is_active = true
+            join geography_districts district
+              on district.id = village.district_id
+             and district.is_active = true
+            join geography_states state
+              on state.id = district.state_id
+             and state.is_active = true
+            where {village_filter}
+              and village.is_active = true
+              and village.lgd_code is not null
+        ),
+        candidate_status as (
+            select
+              candidate.proposed_village_id as village_id,
+              bool_or(
+                batch.source_system =
+                  'NWDP_GSI_VILLAGE_BOUNDARY'
+                and feature.geometry_validation_status =
+                  'VALIDATED'
+                and candidate.candidate_bucket =
+                  'DIRECT_VLCODE_MATCH'
+                and candidate.review_status =
+                  'AUTO_CANDIDATE'
+                and candidate.promotion_status =
+                  'NOT_PROMOTED'
+                and candidate.is_active = false
+              ) as has_eligible_boundary,
+              bool_or(
+                batch.source_system =
+                  'NWDP_GSI_VILLAGE_BOUNDARY'
+                and candidate.review_status = 'BLOCKED'
+                and candidate.promotion_status =
+                  'NOT_PROMOTED'
+                and candidate.is_active = false
+              ) as has_blocked_candidate
+            from geography_boundary_crosswalk_candidates candidate
+            join geography_boundary_import_batches batch
+              on batch.id = candidate.import_batch_id
+            join geography_boundary_source_features feature
+              on feature.id = candidate.source_feature_id
+            join scoped_villages scoped
+              on scoped.village_id =
+                candidate.proposed_village_id
+            group by candidate.proposed_village_id
+        ),
+        classified as (
+            select
+              scoped.*,
+              case
+                when coalesce(
+                  status.has_eligible_boundary,
+                  false
+                )
+                then 'ELIGIBLE'
+                when coalesce(
+                  status.has_blocked_candidate,
+                  false
+                )
+                then 'BLOCKED'
+                else 'MISSING'
+              end as boundary_status
+            from scoped_villages scoped
+            left join candidate_status status
+              on status.village_id = scoped.village_id
+        )
+        select
+          village_id::text,
+          village_lgd_code,
+          village_name,
+          block_id::text,
+          block_lgd_code,
+          block_name,
+          district_id::text,
+          district_name,
+          state_id::text,
+          state_name,
+          boundary_status,
+          count(*) over ()::bigint as total_village_count,
+          count(*) filter (
+            where boundary_status = 'ELIGIBLE'
+          ) over ()::bigint as eligible_village_count,
+          count(*) filter (
+            where boundary_status = 'MISSING'
+          ) over ()::bigint as missing_village_count,
+          count(*) filter (
+            where boundary_status = 'BLOCKED'
+          ) over ()::bigint as blocked_village_count
+        from classified
+        order by village_name, village_lgd_code
+        limit :limit
+    """), {
+        "scope_id": scope_id,
+        "limit": limit,
+    }).mappings().all()
+
+    total = int(
+        rows[0]["total_village_count"]
+        if rows else 0
+    )
+    eligible = int(
+        rows[0]["eligible_village_count"]
+        if rows else 0
+    )
+    missing = int(
+        rows[0]["missing_village_count"]
+        if rows else 0
+    )
+    blocked = int(
+        rows[0]["blocked_village_count"]
+        if rows else 0
+    )
+
+    items = [
+        {
+            "village_id": row["village_id"],
+            "village_lgd_code": row["village_lgd_code"],
+            "village_name": row["village_name"],
+            "block_id": row["block_id"],
+            "block_lgd_code": row["block_lgd_code"],
+            "block_name": row["block_name"],
+            "district_id": row["district_id"],
+            "district_name": row["district_name"],
+            "state_id": row["state_id"],
+            "state_name": row["state_name"],
+            "boundary_status": row["boundary_status"],
+        }
+        for row in rows
+    ]
+
+    return {
+        "schema_version":
+            "geography_village_bulk_selection_preview.v1",
+        "mode": "READ_ONLY_CANONICAL_VILLAGE_BULK_PREVIEW",
+        "scope": dict(scope),
+        "summary": {
+            "total_village_count": total,
+            "returned_village_count": len(items),
+            "eligible_village_count": eligible,
+            "missing_village_count": missing,
+            "blocked_village_count": blocked,
+            "selection_limit": 500,
+            "scope_within_selection_limit": total <= 500,
+            "can_select_entire_scope": total <= 500,
+        },
+        "items": items,
+        "guardrails": {
+            "database_write_performed": False,
+            "results_truncated": len(items) < total,
+            "oversized_scope_rejected": total > 500,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
 @router.get("/blocks", response_model=list[BlockResponse])
 def list_blocks(
     district_id: UUID = Query(..., description="Filter by district UUID"),

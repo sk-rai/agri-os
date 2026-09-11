@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   geographyApi,
+  type GeographyBlock,
   type GeographyDistrict,
   type GeographyState,
+  type GeographyVillageBulkSelectionPreview,
   type GeographyVillageDetails,
   type GeographyVillageSearchResult,
 } from "@/lib/api";
@@ -32,11 +34,13 @@ export function GeographyVillagePicker({
 }: GeographyVillagePickerProps) {
   const [states, setStates] = useState<GeographyState[]>([]);
   const [districts, setDistricts] = useState<GeographyDistrict[]>([]);
+  const [blocks, setBlocks] = useState<GeographyBlock[]>([]);
   const [searchMode, setSearchMode] = useState<
     "district" | "india"
   >("district");
   const [stateId, setStateId] = useState("");
   const [districtId, setDistrictId] = useState("");
+  const [blockId, setBlockId] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeographyVillageSearchResult[]>([]);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
@@ -45,6 +49,10 @@ export function GeographyVillagePicker({
   >({});
   const [loadingStates, setLoadingStates] = useState(true);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
+  const [loadingBlocks, setLoadingBlocks] = useState(false);
+  const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false);
+  const [bulkPreview, setBulkPreview] =
+    useState<GeographyVillageBulkSelectionPreview | null>(null);
   const [searching, setSearching] = useState(false);
   const [hydratingCodes, setHydratingCodes] = useState(false);
   const [error, setError] = useState("");
@@ -52,6 +60,33 @@ export function GeographyVillagePicker({
   const [confirmRemoveAll, setConfirmRemoveAll] = useState(false);
 
   const selectedCodes = useMemo(() => new Set(value), [value]);
+
+  const bulkImpact = useMemo(() => {
+    if (!bulkPreview) return null;
+
+    const alreadySelected = bulkPreview.items.filter((village) =>
+      selectedCodes.has(village.village_lgd_code),
+    ).length;
+    const additions = bulkPreview.items.filter(
+      (village) =>
+        !selectedCodes.has(village.village_lgd_code),
+    );
+    const availableCapacity = Math.max(
+      MAX_SELECTED_VILLAGES - value.length,
+      0,
+    );
+    const fitsCurrentSelection =
+      bulkPreview.summary.can_select_entire_scope &&
+      additions.length <= availableCapacity;
+
+    return {
+      alreadySelected,
+      additions,
+      availableCapacity,
+      resultingCount: value.length + additions.length,
+      fitsCurrentSelection,
+    };
+  }, [bulkPreview, selectedCodes, value.length]);
 
   useEffect(() => {
     const missingCodes = value.filter((code) => !knownVillages[code]);
@@ -152,6 +187,38 @@ export function GeographyVillagePicker({
   }, [stateId]);
 
   useEffect(() => {
+    setBlockId("");
+    setBlocks([]);
+    setBulkPreview(null);
+    if (!districtId) return;
+
+    let active = true;
+    setLoadingBlocks(true);
+    setError("");
+    geographyApi
+      .listBlocks(districtId)
+      .then((rows) => {
+        if (active) setBlocks(rows);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load blocks",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingBlocks(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [districtId]);
+
+  useEffect(() => {
     const trimmedQuery = query.trim();
     if (
       trimmedQuery.length < 2 ||
@@ -236,6 +303,75 @@ export function GeographyVillagePicker({
 
     setError("");
     onChange([...value, village.lgd_code]);
+  };
+
+  const loadBulkPreview = async (
+    scopeType: "DISTRICT" | "BLOCK",
+  ) => {
+    if (
+      (scopeType === "DISTRICT" && !districtId) ||
+      (scopeType === "BLOCK" && !blockId)
+    ) {
+      return;
+    }
+
+    setBulkPreviewLoading(true);
+    setBulkPreview(null);
+    setError("");
+
+    try {
+      const preview =
+        scopeType === "BLOCK"
+          ? await geographyApi.previewVillageBulkSelection({
+              blockId,
+            })
+          : await geographyApi.previewVillageBulkSelection({
+              districtId,
+            });
+      setBulkPreview(preview);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to preview bulk village selection",
+      );
+    } finally {
+      setBulkPreviewLoading(false);
+    }
+  };
+
+  const applyBulkPreview = () => {
+    if (
+      !bulkPreview ||
+      !bulkImpact ||
+      !bulkImpact.fitsCurrentSelection ||
+      bulkImpact.additions.length === 0
+    ) {
+      return;
+    }
+
+    setKnownVillages((current) => {
+      const remembered = { ...current };
+      bulkImpact.additions.forEach((village) => {
+        remembered[village.village_lgd_code] = {
+          lgdCode: village.village_lgd_code,
+          name: village.village_name,
+          blockName: village.block_name,
+          districtName: village.district_name,
+          stateName: village.state_name,
+        };
+      });
+      return remembered;
+    });
+
+    onChange([
+      ...value,
+      ...bulkImpact.additions.map(
+        (village) => village.village_lgd_code,
+      ),
+    ]);
+    setBulkPreview(null);
+    setError("");
   };
 
   const removeVillage = (lgdCode: string) => {
@@ -339,7 +475,8 @@ export function GeographyVillagePicker({
       </div>
 
       {searchMode === "district" ? (
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <>
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
         <label className="block text-xs font-medium text-gray-700">
           State / Union Territory
           <select
@@ -368,6 +505,8 @@ export function GeographyVillagePicker({
             disabled={disabled || !stateId || loadingDistricts}
             onChange={(event) => {
               setDistrictId(event.target.value);
+              setBlockId("");
+              setBulkPreview(null);
               setQuery("");
               setResults([]);
             }}
@@ -383,7 +522,165 @@ export function GeographyVillagePicker({
             ))}
           </select>
         </label>
+
+        <label className="block text-xs font-medium text-gray-700">
+          Block / Sub-district
+          <select
+            aria-label="Block / Sub-district"
+            value={blockId}
+            disabled={disabled || !districtId || loadingBlocks}
+            onChange={(event) => {
+              setBlockId(event.target.value);
+              setBulkPreview(null);
+            }}
+            className="mt-1 w-full rounded border bg-white px-3 py-2 text-sm"
+          >
+            <option value="">
+              {loadingBlocks ? "Loading blocks…" : "Select block"}
+            </option>
+            {blocks.map((block) => (
+              <option key={block.id} value={block.id}>
+                {block.canonical_name} ({block.lgd_code})
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={disabled || !districtId || bulkPreviewLoading}
+          onClick={() => void loadBulkPreview("DISTRICT")}
+          className="rounded border border-green-300 bg-white px-3 py-2 text-xs font-semibold text-green-800 disabled:opacity-50"
+        >
+          Preview district villages
+        </button>
+        <button
+          type="button"
+          disabled={disabled || !blockId || bulkPreviewLoading}
+          onClick={() => void loadBulkPreview("BLOCK")}
+          className="rounded border border-green-300 bg-white px-3 py-2 text-xs font-semibold text-green-800 disabled:opacity-50"
+        >
+          Preview block villages
+        </button>
+      </div>
+
+      {bulkPreviewLoading ? (
+        <p className="mt-2 text-xs text-gray-500">
+          Loading canonical village preview…
+        </p>
+      ) : null}
+
+      {bulkPreview && bulkImpact ? (
+        <section
+          aria-label="Bulk village selection preview"
+          className="mt-3 rounded border border-green-200 bg-white p-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                {bulkPreview.scope.scope_name}
+                {" · "}
+                {bulkPreview.scope.scope_type === "BLOCK"
+                  ? "block"
+                  : "district"}
+              </p>
+              <p className="mt-1 text-xs text-gray-600">
+                {bulkPreview.scope.state_name}
+                {" / "}
+                {bulkPreview.scope.district_name}
+              </p>
+            </div>
+            <span className="text-xs text-gray-500">
+              {bulkPreview.summary.total_village_count} canonical villages
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded bg-blue-50 p-2 text-blue-800">
+              <span className="block font-semibold">
+                {bulkPreview.summary.eligible_village_count}
+              </span>
+              Eligible
+            </div>
+            <div className="rounded bg-amber-50 p-2 text-amber-800">
+              <span className="block font-semibold">
+                {bulkPreview.summary.missing_village_count}
+              </span>
+              Missing
+            </div>
+            <div className="rounded bg-red-50 p-2 text-red-800">
+              <span className="block font-semibold">
+                {bulkPreview.summary.blocked_village_count}
+              </span>
+              Blocked
+            </div>
+            <div className="rounded bg-gray-50 p-2 text-gray-700">
+              <span className="block font-semibold">
+                {bulkImpact.alreadySelected}
+              </span>
+              Already selected
+            </div>
+          </div>
+
+          <p className="mt-3 text-xs text-gray-700">
+            This would add {bulkImpact.additions.length} villages and
+            produce a {bulkImpact.resultingCount}/
+            {MAX_SELECTED_VILLAGES} village project scope.
+          </p>
+
+          {!bulkPreview.summary.can_select_entire_scope ? (
+            <p className="mt-2 text-xs font-semibold text-red-700">
+              This scope contains more than 500 villages. It cannot be
+              selected in full, and no partial selection will be applied.
+            </p>
+          ) : null}
+
+          {bulkPreview.summary.can_select_entire_scope &&
+          !bulkImpact.fitsCurrentSelection ? (
+            <p className="mt-2 text-xs font-semibold text-red-700">
+              Only {bulkImpact.availableCapacity} project slots remain.
+              Remove existing villages before selecting this entire scope.
+            </p>
+          ) : null}
+
+          {bulkImpact.additions.length === 0 ? (
+            <p className="mt-2 text-xs text-gray-600">
+              Every village in this scope is already selected.
+            </p>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                !bulkImpact.fitsCurrentSelection ||
+                bulkImpact.additions.length === 0
+              }
+              onClick={applyBulkPreview}
+              className="rounded bg-green-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Confirm add {bulkImpact.additions.length} villages
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => setBulkPreview(null)}
+              className="rounded border px-3 py-2 text-xs font-semibold text-gray-700"
+            >
+              Cancel bulk preview
+            </button>
+          </div>
+
+          <p className="mt-3 text-[11px] text-gray-500">
+            Preview and selection do not write the database. The audited
+            Save geography scope action remains required.
+          </p>
+        </section>
+      ) : null}
+        </>
       ) : (
         <p className="mt-3 text-xs text-gray-600">
           Search all active canonical villages by name. Confirm the state,

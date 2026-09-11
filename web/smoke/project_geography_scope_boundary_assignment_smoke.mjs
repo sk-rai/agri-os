@@ -177,6 +177,186 @@ try {
     })
     .click();
 
+  const stateSelect = projectCard.getByLabel(
+    "State / Union Territory",
+  );
+  await stateSelect.selectOption(stateId);
+
+  const districtSelect = projectCard.getByLabel(
+    "District",
+    { exact: true },
+  );
+  await districtSelect.locator(
+    `option[value="${districtId}"]`,
+  ).waitFor({
+    state: "attached",
+    timeout: 30000,
+  });
+
+  const [blocksResponse] = await Promise.all([
+    page.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname.endsWith(
+            "/api/v1/master-data/geography/blocks",
+          ) &&
+          url.searchParams.get("district_id") === districtId
+        );
+      },
+      { timeout: 30000 },
+    ),
+    districtSelect.selectOption(districtId),
+  ]);
+  if (blocksResponse.status() !== 200) {
+    throw new Error(
+      `Block list returned ${blocksResponse.status()}`,
+    );
+  }
+
+  const blockSelect = projectCard.getByLabel(
+    "Block / Sub-district",
+  );
+  const nancowryOption = blockSelect
+    .locator("option")
+    .filter({ hasText: "Nancowry" })
+    .first();
+
+  await nancowryOption.waitFor({
+    state: "attached",
+    timeout: 30000,
+  });
+
+  const nancowryBlockId = await nancowryOption.getAttribute("value");
+  if (!nancowryBlockId) {
+    throw new Error("Nancowry block option has no value");
+  }
+  await blockSelect.selectOption(nancowryBlockId);
+
+  const blockPreviewResponsePromise = page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname.endsWith(
+          "/api/v1/master-data/geography/" +
+            "villages/bulk-selection-preview",
+        ) &&
+        url.searchParams.get("block_id") === nancowryBlockId
+      );
+    },
+    { timeout: 30000 },
+  );
+
+  await projectCard
+    .getByRole("button", {
+      name: "Preview block villages",
+      exact: true,
+    })
+    .click();
+
+  const blockPreviewResponse = await blockPreviewResponsePromise;
+  const blockPreviewData = await blockPreviewResponse.json();
+
+  if (blockPreviewResponse.status() !== 200) {
+    throw new Error(
+      `Block preview returned ${blockPreviewResponse.status()}: ` +
+        `${JSON.stringify(blockPreviewData)}`,
+    );
+  }
+
+  if (
+    blockPreviewData.scope?.scope_type !== "BLOCK" ||
+    blockPreviewData.scope?.scope_name !== "Nancowry" ||
+    blockPreviewData.summary?.total_village_count < 1 ||
+    blockPreviewData.summary?.can_select_entire_scope !== true
+  ) {
+    throw new Error(
+      `Unexpected Nancowry block preview: ` +
+        `${JSON.stringify(blockPreviewData)}`,
+    );
+  }
+
+  const bulkPreviewPanel = projectCard.getByLabel(
+    "Bulk village selection preview",
+  );
+  await bulkPreviewPanel.waitFor({ timeout: 30000 });
+
+  await bulkPreviewPanel
+    .getByText(
+      `${blockPreviewData.summary.total_village_count} canonical villages`,
+      { exact: true },
+    )
+    .waitFor({ timeout: 30000 });
+
+  await bulkPreviewPanel
+    .getByText("Already selected", { exact: false })
+    .waitFor({ timeout: 30000 });
+
+  const confirmBulkButton = bulkPreviewPanel.getByRole(
+    "button",
+    {
+      name:
+        `Confirm add ${blockPreviewData.summary.total_village_count} villages`,
+      exact: true,
+    },
+  );
+
+  if (await confirmBulkButton.isDisabled()) {
+    throw new Error(
+      "Selectable Nancowry block confirmation is disabled",
+    );
+  }
+
+  await confirmBulkButton.click();
+
+  await projectCard
+    .getByText(
+      `Selected villages (${blockPreviewData.summary.total_village_count}/500)`,
+      { exact: true },
+    )
+    .waitFor({ timeout: 30000 });
+
+  const projectListAfterClientSelection =
+    await page.request.get(`${apiBaseUrl}/api/v1/projects`, {
+      headers,
+    });
+  if (!projectListAfterClientSelection.ok()) {
+    throw new Error(
+      "Could not verify preview-only project state",
+    );
+  }
+
+  const persistedProjects =
+    await projectListAfterClientSelection.json();
+  const persistedProject = persistedProjects.find(
+    (item) => item.id === project.id,
+  );
+  const persistedPreviewCodes =
+    persistedProject?.geography_scope?.village_lgd_codes || [];
+
+  if (persistedPreviewCodes.length !== 0) {
+    throw new Error(
+      "Bulk preview/selection wrote project geography scope before Save",
+    );
+  }
+
+  await projectCard
+    .getByRole("button", {
+      name: "Remove all",
+      exact: true,
+    })
+    .click();
+  await projectCard
+    .getByRole("button", {
+      name: "Confirm remove all",
+      exact: true,
+    })
+    .click();
+
+  await projectCard
+    .getByText("Selected villages (0/500)", { exact: true })
+    .waitFor({ timeout: 30000 });
+
   const csvInput = projectCard.getByLabel(
     "Import village scope CSV",
   );
@@ -731,6 +911,9 @@ try {
     boundary_review_deep_link_verified: true,
     geography_scope_audit_verified: true,
     geography_scope_audit_filters_verified: true,
+    block_bulk_preview_verified: true,
+    block_bulk_selection_verified: true,
+    bulk_selection_preview_write_count: 0,
     nationwide_village_name_search_verified: true,
     nationwide_result_hierarchy_verified: true,
     exact_lgd_search_verified: true,

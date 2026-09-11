@@ -66,6 +66,9 @@ Known passing validations include:
 - Project geography-scope editor UI contract regression passed.
 - Project geography-scope CSV import/export API regression passed.
 - Project geography-scope audit API regression passed, including tenant isolation, actor resolution, canonical hierarchy, change classification, boundary-readiness classification, and read-only database proof.
+- District/block village bulk-selection preview API regression passed with real selectable block, selectable district, and oversized district fixtures.
+- Hierarchy bulk-selection UI contract regression passed.
+- Authenticated Playwright smoke previewed and selected all 112 canonical Nancowry block villages client-side, proved zero writes before Save, then completed the existing audited scope, assignment, and rollback workflow.
 - Project geography-scope history UI contract regression passed.
 - Authenticated Playwright smoke proved lazy audit loading, actor/reason/time visibility, added/removed/unchanged filtering, eligible/missing/blocked filtering, and unchanged runtime/Android guardrails.
 - Next.js optimized production build passed after the complete project-scope UI changes.
@@ -101,6 +104,9 @@ Known passing validations include:
 | Geography-scope audit read model | `GET /api/v1/projects/{project_id}/geography-scope/audit` | Read-only tenant/project-scoped API | Returns only geography-scope events with actor labels, reasons, timestamps, before/after counts, canonical village hierarchy, change types, and current boundary readiness. |
 | Geography-scope history panel | `web/src/components/project-geography-scope-audit.tsx` | Read-only admin UI | Loads lazily per project and filters changes by added, removed, unchanged, eligible, missing, or blocked status; it remains available for locked projects. |
 | Geography-scope audit regression | `backend/scripts/test_project_geography_scope_audit_api.py` | Authenticated regression | Proves event isolation, actor resolution, ordered differences, canonical hierarchy, readiness classification, tenant isolation, and zero writes during reads. |
+| District/block village bulk preview | `GET /api/v1/master-data/geography/villages/bulk-selection-preview` | Read-only admin API | Resolves all active canonical villages for one district or block, reports eligible/missing/blocked totals, and explicitly rejects silent selection of scopes over 500 villages. |
+| Hierarchy bulk-selection controls | `web/src/components/geography-village-picker.tsx` | Preview-only admin selection UI | Loads blocks, previews district or block impact, reports duplicates and resulting size, requires confirmation, and refuses partial or over-capacity application. |
+| Hierarchy bulk-preview regression | `backend/scripts/test_geography_village_bulk_selection_preview_api.py` | Authenticated regression | Proves hierarchy isolation, canonical labels, readiness accounting, invalid-scope rejection, explicit truncation disclosure, and zero protected-table writes. |
 | Project scope-to-boundary Playwright smoke | `web/smoke/project_geography_scope_boundary_assignment_smoke.mjs` | Authenticated end-to-end smoke | Proves scope configuration through assignment and rollback while preserving runtime and Android guardrails. |
 | Boundary geometry validation readiness | `backend/scripts/report_boundary_geometry_validation_readiness.py` | Read-only JSON/CSV | Implemented and surfaced in matrix/page. |
 | National boundary geometry validation evidence | `docs/boundary-geometry-national-validation-evidence-2026-09-07.md` | Evidence baseline | Records 654,285 source features: 654,093 valid and 192 repairable invalid, with zero manual or CRS blockers. |
@@ -465,6 +471,47 @@ Explicit non-effects:
 - no Android behavior changes
 
 
+
+### District/block project-village bulk-selection milestone — 2026-09-11
+
+Project administrators can now preview and select complete canonical village sets under a district or block without weakening the existing project-scope write boundary.
+
+Implemented behavior:
+
+- the existing state and district hierarchy now continues into canonical blocks/sub-districts in the picker
+- a read-only endpoint accepts exactly one district or block scope
+- previews return canonical village, block, district, and state labels
+- previews classify every returned village as eligible, missing, or blocked using the established project-boundary readiness policy
+- preview summaries report total, returned, eligible, missing, and blocked village counts
+- the picker reports villages already selected, new additions, remaining capacity, and resulting project-scope size
+- explicit confirmation is required before adding a complete hierarchy scope
+- scopes over 500 villages are reported as oversized and cannot be partially or silently selected
+- otherwise-valid scopes that exceed remaining project capacity are also rejected without partial selection
+- preview and client-side selection do not write the project
+- the existing permission-checked and reason-audited `Save geography scope` action remains the only persistence boundary
+
+Regression evidence:
+
+- a selectable block returned all canonical villages
+- a selectable district returned all canonical villages
+- an oversized district returned 500 preview rows while preserving its larger total and declaring truncation
+- invalid empty, dual-scope, and unknown-scope requests were rejected
+- protected-table counts were unchanged after all preview requests
+- the optimized Next.js production build passed
+- the UI contract covered block loading, both preview modes, readiness totals, duplicate impact, confirmation, cancellation, and capacity fences
+- authenticated Playwright smoke previewed and selected 112 Nancowry block villages, verified zero persisted scope rows before Save, cleared the client-side selection, and completed the existing audited one-village assignment/rollback workflow
+- fixture cleanup returned project, assignment-history, and audit counts to zero
+
+Explicit non-effects:
+
+- no partial oversized district or block selection
+- no project write during preview or client-side selection
+- no boundary candidate activation or promotion
+- no boundary runtime-table write
+- no runtime spatial lookup enablement
+- no Android behavior change
+
+
 ## Climate, ecology, and biosphere layers
 
 The climate/agro-ecology layer is seeded and visible but not broadly runtime-enabled.
@@ -612,8 +659,9 @@ The project editor changes only project configuration. Boundary promotion, runti
    - canonical search, hydration, bulk management, readiness, CSV preview/export, audited save, assignment, rollback, and cleanup are proved
    - keep broad project-boundary runtime enablement separate
 8. Treat the 2026-09-11 project geography-scope audit-history milestone as complete: actor, reason, timestamp, canonical before/after changes, readiness classification, filtering, tenant isolation, and read-only guardrails are proved.
-9. Next consider district/block bulk selection and project-creation-time geography configuration, retaining the 500-village and edit-policy controls.
-10. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
+9. Treat district/block bulk selection as complete with read-only preview, readiness totals, duplicate/capacity impact, explicit confirmation, and no-partial-selection enforcement.
+10. Next integrate canonical geography configuration into project creation while retaining the 500-village limit and ensuring the project is not created until the complete form is submitted.
+11. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
 11. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
@@ -625,5 +673,7 @@ NWDP demographic profiles are ready for admin/web preview only.
 Project geography-scope administration is now operational for guarded PLANNED-project configuration: canonical search and hydration, readiness summaries, bulk management, CSV preview/export, audited persistence, project-boundary assignment, rollback, and cleanup all have committed regression evidence.
 
 Project geography-scope audit history is now operationally visible with actor, reason, timestamp, canonical village differences, boundary readiness, and filters, while remaining read-only and available for locked projects.
+
+District/block bulk selection is now operational through a read-only preview and explicit client-side confirmation workflow. Oversized and over-capacity scopes are never partially applied, and persistence still requires the existing audited project-scope save.
 
 NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.
