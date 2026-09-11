@@ -2964,6 +2964,309 @@ def preview_project_geography_scope_import(
     }
 
 
+
+@router.get("/projects/{project_id}/geography-scope/audit")
+def list_project_geography_scope_audit(
+    project_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    """Return resolved, read-only geography-scope audit history."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    event_rows = db.execute(
+        text("""
+            select
+              event.id::text,
+              event.project_id::text,
+              event.actor_id::text,
+              event.action,
+              event.before_config,
+              event.after_config,
+              event.reason,
+              event.created_at,
+              actor.display_name as actor_display_name,
+              actor.role as actor_role
+            from project_app_config_audit_events event
+            left join users actor
+              on actor.id = event.actor_id
+             and actor.tenant_id = event.tenant_id
+            where event.tenant_id = :tenant_id
+              and event.project_id = :project_id
+              and event.action = 'UPDATE_PROJECT_GEOGRAPHY_SCOPE'
+            order by event.created_at desc, event.id desc
+            limit :limit
+        """),
+        {
+            "tenant_id": x_tenant_id,
+            "project_id": str(project_id),
+            "limit": limit,
+        },
+    ).mappings().all()
+
+    def scope_codes(snapshot: object) -> list[str]:
+        if not isinstance(snapshot, dict):
+            return []
+        scope = snapshot.get("geography_scope")
+        if not isinstance(scope, dict):
+            return []
+        values = scope.get("village_lgd_codes")
+        if not isinstance(values, list):
+            return []
+        return list(dict.fromkeys(
+            str(value).strip()
+            for value in values
+            if str(value).strip()
+        ))
+
+    event_changes = []
+    all_codes: set[str] = set()
+
+    for raw_event in event_rows:
+        event = dict(raw_event)
+        before_codes = scope_codes(event["before_config"])
+        after_codes = scope_codes(event["after_config"])
+        before_set = set(before_codes)
+        after_set = set(after_codes)
+
+        added_codes = [
+            code for code in after_codes
+            if code not in before_set
+        ]
+        removed_codes = [
+            code for code in before_codes
+            if code not in after_set
+        ]
+        unchanged_codes = [
+            code for code in after_codes
+            if code in before_set
+        ]
+
+        all_codes.update(before_codes)
+        all_codes.update(after_codes)
+        event_changes.append({
+            "event": event,
+            "before_codes": before_codes,
+            "after_codes": after_codes,
+            "added_codes": added_codes,
+            "removed_codes": removed_codes,
+            "unchanged_codes": unchanged_codes,
+        })
+
+    village_by_code: dict[str, dict] = {}
+    if all_codes:
+        village_rows = db.execute(
+            text("""
+                with scoped_villages as (
+                    select
+                      village.id as village_id,
+                      village.lgd_code,
+                      village.canonical_name as village_name,
+                      block.canonical_name as block_name,
+                      district.canonical_name as district_name,
+                      state.canonical_name as state_name
+                    from geography_villages village
+                    join geography_blocks block
+                      on block.id = village.block_id
+                     and block.is_active = true
+                    join geography_districts district
+                      on district.id = village.district_id
+                     and district.is_active = true
+                    join geography_states state
+                      on state.id = district.state_id
+                     and state.is_active = true
+                    where village.lgd_code = any(:lgd_codes)
+                      and village.is_active = true
+                ),
+                candidate_status as (
+                    select
+                      candidate.proposed_village_id as village_id,
+                      bool_or(
+                        batch.source_system =
+                          'NWDP_GSI_VILLAGE_BOUNDARY'
+                        and feature.geometry_validation_status =
+                          'VALIDATED'
+                        and candidate.candidate_bucket =
+                          'DIRECT_VLCODE_MATCH'
+                        and candidate.review_status =
+                          'AUTO_CANDIDATE'
+                        and candidate.promotion_status =
+                          'NOT_PROMOTED'
+                        and candidate.is_active = false
+                      ) as has_eligible_boundary,
+                      bool_or(
+                        batch.source_system =
+                          'NWDP_GSI_VILLAGE_BOUNDARY'
+                        and candidate.review_status = 'BLOCKED'
+                        and candidate.promotion_status =
+                          'NOT_PROMOTED'
+                        and candidate.is_active = false
+                      ) as has_blocked_candidate
+                    from geography_boundary_crosswalk_candidates candidate
+                    join geography_boundary_import_batches batch
+                      on batch.id = candidate.import_batch_id
+                    join geography_boundary_source_features feature
+                      on feature.id = candidate.source_feature_id
+                    join scoped_villages scoped
+                      on scoped.village_id =
+                        candidate.proposed_village_id
+                    group by candidate.proposed_village_id
+                )
+                select
+                  scoped.village_id::text,
+                  scoped.lgd_code,
+                  scoped.village_name,
+                  scoped.block_name,
+                  scoped.district_name,
+                  scoped.state_name,
+                  coalesce(
+                    status.has_eligible_boundary,
+                    false
+                  ) as has_eligible_boundary,
+                  coalesce(
+                    status.has_blocked_candidate,
+                    false
+                  ) as has_blocked_candidate
+                from scoped_villages scoped
+                left join candidate_status status
+                  on status.village_id = scoped.village_id
+            """),
+            {"lgd_codes": sorted(all_codes)},
+        ).mappings().all()
+
+        for raw_village in village_rows:
+            village = dict(raw_village)
+            if village["has_eligible_boundary"]:
+                boundary_status = "ELIGIBLE"
+            elif village["has_blocked_candidate"]:
+                boundary_status = "BLOCKED"
+            else:
+                boundary_status = "MISSING"
+
+            village_by_code[village["lgd_code"]] = {
+                "village_id": village["village_id"],
+                "lgd_code": village["lgd_code"],
+                "village_name": village["village_name"],
+                "block_name": village["block_name"],
+                "district_name": village["district_name"],
+                "state_name": village["state_name"],
+                "boundary_status": boundary_status,
+            }
+
+    def resolved_change(code: str, change_type: str) -> dict:
+        village = village_by_code.get(code)
+        if village:
+            return {
+                **village,
+                "change_type": change_type,
+                "resolved": True,
+            }
+        return {
+            "village_id": None,
+            "lgd_code": code,
+            "village_name": None,
+            "block_name": None,
+            "district_name": None,
+            "state_name": None,
+            "boundary_status": "MISSING",
+            "change_type": change_type,
+            "resolved": False,
+        }
+
+    events = []
+    for item in event_changes:
+        event = item["event"]
+        added = [
+            resolved_change(code, "ADDED")
+            for code in item["added_codes"]
+        ]
+        removed = [
+            resolved_change(code, "REMOVED")
+            for code in item["removed_codes"]
+        ]
+        unchanged = [
+            resolved_change(code, "UNCHANGED")
+            for code in item["unchanged_codes"]
+        ]
+        changes = added + removed + unchanged
+
+        events.append({
+            "id": event["id"],
+            "project_id": event["project_id"],
+            "actor": {
+                "id": event["actor_id"],
+                "display_name": (
+                    event["actor_display_name"]
+                    or "Unknown actor"
+                ),
+                "role": event["actor_role"],
+            },
+            "action": event["action"],
+            "reason": event["reason"],
+            "created_at": (
+                event["created_at"].isoformat()
+                if event["created_at"]
+                else None
+            ),
+            "before_village_count": len(item["before_codes"]),
+            "after_village_count": len(item["after_codes"]),
+            "summary": {
+                "added_count": len(added),
+                "removed_count": len(removed),
+                "unchanged_count": len(unchanged),
+                "eligible_count": sum(
+                    row["boundary_status"] == "ELIGIBLE"
+                    for row in changes
+                ),
+                "missing_count": sum(
+                    row["boundary_status"] == "MISSING"
+                    for row in changes
+                ),
+                "blocked_count": sum(
+                    row["boundary_status"] == "BLOCKED"
+                    for row in changes
+                ),
+            },
+            "changes": changes,
+        })
+
+    return {
+        "schema_version": "project_geography_scope_audit.v1",
+        "tenant_id": x_tenant_id,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+        },
+        "count": len(events),
+        "events": events,
+        "guardrails": {
+            "db_writes_attempted": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
 @router.patch(
     "/projects/{project_id}/geography-scope",
     response_model=ProjectResponse,

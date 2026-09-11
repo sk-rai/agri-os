@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { GeographyVillagePicker } from "@/components/geography-village-picker";
 import { ProjectGeographyScopeCsv } from "@/components/project-geography-scope-csv";
+import { ProjectGeographyScopeAudit } from "@/components/project-geography-scope-audit";
 import { ProjectGeographySummary } from "@/components/project-geography-summary";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
@@ -27,6 +28,8 @@ export default function ProjectsPage() {
   });
   const [error, setError] = useState("");
   const [scopeProjectId, setScopeProjectId] = useState("");
+  const [scopeHistoryProjectId, setScopeHistoryProjectId] =
+    useState("");
   const [scopeVillageCodes, setScopeVillageCodes] = useState<string[]>([]);
   const [scopeReason, setScopeReason] = useState(
     "Configure project villages for validated boundary assignment",
@@ -205,6 +208,19 @@ export default function ProjectsPage() {
                   <Link href={`/project-compliance/${p.id}`} className="text-xs text-blue-600 hover:underline">Compliance</Link>
                   <button
                     type="button"
+                    onClick={() =>
+                      setScopeHistoryProjectId((current) =>
+                        current === p.id ? "" : p.id,
+                      )
+                    }
+                    className="text-xs text-slate-600 hover:underline"
+                  >
+                    {scopeHistoryProjectId === p.id
+                      ? "Hide scope history"
+                      : "Scope history"}
+                  </button>
+                  <button
+                    type="button"
                     disabled={!canCreateProjects || p.status !== "PLANNED"}
                     title={
                       p.status === "PLANNED"
@@ -225,6 +241,9 @@ export default function ProjectsPage() {
                 loading={geographyReadinessLoading}
               />
 
+              {scopeHistoryProjectId === p.id ? (
+                <ProjectGeographyScopeAudit projectId={p.id} />
+              ) : null}
 
               {scopeProjectId === p.id ? (
                 <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">

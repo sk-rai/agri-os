@@ -9,6 +9,9 @@ picker = Path("web/src/components/geography-village-picker.tsx").read_text()
 summary = Path("web/src/components/project-geography-summary.tsx").read_text()
 boundary_page = Path("web/src/app/(admin)/nwdp-boundary-review/page.tsx").read_text()
 csv_tools = Path("web/src/components/project-geography-scope-csv.tsx").read_text()
+scope_history = Path(
+    "web/src/components/project-geography-scope-audit.tsx"
+).read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -38,6 +41,18 @@ checks = [
     ("Picker supports keyboard bulk selection", "event.ctrlKey" in picker and "selectAllDisplayed();" in picker),
     ("Picker filters selected villages", "Filter selected villages" in picker and "filteredSelectedCodes" in picker),
     ("Picker guards remove all", "Confirm remove all" in picker and "confirmRemoveAll" in picker),
+    ("Projects page exposes geography scope history", "ProjectGeographyScopeAudit" in page and "Scope history" in page),
+    ("Scope history loads lazily per project", "scopeHistoryProjectId" in page and "geographyScopeAudit(projectId)" in scope_history),
+    ("API exposes geography scope audit", "geographyScopeAudit" in api and "geography-scope/audit" in api),
+    ("Scope history shows actor labels", "event.actor.display_name" in scope_history and "event.actor.role" in scope_history),
+    ("Scope history shows event timestamps", "event.created_at" in scope_history and "toLocaleString" in scope_history),
+    ("Scope history shows audited reasons", "event.reason" in scope_history),
+    ("Scope history reports before and after counts", "before_village_count" in scope_history and "after_village_count" in scope_history),
+    ("Scope history resolves canonical hierarchy", "change.state_name" in scope_history and "change.district_name" in scope_history and "change.block_name" in scope_history),
+    ("Scope history filters change types", "Village change filter" in scope_history and "ADDED" in scope_history and "REMOVED" in scope_history and "UNCHANGED" in scope_history),
+    ("Scope history filters boundary readiness", "Boundary readiness filter" in scope_history and "ELIGIBLE" in scope_history and "MISSING" in scope_history and "BLOCKED" in scope_history),
+    ("Scope history is available for locked projects", 'disabled={!canCreateProjects || p.status !== "PLANNED"}' in page and "Scope history" in page),
+    ("Scope history preserves runtime guardrails", "does not activate or promote boundary candidates" in scope_history and "change Android behavior" in scope_history),
     ("Projects page exposes geography CSV tools", "ProjectGeographyScopeCsv" in page),
     ("API exposes geography import preview", "previewGeographyScopeImport" in api and "import-preview" in api),
     ("API exposes geography scope export", "downloadGeographyScopeCsv" in api and "export.csv" in api),

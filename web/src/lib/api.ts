@@ -1874,6 +1874,72 @@ export interface EffectiveAppConfigResponse {
   forms: Array<{ form_id: string; version: string; title: Record<string, string>; endpoint: string }>;
 }
 
+export type ProjectGeographyScopeChangeType =
+  | "ADDED"
+  | "REMOVED"
+  | "UNCHANGED";
+
+export type ProjectGeographyBoundaryStatus =
+  | "ELIGIBLE"
+  | "MISSING"
+  | "BLOCKED";
+
+export interface ProjectGeographyScopeAuditChange {
+  village_id?: string | null;
+  lgd_code: string;
+  village_name?: string | null;
+  block_name?: string | null;
+  district_name?: string | null;
+  state_name?: string | null;
+  boundary_status: ProjectGeographyBoundaryStatus;
+  change_type: ProjectGeographyScopeChangeType;
+  resolved: boolean;
+}
+
+export interface ProjectGeographyScopeAuditEvent {
+  id: string;
+  project_id: string;
+  actor: {
+    id: string;
+    display_name: string;
+    role?: string | null;
+  };
+  action: string;
+  reason?: string | null;
+  created_at?: string | null;
+  before_village_count: number;
+  after_village_count: number;
+  summary: {
+    added_count: number;
+    removed_count: number;
+    unchanged_count: number;
+    eligible_count: number;
+    missing_count: number;
+    blocked_count: number;
+  };
+  changes: ProjectGeographyScopeAuditChange[];
+}
+
+export interface ProjectGeographyScopeAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: {
+    id: string;
+    name: string;
+    status: string;
+  };
+  count: number;
+  events: ProjectGeographyScopeAuditEvent[];
+  guardrails: {
+    db_writes_attempted: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
+
 export interface ProjectAppConfigAuditEvent {
   id: string;
   tenant_id: string;
@@ -2164,6 +2230,13 @@ export const geographyApi = {
 export const projectsApi = {
   list: () => api<Project[]>("/api/v1/projects"),
   create: (data: Partial<Project>) => api<Project>("/api/v1/projects", { method: "POST", body: data }),
+  geographyScopeAudit: (
+    projectId: string,
+    limit = 50,
+  ) =>
+    api<ProjectGeographyScopeAuditResponse>(
+      `/api/v1/projects/${projectId}/geography-scope/audit?limit=${limit}`,
+    ),
   updateGeographyScope: (
     projectId: string,
     villageLgdCodes: string[],

@@ -569,6 +569,89 @@ try {
     })
     .waitFor({ timeout: 30000 });
 
+  const auditResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      response.url().includes(
+        `/api/v1/projects/${project.id}/geography-scope/audit`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await reloadedCard
+    .getByRole("button", {
+      name: "Scope history",
+      exact: true,
+    })
+    .click();
+
+  const auditResponse = await auditResponsePromise;
+  if (auditResponse.status() !== 200) {
+    throw new Error(
+      `Geography scope audit returned ${auditResponse.status()}: ` +
+        `${await auditResponse.text()}`,
+    );
+  }
+
+  const auditPanel = reloadedCard.getByLabel(
+    "Project geography scope history",
+  );
+  await auditPanel.waitFor({ timeout: 30000 });
+
+  await auditPanel
+    .getByText(
+      "Playwright project scope followed by boundary assignment",
+      { exact: true },
+    )
+    .waitFor({ timeout: 30000 });
+
+  await auditPanel
+    .getByText(`LGD ${villageLgdCode}`, { exact: false })
+    .first()
+    .waitFor({ timeout: 30000 });
+
+  await auditPanel
+    .getByText("ADDED", { exact: true })
+    .first()
+    .waitFor({ timeout: 30000 });
+
+  await auditPanel
+    .getByText("ELIGIBLE", { exact: true })
+    .first()
+    .waitFor({ timeout: 30000 });
+
+  const changeFilter = auditPanel.getByLabel(
+    "Village change filter",
+  );
+  await changeFilter.selectOption("REMOVED");
+  await auditPanel
+    .getByText("No audit changes match these filters.", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await changeFilter.selectOption("ADDED");
+  await auditPanel
+    .getByText("ADDED", { exact: true })
+    .first()
+    .waitFor({ timeout: 30000 });
+
+  const boundaryFilter = auditPanel.getByLabel(
+    "Boundary readiness filter",
+  );
+  await boundaryFilter.selectOption("MISSING");
+  await auditPanel
+    .getByText("No audit changes match these filters.", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await boundaryFilter.selectOption("ELIGIBLE");
+  await auditPanel
+    .getByText("ELIGIBLE", { exact: true })
+    .first()
+    .waitFor({ timeout: 30000 });
+
   if (readinessRequestCount < 1) {
     throw new Error(
       "Projects page did not request batched geography readiness",
@@ -646,6 +729,8 @@ try {
         persisted_after_reload: true,
     geography_summary_verified: true,
     boundary_review_deep_link_verified: true,
+    geography_scope_audit_verified: true,
+    geography_scope_audit_filters_verified: true,
     nationwide_village_name_search_verified: true,
     nationwide_result_hierarchy_verified: true,
     exact_lgd_search_verified: true,
