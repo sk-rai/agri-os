@@ -4,20 +4,26 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   geographyApi,
+  projectsApi,
   type ProjectGeographyActivationPreflight,
 } from "@/lib/api";
 
 interface ProjectGeographyActivationPreflightProps {
   projectId: string;
+  onActivated?: () => void;
 }
 
 export function ProjectGeographyActivationPreflightPanel({
   projectId,
+  onActivated,
 }: ProjectGeographyActivationPreflightProps) {
   const [preflight, setPreflight] =
     useState<ProjectGeographyActivationPreflight | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activationReason, setActivationReason] = useState("");
+  const [confirmActivation, setConfirmActivation] = useState(false);
+  const [activating, setActivating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -46,6 +52,49 @@ export function ProjectGeographyActivationPreflightPanel({
       active = false;
     };
   }, [projectId]);
+
+  const activateProject = async () => {
+    if (
+      !preflight ||
+      !preflight.decision.can_activate_geography ||
+      activationReason.trim().length < 3
+    ) {
+      return;
+    }
+
+    setActivating(true);
+    setError("");
+
+    try {
+      const result = await projectsApi.activate(
+        projectId,
+        activationReason.trim(),
+        preflight.decision.preflight_fingerprint,
+      );
+
+      if (
+        result.project.status !== "ACTIVE" ||
+        (!result.activation.activated &&
+          !result.activation.idempotent)
+      ) {
+        throw new Error(
+          "Project activation returned an unexpected result.",
+        );
+      }
+
+      setConfirmActivation(false);
+      onActivated?.();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to activate project",
+      );
+      setConfirmActivation(false);
+    } finally {
+      setActivating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -175,10 +224,80 @@ export function ProjectGeographyActivationPreflightPanel({
         </span>
       </div>
 
+      {ready ? (
+        <div className="mt-4 rounded border border-green-200 bg-white p-3">
+          <label className="block text-xs font-medium text-gray-700">
+            Project activation reason
+            <input
+              type="text"
+              aria-label="Project activation reason"
+              value={activationReason}
+              onChange={(event) => {
+                setActivationReason(event.target.value);
+                setConfirmActivation(false);
+              }}
+              minLength={3}
+              maxLength={500}
+              disabled={activating}
+              placeholder="Why this project is ready to activate"
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+            />
+          </label>
+
+          {!confirmActivation ? (
+            <button
+              type="button"
+              disabled={
+                activating ||
+                activationReason.trim().length < 3
+              }
+              onClick={() => setConfirmActivation(true)}
+              className="mt-3 rounded bg-green-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Review project activation
+            </button>
+          ) : (
+            <div
+              role="alert"
+              className="mt-3 rounded border border-amber-300 bg-amber-50 p-3"
+            >
+              <p className="text-xs font-semibold text-amber-900">
+                Confirm PLANNED → ACTIVE
+              </p>
+              <p className="mt-1 text-xs text-amber-800">
+                Geography will become locked for normal editing. The server
+                will re-run the preflight and reject a stale decision.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={activating}
+                  onClick={() => void activateProject()}
+                  className="rounded bg-green-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  {activating
+                    ? "Activating project…"
+                    : "Confirm project activation"}
+                </button>
+                <button
+                  type="button"
+                  disabled={activating}
+                  onClick={() => setConfirmActivation(false)}
+                  className="rounded border px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
+                >
+                  Cancel activation
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <p className="mt-3 text-[11px] text-gray-600">
-        Advisory only. This check does not change project status, activate or
-        promote boundary candidates, write runtime tables, enable lookup, or
-        change Android behavior.
+        The preflight is advisory until explicit confirmation. Opening this
+        panel does not change project status, activate or promote boundary
+        candidates, write runtime tables, enable lookup, or change Android
+        behavior.
       </p>
     </section>
   );

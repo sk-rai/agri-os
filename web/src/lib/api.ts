@@ -2267,6 +2267,7 @@ export interface ProjectGeographyActivationPreflight {
     coverage_ratio: number;
   };
   decision: {
+    preflight_fingerprint: string;
     can_activate_geography: boolean;
     blocker_count: number;
     blockers: Array<{
@@ -2304,6 +2305,32 @@ export interface ProjectGeographyActivationPreflight {
     android_behavior_changed: boolean;
   };
   items: Array<Record<string, unknown>>;
+}
+
+export interface ProjectActivationResponse {
+  schema_version: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  activation: {
+    activated: boolean;
+    idempotent: boolean;
+    reason: string;
+    preflight_fingerprint?: string;
+    audit_event_id?: string;
+    message?: string;
+  };
+  preflight?: ProjectGeographyActivationPreflight;
+  guardrails: {
+    boundary_candidates_activated: boolean;
+    boundary_candidates_promoted: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
 }
 
 export interface ProjectGeographyReadinessResponse {
@@ -2388,6 +2415,21 @@ export const projectsApi = {
       method: "POST",
       body: data,
     }),
+  activate: (
+    projectId: string,
+    reason: string,
+    preflightFingerprint: string,
+  ) =>
+    api<ProjectActivationResponse>(
+      `/api/v1/projects/${projectId}/activate`,
+      {
+        method: "POST",
+        body: {
+          reason,
+          preflight_fingerprint: preflightFingerprint,
+        },
+      },
+    ),
   geographyScopeAudit: (
     projectId: string,
     limit = 50,

@@ -10,6 +10,7 @@ GET /api/v1/master-data/geography/villages/by-lgd-codes?lgd_codes=  (bulk canoni
 """
 
 import csv
+import hashlib
 import io
 import json
 from datetime import datetime, timezone
@@ -4854,6 +4855,31 @@ def get_project_geography_activation_preflight(
         and manual_review_candidate_count == 0
     )
 
+    fingerprint_payload = {
+        "project_id": project["project_id"],
+        "project_status": project["status"],
+        "configured_village_codes": configured_codes,
+        "resolved_village_count": resolved_count,
+        "unresolved_village_code_count": unresolved_count,
+        "villages_with_eligible_boundary": eligible_count,
+        "villages_without_eligible_boundary": missing_count,
+        "eligible_candidate_count": eligible_candidate_count,
+        "manual_review_candidate_count":
+            manual_review_candidate_count,
+        "blocked_candidate_count": blocked_candidate_count,
+        "can_activate_geography": can_activate_geography,
+        "blocker_codes": [
+            blocker["code"] for blocker in blockers
+        ],
+    }
+    preflight_fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
     return {
         "schema_version": (
             "project_geography_activation_preflight.v1"
@@ -4889,6 +4915,7 @@ def get_project_geography_activation_preflight(
             ),
         },
         "decision": {
+            "preflight_fingerprint": preflight_fingerprint,
             "can_activate_geography": can_activate_geography,
             "blocker_count": len(blockers),
             "blockers": blockers,

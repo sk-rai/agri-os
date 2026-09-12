@@ -345,13 +345,123 @@ try {
     .waitFor({ timeout: 30000 });
 
   await preflightPanel
-    .getByText("Advisory only.", { exact: false })
+    .getByText("preflight is advisory", { exact: false })
     .waitFor({ timeout: 30000 });
 
-  if (activationPreflightRequestCount !== 1) {
+  if (
+    activationPreflightRequestCount < 1 ||
+    activationPreflightRequestCount > 2
+  ) {
     throw new Error(
-      `Expected one lazy activation-preflight request, saw ` +
+      `Expected one lazy activation-preflight request ` +
+        `(or two under React development Strict Mode), saw ` +
         `${activationPreflightRequestCount}`,
+    );
+  }
+
+  const activationReason =
+    "Activate project after successful geography preflight";
+
+  await preflightPanel
+    .getByLabel("Project activation reason", {
+      exact: true,
+    })
+    .fill(activationReason);
+
+  await preflightPanel
+    .getByRole("button", {
+      name: "Review project activation",
+      exact: true,
+    })
+    .click();
+
+  await preflightPanel
+    .getByText("Confirm PLANNED → ACTIVE", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  const activationResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${createdProject.id}/activate`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await preflightPanel
+    .getByRole("button", {
+      name: "Confirm project activation",
+      exact: true,
+    })
+    .click();
+
+  const activationResponse = await activationResponsePromise;
+  const activationBody = await activationResponse.json().catch(
+    async () => ({ raw: await activationResponse.text() }),
+  );
+
+  if (activationResponse.status() !== 200) {
+    throw new Error(
+      `Project activation returned ` +
+        `${activationResponse.status()}: ` +
+        `${JSON.stringify(activationBody)}`,
+    );
+  }
+
+  if (
+    activationBody?.project?.status !== "ACTIVE" ||
+    activationBody?.activation?.activated !== true ||
+    activationBody?.activation?.idempotent !== false ||
+    !activationBody?.activation?.audit_event_id ||
+    activationBody?.activation?.preflight_fingerprint !==
+      preflightBody?.decision?.preflight_fingerprint
+  ) {
+    throw new Error(
+      `Unexpected activation response: ` +
+        `${JSON.stringify(activationBody)}`,
+    );
+  }
+
+  await projectCard
+    .getByText("ACTIVE", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  const lifecycleAuditResponse = await page.request.get(
+    `${apiBaseUrl}/api/v1/app-config/projects/` +
+      `${createdProject.id}/config/audit`,
+    { headers },
+  );
+
+  if (!lifecycleAuditResponse.ok()) {
+    throw new Error(
+      `Lifecycle audit returned ` +
+        `${lifecycleAuditResponse.status()}: ` +
+        `${await lifecycleAuditResponse.text()}`,
+    );
+  }
+
+  const lifecycleAuditBody =
+    await lifecycleAuditResponse.json();
+  const activationEvents = (
+    lifecycleAuditBody.events || []
+  ).filter(
+    (event) => event.action === "ACTIVATE_PROJECT",
+  );
+
+  if (
+    activationEvents.length !== 1 ||
+    activationEvents[0].reason !== activationReason ||
+    activationEvents[0].before_config?.status !== "PLANNED" ||
+    activationEvents[0].after_config?.status !== "ACTIVE" ||
+    activationEvents[0].config_patch
+      ?.preflight_fingerprint !==
+        preflightBody.decision.preflight_fingerprint
+  ) {
+    throw new Error(
+      `Unexpected activation audit: ` +
+        `${JSON.stringify(lifecycleAuditBody)}`,
     );
   }
 
@@ -423,6 +533,11 @@ try {
     activation_preflight_lazy_load_verified: true,
     activation_preflight_request_count:
       activationPreflightRequestCount,
+    guarded_activation_verified: true,
+    activation_reason_verified: true,
+    activation_audit_verified: true,
+    activation_fingerprint_verified: true,
+    active_status_persisted: true,
     project_created_only_on_submit: true,
     screenshot,
     guardrails: {

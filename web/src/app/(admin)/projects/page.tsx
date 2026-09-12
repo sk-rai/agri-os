@@ -330,6 +330,10 @@ export default function ProjectsPage() {
               {preflightProjectId === p.id ? (
                 <ProjectGeographyActivationPreflightPanel
                   projectId={p.id}
+                  onActivated={() => {
+                    setPreflightProjectId("");
+                    void loadProjects();
+                  }}
                 />
               ) : null}
 

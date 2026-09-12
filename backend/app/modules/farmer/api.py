@@ -284,6 +284,14 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 
+class ProjectActivationRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    preflight_fingerprint: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+
 class ProjectGeographyScopeUpdate(BaseModel):
     village_lgd_codes: list[str] = Field(..., min_length=1, max_length=500)
     reason: str = Field(..., min_length=3, max_length=500)
@@ -2884,6 +2892,166 @@ def list_projects(
     if status:
         query = query.filter(Project.status == status)
     return query.order_by(Project.start_date.desc()).all()
+
+
+@router.post("/projects/{project_id}/activate")
+def activate_project(
+    project_id: uuid.UUID,
+    body: ProjectActivationRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Activate a project only after a fresh geography preflight."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if project.status == "ACTIVE":
+        return {
+            "schema_version": "project_activation.v1",
+            "project": {
+                "id": str(project.id),
+                "tenant_id": project.tenant_id,
+                "name": project.name,
+                "status": project.status,
+            },
+            "activation": {
+                "activated": False,
+                "idempotent": True,
+                "reason": body.reason,
+                "message": "Project is already ACTIVE.",
+            },
+            "guardrails": {
+                "boundary_candidates_activated": False,
+                "boundary_candidates_promoted": False,
+                "runtime_tables_written": False,
+                "runtime_lookup_enabled": False,
+                "android_behavior_changed": False,
+            },
+        }
+
+    if project.status != "PLANNED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_ACTIVATABLE",
+                "project_status": project.status,
+                "required_status": "PLANNED",
+            },
+        )
+
+    # Local import avoids coupling router initialization order.
+    from app.modules.master_data.api.geography import (
+        get_project_geography_activation_preflight,
+    )
+
+    preflight = get_project_geography_activation_preflight(
+        project_id=project_id,
+        db=db,
+        x_tenant_id=x_tenant_id,
+        principal=principal,
+    )
+    fresh_fingerprint = preflight["decision"][
+        "preflight_fingerprint"
+    ]
+
+    if body.preflight_fingerprint != fresh_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_PROJECT_ACTIVATION_PREFLIGHT",
+                "message": (
+                    "Project geography readiness changed. "
+                    "Run activation preflight again."
+                ),
+                "submitted_preflight_fingerprint":
+                    body.preflight_fingerprint,
+                "current_preflight_fingerprint":
+                    fresh_fingerprint,
+                "current_decision": preflight["decision"],
+            },
+        )
+
+    if not preflight["decision"]["can_activate_geography"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_GEOGRAPHY_ACTIVATION_BLOCKED",
+                "message": (
+                    "Project geography does not satisfy "
+                    "activation requirements."
+                ),
+                "preflight": preflight,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    before_status = project.status
+    project.status = "ACTIVE"
+    project.updated_at = now
+
+    audit_event = ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="ACTIVATE_PROJECT",
+        patched_sections=["status"],
+        before_config={"status": before_status},
+        after_config={"status": "ACTIVE"},
+        config_patch={
+            "status": "ACTIVE",
+            "preflight_fingerprint": fresh_fingerprint,
+            "geography_summary": preflight["summary"],
+        },
+        reason=body.reason.strip(),
+        created_at=now,
+    )
+
+    db.add(project)
+    db.add(audit_event)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "schema_version": "project_activation.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "activation": {
+            "activated": True,
+            "idempotent": False,
+            "reason": body.reason.strip(),
+            "preflight_fingerprint": fresh_fingerprint,
+            "audit_event_id": str(audit_event.id),
+        },
+        "preflight": preflight,
+        "guardrails": {
+            "boundary_candidates_activated": False,
+            "boundary_candidates_promoted": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
 
 
 @router.get("/projects/{project_id}/edit-policy")
