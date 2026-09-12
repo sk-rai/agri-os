@@ -37,6 +37,16 @@ const page = await browser.newPage({
 });
 
 const browserEvents = [];
+let activationPreflightRequestCount = 0;
+
+page.on("request", (request) => {
+  if (
+    request.method() === "GET" &&
+    request.url().includes("/activation-preflight")
+  ) {
+    activationPreflightRequestCount += 1;
+  }
+});
 
 page.on("console", (message) => {
   browserEvents.push({
@@ -274,6 +284,77 @@ try {
     })
     .waitFor({ timeout: 30000 });
 
+  if (activationPreflightRequestCount !== 0) {
+    throw new Error(
+      "Activation preflight loaded before the project-card action",
+    );
+  }
+
+  const preflightResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      response.url().endsWith(
+        `/api/v1/master-data/geography/projects/` +
+          `${createdProject.id}/activation-preflight`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await projectCard
+    .getByRole("button", {
+      name: "Activation preflight",
+      exact: true,
+    })
+    .click();
+
+  const preflightResponse = await preflightResponsePromise;
+  const preflightBody = await preflightResponse.json().catch(
+    async () => ({ raw: await preflightResponse.text() }),
+  );
+
+  if (preflightResponse.status() !== 200) {
+    throw new Error(
+      `Activation preflight returned ` +
+        `${preflightResponse.status()}: ` +
+        `${JSON.stringify(preflightBody)}`,
+    );
+  }
+
+  if (
+    preflightBody?.decision?.can_activate_geography !== true ||
+    preflightBody?.decision?.blocker_count !== 0
+  ) {
+    throw new Error(
+      `Created project did not pass activation preflight: ` +
+        `${JSON.stringify(preflightBody)}`,
+    );
+  }
+
+  const preflightPanel = projectCard.getByLabel(
+    "Project geography activation preflight",
+  );
+
+  await preflightPanel
+    .getByText("Ready for project activation", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await preflightPanel
+    .getByText("1/1", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  await preflightPanel
+    .getByText("Advisory only.", { exact: false })
+    .waitFor({ timeout: 30000 });
+
+  if (activationPreflightRequestCount !== 1) {
+    throw new Error(
+      `Expected one lazy activation-preflight request, saw ` +
+        `${activationPreflightRequestCount}`,
+    );
+  }
+
   await projectCard
     .getByRole("button", {
       name: "Scope history",
@@ -338,6 +419,10 @@ try {
     persisted_scope_verified: true,
     creation_audit_verified: true,
     creation_history_ui_verified: true,
+    activation_preflight_verified: true,
+    activation_preflight_lazy_load_verified: true,
+    activation_preflight_request_count:
+      activationPreflightRequestCount,
     project_created_only_on_submit: true,
     screenshot,
     guardrails: {

@@ -12,6 +12,7 @@ import { GeographyVillagePicker } from "@/components/geography-village-picker";
 import { ProjectGeographyScopeCsv } from "@/components/project-geography-scope-csv";
 import { ProjectGeographyScopeAudit } from "@/components/project-geography-scope-audit";
 import { ProjectGeographySummary } from "@/components/project-geography-summary";
+import { ProjectGeographyActivationPreflightPanel } from "@/components/project-geography-activation-preflight";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
@@ -31,6 +32,8 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
   const [scopeProjectId, setScopeProjectId] = useState("");
   const [scopeHistoryProjectId, setScopeHistoryProjectId] =
+    useState("");
+  const [preflightProjectId, setPreflightProjectId] =
     useState("");
   const [scopeVillageCodes, setScopeVillageCodes] = useState<string[]>([]);
   const [scopeReason, setScopeReason] = useState(
@@ -291,6 +294,19 @@ export default function ProjectsPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() =>
+                      setPreflightProjectId((current) =>
+                        current === p.id ? "" : p.id,
+                      )
+                    }
+                    className="text-xs text-blue-700 hover:underline"
+                  >
+                    {preflightProjectId === p.id
+                      ? "Hide activation preflight"
+                      : "Activation preflight"}
+                  </button>
+                  <button
+                    type="button"
                     disabled={!canCreateProjects || p.status !== "PLANNED"}
                     title={
                       p.status === "PLANNED"
@@ -310,6 +326,12 @@ export default function ProjectsPage() {
                 summary={geographyReadiness[p.id]}
                 loading={geographyReadinessLoading}
               />
+
+              {preflightProjectId === p.id ? (
+                <ProjectGeographyActivationPreflightPanel
+                  projectId={p.id}
+                />
+              ) : null}
 
               {scopeHistoryProjectId === p.id ? (
                 <ProjectGeographyScopeAudit projectId={p.id} />

@@ -4709,6 +4709,230 @@ def update_core_lgd_mapping_review_decision(
 
 
 
+@router.get(
+    "/projects/{project_id}/activation-preflight"
+)
+def get_project_geography_activation_preflight(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal=Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
+) -> dict:
+    """Return read-only geography readiness before project activation."""
+    preview = _nwdp_boundary_project_matching_project_preview(
+        db,
+        project_id,
+        500,
+    )
+    project = preview["project"]
+
+    if project["tenant_id"] != x_tenant_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+        )
+
+    raw_scope = project.get("geography_scope") or {}
+    if isinstance(raw_scope, str):
+        try:
+            raw_scope = json.loads(raw_scope)
+        except Exception:
+            raw_scope = {}
+    if not isinstance(raw_scope, dict):
+        raw_scope = {}
+
+    raw_codes = raw_scope.get("village_lgd_codes") or []
+    if not isinstance(raw_codes, list):
+        raw_codes = []
+
+    configured_codes = sorted({
+        str(code).strip()
+        for code in raw_codes
+        if str(code).strip()
+    })
+
+    source_summary = preview["summary"]
+    resolved_count = int(
+        source_summary.get("project_village_count") or 0
+    )
+    eligible_count = int(
+        source_summary.get(
+            "villages_with_eligible_boundary",
+        ) or 0
+    )
+    missing_count = int(
+        source_summary.get(
+            "villages_without_eligible_boundary",
+        ) or 0
+    )
+    eligible_candidate_count = int(
+        source_summary.get("eligible_candidate_count") or 0
+    )
+    manual_review_candidate_count = int(
+        source_summary.get(
+            "manual_review_candidate_count",
+        ) or 0
+    )
+    blocked_candidate_count = int(
+        source_summary.get("blocked_candidate_count") or 0
+    )
+    unresolved_count = max(
+        len(configured_codes) - resolved_count,
+        0,
+    )
+
+    blockers = []
+
+    if project["status"] != "PLANNED":
+        blockers.append({
+            "code": "PROJECT_NOT_PLANNED",
+            "count": 1,
+            "message": (
+                "Only a PLANNED project can be evaluated "
+                "for activation."
+            ),
+        })
+
+    if not configured_codes:
+        blockers.append({
+            "code": "EMPTY_GEOGRAPHY_SCOPE",
+            "count": 1,
+            "message": (
+                "Configure at least one canonical village "
+                "before activation."
+            ),
+        })
+
+    if unresolved_count:
+        blockers.append({
+            "code": "UNRESOLVED_VILLAGE_CODES",
+            "count": unresolved_count,
+            "message": (
+                f"{unresolved_count} configured village LGD "
+                "codes do not resolve to active canonical villages."
+            ),
+        })
+
+    if missing_count:
+        blockers.append({
+            "code": "MISSING_ELIGIBLE_BOUNDARIES",
+            "count": missing_count,
+            "message": (
+                f"{missing_count} project villages do not have "
+                "an eligible validated boundary candidate."
+            ),
+        })
+
+    if blocked_candidate_count:
+        blockers.append({
+            "code": "BLOCKED_BOUNDARY_CANDIDATES",
+            "count": blocked_candidate_count,
+            "message": (
+                f"{blocked_candidate_count} blocked boundary "
+                "candidates require review."
+            ),
+        })
+
+    if manual_review_candidate_count:
+        blockers.append({
+            "code": "MANUAL_BOUNDARY_REVIEW_REQUIRED",
+            "count": manual_review_candidate_count,
+            "message": (
+                f"{manual_review_candidate_count} boundary "
+                "candidates require manual review."
+            ),
+        })
+
+    can_activate_geography = (
+        project["status"] == "PLANNED"
+        and bool(configured_codes)
+        and unresolved_count == 0
+        and missing_count == 0
+        and blocked_candidate_count == 0
+        and manual_review_candidate_count == 0
+    )
+
+    return {
+        "schema_version": (
+            "project_geography_activation_preflight.v1"
+        ),
+        "mode": "READ_ONLY_PROJECT_ACTIVATION_PREFLIGHT",
+        "project": {
+            "id": project["project_id"],
+            "tenant_id": project["tenant_id"],
+            "name": project["name"],
+            "status": project["status"],
+        },
+        "summary": {
+            "configured_village_code_count": len(
+                configured_codes
+            ),
+            "resolved_village_count": resolved_count,
+            "unresolved_village_code_count": unresolved_count,
+            "villages_with_eligible_boundary": eligible_count,
+            "villages_without_eligible_boundary": missing_count,
+            "eligible_candidate_count": (
+                eligible_candidate_count
+            ),
+            "manual_review_candidate_count": (
+                manual_review_candidate_count
+            ),
+            "blocked_candidate_count": (
+                blocked_candidate_count
+            ),
+            "coverage_ratio": (
+                eligible_count / resolved_count
+                if resolved_count
+                else 0
+            ),
+        },
+        "decision": {
+            "can_activate_geography": can_activate_geography,
+            "blocker_count": len(blockers),
+            "blockers": blockers,
+            "advisory_only": True,
+            "project_status_changed": False,
+        },
+        "policy": {
+            "required_project_status": "PLANNED",
+            "requires_non_empty_canonical_scope": True,
+            "maximum_village_count": 500,
+            "requires_all_codes_resolved": True,
+            "requires_all_villages_to_have_eligible_boundary": (
+                True
+            ),
+            "required_geometry_validation_status": "VALIDATED",
+            "required_candidate_bucket": (
+                "DIRECT_VLCODE_MATCH"
+            ),
+            "required_review_status": "AUTO_CANDIDATE",
+            "manual_review_candidates_excluded": True,
+            "blocked_candidates_excluded": True,
+        },
+        "links": {
+            "project_scope": f"/projects#{project_id}",
+            "scope_history": f"/projects#{project_id}",
+            "boundary_review": (
+                f"/nwdp-boundary-review?"
+                f"project_id={project_id}"
+            ),
+        },
+        "guardrails": {
+            "database_writes_attempted": False,
+            "project_status_changed": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+        "items": preview["items"],
+    }
+
+
+
 @router.get("/states", response_model=list[StateResponse])
 def list_states(
     db: Session = Depends(get_db),

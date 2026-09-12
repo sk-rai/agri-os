@@ -12,6 +12,9 @@ csv_tools = Path("web/src/components/project-geography-scope-csv.tsx").read_text
 scope_history = Path(
     "web/src/components/project-geography-scope-audit.tsx"
 ).read_text()
+activation_preflight = Path(
+    "web/src/components/project-geography-activation-preflight.tsx"
+).read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -85,6 +88,15 @@ checks = [
     ("Picker supports multiple selected villages", "Selected villages" in picker),
     ("Picker supports village removal", "removeVillage" in picker),
     ("Picker prevents duplicate village selection", "selectedCodes.has" in picker),
+    ("Project cards expose activation preflight", "Activation preflight" in page and "ProjectGeographyActivationPreflightPanel" in page),
+    ("Activation preflight loads lazily per project", "preflightProjectId" in page and "getProjectGeographyActivationPreflight(projectId)" in activation_preflight),
+    ("API exposes project activation preflight", "getProjectGeographyActivationPreflight" in api and "activation-preflight" in api),
+    ("Activation preflight shows ready and blocked decisions", "Ready for project activation" in activation_preflight and "Activation blocked by" in activation_preflight),
+    ("Activation preflight shows geography counts", "configured_village_code_count" in activation_preflight and "villages_with_eligible_boundary" in activation_preflight and "villages_without_eligible_boundary" in activation_preflight),
+    ("Activation preflight renders blocker details", "decision.blockers.map" in activation_preflight and "blocker.message" in activation_preflight),
+    ("Activation preflight links boundary review", "Review project boundaries" in activation_preflight and "preflight.links.boundary_review" in activation_preflight),
+    ("Activation preflight is advisory only", "Advisory only" in activation_preflight and "does not change project status" in activation_preflight),
+    ("Activation preflight preserves runtime guardrails", "write runtime tables" in activation_preflight and "change Android behavior" in activation_preflight),
     ("Project cards expose geography summary", "ProjectGeographySummary" in page),
     ("Projects page loads one batched readiness response", ".listProjectGeographyReadiness(" in page),
     ("Summary component makes no API requests", "useEffect" not in summary and "api<" not in summary),

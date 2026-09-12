@@ -1,7 +1,7 @@
 # Geography layer readiness and enablement roadmap
 
-Status date: 2026-09-11
-Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, external API readiness, the project geography-scope administration milestone completed on 2026-09-10, and project geography-scope audit-history visibility completed on 2026-09-11.
+Status date: 2026-09-12
+Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, external API readiness, project geography-scope administration, audit-history visibility, hierarchy bulk selection, atomic project-creation geography, and the read-only project geography activation preflight completed on 2026-09-12.
 
 ## Executive decision
 
@@ -44,6 +44,10 @@ Recent committed baseline:
 - 6a41327 feat: improve village search quality
 - 248e74f feat: add bulk project village selection
 - 52c4d09 feat: add project geography scope CSV tools
+- 89c9db6 docs: record project geography administration milestone
+- e0bb396 feat: expose project geography scope history
+- c8653b2 feat: add hierarchy project village selection
+- a13d3e6 feat: configure geography during project creation
 
 Known passing validations include:
 
@@ -73,6 +77,10 @@ Known passing validations include:
 - Authenticated Playwright smoke proved lazy audit loading, actor/reason/time visibility, added/removed/unchanged filtering, eligible/missing/blocked filtering, and unchanged runtime/Android guardrails.
 - Next.js optimized production build passed after the complete project-scope UI changes.
 - Authenticated Playwright project-scope-to-boundary-assignment smoke passed.
+- Project geography activation-preflight API regression passed for ready, missing, empty, unresolved, non-PLANNED, blocked/manual-review, unknown-project, and cross-tenant cases.
+- Activation-preflight zero-write regression proved project status, boundary candidates, runtime tables, lookup, and Android behavior remained unchanged.
+- Activation-preflight UI contract and optimized Next.js production build passed.
+- Authenticated Playwright proved lazy activation-preflight loading with exactly one request and a ready decision for a canonically scoped project.
 - The smoke proved village search, exact LGD ranking, hierarchy labels, stale-request cancellation, keyboard selection, bulk selection, selected-scope filtering, guarded remove-all, CSV invalid/valid preview, audited scope save, persistence, readiness summary, deep linking, CSV export, project-boundary assignment, rollback, and fixture cleanup.
 - Smoke guardrails proved no candidate activation, candidate promotion, runtime eligibility, runtime lookup, or Android behavior change.
 
@@ -649,6 +657,8 @@ The `/projects` admin page now additionally provides:
 - read-only CSV import preview
 - canonical CSV export
 - optional canonical geography during atomic project creation
+- lazy read-only project geography activation preflight
+- explicit ready/blocker decisions and project-filtered boundary-review links
 - an audited save action governed by project edit policy
 
 The project editor changes only project configuration. Boundary promotion, runtime lookup, and Android behavior remain outside this surface.
@@ -702,8 +712,14 @@ The project editor changes only project configuration. Boundary promotion, runti
     - validation happens before insertion
     - project and initial geography audit are committed atomically
     - authenticated browser proof confirms persistence and history
-11. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
-12. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
+11. Treat the 2026-09-12 project geography activation-preflight milestone as complete:
+    - ready, empty, missing, unresolved, blocked/manual-review, and non-PLANNED outcomes are explicit
+    - tenant isolation and unknown-project handling are proved
+    - the UI loads the preflight lazily and links to project-filtered boundary review
+    - the decision is advisory and does not change project status
+    - zero-write and runtime/Android guardrails are proved
+12. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
+13. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
 
@@ -718,5 +734,7 @@ Project geography-scope audit history is now operationally visible with actor, r
 District/block bulk selection is now operational through a read-only preview and explicit client-side confirmation workflow. Oversized and over-capacity scopes are never partially applied, and persistence still requires the existing audited project-scope save.
 
 Canonical geography can now be configured during project creation. Empty geography remains optional; non-empty geography is validated and normalized before insertion, requires an audit reason, and is committed atomically with its initial history event. Browser proof confirms that preview and selection alone do not create a project.
+
+Project cards now expose a lazy, read-only geography activation preflight. It reports canonical resolution, eligible and missing boundaries, blocked/manual-review candidates, explicit blockers, and an advisory ready decision without changing project status or runtime state.
 
 NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.

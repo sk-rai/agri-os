@@ -2246,6 +2246,66 @@ export interface ProjectGeographyReadinessItem {
   district_names: string[];
 }
 
+export interface ProjectGeographyActivationPreflight {
+  schema_version: string;
+  mode: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  summary: {
+    configured_village_code_count: number;
+    resolved_village_count: number;
+    unresolved_village_code_count: number;
+    villages_with_eligible_boundary: number;
+    villages_without_eligible_boundary: number;
+    eligible_candidate_count: number;
+    manual_review_candidate_count: number;
+    blocked_candidate_count: number;
+    coverage_ratio: number;
+  };
+  decision: {
+    can_activate_geography: boolean;
+    blocker_count: number;
+    blockers: Array<{
+      code: string;
+      count: number;
+      message: string;
+    }>;
+    advisory_only: boolean;
+    project_status_changed: boolean;
+  };
+  policy: {
+    required_project_status: string;
+    requires_non_empty_canonical_scope: boolean;
+    maximum_village_count: number;
+    requires_all_codes_resolved: boolean;
+    requires_all_villages_to_have_eligible_boundary: boolean;
+    required_geometry_validation_status: string;
+    required_candidate_bucket: string;
+    required_review_status: string;
+    manual_review_candidates_excluded: boolean;
+    blocked_candidates_excluded: boolean;
+  };
+  links: {
+    project_scope: string;
+    scope_history: string;
+    boundary_review: string;
+  };
+  guardrails: {
+    database_writes_attempted: boolean;
+    project_status_changed: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+  items: Array<Record<string, unknown>>;
+}
+
 export interface ProjectGeographyReadinessResponse {
   schema_version: string;
   tenant_id: string;
@@ -2261,6 +2321,10 @@ export interface ProjectGeographyReadinessResponse {
 }
 
 export const geographyApi = {
+  getProjectGeographyActivationPreflight: (projectId: string) =>
+    api<ProjectGeographyActivationPreflight>(
+      `/api/v1/master-data/geography/projects/${projectId}/activation-preflight`,
+    ),
   listProjectGeographyReadiness: () =>
     api<ProjectGeographyReadinessResponse>(
       "/api/v1/master-data/geography/project-geography-readiness",
