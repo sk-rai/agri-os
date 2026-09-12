@@ -1721,6 +1721,15 @@ export interface Project {
   crop_scope: string[];
 }
 
+export interface ProjectCreateRequest {
+  name: string;
+  start_date: string;
+  end_date: string;
+  crop_scope: string[];
+  geography_scope: Record<string, unknown>;
+  geography_scope_reason?: string;
+}
+
 export interface ProjectGeographyScopeImportVillage {
   village_id: string;
   village_lgd_code: string;
@@ -2310,7 +2319,11 @@ export const geographyApi = {
 // Projects
 export const projectsApi = {
   list: () => api<Project[]>("/api/v1/projects"),
-  create: (data: Partial<Project>) => api<Project>("/api/v1/projects", { method: "POST", body: data }),
+  create: (data: ProjectCreateRequest) =>
+    api<Project>("/api/v1/projects", {
+      method: "POST",
+      body: data,
+    }),
   geographyScopeAudit: (
     projectId: string,
     limit = 50,

@@ -263,6 +263,11 @@ class ProjectCreate(BaseModel):
     start_date: date
     end_date: date
     geography_scope: dict = Field(default_factory=dict)
+    geography_scope_reason: Optional[str] = Field(
+        None,
+        min_length=3,
+        max_length=500,
+    )
     crop_scope: list[str] = Field(default_factory=list)
 
 
@@ -2678,6 +2683,122 @@ def _project_edit_policy(db: Session, project: Project, tenant_id: str) -> dict:
     }
 
 
+
+def _canonical_project_geography_scope(
+    db: Session,
+    raw_scope: dict,
+) -> tuple[dict, list[dict]]:
+    """Validate and normalize canonical project village scope."""
+    if not raw_scope:
+        return {}, []
+
+    raw_codes = raw_scope.get("village_lgd_codes")
+    if not isinstance(raw_codes, list):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "INVALID_PROJECT_GEOGRAPHY_SCOPE",
+                "message": (
+                    "geography_scope.village_lgd_codes "
+                    "must be an array"
+                ),
+            },
+        )
+
+    codes = sorted({
+        str(code).strip()
+        for code in raw_codes
+        if str(code).strip()
+    })
+    if not codes:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "INVALID_PROJECT_GEOGRAPHY_SCOPE",
+                "message": (
+                    "At least one village LGD code is required "
+                    "when geography_scope is supplied"
+                ),
+            },
+        )
+    if len(codes) > 500:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "PROJECT_GEOGRAPHY_SCOPE_LIMIT_EXCEEDED",
+                "selection_limit": 500,
+                "submitted_unique_village_count": len(codes),
+            },
+        )
+
+    rows = [
+        dict(row)
+        for row in db.execute(text("""
+            select
+              village.id::text as village_id,
+              village.lgd_code::text as village_lgd_code,
+              village.canonical_name as village_name,
+              block.canonical_name as block_name,
+              district.canonical_name as district_name,
+              state.canonical_name as state_name
+            from geography_villages village
+            join geography_blocks block
+              on block.id = village.block_id
+             and block.is_active = true
+            join geography_districts district
+              on district.id = village.district_id
+             and district.is_active = true
+            join geography_states state
+              on state.id = district.state_id
+             and state.is_active = true
+            where village.is_active = true
+              and village.lgd_code::text = any(:codes)
+            order by village.lgd_code::text
+        """), {"codes": codes}).mappings().all()
+    ]
+
+    found_codes = {
+        row["village_lgd_code"]
+        for row in rows
+    }
+    missing_codes = sorted(set(codes) - found_codes)
+    if missing_codes:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "UNKNOWN_VILLAGE_LGD_CODES",
+                "missing_village_lgd_codes": missing_codes,
+            },
+        )
+
+    states = sorted({
+        row["state_name"]
+        for row in rows
+        if row["state_name"]
+    })
+    normalized = {
+        "source": "admin_project_creation",
+        "village_ids": [
+            row["village_id"]
+            for row in rows
+        ],
+        "village_lgd_codes": [
+            row["village_lgd_code"]
+            for row in rows
+        ],
+        "village_names": [
+            row["village_name"]
+            for row in rows
+        ],
+        "states": states,
+    }
+    if len(states) == 1:
+        normalized["state"] = states[0]
+        normalized["state_or_ut"] = states[0]
+
+    return normalized, rows
+
+
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
 def create_project(
     body: ProjectCreate,
@@ -2689,6 +2810,29 @@ def create_project(
     if not tenant:
         raise HTTPException(404, "Tenant not found")
 
+    normalized_scope, scope_rows = (
+        _canonical_project_geography_scope(
+            db,
+            body.geography_scope,
+        )
+    )
+    if normalized_scope and not (
+        body.geography_scope_reason
+        and body.geography_scope_reason.strip()
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error":
+                    "PROJECT_GEOGRAPHY_SCOPE_REASON_REQUIRED",
+                "message": (
+                    "A geography scope reason is required when "
+                    "creating a project with villages"
+                ),
+            },
+        )
+
+    now = datetime.now(timezone.utc)
     project = Project(
         id=uuid.uuid4(),
         tenant_id=x_tenant_id,
@@ -2696,12 +2840,34 @@ def create_project(
         description=body.description,
         start_date=body.start_date,
         end_date=body.end_date,
-        geography_scope=body.geography_scope,
+        geography_scope=normalized_scope,
         crop_scope=body.crop_scope,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=now,
+        updated_at=now,
     )
     db.add(project)
+
+    if normalized_scope:
+        db.add(ProjectAppConfigAuditEvent(
+            id=uuid.uuid4(),
+            tenant_id=x_tenant_id,
+            project_id=project.id,
+            actor_id=principal.user_id,
+            action="CREATE_PROJECT_GEOGRAPHY_SCOPE",
+            patched_sections=["geography_scope"],
+            before_config={"geography_scope": {}},
+            after_config={
+                "geography_scope": normalized_scope,
+            },
+            config_patch={
+                "village_lgd_codes":
+                    normalized_scope["village_lgd_codes"],
+                "resolved_village_count": len(scope_rows),
+            },
+            reason=body.geography_scope_reason.strip(),
+            created_at=now,
+        ))
+
     db.commit()
     db.refresh(project)
     return project
@@ -3010,7 +3176,10 @@ def list_project_geography_scope_audit(
              and actor.tenant_id = event.tenant_id
             where event.tenant_id = :tenant_id
               and event.project_id = :project_id
-              and event.action = 'UPDATE_PROJECT_GEOGRAPHY_SCOPE'
+              and event.action in (
+                'CREATE_PROJECT_GEOGRAPHY_SCOPE',
+                'UPDATE_PROJECT_GEOGRAPHY_SCOPE'
+              )
             order by event.created_at desc, event.id desc
             limit :limit
         """),

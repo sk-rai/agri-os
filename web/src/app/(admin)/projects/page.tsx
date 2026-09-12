@@ -26,6 +26,8 @@ export default function ProjectsPage() {
   const [formData, setFormData] = useState({
     name: "", start_date: "", end_date: "", crop_scope: "",
   });
+  const [createVillageCodes, setCreateVillageCodes] = useState<string[]>([]);
+  const [createGeographyReason, setCreateGeographyReason] = useState("");
   const [error, setError] = useState("");
   const [scopeProjectId, setScopeProjectId] = useState("");
   const [scopeHistoryProjectId, setScopeHistoryProjectId] =
@@ -70,17 +72,42 @@ export default function ProjectsPage() {
       setError("Your current role can view projects but cannot create project configuration.");
       return;
     }
+    if (
+      createVillageCodes.length > 0 &&
+      createGeographyReason.trim().length < 3
+    ) {
+      setError(
+        "A geography scope reason is required when villages are selected.",
+      );
+      return;
+    }
+
     setError("");
     try {
       await projectsApi.create({
         name: formData.name,
         start_date: formData.start_date,
         end_date: formData.end_date,
-        crop_scope: formData.crop_scope.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
-        geography_scope: {},
+        crop_scope: formData.crop_scope
+          .split(",")
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean),
+        geography_scope: createVillageCodes.length
+          ? { village_lgd_codes: createVillageCodes }
+          : {},
+        geography_scope_reason: createVillageCodes.length
+          ? createGeographyReason.trim()
+          : undefined,
       });
       setShowForm(false);
-      setFormData({ name: "", start_date: "", end_date: "", crop_scope: "" });
+      setFormData({
+        name: "",
+        start_date: "",
+        end_date: "",
+        crop_scope: "",
+      });
+      setCreateVillageCodes([]);
+      setCreateGeographyReason("");
       loadProjects();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create project");
@@ -142,7 +169,10 @@ export default function ProjectsPage() {
         <button
           disabled={!canCreateProjects}
           title={canCreateProjects ? undefined : "Your role cannot create projects."}
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setShowForm(!showForm);
+            setError("");
+          }}
           className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm disabled:opacity-50"
         >
           + New Project
@@ -174,6 +204,46 @@ export default function ProjectsPage() {
             <input type="date" value={formData.end_date}
               onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
               className="px-3 py-2 border rounded-lg" required />
+
+            <section
+              aria-label="Project creation geography scope"
+              className="rounded-lg border border-green-100 bg-green-50/40 p-4 md:col-span-2"
+            >
+              <h3 className="text-sm font-semibold text-gray-900">
+                Initial geography scope (optional)
+              </h3>
+              <p className="mt-1 text-xs text-gray-600">
+                Select canonical LGD villages now, or configure geography after
+                creating the project. Selection and previews do not create the
+                project; the complete form is submitted atomically.
+              </p>
+
+              <GeographyVillagePicker
+                value={createVillageCodes}
+                onChange={setCreateVillageCodes}
+                disabled={!canCreateProjects}
+              />
+
+              {createVillageCodes.length ? (
+                <label className="mt-4 block text-xs font-medium text-gray-700">
+                  Initial geography scope reason
+                  <input
+                    type="text"
+                    aria-label="Initial geography scope reason"
+                    value={createGeographyReason}
+                    onChange={(event) =>
+                      setCreateGeographyReason(event.target.value)
+                    }
+                    minLength={3}
+                    maxLength={500}
+                    required
+                    placeholder="Why these villages belong in the project scope"
+                    className="mt-1 w-full rounded border bg-white px-3 py-2 text-sm"
+                  />
+                </label>
+              ) : null}
+            </section>
+
             <button type="submit" disabled={!canCreateProjects} title={canCreateProjects ? undefined : "Your role cannot create projects."} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 md:col-span-2 disabled:opacity-50">
               Create Project
             </button>

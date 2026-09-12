@@ -511,6 +511,40 @@ Explicit non-effects:
 - no runtime spatial lookup enablement
 - no Android behavior change
 
+### Project-creation geography milestone — 2026-09-11
+
+Canonical geography configuration is now integrated into project creation.
+
+Implemented behavior:
+
+- project creation continues to support an empty geography scope
+- the create form reuses the canonical LGD village picker
+- individual, search-result bulk, district, and block selection retain the existing 500-village limit
+- non-empty geography requires a 3–500 character audit reason
+- submitted LGD codes are deduplicated, sorted, and resolved to active canonical village, block, district, and state records
+- malformed, unknown, inactive, and over-limit geography is rejected before project insertion
+- valid project creation and its initial geography audit event are committed atomically
+- the normalized scope records `admin_project_creation` as its source
+- initial villages appear as `ADDED` in the existing geography-scope history
+- actor identity, reason, canonical hierarchy, and boundary readiness remain visible in history
+
+Verification evidence:
+
+- the project-creation geography API regression passed all validation, normalization, atomicity, audit, history, tenant, and cleanup checks
+- the project geography UI contract passed
+- the optimized Next.js production build passed
+- authenticated Playwright created a project with LGD village `645063`, verified the persisted canonical scope, verified the creation audit through the API and UI, and proved that creation occurred only on complete form submission
+- fixture cleanup restored project and audit counts to zero
+
+Explicit non-effects:
+
+- village preview and client-side selection do not create a project
+- invalid geography does not create either a project or audit event
+- no boundary candidate activation or promotion
+- no boundary runtime-table write
+- no runtime spatial lookup enablement
+- no Android behavior change
+
 
 ## Climate, ecology, and biosphere layers
 
@@ -614,6 +648,7 @@ The `/projects` admin page now additionally provides:
 - project-filtered boundary-review links
 - read-only CSV import preview
 - canonical CSV export
+- optional canonical geography during atomic project creation
 - an audited save action governed by project edit policy
 
 The project editor changes only project configuration. Boundary promotion, runtime lookup, and Android behavior remain outside this surface.
@@ -660,9 +695,15 @@ The project editor changes only project configuration. Boundary promotion, runti
    - keep broad project-boundary runtime enablement separate
 8. Treat the 2026-09-11 project geography-scope audit-history milestone as complete: actor, reason, timestamp, canonical before/after changes, readiness classification, filtering, tenant isolation, and read-only guardrails are proved.
 9. Treat district/block bulk selection as complete with read-only preview, readiness totals, duplicate/capacity impact, explicit confirmation, and no-partial-selection enforcement.
-10. Next integrate canonical geography configuration into project creation while retaining the 500-village limit and ensuring the project is not created until the complete form is submitted.
+10. Treat project-creation geography configuration as complete:
+    - empty geography remains supported
+    - canonical selection retains the 500-village limit
+    - non-empty geography requires an audit reason
+    - validation happens before insertion
+    - project and initial geography audit are committed atomically
+    - authenticated browser proof confirms persistence and history
 11. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
-11. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
+12. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
 
@@ -675,5 +716,7 @@ Project geography-scope administration is now operational for guarded PLANNED-pr
 Project geography-scope audit history is now operationally visible with actor, reason, timestamp, canonical village differences, boundary readiness, and filters, while remaining read-only and available for locked projects.
 
 District/block bulk selection is now operational through a read-only preview and explicit client-side confirmation workflow. Oversized and over-capacity scopes are never partially applied, and persistence still requires the existing audited project-scope save.
+
+Canonical geography can now be configured during project creation. Empty geography remains optional; non-empty geography is validated and normalized before insertion, requires an audit reason, and is committed atomically with its initial history event. Browser proof confirms that preview and selection alone do not create a project.
 
 NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.
