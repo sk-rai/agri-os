@@ -15,6 +15,12 @@ scope_history = Path(
 activation_preflight = Path(
     "web/src/components/project-geography-activation-preflight.tsx"
 ).read_text()
+lifecycle_history = Path(
+    "web/src/components/project-lifecycle-history.tsx"
+).read_text()
+deactivation_preflight = Path(
+    "web/src/components/project-deactivation-preflight.tsx"
+).read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -106,6 +112,22 @@ checks = [
     ("Blocked preflight exposes no activation action", "ready ? (" in activation_preflight),
     ("Activation confirmation warns geography locking", "Geography will become locked" in activation_preflight),
     ("Activation handles stale server rejection", "server" in activation_preflight.lower() and "stale decision" in activation_preflight),
+    ("Project cards expose lifecycle history", "Lifecycle history" in page and "ProjectLifecycleHistory" in page),
+    ("Lifecycle history loads lazily per project", "lifecycleHistoryProjectId" in page and "lifecycleAudit(projectId)" in lifecycle_history),
+    ("API exposes project lifecycle history", "lifecycleAudit" in api and "lifecycle/audit" in api),
+    ("Lifecycle history shows status transitions", "event.transition.from_status" in lifecycle_history and "event.transition.to_status" in lifecycle_history),
+    ("Lifecycle history resolves actor labels", "event.actor.display_name" in lifecycle_history and "event.actor.role" in lifecycle_history),
+    ("Lifecycle history shows reasons and timestamps", "event.reason" in lifecycle_history and "event.created_at" in lifecycle_history and "toLocaleString" in lifecycle_history),
+    ("Lifecycle history shows activation evidence", "event.preflight_fingerprint" in lifecycle_history and "event.geography_summary" in lifecycle_history),
+    ("Lifecycle history is read only", "performs no database write" in lifecycle_history and "does not change project status" in lifecycle_history),
+    ("Active project cards expose deactivation preflight", 'p.status === "ACTIVE"' in page and "Deactivation preflight" in page and "ProjectDeactivationPreflightPanel" in page),
+    ("Deactivation preflight loads lazily per project", "deactivationPreflightProjectId" in page and "getDeactivationPreflight(projectId)" in deactivation_preflight),
+    ("API exposes project deactivation preflight", "getDeactivationPreflight" in api and "deactivation-preflight" in api),
+    ("Deactivation preflight shows operational counts", "farmer_count" in deactivation_preflight and "enrollment_count" in deactivation_preflight and "parcel_count" in deactivation_preflight and "crop_cycle_count" in deactivation_preflight),
+    ("Deactivation preflight shows assignment and field blockers", "project_role_count" in deactivation_preflight and "active_boundary_assignment_count" in deactivation_preflight and "field_event_count" in deactivation_preflight),
+    ("Deactivation preflight renders blocker details", "decision.blockers.map" in deactivation_preflight and "blocker.message" in deactivation_preflight),
+    ("Deactivation remains advisory only", "project deactivation is not enabled" in deactivation_preflight and "deactivation_supported" in api),
+    ("Deactivation preflight preserves runtime guardrails", "does not change project status" in deactivation_preflight and "candidate activation or promotion" in deactivation_preflight and "runtime" in deactivation_preflight and "Android behavior" in deactivation_preflight),
     ("Project cards expose geography summary", "ProjectGeographySummary" in page),
     ("Projects page loads one batched readiness response", ".listProjectGeographyReadiness(" in page),
     ("Summary component makes no API requests", "useEffect" not in summary and "api<" not in summary),

@@ -2333,6 +2333,82 @@ export interface ProjectActivationResponse {
   };
 }
 
+export interface ProjectLifecycleAuditEvent {
+  id: string;
+  project_id: string;
+  action: "ACTIVATE_PROJECT" | "DEACTIVATE_PROJECT";
+  transition: {
+    from_status?: string | null;
+    to_status?: string | null;
+  };
+  actor: {
+    id: string;
+    display_name?: string | null;
+    role?: string | null;
+  };
+  reason?: string | null;
+  created_at: string;
+  preflight_fingerprint?: string | null;
+  geography_summary: Record<string, unknown>;
+}
+
+export interface ProjectLifecycleAuditResponse {
+  schema_version: string;
+  tenant_id: string;
+  project: {
+    id: string;
+    name: string;
+    status: string;
+  };
+  count: number;
+  events: ProjectLifecycleAuditEvent[];
+  governance: {
+    mode: string;
+    database_write_performed: boolean;
+    project_status_changed: boolean;
+  };
+}
+
+export interface ProjectDeactivationPreflight {
+  schema_version: string;
+  mode: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  decision: {
+    can_deactivate: boolean;
+    deactivation_supported: boolean;
+    blocker_count: number;
+    blockers: Array<{
+      code: string;
+      count: number;
+      message: string;
+    }>;
+  };
+  operational_counts: {
+    farmer_count: number;
+    enrollment_count: number;
+    parcel_count: number;
+    crop_cycle_count: number;
+    project_role_count: number;
+    active_boundary_assignment_count: number;
+    field_event_count: number;
+  };
+  governance: {
+    database_write_performed: boolean;
+    project_status_changed: boolean;
+    boundary_assignments_changed: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
 export interface ProjectGeographyReadinessResponse {
   schema_version: string;
   tenant_id: string;
@@ -2429,6 +2505,17 @@ export const projectsApi = {
           preflight_fingerprint: preflightFingerprint,
         },
       },
+    ),
+  lifecycleAudit: (
+    projectId: string,
+    limit = 50,
+  ) =>
+    api<ProjectLifecycleAuditResponse>(
+      `/api/v1/projects/${projectId}/lifecycle/audit?limit=${limit}`,
+    ),
+  getDeactivationPreflight: (projectId: string) =>
+    api<ProjectDeactivationPreflight>(
+      `/api/v1/projects/${projectId}/deactivation-preflight`,
     ),
   geographyScopeAudit: (
     projectId: string,

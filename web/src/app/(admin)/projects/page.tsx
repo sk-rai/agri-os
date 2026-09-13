@@ -13,6 +13,8 @@ import { ProjectGeographyScopeCsv } from "@/components/project-geography-scope-c
 import { ProjectGeographyScopeAudit } from "@/components/project-geography-scope-audit";
 import { ProjectGeographySummary } from "@/components/project-geography-summary";
 import { ProjectGeographyActivationPreflightPanel } from "@/components/project-geography-activation-preflight";
+import { ProjectLifecycleHistory } from "@/components/project-lifecycle-history";
+import { ProjectDeactivationPreflightPanel } from "@/components/project-deactivation-preflight";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
@@ -34,6 +36,10 @@ export default function ProjectsPage() {
   const [scopeHistoryProjectId, setScopeHistoryProjectId] =
     useState("");
   const [preflightProjectId, setPreflightProjectId] =
+    useState("");
+  const [lifecycleHistoryProjectId, setLifecycleHistoryProjectId] =
+    useState("");
+  const [deactivationPreflightProjectId, setDeactivationPreflightProjectId] =
     useState("");
   const [scopeVillageCodes, setScopeVillageCodes] = useState<string[]>([]);
   const [scopeReason, setScopeReason] = useState(
@@ -307,6 +313,34 @@ export default function ProjectsPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() =>
+                      setLifecycleHistoryProjectId((current) =>
+                        current === p.id ? "" : p.id,
+                      )
+                    }
+                    className="text-xs text-purple-700 hover:underline"
+                  >
+                    {lifecycleHistoryProjectId === p.id
+                      ? "Hide lifecycle history"
+                      : "Lifecycle history"}
+                  </button>
+                  {p.status === "ACTIVE" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeactivationPreflightProjectId((current) =>
+                          current === p.id ? "" : p.id,
+                        )
+                      }
+                      className="text-xs text-amber-700 hover:underline"
+                    >
+                      {deactivationPreflightProjectId === p.id
+                        ? "Hide deactivation preflight"
+                        : "Deactivation preflight"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
                     disabled={!canCreateProjects || p.status !== "PLANNED"}
                     title={
                       p.status === "PLANNED"
@@ -339,6 +373,14 @@ export default function ProjectsPage() {
 
               {scopeHistoryProjectId === p.id ? (
                 <ProjectGeographyScopeAudit projectId={p.id} />
+              ) : null}
+
+              {lifecycleHistoryProjectId === p.id ? (
+                <ProjectLifecycleHistory projectId={p.id} />
+              ) : null}
+
+              {deactivationPreflightProjectId === p.id ? (
+                <ProjectDeactivationPreflightPanel projectId={p.id} />
               ) : null}
 
               {scopeProjectId === p.id ? (

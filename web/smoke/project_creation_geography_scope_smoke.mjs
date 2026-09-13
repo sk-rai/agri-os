@@ -38,13 +38,37 @@ const page = await browser.newPage({
 
 const browserEvents = [];
 let activationPreflightRequestCount = 0;
+let lifecycleHistoryRequestCount = 0;
+let deactivationPreflightRequestCount = 0;
 
 page.on("request", (request) => {
+  if (request.method() !== "GET") return;
+
+  const url = new URL(request.url());
+
   if (
-    request.method() === "GET" &&
-    request.url().includes("/activation-preflight")
+    url.pathname.includes(
+      "/api/v1/master-data/geography/projects/",
+    ) &&
+    url.pathname.endsWith("/activation-preflight")
   ) {
     activationPreflightRequestCount += 1;
+  }
+
+  if (
+    url.pathname.endsWith(
+      `/api/v1/projects/${createdProject?.id}/lifecycle/audit`,
+    )
+  ) {
+    lifecycleHistoryRequestCount += 1;
+  }
+
+  if (
+    url.pathname.endsWith(
+      `/api/v1/projects/${createdProject?.id}/deactivation-preflight`,
+    )
+  ) {
+    deactivationPreflightRequestCount += 1;
   }
 });
 
@@ -428,6 +452,191 @@ try {
     .getByText("ACTIVE", { exact: true })
     .waitFor({ timeout: 30000 });
 
+  if (
+    lifecycleHistoryRequestCount !== 0 ||
+    deactivationPreflightRequestCount !== 0
+  ) {
+    throw new Error(
+      "Lifecycle and deactivation panels must load lazily: " +
+        JSON.stringify({
+          lifecycleHistoryRequestCount,
+          deactivationPreflightRequestCount,
+        }),
+    );
+  }
+
+  const lifecycleResponsePromise = page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === "GET" &&
+        url.pathname.endsWith(
+          `/api/v1/projects/${createdProject.id}/lifecycle/audit`,
+        )
+      );
+    },
+    { timeout: 30000 },
+  );
+
+  await projectCard
+    .getByRole("button", {
+      name: "Lifecycle history",
+      exact: true,
+    })
+    .click();
+
+  const lifecycleResponse = await lifecycleResponsePromise;
+  const lifecycleBody = await lifecycleResponse.json().catch(
+    async () => ({ raw: await lifecycleResponse.text() }),
+  );
+
+  if (
+    lifecycleResponse.status() !== 200 ||
+    lifecycleBody.schema_version !==
+      "project_lifecycle_audit.v1" ||
+    lifecycleBody.count !== 1 ||
+    lifecycleBody.events?.[0]?.action !==
+      "ACTIVATE_PROJECT" ||
+    lifecycleBody.events?.[0]?.transition?.from_status !==
+      "PLANNED" ||
+    lifecycleBody.events?.[0]?.transition?.to_status !==
+      "ACTIVE" ||
+    lifecycleBody.events?.[0]?.reason !== activationReason ||
+    lifecycleBody.events?.[0]?.preflight_fingerprint !==
+      preflightBody.decision.preflight_fingerprint
+  ) {
+    throw new Error(
+      `Unexpected lifecycle history: ` +
+        `${JSON.stringify(lifecycleBody)}`,
+    );
+  }
+
+  const lifecyclePanel = projectCard.getByLabel(
+    "Project lifecycle history",
+  );
+
+  await lifecyclePanel
+    .getByText("PLANNED → ACTIVE", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  await lifecyclePanel
+    .getByText(activationReason, { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  await lifecyclePanel
+    .getByText(
+      preflightBody.decision.preflight_fingerprint,
+      { exact: false },
+    )
+    .waitFor({ timeout: 30000 });
+
+  await lifecyclePanel
+    .getByText("performs no database write", {
+      exact: false,
+    })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    lifecycleHistoryRequestCount < 1 ||
+    lifecycleHistoryRequestCount > 2
+  ) {
+    throw new Error(
+      `Expected one lifecycle-history request, or two under ` +
+        `React development effect replay; saw ` +
+        `${lifecycleHistoryRequestCount}`,
+    );
+  }
+
+  const deactivationResponsePromise = page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === "GET" &&
+        url.pathname.endsWith(
+          `/api/v1/projects/${createdProject.id}/deactivation-preflight`,
+        )
+      );
+    },
+    { timeout: 30000 },
+  );
+
+  await projectCard
+    .getByRole("button", {
+      name: "Deactivation preflight",
+      exact: true,
+    })
+    .click();
+
+  const deactivationResponse =
+    await deactivationResponsePromise;
+  const deactivationBody =
+    await deactivationResponse.json().catch(
+      async () => ({ raw: await deactivationResponse.text() }),
+    );
+
+  if (
+    deactivationResponse.status() !== 200 ||
+    deactivationBody.schema_version !==
+      "project_deactivation_preflight.v1" ||
+    deactivationBody.mode !== "READ_ONLY_PREFLIGHT" ||
+    deactivationBody.project?.status !== "ACTIVE" ||
+    deactivationBody.decision?.can_deactivate !== true ||
+    deactivationBody.decision?.deactivation_supported !==
+      false ||
+    deactivationBody.decision?.blocker_count !== 0 ||
+    Object.values(
+      deactivationBody.operational_counts || {},
+    ).some((count) => count !== 0)
+  ) {
+    throw new Error(
+      `Unexpected deactivation preflight: ` +
+        `${JSON.stringify(deactivationBody)}`,
+    );
+  }
+
+  const deactivationPanel = projectCard.getByLabel(
+    "Project deactivation preflight",
+  );
+
+  await deactivationPanel
+    .getByText("No operational blockers detected", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await deactivationPanel
+    .getByText("project deactivation is not enabled", {
+      exact: false,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await deactivationPanel
+    .getByText("does not change project status", {
+      exact: false,
+    })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    await deactivationPanel
+      .getByRole("button", { name: /deactivat/i })
+      .count()
+  ) {
+    throw new Error(
+      "Read-only deactivation preflight exposed a mutation action",
+    );
+  }
+
+  if (
+    deactivationPreflightRequestCount < 1 ||
+    deactivationPreflightRequestCount > 2
+  ) {
+    throw new Error(
+      `Expected one deactivation-preflight request, or two under ` +
+        `React development effect replay; saw ` +
+        `${deactivationPreflightRequestCount}`,
+    );
+  }
+
   const lifecycleAuditResponse = await page.request.get(
     `${apiBaseUrl}/api/v1/app-config/projects/` +
       `${createdProject.id}/config/audit`,
@@ -538,6 +747,19 @@ try {
     activation_audit_verified: true,
     activation_fingerprint_verified: true,
     active_status_persisted: true,
+    lifecycle_history_verified: true,
+    lifecycle_history_lazy_load_verified: true,
+    lifecycle_history_request_count:
+      lifecycleHistoryRequestCount,
+    lifecycle_transition_verified: true,
+    lifecycle_reason_verified: true,
+    lifecycle_fingerprint_verified: true,
+    deactivation_preflight_verified: true,
+    deactivation_preflight_lazy_load_verified: true,
+    deactivation_preflight_request_count:
+      deactivationPreflightRequestCount,
+    deactivation_operational_counts_verified: true,
+    deactivation_remains_advisory_only: true,
     project_created_only_on_submit: true,
     screenshot,
     guardrails: {

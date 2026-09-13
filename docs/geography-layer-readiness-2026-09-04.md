@@ -665,6 +665,11 @@ The `/projects` admin page now additionally provides:
 - explicit ready/blocker decisions and project-filtered boundary-review links
 - fingerprint-pinned `PLANNED` to `ACTIVE` activation
 - required activation reason and explicit confirmation
+- lazy, immutable project lifecycle history with actor, reason, transition,
+  timestamp, preflight fingerprint, and geography evidence
+- lazy, read-only active-project deactivation preflight covering farmers,
+  enrollments, parcels, crop cycles, project roles, active boundary
+  assignments, and field events
 - an audited save action governed by project edit policy
 
 The project editor changes only project configuration. Boundary promotion, runtime lookup, and Android behavior remain outside this surface.
@@ -731,8 +736,15 @@ The project editor changes only project configuration. Boundary promotion, runti
     - retry after successful activation is idempotent
     - forced commit failure rolls back status and audit atomically
     - boundary candidates, runtime tables, lookup, and Android behavior remain unchanged
-13. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
-14. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
+13. Treat project lifecycle history and deactivation preflight as complete:
+    - activation transitions are visible separately from geography-scope history
+    - actor, reason, timestamp, preflight fingerprint, and geography evidence are retained
+    - deactivation readiness accounts for farmers, enrollments, parcels, crop
+      cycles, project roles, active boundary assignments, and field events
+    - deactivation remains unsupported and no mutation action is exposed
+    - tenant isolation, zero-write behavior, and runtime/Android guardrails are proved
+14. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
+15. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
 
@@ -751,5 +763,9 @@ Canonical geography can now be configured during project creation. Empty geograp
 Project cards now expose a lazy, read-only geography activation preflight. It reports canonical resolution, eligible and missing boundaries, blocked/manual-review candidates, explicit blockers, and an advisory ready decision without changing project status or runtime state.
 
 A ready preflight can now be consumed by an explicitly confirmed, reasoned `PLANNED` to `ACTIVE` transition. The server locks the project, recomputes readiness, rejects stale fingerprints, commits status and immutable audit atomically, and treats retries as idempotent. This activates only the project lifecycle; it does not activate or promote boundary candidates or enable runtime geography behavior.
+
+Project lifecycle transitions are now visible through a dedicated, tenant-isolated history surface. Activation history includes the actor, reason, timestamp, status transition, approved preflight fingerprint, and geography summary while remaining read-only.
+
+Active projects now expose a read-only deactivation preflight covering operational farmers, enrollments, parcels, crop cycles, project roles, active boundary assignments, and field events. This is planning evidence only: project deactivation remains unsupported and no lifecycle mutation is exposed.
 
 NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.

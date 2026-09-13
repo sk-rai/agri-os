@@ -3299,6 +3299,302 @@ def preview_project_geography_scope_import(
 
 
 
+
+@router.get("/projects/{project_id}/lifecycle/audit")
+def list_project_lifecycle_audit(
+    project_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    """Return tenant-isolated project lifecycle transitions."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    rows = db.execute(
+        text("""
+            select
+              event.id::text,
+              event.actor_id::text,
+              event.action,
+              event.before_config,
+              event.after_config,
+              event.config_patch,
+              event.reason,
+              event.created_at,
+              actor.display_name as actor_display_name,
+              actor.role as actor_role
+            from project_app_config_audit_events event
+            left join users actor
+              on actor.id = event.actor_id
+             and actor.tenant_id = event.tenant_id
+            where event.tenant_id = :tenant_id
+              and event.project_id = :project_id
+              and event.action in (
+                'ACTIVATE_PROJECT',
+                'DEACTIVATE_PROJECT'
+              )
+            order by event.created_at desc, event.id desc
+            limit :limit
+        """),
+        {
+            "tenant_id": x_tenant_id,
+            "project_id": str(project_id),
+            "limit": limit,
+        },
+    ).mappings().all()
+
+    events = []
+    for raw_row in rows:
+        row = dict(raw_row)
+        before_config = row["before_config"] or {}
+        after_config = row["after_config"] or {}
+        config_patch = row["config_patch"] or {}
+
+        events.append({
+            "id": row["id"],
+            "project_id": str(project.id),
+            "action": row["action"],
+            "transition": {
+                "from_status": before_config.get("status"),
+                "to_status": after_config.get("status"),
+            },
+            "actor": {
+                "id": row["actor_id"],
+                "display_name": row["actor_display_name"],
+                "role": row["actor_role"],
+            },
+            "reason": row["reason"],
+            "created_at": row["created_at"],
+            "preflight_fingerprint":
+                config_patch.get("preflight_fingerprint"),
+            "geography_summary":
+                config_patch.get("geography_summary") or {},
+        })
+
+    return {
+        "schema_version": "project_lifecycle_audit.v1",
+        "tenant_id": x_tenant_id,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "status": project.status,
+        },
+        "count": len(events),
+        "events": events,
+        "governance": {
+            "mode": "READ_ONLY",
+            "database_write_performed": False,
+            "project_status_changed": False,
+        },
+    }
+
+
+@router.get("/projects/{project_id}/deactivation-preflight")
+def get_project_deactivation_preflight(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    """Report operational blockers without changing project lifecycle."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    counts = dict(
+        db.execute(
+            text("""
+                select
+                  (
+                    select count(distinct farmer_id)::bigint
+                    from (
+                      select farmer.id as farmer_id
+                      from farmers farmer
+                      where farmer.tenant_id = :tenant_id
+                        and farmer.project_id = :project_id
+                        and farmer.status != 'ARCHIVED'
+
+                      union
+
+                      select enrollment.farmer_id
+                      from farmer_project_enrollments enrollment
+                      where enrollment.tenant_id = :tenant_id
+                        and enrollment.project_id = :project_id
+                        and enrollment.status != 'ARCHIVED'
+                    ) scoped_farmers
+                  ) as farmer_count,
+                  (
+                    select count(*)::bigint
+                    from farmer_project_enrollments enrollment
+                    where enrollment.tenant_id = :tenant_id
+                      and enrollment.project_id = :project_id
+                      and enrollment.status not in (
+                        'ARCHIVED',
+                        'CANCELLED'
+                      )
+                  ) as enrollment_count,
+                  (
+                    select count(*)::bigint
+                    from parcels parcel
+                    where parcel.tenant_id = :tenant_id
+                      and parcel.project_id = :project_id
+                      and parcel.status != 'ARCHIVED'
+                  ) as parcel_count,
+                  (
+                    select count(*)::bigint
+                    from crop_cycles cycle
+                    where cycle.tenant_id = :tenant_id
+                      and cycle.project_id = :project_id
+                      and cycle.status != 'ARCHIVED'
+                  ) as crop_cycle_count,
+                  (
+                    select count(*)::bigint
+                    from project_roles project_role
+                    where project_role.project_id = :project_id
+                      and project_role.is_active = true
+                  ) as project_role_count,
+                  (
+                    select count(*)::bigint
+                    from geography_boundary_project_matches assignment
+                    where assignment.tenant_id = :tenant_id
+                      and assignment.project_id = :project_id
+                      and assignment.is_active = true
+                  ) as active_boundary_assignment_count,
+                  (
+                    select count(*)::bigint
+                    from field_event_reports field_event
+                    where field_event.tenant_id = :tenant_id
+                      and field_event.project_id = :project_id
+                      and field_event.is_active = true
+                  ) as field_event_count
+            """),
+            {
+                "tenant_id": x_tenant_id,
+                "project_id": str(project_id),
+            },
+        ).mappings().one()
+    )
+
+    for key, value in list(counts.items()):
+        counts[key] = int(value or 0)
+
+    blocker_specs = (
+        (
+            "FARMERS_ENROLLED",
+            "farmer_count",
+            "farmers",
+        ),
+        (
+            "ACTIVE_ENROLLMENTS",
+            "enrollment_count",
+            "active or completed enrollments",
+        ),
+        (
+            "PARCELS_REGISTERED",
+            "parcel_count",
+            "parcels",
+        ),
+        (
+            "CROP_CYCLES_RECORDED",
+            "crop_cycle_count",
+            "crop cycles",
+        ),
+        (
+            "PROJECT_ROLES_ASSIGNED",
+            "project_role_count",
+            "active project roles",
+        ),
+        (
+            "ACTIVE_BOUNDARY_ASSIGNMENTS",
+            "active_boundary_assignment_count",
+            "active boundary assignments",
+        ),
+        (
+            "FIELD_DATA_RECORDED",
+            "field_event_count",
+            "field events",
+        ),
+    )
+
+    blockers = []
+
+    if project.status != "ACTIVE":
+        blockers.append({
+            "code": "PROJECT_NOT_ACTIVE",
+            "count": 0,
+            "message":
+                "Only an active project can enter deactivation review.",
+        })
+
+    for code, count_key, label in blocker_specs:
+        count = counts[count_key]
+        if count:
+            blockers.append({
+                "code": code,
+                "count": count,
+                "message": f"Project has {count} {label}.",
+            })
+
+    can_deactivate = project.status == "ACTIVE" and not blockers
+
+    return {
+        "schema_version": "project_deactivation_preflight.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "mode": "READ_ONLY_PREFLIGHT",
+        "decision": {
+            "can_deactivate": can_deactivate,
+            "deactivation_supported": False,
+            "blocker_count": len(blockers),
+            "blockers": blockers,
+        },
+        "operational_counts": counts,
+        "governance": {
+            "database_write_performed": False,
+            "project_status_changed": False,
+            "boundary_assignments_changed": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
 @router.get("/projects/{project_id}/geography-scope/audit")
 def list_project_geography_scope_audit(
     project_id: uuid.UUID,
