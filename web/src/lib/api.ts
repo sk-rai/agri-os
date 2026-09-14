@@ -2336,7 +2336,10 @@ export interface ProjectActivationResponse {
 export interface ProjectLifecycleAuditEvent {
   id: string;
   project_id: string;
-  action: "ACTIVATE_PROJECT" | "DEACTIVATE_PROJECT";
+  action:
+    | "ACTIVATE_PROJECT"
+    | "DEACTIVATE_PROJECT"
+    | "COMPLETE_PROJECT";
   transition: {
     from_status?: string | null;
     to_status?: string | null;
@@ -2437,6 +2440,79 @@ export interface ProjectDeactivationResponse {
   };
 }
 
+export interface ProjectCompletionPreflight {
+  schema_version: string;
+  mode: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  decision: {
+    preflight_fingerprint: string;
+    can_complete: boolean;
+    completion_supported: boolean;
+    blocker_count: number;
+    blockers: Array<{
+      code: string;
+      count: number;
+      message: string;
+    }>;
+  };
+  operational_counts: {
+    unfinished_enrollment_count: number;
+    unfinished_crop_cycle_count: number;
+    unfinished_crop_stage_count: number;
+    open_query_thread_count: number;
+  };
+  terminal_status_policy: {
+    enrollments: string[];
+    crop_cycles: string[];
+    crop_stages: string[];
+    query_threads: string[];
+  };
+  governance: {
+    database_write_performed: boolean;
+    project_status_changed: boolean;
+    operational_records_changed: boolean;
+    boundary_assignments_changed: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
+export interface ProjectCompletionResponse {
+  schema_version: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  completion: {
+    completed: boolean;
+    idempotent: boolean;
+    reason: string;
+    preflight_fingerprint?: string | null;
+    audit_event_id?: string;
+    message?: string;
+  };
+  preflight?: ProjectCompletionPreflight;
+  guardrails: {
+    operational_records_changed: boolean;
+    boundary_assignments_changed: boolean;
+    boundary_candidates_activated: boolean;
+    boundary_candidates_promoted: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
 export interface ProjectGeographyReadinessResponse {
   schema_version: string;
   tenant_id: string;
@@ -2526,6 +2602,25 @@ export const projectsApi = {
   ) =>
     api<ProjectActivationResponse>(
       `/api/v1/projects/${projectId}/activate`,
+      {
+        method: "POST",
+        body: {
+          reason,
+          preflight_fingerprint: preflightFingerprint,
+        },
+      },
+    ),
+  getCompletionPreflight: (projectId: string) =>
+    api<ProjectCompletionPreflight>(
+      `/api/v1/projects/${projectId}/completion-preflight`,
+    ),
+  complete: (
+    projectId: string,
+    reason: string,
+    preflightFingerprint: string,
+  ) =>
+    api<ProjectCompletionResponse>(
+      `/api/v1/projects/${projectId}/complete`,
       {
         method: "POST",
         body: {

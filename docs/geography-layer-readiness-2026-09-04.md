@@ -752,8 +752,16 @@ The project editor changes only project configuration. Boundary promotion, runti
       status and audit atomically
     - boundary assignments, candidates, runtime tables, lookup, and Android
       behavior remain unchanged
-14. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
-15. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
+14. Treat guarded project completion as complete:
+    - completion readiness distinguishes historical records from unfinished work
+    - non-terminal enrollments, crop cycles, crop stages, and query threads block completion
+    - historical farmers, parcels, field events, roles, and boundary assignments are retained
+    - only an unblocked `ACTIVE` project with a current fingerprint can become `COMPLETED`
+    - reason, actor, transition, terminal-status policy, counts, and fingerprint are recorded immutably
+    - successful retry is idempotent and forced commit failure rolls back status and audit atomically
+    - operational records, boundaries, candidates, runtime tables, lookup, and Android behavior remain unchanged
+15. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
+16. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
 
@@ -776,5 +784,7 @@ A ready preflight can now be consumed by an explicitly confirmed, reasoned `PLAN
 Project lifecycle transitions are now visible through a dedicated, tenant-isolated history surface. Activation history includes the actor, reason, timestamp, status transition, approved preflight fingerprint, and geography summary while remaining read-only.
 
 Active projects now expose a guarded deactivation workflow covering operational farmers, enrollments, parcels, crop cycles, project roles, active boundary assignments, and field events. An unblocked project can return from `ACTIVE` to `PLANNED` only with a current preflight fingerprint, required reason, and explicit confirmation. The transition is immutable and idempotent and does not alter boundary assignments, candidates, runtime tables, lookup, or Android behavior.
+
+Active projects now also expose a guarded completion workflow. Completion requires every enrollment, crop cycle, crop stage, and query thread to be in an accepted terminal state. A current preflight fingerprint, reason, and explicit confirmation move the project from `ACTIVE` to `COMPLETED` while preserving historical operational records and immutable lifecycle evidence.
 
 NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.

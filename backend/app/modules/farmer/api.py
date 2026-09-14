@@ -301,6 +301,14 @@ class ProjectDeactivationRequest(BaseModel):
     )
 
 
+class ProjectCompletionRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    preflight_fingerprint: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+
 class ProjectGeographyScopeUpdate(BaseModel):
     village_lgd_codes: list[str] = Field(..., min_length=1, max_length=500)
     reason: str = Field(..., min_length=3, max_length=500)
@@ -3356,7 +3364,8 @@ def list_project_lifecycle_audit(
               and event.project_id = :project_id
               and event.action in (
                 'ACTIVATE_PROJECT',
-                'DEACTIVATE_PROJECT'
+                'DEACTIVATE_PROJECT',
+                'COMPLETE_PROJECT'
               )
             order by event.created_at desc, event.id desc
             limit :limit
@@ -3412,6 +3421,223 @@ def list_project_lifecycle_audit(
             "project_status_changed": False,
         },
     }
+
+
+def _project_completion_preflight_payload(
+    db: Session,
+    project: Project,
+    tenant_id: str,
+) -> dict:
+    """Build a deterministic, read-only completion decision."""
+    counts = dict(
+        db.execute(
+            text("""
+                select
+                  (
+                    select count(*)::bigint
+                    from farmer_project_enrollments enrollment
+                    where enrollment.tenant_id = :tenant_id
+                      and enrollment.project_id = :project_id
+                      and enrollment.is_active = true
+                      and enrollment.status not in (
+                        'COMPLETED', 'CANCELLED', 'ARCHIVED'
+                      )
+                  ) as unfinished_enrollment_count,
+                  (
+                    select count(*)::bigint
+                    from crop_cycles cycle
+                    where cycle.tenant_id = :tenant_id
+                      and cycle.project_id = :project_id
+                      and cycle.is_active = true
+                      and cycle.status not in (
+                        'COMPLETED', 'ABANDONED', 'ARCHIVED'
+                      )
+                  ) as unfinished_crop_cycle_count,
+                  (
+                    select count(*)::bigint
+                    from crop_stage_instances stage
+                    join crop_cycles cycle
+                      on cycle.id = stage.crop_cycle_id
+                    where stage.tenant_id = :tenant_id
+                      and cycle.tenant_id = :tenant_id
+                      and cycle.project_id = :project_id
+                      and stage.is_active = true
+                      and cycle.is_active = true
+                      and stage.status not in (
+                        'COMPLETED', 'SKIPPED', 'FAILED'
+                      )
+                  ) as unfinished_crop_stage_count,
+                  (
+                    select count(*)::bigint
+                    from query_threads query_thread
+                    where query_thread.tenant_id = :tenant_id
+                      and query_thread.project_id = :project_id
+                      and query_thread.is_active = true
+                      and query_thread.status not in (
+                        'ANSWERED', 'CLOSED'
+                      )
+                  ) as open_query_thread_count
+            """),
+            {
+                "tenant_id": tenant_id,
+                "project_id": str(project.id),
+            },
+        ).mappings().one()
+    )
+
+    counts = {
+        key: int(value or 0)
+        for key, value in counts.items()
+    }
+
+    blocker_specs = (
+        (
+            "UNFINISHED_ENROLLMENTS",
+            "unfinished_enrollment_count",
+            "non-terminal farmer enrollments",
+        ),
+        (
+            "UNFINISHED_CROP_CYCLES",
+            "unfinished_crop_cycle_count",
+            "non-terminal crop cycles",
+        ),
+        (
+            "UNFINISHED_CROP_STAGES",
+            "unfinished_crop_stage_count",
+            "non-terminal crop stages",
+        ),
+        (
+            "OPEN_QUERY_THREADS",
+            "open_query_thread_count",
+            "open or assigned query threads",
+        ),
+    )
+
+    blockers = []
+
+    if project.status != "ACTIVE":
+        blockers.append({
+            "code": "PROJECT_NOT_ACTIVE",
+            "count": 0,
+            "message":
+                "Only an active project can enter completion review.",
+        })
+
+    for code, count_key, label in blocker_specs:
+        count = counts[count_key]
+        if count:
+            blockers.append({
+                "code": code,
+                "count": count,
+                "message": f"Project has {count} {label}.",
+            })
+
+    can_complete = project.status == "ACTIVE" and not blockers
+
+    fingerprint_payload = {
+        "project_id": str(project.id),
+        "project_status": project.status,
+        "operational_counts": counts,
+        "can_complete": can_complete,
+        "blockers": [
+            {
+                "code": blocker["code"],
+                "count": blocker["count"],
+            }
+            for blocker in blockers
+        ],
+    }
+
+    preflight_fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    return {
+        "schema_version": "project_completion_preflight.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "mode": "READ_ONLY_PREFLIGHT",
+        "decision": {
+            "preflight_fingerprint": preflight_fingerprint,
+            "can_complete": can_complete,
+            "completion_supported": True,
+            "blocker_count": len(blockers),
+            "blockers": blockers,
+        },
+        "operational_counts": counts,
+        "terminal_status_policy": {
+            "enrollments": [
+                "COMPLETED",
+                "CANCELLED",
+                "ARCHIVED",
+            ],
+            "crop_cycles": [
+                "COMPLETED",
+                "ABANDONED",
+                "ARCHIVED",
+            ],
+            "crop_stages": [
+                "COMPLETED",
+                "SKIPPED",
+                "FAILED",
+            ],
+            "query_threads": [
+                "ANSWERED",
+                "CLOSED",
+            ],
+        },
+        "governance": {
+            "database_write_performed": False,
+            "project_status_changed": False,
+            "operational_records_changed": False,
+            "boundary_assignments_changed": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
+@router.get("/projects/{project_id}/completion-preflight")
+def get_project_completion_preflight(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    """Report unfinished work without changing project lifecycle."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    return _project_completion_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
 
 
 def _project_deactivation_preflight_payload(
@@ -3825,6 +4051,201 @@ def deactivate_project(
         },
         "preflight": preflight,
         "guardrails": {
+            "boundary_assignments_changed": False,
+            "boundary_candidates_activated": False,
+            "boundary_candidates_promoted": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
+@router.post("/projects/{project_id}/complete")
+def complete_project(
+    project_id: uuid.UUID,
+    body: ProjectCompletionRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Complete an ACTIVE project after a fresh operational preflight."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if project.status == "COMPLETED":
+        prior_event = (
+            db.query(ProjectAppConfigAuditEvent)
+            .filter(
+                ProjectAppConfigAuditEvent.tenant_id ==
+                    x_tenant_id,
+                ProjectAppConfigAuditEvent.project_id ==
+                    project.id,
+                ProjectAppConfigAuditEvent.action ==
+                    "COMPLETE_PROJECT",
+            )
+            .order_by(
+                ProjectAppConfigAuditEvent.created_at.desc()
+            )
+            .first()
+        )
+
+        if prior_event:
+            prior_patch = prior_event.config_patch or {}
+            return {
+                "schema_version": "project_completion.v1",
+                "project": {
+                    "id": str(project.id),
+                    "tenant_id": project.tenant_id,
+                    "name": project.name,
+                    "status": project.status,
+                },
+                "completion": {
+                    "completed": False,
+                    "idempotent": True,
+                    "reason": body.reason.strip(),
+                    "preflight_fingerprint":
+                        prior_patch.get(
+                            "preflight_fingerprint"
+                        ),
+                    "audit_event_id": str(prior_event.id),
+                    "message": "Project is already COMPLETED.",
+                },
+                "guardrails": {
+                    "operational_records_changed": False,
+                    "boundary_assignments_changed": False,
+                    "boundary_candidates_activated": False,
+                    "boundary_candidates_promoted": False,
+                    "runtime_tables_written": False,
+                    "runtime_lookup_enabled": False,
+                    "android_behavior_changed": False,
+                },
+            }
+
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_COMPLETABLE",
+                "project_status": project.status,
+                "required_status": "ACTIVE",
+            },
+        )
+
+    if project.status != "ACTIVE":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_COMPLETABLE",
+                "project_status": project.status,
+                "required_status": "ACTIVE",
+            },
+        )
+
+    preflight = _project_completion_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+    fresh_fingerprint = preflight["decision"][
+        "preflight_fingerprint"
+    ]
+
+    if body.preflight_fingerprint != fresh_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_PROJECT_COMPLETION_PREFLIGHT",
+                "message": (
+                    "Project operational state changed. "
+                    "Run completion preflight again."
+                ),
+                "submitted_preflight_fingerprint":
+                    body.preflight_fingerprint,
+                "current_preflight_fingerprint":
+                    fresh_fingerprint,
+                "current_decision": preflight["decision"],
+            },
+        )
+
+    if not preflight["decision"]["can_complete"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_COMPLETION_BLOCKED",
+                "message":
+                    "Project has unfinished operational work.",
+                "preflight": preflight,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    before_status = project.status
+    project.status = "COMPLETED"
+    project.updated_at = now
+
+    audit_event = ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="COMPLETE_PROJECT",
+        patched_sections=["status"],
+        before_config={"status": before_status},
+        after_config={"status": "COMPLETED"},
+        config_patch={
+            "status": "COMPLETED",
+            "preflight_fingerprint": fresh_fingerprint,
+            "completion_summary": {
+                "operational_counts":
+                    preflight["operational_counts"],
+                "terminal_status_policy":
+                    preflight["terminal_status_policy"],
+                "blockers":
+                    preflight["decision"]["blockers"],
+            },
+        },
+        reason=body.reason.strip(),
+        created_at=now,
+    )
+
+    db.add(project)
+    db.add(audit_event)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "schema_version": "project_completion.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "completion": {
+            "completed": True,
+            "idempotent": False,
+            "reason": body.reason.strip(),
+            "preflight_fingerprint": fresh_fingerprint,
+            "audit_event_id": str(audit_event.id),
+        },
+        "preflight": preflight,
+        "guardrails": {
+            "operational_records_changed": False,
             "boundary_assignments_changed": False,
             "boundary_candidates_activated": False,
             "boundary_candidates_promoted": False,

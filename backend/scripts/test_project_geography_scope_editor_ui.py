@@ -21,6 +21,9 @@ lifecycle_history = Path(
 deactivation_preflight = Path(
     "web/src/components/project-deactivation-preflight.tsx"
 ).read_text()
+completion_preflight = Path(
+    "web/src/components/project-completion-preflight.tsx"
+).read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -136,6 +139,21 @@ checks = [
     ("Deactivation confirmation explains lifecycle effect", "Project operations will pause" in deactivation_preflight and "geography editing" in deactivation_preflight),
     ("Deactivation handles stale server rejection", "fresh preflight" in deactivation_preflight and "stale decision" in deactivation_preflight),
     ("Deactivation preflight preserves runtime guardrails", "does not change project status" in deactivation_preflight and "candidate activation or promotion" in deactivation_preflight and "runtime" in deactivation_preflight and "Android behavior" in deactivation_preflight),
+    ("Active project cards expose completion preflight", 'p.status === "ACTIVE"' in page and "Completion preflight" in page and "ProjectCompletionPreflightPanel" in page),
+    ("Completion preflight loads lazily per project", "completionPreflightProjectId" in page and "getCompletionPreflight(projectId)" in completion_preflight),
+    ("API exposes project completion preflight", "getCompletionPreflight" in api and "completion-preflight" in api),
+    ("Completion preflight shows unfinished work counts", "unfinished_enrollment_count" in completion_preflight and "unfinished_crop_cycle_count" in completion_preflight and "unfinished_crop_stage_count" in completion_preflight and "open_query_thread_count" in completion_preflight),
+    ("Completion preflight renders blocker details", "decision.blockers.map" in completion_preflight and "blocker.message" in completion_preflight),
+    ("Ready completion preflight exposes guarded action", "Review project completion" in completion_preflight and "Confirm project completion" in completion_preflight),
+    ("Project completion requires a reason", "Project completion reason" in completion_preflight and "completionReason.trim().length < 3" in completion_preflight),
+    ("Project completion requires explicit confirmation", "confirmCompletion" in completion_preflight and "Confirm ACTIVE → COMPLETED" in completion_preflight),
+    ("Project completion submits preflight fingerprint", "preflight.decision.preflight_fingerprint" in completion_preflight and "preflight_fingerprint" in api),
+    ("Project completion invokes guarded API", "projectsApi.complete" in completion_preflight and "/complete" in api),
+    ("Project completion refreshes project cards", "onCompleted" in completion_preflight and "void loadProjects()" in page),
+    ("Blocked preflight exposes no completion action", "decision.can_complete" in completion_preflight and "Resolve every operational blocker" in completion_preflight),
+    ("Completion confirmation explains terminal lifecycle", "ACTIVE → COMPLETED" in completion_preflight and "permanently closes" in completion_preflight),
+    ("Completion handles stale server rejection", "fresh preflight" in completion_preflight and "stale decision" in completion_preflight),
+    ("Completion preflight preserves operational and runtime guardrails", "does not change project status or" in completion_preflight and "operational records" in completion_preflight and "candidate activation" in completion_preflight and "runtime" in completion_preflight and "Android" in completion_preflight),
     ("Project cards expose geography summary", "ProjectGeographySummary" in page),
     ("Projects page loads one batched readiness response", ".listProjectGeographyReadiness(" in page),
     ("Summary component makes no API requests", "useEffect" not in summary and "api<" not in summary),

@@ -40,6 +40,7 @@ const browserEvents = [];
 let activationPreflightRequestCount = 0;
 let lifecycleHistoryRequestCount = 0;
 let deactivationPreflightRequestCount = 0;
+let completionPreflightRequestCount = 0;
 
 page.on("request", (request) => {
   if (request.method() !== "GET") return;
@@ -69,6 +70,11 @@ page.on("request", (request) => {
     )
   ) {
     deactivationPreflightRequestCount += 1;
+  } else if (
+    request.method() === "GET" &&
+    url.pathname.endsWith("/completion-preflight")
+  ) {
+    completionPreflightRequestCount += 1;
   }
 });
 
@@ -834,6 +840,278 @@ try {
     )
     .waitFor({ timeout: 30000 });
 
+  const reactivationPreflightResponse =
+    await page.request.get(
+      `${apiBaseUrl}/api/v1/master-data/geography/projects/` +
+        `${createdProject.id}/activation-preflight`,
+      { headers },
+    );
+
+  if (!reactivationPreflightResponse.ok()) {
+    throw new Error(
+      `Reactivation preflight returned ` +
+        `${reactivationPreflightResponse.status()}: ` +
+        `${await reactivationPreflightResponse.text()}`,
+    );
+  }
+
+  const reactivationPreflight =
+    await reactivationPreflightResponse.json();
+  const reactivationReason =
+    "Reactivate project for completion browser verification";
+
+  const reactivationResponse = await page.request.post(
+    `${apiBaseUrl}/api/v1/projects/${createdProject.id}/activate`,
+    {
+      headers,
+      data: {
+        reason: reactivationReason,
+        preflight_fingerprint:
+          reactivationPreflight.decision.preflight_fingerprint,
+      },
+    },
+  );
+
+  if (!reactivationResponse.ok()) {
+    throw new Error(
+      `Project reactivation returned ` +
+        `${reactivationResponse.status()}: ` +
+        `${await reactivationResponse.text()}`,
+    );
+  }
+
+  const reactivationBody = await reactivationResponse.json();
+  if (
+    reactivationBody.project?.status !== "ACTIVE" ||
+    reactivationBody.activation?.activated !== true
+  ) {
+    throw new Error(
+      `Unexpected reactivation response: ` +
+        `${JSON.stringify(reactivationBody)}`,
+    );
+  }
+
+  await page.reload({
+    waitUntil: "domcontentloaded",
+    timeout: 45000,
+  });
+
+  const completedProjectCard = page
+    .locator("div.bg-white.rounded-lg.shadow.p-4")
+    .filter({
+      has: page.getByRole("heading", {
+        name: fixtureName,
+        exact: true,
+      }),
+    })
+    .first();
+
+  await completedProjectCard
+    .getByText("ACTIVE", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  const completionPreflightResponsePromise =
+    page.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === "GET" &&
+          url.pathname.endsWith(
+            `/api/v1/projects/${createdProject.id}/completion-preflight`,
+          )
+        );
+      },
+      { timeout: 30000 },
+    );
+
+  await completedProjectCard
+    .getByRole("button", {
+      name: "Completion preflight",
+      exact: true,
+    })
+    .click();
+
+  const completionPreflightResponse =
+    await completionPreflightResponsePromise;
+  const completionPreflightBody =
+    await completionPreflightResponse.json().catch(
+      async () => ({
+        raw: await completionPreflightResponse.text(),
+      }),
+    );
+
+  if (
+    completionPreflightResponse.status() !== 200 ||
+    completionPreflightBody.schema_version !==
+      "project_completion_preflight.v1" ||
+    completionPreflightBody.mode !== "READ_ONLY_PREFLIGHT" ||
+    completionPreflightBody.project?.status !== "ACTIVE" ||
+    completionPreflightBody.decision?.can_complete !== true ||
+    completionPreflightBody.decision?.completion_supported !==
+      true ||
+    completionPreflightBody.decision?.blocker_count !== 0 ||
+    typeof completionPreflightBody.decision
+      ?.preflight_fingerprint !== "string" ||
+    completionPreflightBody.decision
+      .preflight_fingerprint.length !== 64 ||
+    Object.values(
+      completionPreflightBody.operational_counts || {},
+    ).some((count) => count !== 0)
+  ) {
+    throw new Error(
+      `Unexpected completion preflight: ` +
+        `${JSON.stringify(completionPreflightBody)}`,
+    );
+  }
+
+  const completionPanel = completedProjectCard.getByLabel(
+    "Project completion preflight",
+  );
+
+  await completionPanel
+    .getByText("No operational blockers detected", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  await completionPanel
+    .getByText("does not change project status", {
+      exact: false,
+    })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    completionPreflightRequestCount < 1 ||
+    completionPreflightRequestCount > 2
+  ) {
+    throw new Error(
+      `Expected one completion-preflight request, or two under ` +
+        `React development effect replay; saw ` +
+        `${completionPreflightRequestCount}`,
+    );
+  }
+
+  const completionReason =
+    "Complete project after browser terminal-work review";
+
+  await completionPanel
+    .getByLabel("Project completion reason", {
+      exact: true,
+    })
+    .fill(completionReason);
+
+  await completionPanel
+    .getByRole("button", {
+      name: "Review project completion",
+      exact: true,
+    })
+    .click();
+
+  await completionPanel
+    .getByText("Confirm ACTIVE → COMPLETED", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  const completeResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${createdProject.id}/complete`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await completionPanel
+    .getByRole("button", {
+      name: "Confirm project completion",
+      exact: true,
+    })
+    .click();
+
+  const completeResponse = await completeResponsePromise;
+  const completeBody = await completeResponse.json().catch(
+    async () => ({ raw: await completeResponse.text() }),
+  );
+
+  if (
+    completeResponse.status() !== 200 ||
+    completeBody.project?.status !== "COMPLETED" ||
+    completeBody.completion?.completed !== true ||
+    completeBody.completion?.idempotent !== false ||
+    !completeBody.completion?.audit_event_id ||
+    completeBody.completion?.preflight_fingerprint !==
+      completionPreflightBody.decision.preflight_fingerprint
+  ) {
+    throw new Error(
+      `Unexpected project completion response: ` +
+        `${JSON.stringify(completeBody)}`,
+    );
+  }
+
+  const completionGuardrails = completeBody.guardrails || {};
+  if (
+    completionGuardrails.operational_records_changed !== false ||
+    completionGuardrails.boundary_assignments_changed !== false ||
+    completionGuardrails.boundary_candidates_activated !== false ||
+    completionGuardrails.boundary_candidates_promoted !== false ||
+    completionGuardrails.runtime_tables_written !== false ||
+    completionGuardrails.runtime_lookup_enabled !== false ||
+    completionGuardrails.android_behavior_changed !== false
+  ) {
+    throw new Error(
+      `Completion guardrails changed unexpectedly: ` +
+        `${JSON.stringify(completionGuardrails)}`,
+    );
+  }
+
+  await completedProjectCard
+    .getByText("COMPLETED", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    await completedProjectCard
+      .getByRole("button", {
+        name: "Completion preflight",
+        exact: true,
+      })
+      .count()
+  ) {
+    throw new Error(
+      "Completion action remained visible after COMPLETED status persisted",
+    );
+  }
+
+  const completionHistoryResponse = await page.request.get(
+    `${apiBaseUrl}/api/v1/projects/` +
+      `${createdProject.id}/lifecycle/audit`,
+    { headers },
+  );
+  const completionHistory =
+    await completionHistoryResponse.json();
+
+  if (
+    completionHistoryResponse.status() !== 200 ||
+    completionHistory.count !== 4 ||
+    completionHistory.events?.[0]?.action !==
+      "COMPLETE_PROJECT" ||
+    completionHistory.events?.[0]?.transition
+      ?.from_status !== "ACTIVE" ||
+    completionHistory.events?.[0]?.transition
+      ?.to_status !== "COMPLETED" ||
+    completionHistory.events?.[0]?.reason !==
+      completionReason ||
+    completionHistory.events?.[0]
+      ?.preflight_fingerprint !==
+        completionPreflightBody.decision
+          .preflight_fingerprint
+  ) {
+    throw new Error(
+      `Unexpected lifecycle history after completion: ` +
+        `${JSON.stringify(completionHistory)}`,
+    );
+  }
+
   const lifecycleAuditResponse = await page.request.get(
     `${apiBaseUrl}/api/v1/app-config/projects/` +
       `${createdProject.id}/config/audit`,
@@ -856,17 +1134,44 @@ try {
     (event) => event.action === "ACTIVATE_PROJECT",
   );
 
+  const initialActivationEvent = activationEvents.find(
+    (event) => event.reason === activationReason,
+  );
+  const reactivationEvent = activationEvents.find(
+    (event) => event.reason === reactivationReason,
+  );
+  const completionEvent = (
+    lifecycleAuditBody.events || []
+  ).find(
+    (event) => event.action === "COMPLETE_PROJECT",
+  );
+
   if (
-    activationEvents.length !== 1 ||
-    activationEvents[0].reason !== activationReason ||
-    activationEvents[0].before_config?.status !== "PLANNED" ||
-    activationEvents[0].after_config?.status !== "ACTIVE" ||
-    activationEvents[0].config_patch
+    activationEvents.length !== 2 ||
+    initialActivationEvent?.before_config?.status !==
+      "PLANNED" ||
+    initialActivationEvent?.after_config?.status !==
+      "ACTIVE" ||
+    initialActivationEvent?.config_patch
       ?.preflight_fingerprint !==
-        preflightBody.decision.preflight_fingerprint
+        preflightBody.decision.preflight_fingerprint ||
+    reactivationEvent?.before_config?.status !==
+      "PLANNED" ||
+    reactivationEvent?.after_config?.status !== "ACTIVE" ||
+    reactivationEvent?.config_patch
+      ?.preflight_fingerprint !==
+        reactivationPreflight.decision
+          .preflight_fingerprint ||
+    completionEvent?.before_config?.status !== "ACTIVE" ||
+    completionEvent?.after_config?.status !== "COMPLETED" ||
+    completionEvent?.reason !== completionReason ||
+    completionEvent?.config_patch
+      ?.preflight_fingerprint !==
+        completionPreflightBody.decision
+          .preflight_fingerprint
   ) {
     throw new Error(
-      `Unexpected activation audit: ` +
+      `Unexpected lifecycle audit: ` +
         `${JSON.stringify(lifecycleAuditBody)}`,
     );
   }
@@ -963,6 +1268,17 @@ try {
     deactivation_runtime_guardrails_verified: true,
     planned_status_persisted_after_deactivation: true,
     lifecycle_deactivation_transition_verified: true,
+    completion_preflight_verified: true,
+    completion_preflight_lazy_load_verified: true,
+    completion_preflight_request_count:
+      completionPreflightRequestCount,
+    guarded_completion_verified: true,
+    completion_reason_verified: true,
+    completion_audit_verified: true,
+    completion_fingerprint_verified: true,
+    completion_runtime_guardrails_verified: true,
+    completed_status_persisted: true,
+    lifecycle_completion_transition_verified: true,
     project_created_only_on_submit: true,
     screenshot,
     guardrails: {

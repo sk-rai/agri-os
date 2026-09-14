@@ -15,6 +15,7 @@ import { ProjectGeographySummary } from "@/components/project-geography-summary"
 import { ProjectGeographyActivationPreflightPanel } from "@/components/project-geography-activation-preflight";
 import { ProjectLifecycleHistory } from "@/components/project-lifecycle-history";
 import { ProjectDeactivationPreflightPanel } from "@/components/project-deactivation-preflight";
+import { ProjectCompletionPreflightPanel } from "@/components/project-completion-preflight";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
@@ -40,6 +41,8 @@ export default function ProjectsPage() {
   const [lifecycleHistoryProjectId, setLifecycleHistoryProjectId] =
     useState("");
   const [deactivationPreflightProjectId, setDeactivationPreflightProjectId] =
+    useState("");
+  const [completionPreflightProjectId, setCompletionPreflightProjectId] =
     useState("");
   const [scopeVillageCodes, setScopeVillageCodes] = useState<string[]>([]);
   const [scopeReason, setScopeReason] = useState(
@@ -339,6 +342,21 @@ export default function ProjectsPage() {
                         : "Deactivation preflight"}
                     </button>
                   ) : null}
+                  {p.status === "ACTIVE" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCompletionPreflightProjectId((current) =>
+                          current === p.id ? "" : p.id,
+                        )
+                      }
+                      className="text-xs text-emerald-700 hover:underline"
+                    >
+                      {completionPreflightProjectId === p.id
+                        ? "Hide completion preflight"
+                        : "Completion preflight"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={!canCreateProjects || p.status !== "PLANNED"}
@@ -384,6 +402,16 @@ export default function ProjectsPage() {
                   projectId={p.id}
                   onDeactivated={() => {
                     setDeactivationPreflightProjectId("");
+                    void loadProjects();
+                  }}
+                />
+              ) : null}
+
+              {completionPreflightProjectId === p.id ? (
+                <ProjectCompletionPreflightPanel
+                  projectId={p.id}
+                  onCompleted={() => {
+                    setCompletionPreflightProjectId("");
                     void loadProjects();
                   }}
                 />
