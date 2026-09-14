@@ -380,7 +380,13 @@ export default function ProjectsPage() {
               ) : null}
 
               {deactivationPreflightProjectId === p.id ? (
-                <ProjectDeactivationPreflightPanel projectId={p.id} />
+                <ProjectDeactivationPreflightPanel
+                  projectId={p.id}
+                  onDeactivated={() => {
+                    setDeactivationPreflightProjectId("");
+                    void loadProjects();
+                  }}
+                />
               ) : null}
 
               {scopeProjectId === p.id ? (

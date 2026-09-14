@@ -2379,6 +2379,7 @@ export interface ProjectDeactivationPreflight {
     status: string;
   };
   decision: {
+    preflight_fingerprint: string;
     can_deactivate: boolean;
     deactivation_supported: boolean;
     blocker_count: number;
@@ -2403,6 +2404,33 @@ export interface ProjectDeactivationPreflight {
     boundary_assignments_changed: boolean;
     candidate_activation_changed: boolean;
     candidate_promotion_changed: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
+export interface ProjectDeactivationResponse {
+  schema_version: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  deactivation: {
+    deactivated: boolean;
+    idempotent: boolean;
+    reason: string;
+    preflight_fingerprint?: string | null;
+    audit_event_id?: string;
+    message?: string;
+  };
+  preflight?: ProjectDeactivationPreflight;
+  guardrails: {
+    boundary_assignments_changed: boolean;
+    boundary_candidates_activated: boolean;
+    boundary_candidates_promoted: boolean;
     runtime_tables_written: boolean;
     runtime_lookup_enabled: boolean;
     android_behavior_changed: boolean;
@@ -2498,6 +2526,21 @@ export const projectsApi = {
   ) =>
     api<ProjectActivationResponse>(
       `/api/v1/projects/${projectId}/activate`,
+      {
+        method: "POST",
+        body: {
+          reason,
+          preflight_fingerprint: preflightFingerprint,
+        },
+      },
+    ),
+  deactivate: (
+    projectId: string,
+    reason: string,
+    preflightFingerprint: string,
+  ) =>
+    api<ProjectDeactivationResponse>(
+      `/api/v1/projects/${projectId}/deactivate`,
       {
         method: "POST",
         body: {

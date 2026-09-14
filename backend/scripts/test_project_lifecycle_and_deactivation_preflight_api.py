@@ -369,7 +369,7 @@ def main() -> int:
         )
         check(
             clean["schema_version"] ==
-                "project_deactivation_preflight.v1"
+                "project_deactivation_preflight.v2"
             and clean["mode"] == "READ_ONLY_PREFLIGHT",
             "Deactivation preflight schema and mode are stable",
             clean,
@@ -384,9 +384,9 @@ def main() -> int:
         )
         check(
             clean["decision"]["can_deactivate"] is True
-            and clean["decision"]["deactivation_supported"] is False
+            and clean["decision"]["deactivation_supported"] is True
             and clean["decision"]["blocker_count"] == 0,
-            "Clean active project is eligible for future deactivation",
+            "Clean active project is eligible for guarded deactivation",
             clean,
         )
 
@@ -427,7 +427,7 @@ def main() -> int:
         )
         check(
             blocked["decision"]["can_deactivate"] is False
-            and blocked["decision"]["deactivation_supported"] is False,
+            and blocked["decision"]["deactivation_supported"] is True,
             "Operational blocker prevents deactivation readiness",
             blocked,
         )

@@ -147,9 +147,32 @@ try {
     .getByRole("heading", { name: "Projects", exact: true })
     .waitFor({ timeout: 30000 });
 
-  await page
-    .getByRole("button", { name: "+ New Project", exact: true })
-    .click();
+  const newProjectButton = page.getByRole("button", {
+    name: "+ New Project",
+    exact: true,
+  });
+
+  await newProjectButton.waitFor({
+    state: "visible",
+    timeout: 30000,
+  });
+
+  await page.waitForFunction(
+    () => {
+      const buttons = Array.from(
+        document.querySelectorAll("button"),
+      );
+      const button = buttons.find(
+        (candidate) =>
+          candidate.textContent?.trim() === "+ New Project",
+      );
+      return Boolean(button && !button.disabled);
+    },
+    undefined,
+    { timeout: 30000 },
+  );
+
+  await newProjectButton.click();
 
   const createForm = page
     .getByRole("heading", { name: "Create Project", exact: true })
@@ -577,13 +600,17 @@ try {
   if (
     deactivationResponse.status() !== 200 ||
     deactivationBody.schema_version !==
-      "project_deactivation_preflight.v1" ||
+      "project_deactivation_preflight.v2" ||
     deactivationBody.mode !== "READ_ONLY_PREFLIGHT" ||
     deactivationBody.project?.status !== "ACTIVE" ||
     deactivationBody.decision?.can_deactivate !== true ||
     deactivationBody.decision?.deactivation_supported !==
-      false ||
+      true ||
     deactivationBody.decision?.blocker_count !== 0 ||
+    typeof deactivationBody.decision
+      ?.preflight_fingerprint !== "string" ||
+    deactivationBody.decision
+      .preflight_fingerprint.length !== 64 ||
     Object.values(
       deactivationBody.operational_counts || {},
     ).some((count) => count !== 0)
@@ -605,26 +632,10 @@ try {
     .waitFor({ timeout: 30000 });
 
   await deactivationPanel
-    .getByText("project deactivation is not enabled", {
-      exact: false,
-    })
-    .waitFor({ timeout: 30000 });
-
-  await deactivationPanel
     .getByText("does not change project status", {
       exact: false,
     })
     .waitFor({ timeout: 30000 });
-
-  if (
-    await deactivationPanel
-      .getByRole("button", { name: /deactivat/i })
-      .count()
-  ) {
-    throw new Error(
-      "Read-only deactivation preflight exposed a mutation action",
-    );
-  }
 
   if (
     deactivationPreflightRequestCount < 1 ||
@@ -636,6 +647,192 @@ try {
         `${deactivationPreflightRequestCount}`,
     );
   }
+
+  const deactivationReason =
+    "Return project to planning after browser operational review";
+
+  await deactivationPanel
+    .getByLabel("Project deactivation reason", {
+      exact: true,
+    })
+    .fill(deactivationReason);
+
+  await deactivationPanel
+    .getByRole("button", {
+      name: "Review project deactivation",
+      exact: true,
+    })
+    .click();
+
+  await deactivationPanel
+    .getByText("Confirm ACTIVE → PLANNED", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  const deactivateResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${createdProject.id}/deactivate`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await deactivationPanel
+    .getByRole("button", {
+      name: "Confirm project deactivation",
+      exact: true,
+    })
+    .click();
+
+  const deactivateResponse = await deactivateResponsePromise;
+  const deactivateBody = await deactivateResponse.json().catch(
+    async () => ({ raw: await deactivateResponse.text() }),
+  );
+
+  if (
+    deactivateResponse.status() !== 200 ||
+    deactivateBody?.project?.status !== "PLANNED" ||
+    deactivateBody?.deactivation?.deactivated !== true ||
+    deactivateBody?.deactivation?.idempotent !== false ||
+    !deactivateBody?.deactivation?.audit_event_id ||
+    deactivateBody?.deactivation?.preflight_fingerprint !==
+      deactivationBody.decision.preflight_fingerprint
+  ) {
+    throw new Error(
+      `Unexpected project deactivation response: ` +
+        `${JSON.stringify(deactivateBody)}`,
+    );
+  }
+
+  const deactivationGuardrails =
+    deactivateBody.guardrails || {};
+
+  if (
+    deactivationGuardrails.boundary_assignments_changed !==
+      false ||
+    deactivationGuardrails.boundary_candidates_activated !==
+      false ||
+    deactivationGuardrails.boundary_candidates_promoted !==
+      false ||
+    deactivationGuardrails.runtime_tables_written !== false ||
+    deactivationGuardrails.runtime_lookup_enabled !== false ||
+    deactivationGuardrails.android_behavior_changed !== false
+  ) {
+    throw new Error(
+      `Deactivation guardrails changed unexpectedly: ` +
+        `${JSON.stringify(deactivationGuardrails)}`,
+    );
+  }
+
+  await projectCard
+    .getByText("PLANNED", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  await projectCard
+    .getByRole("button", {
+      name: "Activation preflight",
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    await projectCard
+      .getByRole("button", {
+        name: "Deactivation preflight",
+        exact: true,
+      })
+      .count()
+  ) {
+    throw new Error(
+      "Deactivation action remained visible after PLANNED status persisted",
+    );
+  }
+
+  const hideLifecycleButton = projectCard.getByRole(
+    "button",
+    {
+      name: "Hide lifecycle history",
+      exact: true,
+    },
+  );
+
+  if (await hideLifecycleButton.count()) {
+    await hideLifecycleButton.click();
+  }
+
+  const updatedLifecycleResponsePromise =
+    page.waitForResponse(
+      (response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === "GET" &&
+          url.pathname.endsWith(
+            `/api/v1/projects/${createdProject.id}/lifecycle/audit`,
+          )
+        );
+      },
+      { timeout: 30000 },
+    );
+
+  await projectCard
+    .getByRole("button", {
+      name: "Lifecycle history",
+      exact: true,
+    })
+    .click();
+
+  const updatedLifecycleResponse =
+    await updatedLifecycleResponsePromise;
+  const updatedLifecycleBody =
+    await updatedLifecycleResponse.json().catch(
+      async () => ({
+        raw: await updatedLifecycleResponse.text(),
+      }),
+    );
+
+  if (
+    updatedLifecycleResponse.status() !== 200 ||
+    updatedLifecycleBody.count !== 2 ||
+    updatedLifecycleBody.events?.[0]?.action !==
+      "DEACTIVATE_PROJECT" ||
+    updatedLifecycleBody.events?.[0]?.transition
+      ?.from_status !== "ACTIVE" ||
+    updatedLifecycleBody.events?.[0]?.transition
+      ?.to_status !== "PLANNED" ||
+    updatedLifecycleBody.events?.[0]?.reason !==
+      deactivationReason ||
+    updatedLifecycleBody.events?.[0]
+      ?.preflight_fingerprint !==
+        deactivationBody.decision.preflight_fingerprint ||
+    updatedLifecycleBody.events?.[1]?.action !==
+      "ACTIVATE_PROJECT"
+  ) {
+    throw new Error(
+      `Unexpected lifecycle history after deactivation: ` +
+        `${JSON.stringify(updatedLifecycleBody)}`,
+    );
+  }
+
+  const updatedLifecyclePanel = projectCard.getByLabel(
+    "Project lifecycle history",
+  );
+
+  await updatedLifecyclePanel
+    .getByText("ACTIVE → PLANNED", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  await updatedLifecyclePanel
+    .getByText(deactivationReason, { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  await updatedLifecyclePanel
+    .getByText(
+      deactivationBody.decision.preflight_fingerprint,
+      { exact: false },
+    )
+    .waitFor({ timeout: 30000 });
 
   const lifecycleAuditResponse = await page.request.get(
     `${apiBaseUrl}/api/v1/app-config/projects/` +
@@ -746,7 +943,7 @@ try {
     activation_reason_verified: true,
     activation_audit_verified: true,
     activation_fingerprint_verified: true,
-    active_status_persisted: true,
+    active_status_persisted_before_deactivation: true,
     lifecycle_history_verified: true,
     lifecycle_history_lazy_load_verified: true,
     lifecycle_history_request_count:
@@ -759,7 +956,13 @@ try {
     deactivation_preflight_request_count:
       deactivationPreflightRequestCount,
     deactivation_operational_counts_verified: true,
-    deactivation_remains_advisory_only: true,
+    guarded_deactivation_verified: true,
+    deactivation_reason_verified: true,
+    deactivation_audit_verified: true,
+    deactivation_fingerprint_verified: true,
+    deactivation_runtime_guardrails_verified: true,
+    planned_status_persisted_after_deactivation: true,
+    lifecycle_deactivation_transition_verified: true,
     project_created_only_on_submit: true,
     screenshot,
     guardrails: {

@@ -12,6 +12,7 @@ PATCH /api/v1/parcels/{id}/geometry     — Add/update GPS data (progressive)
 """
 
 import csv
+import hashlib
 import io
 import json
 import uuid
@@ -285,6 +286,14 @@ class ProjectResponse(BaseModel):
 
 
 class ProjectActivationRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    preflight_fingerprint: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+
+class ProjectDeactivationRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
     preflight_fingerprint: str = Field(
         ...,
@@ -3405,31 +3414,12 @@ def list_project_lifecycle_audit(
     }
 
 
-@router.get("/projects/{project_id}/deactivation-preflight")
-def get_project_deactivation_preflight(
-    project_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    _principal: AdminPrincipal = Depends(
-        require_admin_permission(
-            AdminPermission.VIEW,
-            project_scoped=True,
-        )
-    ),
-):
-    """Report operational blockers without changing project lifecycle."""
-    project = (
-        db.query(Project)
-        .filter(
-            Project.id == project_id,
-            Project.tenant_id == x_tenant_id,
-            Project.is_active == True,
-        )
-        .first()
-    )
-    if not project:
-        raise HTTPException(404, "Project not found")
-
+def _project_deactivation_preflight_payload(
+    db: Session,
+    project: Project,
+    tenant_id: str,
+) -> dict:
+    """Build a deterministic, read-only deactivation decision."""
     counts = dict(
         db.execute(
             text("""
@@ -3498,8 +3488,8 @@ def get_project_deactivation_preflight(
                   ) as field_event_count
             """),
             {
-                "tenant_id": x_tenant_id,
-                "project_id": str(project_id),
+                "tenant_id": tenant_id,
+                "project_id": str(project.id),
             },
         ).mappings().one()
     )
@@ -3566,8 +3556,29 @@ def get_project_deactivation_preflight(
 
     can_deactivate = project.status == "ACTIVE" and not blockers
 
+    fingerprint_payload = {
+        "project_id": str(project.id),
+        "project_status": project.status,
+        "operational_counts": counts,
+        "can_deactivate": can_deactivate,
+        "blockers": [
+            {
+                "code": blocker["code"],
+                "count": blocker["count"],
+            }
+            for blocker in blockers
+        ],
+    }
+    preflight_fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
     return {
-        "schema_version": "project_deactivation_preflight.v1",
+        "schema_version": "project_deactivation_preflight.v2",
         "project": {
             "id": str(project.id),
             "tenant_id": project.tenant_id,
@@ -3576,8 +3587,9 @@ def get_project_deactivation_preflight(
         },
         "mode": "READ_ONLY_PREFLIGHT",
         "decision": {
+            "preflight_fingerprint": preflight_fingerprint,
             "can_deactivate": can_deactivate,
-            "deactivation_supported": False,
+            "deactivation_supported": True,
             "blocker_count": len(blockers),
             "blockers": blockers,
         },
@@ -3588,6 +3600,234 @@ def get_project_deactivation_preflight(
             "boundary_assignments_changed": False,
             "candidate_activation_changed": False,
             "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
+@router.get("/projects/{project_id}/deactivation-preflight")
+def get_project_deactivation_preflight(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    """Report operational blockers without changing project lifecycle."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    return _project_deactivation_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+
+
+@router.post("/projects/{project_id}/deactivate")
+def deactivate_project(
+    project_id: uuid.UUID,
+    body: ProjectDeactivationRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Return an ACTIVE project to PLANNED after fresh preflight."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if project.status == "PLANNED":
+        prior_event = (
+            db.query(ProjectAppConfigAuditEvent)
+            .filter(
+                ProjectAppConfigAuditEvent.tenant_id ==
+                    x_tenant_id,
+                ProjectAppConfigAuditEvent.project_id ==
+                    project.id,
+                ProjectAppConfigAuditEvent.action ==
+                    "DEACTIVATE_PROJECT",
+            )
+            .order_by(
+                ProjectAppConfigAuditEvent.created_at.desc()
+            )
+            .first()
+        )
+
+        if prior_event:
+            prior_patch = prior_event.config_patch or {}
+            return {
+                "schema_version": "project_deactivation.v1",
+                "project": {
+                    "id": str(project.id),
+                    "tenant_id": project.tenant_id,
+                    "name": project.name,
+                    "status": project.status,
+                },
+                "deactivation": {
+                    "deactivated": False,
+                    "idempotent": True,
+                    "reason": body.reason.strip(),
+                    "preflight_fingerprint":
+                        prior_patch.get(
+                            "preflight_fingerprint"
+                        ),
+                    "audit_event_id": str(prior_event.id),
+                    "message": (
+                        "Project is already PLANNED after "
+                        "successful deactivation."
+                    ),
+                },
+                "guardrails": {
+                    "boundary_assignments_changed": False,
+                    "boundary_candidates_activated": False,
+                    "boundary_candidates_promoted": False,
+                    "runtime_tables_written": False,
+                    "runtime_lookup_enabled": False,
+                    "android_behavior_changed": False,
+                },
+            }
+
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_DEACTIVATABLE",
+                "project_status": project.status,
+                "required_status": "ACTIVE",
+            },
+        )
+
+    if project.status != "ACTIVE":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_DEACTIVATABLE",
+                "project_status": project.status,
+                "required_status": "ACTIVE",
+            },
+        )
+
+    preflight = _project_deactivation_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+    fresh_fingerprint = preflight["decision"][
+        "preflight_fingerprint"
+    ]
+
+    if body.preflight_fingerprint != fresh_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_PROJECT_DEACTIVATION_PREFLIGHT",
+                "message": (
+                    "Project operational state changed. "
+                    "Run deactivation preflight again."
+                ),
+                "submitted_preflight_fingerprint":
+                    body.preflight_fingerprint,
+                "current_preflight_fingerprint":
+                    fresh_fingerprint,
+                "current_decision": preflight["decision"],
+            },
+        )
+
+    if not preflight["decision"]["can_deactivate"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_DEACTIVATION_BLOCKED",
+                "message": (
+                    "Project has operational records that prevent "
+                    "deactivation."
+                ),
+                "preflight": preflight,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    before_status = project.status
+    project.status = "PLANNED"
+    project.updated_at = now
+
+    audit_event = ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="DEACTIVATE_PROJECT",
+        patched_sections=["status"],
+        before_config={"status": before_status},
+        after_config={"status": "PLANNED"},
+        config_patch={
+            "status": "PLANNED",
+            "preflight_fingerprint": fresh_fingerprint,
+            "deactivation_summary": {
+                "operational_counts":
+                    preflight["operational_counts"],
+                "blockers":
+                    preflight["decision"]["blockers"],
+            },
+        },
+        reason=body.reason.strip(),
+        created_at=now,
+    )
+
+    db.add(project)
+    db.add(audit_event)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "schema_version": "project_deactivation.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "deactivation": {
+            "deactivated": True,
+            "idempotent": False,
+            "reason": body.reason.strip(),
+            "preflight_fingerprint": fresh_fingerprint,
+            "audit_event_id": str(audit_event.id),
+        },
+        "preflight": preflight,
+        "guardrails": {
+            "boundary_assignments_changed": False,
+            "boundary_candidates_activated": False,
+            "boundary_candidates_promoted": False,
             "runtime_tables_written": False,
             "runtime_lookup_enabled": False,
             "android_behavior_changed": False,
