@@ -24,6 +24,12 @@ deactivation_preflight = Path(
 completion_preflight = Path(
     "web/src/components/project-completion-preflight.tsx"
 ).read_text()
+archive_preflight = Path(
+    "web/src/components/project-archive-preflight.tsx"
+).read_text()
+restore_preflight = Path(
+    "web/src/components/project-restore-preflight.tsx"
+).read_text()
 
 checks = [
     ("API client exposes geography scope update", "updateGeographyScope" in api),
@@ -154,6 +160,26 @@ checks = [
     ("Completion confirmation explains terminal lifecycle", "ACTIVE → COMPLETED" in completion_preflight and "permanently closes" in completion_preflight),
     ("Completion handles stale server rejection", "fresh preflight" in completion_preflight and "stale decision" in completion_preflight),
     ("Completion preflight preserves operational and runtime guardrails", "does not change project status or" in completion_preflight and "operational records" in completion_preflight and "candidate activation" in completion_preflight and "runtime" in completion_preflight and "Android" in completion_preflight),
+    ("Completed project cards expose archive preflight", 'p.status === "COMPLETED"' in page and "Archive preflight" in page and "ProjectArchivePreflightPanel" in page),
+    ("Archive preflight loads lazily per project", "archivePreflightProjectId" in page and "getArchivePreflight(projectId)" in archive_preflight),
+    ("API exposes project archive preflight", "getArchivePreflight" in api and "archive-preflight" in api),
+    ("Archive preflight shows unfinished work", "unfinished_enrollment_count" in archive_preflight and "unfinished_crop_cycle_count" in archive_preflight and "unfinished_crop_stage_count" in archive_preflight and "open_query_thread_count" in archive_preflight),
+    ("Archive preflight shows retained records", "retained_counts" in archive_preflight and "Records retained after archive" in archive_preflight),
+    ("Archive action requires reason and confirmation", "Project archive reason" in archive_preflight and "archiveReason.trim().length < 3" in archive_preflight and "Confirm COMPLETED → ARCHIVED" in archive_preflight),
+    ("Archive action submits fingerprint", "preflight.decision.preflight_fingerprint" in archive_preflight and "projectsApi.archive" in archive_preflight),
+    ("Archive refreshes project cards", "onArchived" in archive_preflight and "void loadProjects()" in page),
+    ("Blocked archive exposes no action", "decision.can_archive" in archive_preflight and "Resolve every unfinished-work blocker" in archive_preflight),
+    ("Archive preserves records and runtime guardrails", "does not change project status or" in archive_preflight and "operational records" in archive_preflight and "runtime" in archive_preflight and "Android" in archive_preflight),
+    ("Archived project cards expose restore preflight", 'p.status === "ARCHIVED"' in page and "Restore preflight" in page and "ProjectRestorePreflightPanel" in page),
+    ("Restore preflight loads lazily per project", "restorePreflightProjectId" in page and "getRestorePreflight(projectId)" in restore_preflight),
+    ("API exposes project restore preflight", "getRestorePreflight" in api and "restore-preflight" in api),
+    ("Restore preflight shows retained records", "retained_counts" in restore_preflight and "farmer_count" in restore_preflight and "field_event_count" in restore_preflight),
+    ("Restore preflight shows archive evidence", "prior_archive_event" in restore_preflight and "Immutable archive evidence" in restore_preflight),
+    ("Restore action requires reason and confirmation", "Project restore reason" in restore_preflight and "restoreReason.trim().length < 3" in restore_preflight and "Confirm ARCHIVED → COMPLETED" in restore_preflight),
+    ("Restore action submits fingerprint", "preflight.decision.preflight_fingerprint" in restore_preflight and "projectsApi.restore" in restore_preflight),
+    ("Restore refreshes project cards", "onRestored" in restore_preflight and "void loadProjects()" in page),
+    ("Blocked restore exposes no action", "decision.can_restore" in restore_preflight and "Resolve every archive-evidence blocker" in restore_preflight),
+    ("Archive and restore handle stale decisions", "fresh preflight" in archive_preflight and "stale decision" in archive_preflight and "fresh preflight" in restore_preflight and "stale decision" in restore_preflight),
     ("Project cards expose geography summary", "ProjectGeographySummary" in page),
     ("Projects page loads one batched readiness response", ".listProjectGeographyReadiness(" in page),
     ("Summary component makes no API requests", "useEffect" not in summary and "api<" not in summary),

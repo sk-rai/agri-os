@@ -309,6 +309,22 @@ class ProjectCompletionRequest(BaseModel):
     )
 
 
+class ProjectArchiveRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    preflight_fingerprint: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+
+class ProjectRestoreRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    preflight_fingerprint: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+
 class ProjectGeographyScopeUpdate(BaseModel):
     village_lgd_codes: list[str] = Field(..., min_length=1, max_length=500)
     reason: str = Field(..., min_length=3, max_length=500)
@@ -3365,7 +3381,9 @@ def list_project_lifecycle_audit(
               and event.action in (
                 'ACTIVATE_PROJECT',
                 'DEACTIVATE_PROJECT',
-                'COMPLETE_PROJECT'
+                'COMPLETE_PROJECT',
+                'ARCHIVE_PROJECT',
+                'RESTORE_PROJECT'
               )
             order by event.created_at desc, event.id desc
             limit :limit
@@ -3420,6 +3438,743 @@ def list_project_lifecycle_audit(
             "database_write_performed": False,
             "project_status_changed": False,
         },
+    }
+
+
+def _project_archive_retention_counts(
+    db: Session,
+    project: Project,
+    tenant_id: str,
+) -> dict:
+    """Count project records retained across archive/restore."""
+    counts = dict(
+        db.execute(
+            text("""
+                select
+                  (
+                    select count(*)::bigint
+                    from farmers farmer
+                    where farmer.tenant_id = :tenant_id
+                      and farmer.project_id = :project_id
+                      and farmer.is_active = true
+                  ) as farmer_count,
+                  (
+                    select count(*)::bigint
+                    from farmer_project_enrollments enrollment
+                    where enrollment.tenant_id = :tenant_id
+                      and enrollment.project_id = :project_id
+                      and enrollment.is_active = true
+                  ) as enrollment_count,
+                  (
+                    select count(*)::bigint
+                    from parcels parcel
+                    where parcel.tenant_id = :tenant_id
+                      and parcel.project_id = :project_id
+                      and parcel.is_active = true
+                  ) as parcel_count,
+                  (
+                    select count(*)::bigint
+                    from crop_cycles cycle
+                    where cycle.tenant_id = :tenant_id
+                      and cycle.project_id = :project_id
+                      and cycle.is_active = true
+                  ) as crop_cycle_count,
+                  (
+                    select count(*)::bigint
+                    from project_roles project_role
+                    where project_role.project_id = :project_id
+                      and project_role.is_active = true
+                  ) as project_role_count,
+                  (
+                    select count(*)::bigint
+                    from geography_boundary_project_matches assignment
+                    where assignment.tenant_id = :tenant_id
+                      and assignment.project_id = :project_id
+                      and assignment.is_active = true
+                  ) as active_boundary_assignment_count,
+                  (
+                    select count(*)::bigint
+                    from field_event_reports field_event
+                    where field_event.tenant_id = :tenant_id
+                      and field_event.project_id = :project_id
+                      and field_event.is_active = true
+                  ) as field_event_count
+            """),
+            {
+                "tenant_id": tenant_id,
+                "project_id": str(project.id),
+            },
+        ).mappings().one()
+    )
+
+    return {
+        key: int(value or 0)
+        for key, value in counts.items()
+    }
+
+
+def _project_archive_preflight_payload(
+    db: Session,
+    project: Project,
+    tenant_id: str,
+) -> dict:
+    """Build a deterministic, read-only archive decision."""
+    completion_preflight = _project_completion_preflight_payload(
+        db,
+        project,
+        tenant_id,
+    )
+    unfinished_counts = completion_preflight[
+        "operational_counts"
+    ]
+    retained_counts = _project_archive_retention_counts(
+        db,
+        project,
+        tenant_id,
+    )
+
+    blockers = []
+    if project.status != "COMPLETED":
+        blockers.append({
+            "code": "PROJECT_NOT_COMPLETED",
+            "count": 0,
+            "message":
+                "Only a completed project can be archived.",
+        })
+
+    blocker_specs = (
+        (
+            "UNFINISHED_ENROLLMENTS",
+            "unfinished_enrollment_count",
+            "non-terminal farmer enrollments",
+        ),
+        (
+            "UNFINISHED_CROP_CYCLES",
+            "unfinished_crop_cycle_count",
+            "non-terminal crop cycles",
+        ),
+        (
+            "UNFINISHED_CROP_STAGES",
+            "unfinished_crop_stage_count",
+            "non-terminal crop stages",
+        ),
+        (
+            "OPEN_QUERY_THREADS",
+            "open_query_thread_count",
+            "open or assigned query threads",
+        ),
+    )
+
+    for code, count_key, label in blocker_specs:
+        count = unfinished_counts[count_key]
+        if count:
+            blockers.append({
+                "code": code,
+                "count": count,
+                "message": f"Project has {count} {label}.",
+            })
+
+    can_archive = project.status == "COMPLETED" and not blockers
+
+    fingerprint_payload = {
+        "project_id": str(project.id),
+        "project_status": project.status,
+        "unfinished_counts": unfinished_counts,
+        "retained_counts": retained_counts,
+        "can_archive": can_archive,
+        "blockers": [
+            {
+                "code": blocker["code"],
+                "count": blocker["count"],
+            }
+            for blocker in blockers
+        ],
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    return {
+        "schema_version": "project_archive_preflight.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "mode": "READ_ONLY_PREFLIGHT",
+        "decision": {
+            "preflight_fingerprint": fingerprint,
+            "can_archive": can_archive,
+            "archive_supported": True,
+            "blocker_count": len(blockers),
+            "blockers": blockers,
+        },
+        "unfinished_counts": unfinished_counts,
+        "retained_counts": retained_counts,
+        "governance": {
+            "database_write_performed": False,
+            "project_status_changed": False,
+            "operational_records_changed": False,
+            "records_deleted": False,
+            "boundary_assignments_changed": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
+def _project_restore_preflight_payload(
+    db: Session,
+    project: Project,
+    tenant_id: str,
+) -> dict:
+    """Build a deterministic, read-only archive restoration decision."""
+    retained_counts = _project_archive_retention_counts(
+        db,
+        project,
+        tenant_id,
+    )
+    prior_archive = (
+        db.query(ProjectAppConfigAuditEvent)
+        .filter(
+            ProjectAppConfigAuditEvent.tenant_id == tenant_id,
+            ProjectAppConfigAuditEvent.project_id == project.id,
+            ProjectAppConfigAuditEvent.action == "ARCHIVE_PROJECT",
+        )
+        .order_by(ProjectAppConfigAuditEvent.created_at.desc())
+        .first()
+    )
+
+    blockers = []
+    if project.status != "ARCHIVED":
+        blockers.append({
+            "code": "PROJECT_NOT_ARCHIVED",
+            "count": 0,
+            "message":
+                "Only an archived project can be restored.",
+        })
+    if prior_archive is None:
+        blockers.append({
+            "code": "ARCHIVE_EVIDENCE_MISSING",
+            "count": 0,
+            "message":
+                "No immutable archive event exists for this project.",
+        })
+
+    can_restore = project.status == "ARCHIVED" and not blockers
+    prior_archive_id = (
+        str(prior_archive.id)
+        if prior_archive is not None
+        else None
+    )
+
+    fingerprint_payload = {
+        "project_id": str(project.id),
+        "project_status": project.status,
+        "retained_counts": retained_counts,
+        "prior_archive_event_id": prior_archive_id,
+        "can_restore": can_restore,
+        "blockers": [
+            {
+                "code": blocker["code"],
+                "count": blocker["count"],
+            }
+            for blocker in blockers
+        ],
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    return {
+        "schema_version": "project_restore_preflight.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "mode": "READ_ONLY_PREFLIGHT",
+        "decision": {
+            "preflight_fingerprint": fingerprint,
+            "can_restore": can_restore,
+            "restore_supported": True,
+            "blocker_count": len(blockers),
+            "blockers": blockers,
+        },
+        "prior_archive_event": {
+            "id": prior_archive_id,
+            "created_at": (
+                prior_archive.created_at
+                if prior_archive is not None
+                else None
+            ),
+            "reason": (
+                prior_archive.reason
+                if prior_archive is not None
+                else None
+            ),
+        },
+        "retained_counts": retained_counts,
+        "governance": {
+            "database_write_performed": False,
+            "project_status_changed": False,
+            "operational_records_changed": False,
+            "records_deleted": False,
+            "boundary_assignments_changed": False,
+            "candidate_activation_changed": False,
+            "candidate_promotion_changed": False,
+            "runtime_tables_written": False,
+            "runtime_lookup_enabled": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
+@router.get("/projects/{project_id}/archive-preflight")
+def get_project_archive_preflight(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    return _project_archive_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+
+
+@router.get("/projects/{project_id}/restore-preflight")
+def get_project_restore_preflight(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+):
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    return _project_restore_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+
+
+def _project_archive_restore_guardrails() -> dict:
+    return {
+        "operational_records_changed": False,
+        "records_deleted": False,
+        "boundary_assignments_changed": False,
+        "boundary_candidates_activated": False,
+        "boundary_candidates_promoted": False,
+        "runtime_tables_written": False,
+        "runtime_lookup_enabled": False,
+        "android_behavior_changed": False,
+    }
+
+
+@router.post("/projects/{project_id}/archive")
+def archive_project(
+    project_id: uuid.UUID,
+    body: ProjectArchiveRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Archive a completed project after a fresh retention preflight."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if project.status == "ARCHIVED":
+        prior_event = (
+            db.query(ProjectAppConfigAuditEvent)
+            .filter(
+                ProjectAppConfigAuditEvent.tenant_id ==
+                    x_tenant_id,
+                ProjectAppConfigAuditEvent.project_id ==
+                    project.id,
+                ProjectAppConfigAuditEvent.action ==
+                    "ARCHIVE_PROJECT",
+            )
+            .order_by(
+                ProjectAppConfigAuditEvent.created_at.desc()
+            )
+            .first()
+        )
+
+        if prior_event:
+            prior_patch = prior_event.config_patch or {}
+            return {
+                "schema_version": "project_archive.v1",
+                "project": {
+                    "id": str(project.id),
+                    "tenant_id": project.tenant_id,
+                    "name": project.name,
+                    "status": project.status,
+                },
+                "archive": {
+                    "archived": False,
+                    "idempotent": True,
+                    "reason": body.reason.strip(),
+                    "preflight_fingerprint":
+                        prior_patch.get(
+                            "preflight_fingerprint"
+                        ),
+                    "audit_event_id": str(prior_event.id),
+                    "message": "Project is already ARCHIVED.",
+                },
+                "guardrails":
+                    _project_archive_restore_guardrails(),
+            }
+
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_ARCHIVABLE",
+                "project_status": project.status,
+                "required_status": "COMPLETED",
+            },
+        )
+
+    if project.status != "COMPLETED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_ARCHIVABLE",
+                "project_status": project.status,
+                "required_status": "COMPLETED",
+            },
+        )
+
+    preflight = _project_archive_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+    fresh_fingerprint = preflight["decision"][
+        "preflight_fingerprint"
+    ]
+
+    if body.preflight_fingerprint != fresh_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_PROJECT_ARCHIVE_PREFLIGHT",
+                "message": (
+                    "Project retention state changed. "
+                    "Run archive preflight again."
+                ),
+                "submitted_preflight_fingerprint":
+                    body.preflight_fingerprint,
+                "current_preflight_fingerprint":
+                    fresh_fingerprint,
+                "current_decision": preflight["decision"],
+            },
+        )
+
+    if not preflight["decision"]["can_archive"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_ARCHIVE_BLOCKED",
+                "message":
+                    "Project has unfinished work that prevents archival.",
+                "preflight": preflight,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    project.status = "ARCHIVED"
+    project.updated_at = now
+
+    audit_event = ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="ARCHIVE_PROJECT",
+        patched_sections=["status"],
+        before_config={"status": "COMPLETED"},
+        after_config={"status": "ARCHIVED"},
+        config_patch={
+            "status": "ARCHIVED",
+            "preflight_fingerprint": fresh_fingerprint,
+            "archive_summary": {
+                "unfinished_counts":
+                    preflight["unfinished_counts"],
+                "retained_counts":
+                    preflight["retained_counts"],
+                "blockers":
+                    preflight["decision"]["blockers"],
+            },
+        },
+        reason=body.reason.strip(),
+        created_at=now,
+    )
+
+    db.add(project)
+    db.add(audit_event)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "schema_version": "project_archive.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "archive": {
+            "archived": True,
+            "idempotent": False,
+            "reason": body.reason.strip(),
+            "preflight_fingerprint": fresh_fingerprint,
+            "audit_event_id": str(audit_event.id),
+        },
+        "preflight": preflight,
+        "guardrails": _project_archive_restore_guardrails(),
+    }
+
+
+@router.post("/projects/{project_id}/restore")
+def restore_project(
+    project_id: uuid.UUID,
+    body: ProjectRestoreRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    """Restore an archived project to completed record visibility."""
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == x_tenant_id,
+            Project.is_active == True,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if project.status == "COMPLETED":
+        prior_event = (
+            db.query(ProjectAppConfigAuditEvent)
+            .filter(
+                ProjectAppConfigAuditEvent.tenant_id ==
+                    x_tenant_id,
+                ProjectAppConfigAuditEvent.project_id ==
+                    project.id,
+                ProjectAppConfigAuditEvent.action ==
+                    "RESTORE_PROJECT",
+            )
+            .order_by(
+                ProjectAppConfigAuditEvent.created_at.desc()
+            )
+            .first()
+        )
+
+        if prior_event:
+            prior_patch = prior_event.config_patch or {}
+            return {
+                "schema_version": "project_restore.v1",
+                "project": {
+                    "id": str(project.id),
+                    "tenant_id": project.tenant_id,
+                    "name": project.name,
+                    "status": project.status,
+                },
+                "restore": {
+                    "restored": False,
+                    "idempotent": True,
+                    "reason": body.reason.strip(),
+                    "preflight_fingerprint":
+                        prior_patch.get(
+                            "preflight_fingerprint"
+                        ),
+                    "audit_event_id": str(prior_event.id),
+                    "message":
+                        "Project is already restored to COMPLETED.",
+                },
+                "guardrails":
+                    _project_archive_restore_guardrails(),
+            }
+
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_RESTORABLE",
+                "project_status": project.status,
+                "required_status": "ARCHIVED",
+            },
+        )
+
+    if project.status != "ARCHIVED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_STATUS_NOT_RESTORABLE",
+                "project_status": project.status,
+                "required_status": "ARCHIVED",
+            },
+        )
+
+    preflight = _project_restore_preflight_payload(
+        db,
+        project,
+        x_tenant_id,
+    )
+    fresh_fingerprint = preflight["decision"][
+        "preflight_fingerprint"
+    ]
+
+    if body.preflight_fingerprint != fresh_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_PROJECT_RESTORE_PREFLIGHT",
+                "message": (
+                    "Project archive evidence changed. "
+                    "Run restore preflight again."
+                ),
+                "submitted_preflight_fingerprint":
+                    body.preflight_fingerprint,
+                "current_preflight_fingerprint":
+                    fresh_fingerprint,
+                "current_decision": preflight["decision"],
+            },
+        )
+
+    if not preflight["decision"]["can_restore"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "PROJECT_RESTORE_BLOCKED",
+                "message":
+                    "Project does not have valid archive evidence.",
+                "preflight": preflight,
+            },
+        )
+
+    archive_event_id = preflight["prior_archive_event"]["id"]
+    now = datetime.now(timezone.utc)
+    project.status = "COMPLETED"
+    project.updated_at = now
+
+    audit_event = ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=x_tenant_id,
+        project_id=project.id,
+        actor_id=principal.user_id,
+        action="RESTORE_PROJECT",
+        patched_sections=["status"],
+        before_config={"status": "ARCHIVED"},
+        after_config={"status": "COMPLETED"},
+        config_patch={
+            "status": "COMPLETED",
+            "preflight_fingerprint": fresh_fingerprint,
+            "restore_summary": {
+                "prior_archive_event_id": archive_event_id,
+                "retained_counts":
+                    preflight["retained_counts"],
+                "blockers":
+                    preflight["decision"]["blockers"],
+            },
+        },
+        reason=body.reason.strip(),
+        created_at=now,
+    )
+
+    db.add(project)
+    db.add(audit_event)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "schema_version": "project_restore.v1",
+        "project": {
+            "id": str(project.id),
+            "tenant_id": project.tenant_id,
+            "name": project.name,
+            "status": project.status,
+        },
+        "restore": {
+            "restored": True,
+            "idempotent": False,
+            "reason": body.reason.strip(),
+            "preflight_fingerprint": fresh_fingerprint,
+            "archive_audit_event_id": archive_event_id,
+            "audit_event_id": str(audit_event.id),
+        },
+        "preflight": preflight,
+        "guardrails": _project_archive_restore_guardrails(),
     }
 
 

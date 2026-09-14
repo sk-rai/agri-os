@@ -16,6 +16,8 @@ import { ProjectGeographyActivationPreflightPanel } from "@/components/project-g
 import { ProjectLifecycleHistory } from "@/components/project-lifecycle-history";
 import { ProjectDeactivationPreflightPanel } from "@/components/project-deactivation-preflight";
 import { ProjectCompletionPreflightPanel } from "@/components/project-completion-preflight";
+import { ProjectArchivePreflightPanel } from "@/components/project-archive-preflight";
+import { ProjectRestorePreflightPanel } from "@/components/project-restore-preflight";
 import { adminRoleLabel, hasAdminPermission, useAdminProfile } from "@/lib/admin-permissions";
 
 export default function ProjectsPage() {
@@ -43,6 +45,10 @@ export default function ProjectsPage() {
   const [deactivationPreflightProjectId, setDeactivationPreflightProjectId] =
     useState("");
   const [completionPreflightProjectId, setCompletionPreflightProjectId] =
+    useState("");
+  const [archivePreflightProjectId, setArchivePreflightProjectId] =
+    useState("");
+  const [restorePreflightProjectId, setRestorePreflightProjectId] =
     useState("");
   const [scopeVillageCodes, setScopeVillageCodes] = useState<string[]>([]);
   const [scopeReason, setScopeReason] = useState(
@@ -357,6 +363,36 @@ export default function ProjectsPage() {
                         : "Completion preflight"}
                     </button>
                   ) : null}
+                  {p.status === "COMPLETED" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setArchivePreflightProjectId((current) =>
+                          current === p.id ? "" : p.id,
+                        )
+                      }
+                      className="text-xs text-slate-700 hover:underline"
+                    >
+                      {archivePreflightProjectId === p.id
+                        ? "Hide archive preflight"
+                        : "Archive preflight"}
+                    </button>
+                  ) : null}
+                  {p.status === "ARCHIVED" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRestorePreflightProjectId((current) =>
+                          current === p.id ? "" : p.id,
+                        )
+                      }
+                      className="text-xs text-indigo-700 hover:underline"
+                    >
+                      {restorePreflightProjectId === p.id
+                        ? "Hide restore preflight"
+                        : "Restore preflight"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={!canCreateProjects || p.status !== "PLANNED"}
@@ -412,6 +448,26 @@ export default function ProjectsPage() {
                   projectId={p.id}
                   onCompleted={() => {
                     setCompletionPreflightProjectId("");
+                    void loadProjects();
+                  }}
+                />
+              ) : null}
+
+              {archivePreflightProjectId === p.id ? (
+                <ProjectArchivePreflightPanel
+                  projectId={p.id}
+                  onArchived={() => {
+                    setArchivePreflightProjectId("");
+                    void loadProjects();
+                  }}
+                />
+              ) : null}
+
+              {restorePreflightProjectId === p.id ? (
+                <ProjectRestorePreflightPanel
+                  projectId={p.id}
+                  onRestored={() => {
+                    setRestorePreflightProjectId("");
                     void loadProjects();
                   }}
                 />

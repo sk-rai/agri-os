@@ -672,6 +672,9 @@ The `/projects` admin page now additionally provides:
   assignments, and field events
 - fingerprint-pinned `ACTIVE` to `PLANNED` deactivation with required
   reason, explicit confirmation, immutable history, and idempotent retry
+- guarded `ACTIVE` to `COMPLETED` completion after unfinished-work review
+- guarded `COMPLETED` to `ARCHIVED` retention without record deletion
+- evidence-bound `ARCHIVED` to `COMPLETED` restoration
 - an audited save action governed by project edit policy
 
 The project editor changes only project configuration. Boundary promotion, runtime lookup, and Android behavior remain outside this surface.
@@ -760,8 +763,23 @@ The project editor changes only project configuration. Boundary promotion, runti
     - reason, actor, transition, terminal-status policy, counts, and fingerprint are recorded immutably
     - successful retry is idempotent and forced commit failure rolls back status and audit atomically
     - operational records, boundaries, candidates, runtime tables, lookup, and Android behavior remain unchanged
-15. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
-16. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
+15. Treat guarded project archival and restoration as complete:
+    - only an unblocked `COMPLETED` project with a current fingerprint can
+      become `ARCHIVED`
+    - archival rechecks unfinished enrollments, crop cycles, crop stages,
+      and query threads
+    - archive retains farmers, enrollments, parcels, crop cycles, roles,
+      boundary assignments, and field events without deleting records
+    - restoration requires an immutable prior `ARCHIVE_PROJECT` event and
+      moves only `ARCHIVED` projects back to `COMPLETED`
+    - reason, actor, transition, retained counts, evidence, and fingerprint
+      are recorded immutably
+    - archive and restore retries are idempotent, and forced commit failures
+      roll back status and audit atomically
+    - boundaries, candidates, runtime tables, lookup, and Android behavior
+      remain unchanged
+16. Continue climate, SOI/BharatAtlas, and external-provider gap closure behind their existing dry-run and disabled-apply gates.
+17. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
 
@@ -786,5 +804,7 @@ Project lifecycle transitions are now visible through a dedicated, tenant-isolat
 Active projects now expose a guarded deactivation workflow covering operational farmers, enrollments, parcels, crop cycles, project roles, active boundary assignments, and field events. An unblocked project can return from `ACTIVE` to `PLANNED` only with a current preflight fingerprint, required reason, and explicit confirmation. The transition is immutable and idempotent and does not alter boundary assignments, candidates, runtime tables, lookup, or Android behavior.
 
 Active projects now also expose a guarded completion workflow. Completion requires every enrollment, crop cycle, crop stage, and query thread to be in an accepted terminal state. A current preflight fingerprint, reason, and explicit confirmation move the project from `ACTIVE` to `COMPLETED` while preserving historical operational records and immutable lifecycle evidence.
+
+Completed projects now expose guarded archival, and archived projects expose evidence-bound restoration. Archive rechecks unfinished work, retains all project and field records, and moves only `COMPLETED` projects to `ARCHIVED`. Restore requires immutable archive evidence and returns only `ARCHIVED` projects to `COMPLETED`. Both transitions require a current fingerprint, reason, and explicit confirmation and preserve all runtime and Android guardrails.
 
 NWDP boundary broad apply, selected boundary runtime promotion, climate/ecology/biosphere runtime enablement, SOI/BharatAtlas reconciliation, and external API activation still require their separately approved dry-run, policy, rollback, and promotion workflows. The 2026-09-10 milestone does not activate runtime spatial lookup or alter Android behavior.

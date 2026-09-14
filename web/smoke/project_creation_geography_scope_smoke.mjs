@@ -41,6 +41,8 @@ let activationPreflightRequestCount = 0;
 let lifecycleHistoryRequestCount = 0;
 let deactivationPreflightRequestCount = 0;
 let completionPreflightRequestCount = 0;
+let archivePreflightRequestCount = 0;
+let restorePreflightRequestCount = 0;
 
 page.on("request", (request) => {
   if (request.method() !== "GET") return;
@@ -75,6 +77,27 @@ page.on("request", (request) => {
     url.pathname.endsWith("/completion-preflight")
   ) {
     completionPreflightRequestCount += 1;
+  } else if (
+    request.method() === "GET" &&
+    url.pathname.endsWith("/archive-preflight")
+  ) {
+    archivePreflightRequestCount += 1;
+  } else if (
+    request.method() === "GET" &&
+    url.pathname.endsWith("/restore-preflight")
+  ) {
+    restorePreflightRequestCount += 1;
+  }
+});
+
+page.on("response", (response) => {
+  if (response.status() >= 400) {
+    browserEvents.push({
+      type: "http_error",
+      method: response.request().method(),
+      status: response.status(),
+      url: response.url(),
+    });
   }
 });
 
@@ -1082,6 +1105,303 @@ try {
     );
   }
 
+
+  const archivePreflightResponsePromise =
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().endsWith(
+          `/api/v1/projects/${createdProject.id}/archive-preflight`,
+        ),
+      { timeout: 30000 },
+    );
+
+  await completedProjectCard
+    .getByRole("button", {
+      name: "Archive preflight",
+      exact: true,
+    })
+    .click();
+
+  const archivePreflightResponse =
+    await archivePreflightResponsePromise;
+  const archivePreflightBody =
+    await archivePreflightResponse.json().catch(
+      async () => ({
+        raw: await archivePreflightResponse.text(),
+      }),
+    );
+
+  if (
+    archivePreflightResponse.status() !== 200 ||
+    archivePreflightBody.schema_version !==
+      "project_archive_preflight.v1" ||
+    archivePreflightBody.mode !== "READ_ONLY_PREFLIGHT" ||
+    archivePreflightBody.project?.status !== "COMPLETED" ||
+    archivePreflightBody.decision?.can_archive !== true ||
+    archivePreflightBody.decision?.archive_supported !== true ||
+    archivePreflightBody.decision?.blocker_count !== 0 ||
+    typeof archivePreflightBody.decision
+      ?.preflight_fingerprint !== "string" ||
+    archivePreflightBody.decision
+      .preflight_fingerprint.length !== 64 ||
+    Object.values(
+      archivePreflightBody.operational_counts || {},
+    ).some((count) => count !== 0)
+  ) {
+    throw new Error(
+      `Unexpected archive preflight: ` +
+        `${JSON.stringify(archivePreflightBody)}`,
+    );
+  }
+
+  const archivePanel = completedProjectCard.getByLabel(
+    "Project archive preflight",
+  );
+
+  await archivePanel
+    .getByText("No operational blockers detected", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    archivePreflightRequestCount < 1 ||
+    archivePreflightRequestCount > 2
+  ) {
+    throw new Error(
+      `Expected one archive-preflight request, or two under ` +
+        `React development effect replay; saw ` +
+        `${archivePreflightRequestCount}`,
+    );
+  }
+
+  const archiveReason =
+    "Archive completed project after browser retention review";
+
+  await archivePanel
+    .getByLabel("Project archive reason", {
+      exact: true,
+    })
+    .fill(archiveReason);
+
+  await archivePanel
+    .getByRole("button", {
+      name: "Review project archive",
+      exact: true,
+    })
+    .click();
+
+  await archivePanel
+    .getByText("Confirm COMPLETED → ARCHIVED", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  const archiveResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${createdProject.id}/archive`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await archivePanel
+    .getByRole("button", {
+      name: "Confirm project archive",
+      exact: true,
+    })
+    .click();
+
+  const archiveResponse = await archiveResponsePromise;
+  const archiveBody = await archiveResponse.json().catch(
+    async () => ({ raw: await archiveResponse.text() }),
+  );
+
+  if (
+    archiveResponse.status() !== 200 ||
+    archiveBody.project?.status !== "ARCHIVED" ||
+    archiveBody.archive?.archived !== true ||
+    archiveBody.archive?.idempotent !== false ||
+    !archiveBody.archive?.audit_event_id ||
+    archiveBody.archive?.preflight_fingerprint !==
+      archivePreflightBody.decision.preflight_fingerprint ||
+    Object.values(archiveBody.guardrails || {}).some(
+      (value) => value !== false,
+    )
+  ) {
+    throw new Error(
+      `Unexpected project archive response: ` +
+        `${JSON.stringify(archiveBody)}`,
+    );
+  }
+
+  await completedProjectCard
+    .getByText("ARCHIVED", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    await completedProjectCard
+      .getByRole("button", {
+        name: "Archive preflight",
+        exact: true,
+      })
+      .count()
+  ) {
+    throw new Error(
+      "Archive action remained visible after ARCHIVED status persisted",
+    );
+  }
+
+  const restorePreflightResponsePromise =
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().endsWith(
+          `/api/v1/projects/${createdProject.id}/restore-preflight`,
+        ),
+      { timeout: 30000 },
+    );
+
+  await completedProjectCard
+    .getByRole("button", {
+      name: "Restore preflight",
+      exact: true,
+    })
+    .click();
+
+  const restorePreflightResponse =
+    await restorePreflightResponsePromise;
+  const restorePreflightBody =
+    await restorePreflightResponse.json().catch(
+      async () => ({
+        raw: await restorePreflightResponse.text(),
+      }),
+    );
+
+  if (
+    restorePreflightResponse.status() !== 200 ||
+    restorePreflightBody.schema_version !==
+      "project_restore_preflight.v1" ||
+    restorePreflightBody.mode !== "READ_ONLY_PREFLIGHT" ||
+    restorePreflightBody.project?.status !== "ARCHIVED" ||
+    restorePreflightBody.decision?.can_restore !== true ||
+    restorePreflightBody.decision?.restore_supported !== true ||
+    restorePreflightBody.decision?.blocker_count !== 0 ||
+    typeof restorePreflightBody.decision
+      ?.preflight_fingerprint !== "string" ||
+    restorePreflightBody.decision
+      .preflight_fingerprint.length !== 64 ||
+    !restorePreflightBody.prior_archive_event?.id
+  ) {
+    throw new Error(
+      `Unexpected restore preflight: ` +
+        `${JSON.stringify(restorePreflightBody)}`,
+    );
+  }
+
+  const restorePanel = completedProjectCard.getByLabel(
+    "Project restore preflight",
+  );
+
+  await restorePanel
+    .getByText("Immutable archive evidence", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    restorePreflightRequestCount < 1 ||
+    restorePreflightRequestCount > 2
+  ) {
+    throw new Error(
+      `Expected one restore-preflight request, or two under ` +
+        `React development effect replay; saw ` +
+        `${restorePreflightRequestCount}`,
+    );
+  }
+
+  const restoreReason =
+    "Restore archived project after browser governance review";
+
+  await restorePanel
+    .getByLabel("Project restore reason", {
+      exact: true,
+    })
+    .fill(restoreReason);
+
+  await restorePanel
+    .getByRole("button", {
+      name: "Review project restore",
+      exact: true,
+    })
+    .click();
+
+  await restorePanel
+    .getByText("Confirm ARCHIVED → COMPLETED", {
+      exact: true,
+    })
+    .waitFor({ timeout: 30000 });
+
+  const restoreResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(
+        `/api/v1/projects/${createdProject.id}/restore`,
+      ),
+    { timeout: 30000 },
+  );
+
+  await restorePanel
+    .getByRole("button", {
+      name: "Confirm project restore",
+      exact: true,
+    })
+    .click();
+
+  const restoreResponse = await restoreResponsePromise;
+  const restoreBody = await restoreResponse.json().catch(
+    async () => ({ raw: await restoreResponse.text() }),
+  );
+
+  if (
+    restoreResponse.status() !== 200 ||
+    restoreBody.project?.status !== "COMPLETED" ||
+    restoreBody.restore?.restored !== true ||
+    restoreBody.restore?.idempotent !== false ||
+    !restoreBody.restore?.audit_event_id ||
+    restoreBody.restore?.archive_audit_event_id !==
+      archiveBody.archive.audit_event_id ||
+    restoreBody.restore?.preflight_fingerprint !==
+      restorePreflightBody.decision.preflight_fingerprint ||
+    Object.values(restoreBody.guardrails || {}).some(
+      (value) => value !== false,
+    )
+  ) {
+    throw new Error(
+      `Unexpected project restore response: ` +
+        `${JSON.stringify(restoreBody)}`,
+    );
+  }
+
+  await completedProjectCard
+    .getByText("COMPLETED", { exact: true })
+    .waitFor({ timeout: 30000 });
+
+  if (
+    await completedProjectCard
+      .getByRole("button", {
+        name: "Restore preflight",
+        exact: true,
+      })
+      .count()
+  ) {
+    throw new Error(
+      "Restore action remained visible after COMPLETED status persisted",
+    );
+  }
+
   const completionHistoryResponse = await page.request.get(
     `${apiBaseUrl}/api/v1/projects/` +
       `${createdProject.id}/lifecycle/audit`,
@@ -1092,19 +1412,25 @@ try {
 
   if (
     completionHistoryResponse.status() !== 200 ||
-    completionHistory.count !== 4 ||
+    completionHistory.count !== 6 ||
     completionHistory.events?.[0]?.action !==
-      "COMPLETE_PROJECT" ||
+      "RESTORE_PROJECT" ||
     completionHistory.events?.[0]?.transition
-      ?.from_status !== "ACTIVE" ||
+      ?.from_status !== "ARCHIVED" ||
     completionHistory.events?.[0]?.transition
       ?.to_status !== "COMPLETED" ||
-    completionHistory.events?.[0]?.reason !==
-      completionReason ||
-    completionHistory.events?.[0]
-      ?.preflight_fingerprint !==
-        completionPreflightBody.decision
-          .preflight_fingerprint
+    completionHistory.events?.[0]?.reason !== restoreReason ||
+    completionHistory.events?.[1]?.action !==
+      "ARCHIVE_PROJECT" ||
+    completionHistory.events?.[1]?.transition
+      ?.from_status !== "COMPLETED" ||
+    completionHistory.events?.[1]?.transition
+      ?.to_status !== "ARCHIVED" ||
+    completionHistory.events?.[1]?.reason !== archiveReason ||
+    completionHistory.events?.[2]?.action !==
+      "COMPLETE_PROJECT" ||
+    completionHistory.events?.[2]?.reason !==
+      completionReason
   ) {
     throw new Error(
       `Unexpected lifecycle history after completion: ` +
@@ -1145,6 +1471,16 @@ try {
   ).find(
     (event) => event.action === "COMPLETE_PROJECT",
   );
+  const archiveEvent = (
+    lifecycleAuditBody.events || []
+  ).find(
+    (event) => event.action === "ARCHIVE_PROJECT",
+  );
+  const restoreEvent = (
+    lifecycleAuditBody.events || []
+  ).find(
+    (event) => event.action === "RESTORE_PROJECT",
+  );
 
   if (
     activationEvents.length !== 2 ||
@@ -1168,7 +1504,19 @@ try {
     completionEvent?.config_patch
       ?.preflight_fingerprint !==
         completionPreflightBody.decision
-          .preflight_fingerprint
+          .preflight_fingerprint ||
+    archiveEvent?.before_config?.status !== "COMPLETED" ||
+    archiveEvent?.after_config?.status !== "ARCHIVED" ||
+    archiveEvent?.reason !== archiveReason ||
+    archiveEvent?.config_patch?.preflight_fingerprint !==
+      archivePreflightBody.decision.preflight_fingerprint ||
+    restoreEvent?.before_config?.status !== "ARCHIVED" ||
+    restoreEvent?.after_config?.status !== "COMPLETED" ||
+    restoreEvent?.reason !== restoreReason ||
+    restoreEvent?.config_patch?.preflight_fingerprint !==
+      restorePreflightBody.decision.preflight_fingerprint ||
+    restoreEvent?.config_patch?.restore_summary
+      ?.prior_archive_event_id !== archiveEvent?.id
   ) {
     throw new Error(
       `Unexpected lifecycle audit: ` +
@@ -1279,6 +1627,26 @@ try {
     completion_runtime_guardrails_verified: true,
     completed_status_persisted: true,
     lifecycle_completion_transition_verified: true,
+    archive_preflight_verified: true,
+    archive_preflight_lazy_load_verified: true,
+    archive_preflight_request_count:
+      archivePreflightRequestCount,
+    guarded_archive_verified: true,
+    archive_reason_verified: true,
+    archive_audit_verified: true,
+    archive_fingerprint_verified: true,
+    archived_status_persisted: true,
+    restore_preflight_verified: true,
+    restore_preflight_lazy_load_verified: true,
+    restore_preflight_request_count:
+      restorePreflightRequestCount,
+    guarded_restore_verified: true,
+    restore_reason_verified: true,
+    restore_audit_verified: true,
+    restore_fingerprint_verified: true,
+    completed_status_persisted_after_restore: true,
+    archive_restore_runtime_guardrails_verified: true,
+    lifecycle_archive_restore_transitions_verified: true,
     project_created_only_on_submit: true,
     screenshot,
     guardrails: {

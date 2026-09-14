@@ -2339,7 +2339,9 @@ export interface ProjectLifecycleAuditEvent {
   action:
     | "ACTIVATE_PROJECT"
     | "DEACTIVATE_PROJECT"
-    | "COMPLETE_PROJECT";
+    | "COMPLETE_PROJECT"
+    | "ARCHIVE_PROJECT"
+    | "RESTORE_PROJECT";
   transition: {
     from_status?: string | null;
     to_status?: string | null;
@@ -2513,6 +2515,136 @@ export interface ProjectCompletionResponse {
   };
 }
 
+export interface ProjectArchiveRetentionCounts {
+  farmer_count: number;
+  enrollment_count: number;
+  parcel_count: number;
+  crop_cycle_count: number;
+  project_role_count: number;
+  active_boundary_assignment_count: number;
+  field_event_count: number;
+}
+
+export interface ProjectArchivePreflight {
+  schema_version: string;
+  mode: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  decision: {
+    preflight_fingerprint: string;
+    can_archive: boolean;
+    archive_supported: boolean;
+    blocker_count: number;
+    blockers: Array<{
+      code: string;
+      count: number;
+      message: string;
+    }>;
+  };
+  unfinished_counts: {
+    unfinished_enrollment_count: number;
+    unfinished_crop_cycle_count: number;
+    unfinished_crop_stage_count: number;
+    open_query_thread_count: number;
+  };
+  retained_counts: ProjectArchiveRetentionCounts;
+  governance: {
+    database_write_performed: boolean;
+    project_status_changed: boolean;
+    operational_records_changed: boolean;
+    records_deleted: boolean;
+    boundary_assignments_changed: boolean;
+    candidate_activation_changed: boolean;
+    candidate_promotion_changed: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
+export interface ProjectRestorePreflight {
+  schema_version: string;
+  mode: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  decision: {
+    preflight_fingerprint: string;
+    can_restore: boolean;
+    restore_supported: boolean;
+    blocker_count: number;
+    blockers: Array<{
+      code: string;
+      count: number;
+      message: string;
+    }>;
+  };
+  prior_archive_event: {
+    id?: string | null;
+    created_at?: string | null;
+    reason?: string | null;
+  };
+  retained_counts: ProjectArchiveRetentionCounts;
+  governance: ProjectArchivePreflight["governance"];
+}
+
+export interface ProjectArchiveResponse {
+  schema_version: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  archive: {
+    archived: boolean;
+    idempotent: boolean;
+    reason: string;
+    preflight_fingerprint?: string | null;
+    audit_event_id?: string;
+    message?: string;
+  };
+  preflight?: ProjectArchivePreflight;
+  guardrails: {
+    operational_records_changed: boolean;
+    records_deleted: boolean;
+    boundary_assignments_changed: boolean;
+    boundary_candidates_activated: boolean;
+    boundary_candidates_promoted: boolean;
+    runtime_tables_written: boolean;
+    runtime_lookup_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+}
+
+export interface ProjectRestoreResponse {
+  schema_version: string;
+  project: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    status: string;
+  };
+  restore: {
+    restored: boolean;
+    idempotent: boolean;
+    reason: string;
+    preflight_fingerprint?: string | null;
+    archive_audit_event_id?: string;
+    audit_event_id?: string;
+    message?: string;
+  };
+  preflight?: ProjectRestorePreflight;
+  guardrails: ProjectArchiveResponse["guardrails"];
+}
+
 export interface ProjectGeographyReadinessResponse {
   schema_version: string;
   tenant_id: string;
@@ -2602,6 +2734,44 @@ export const projectsApi = {
   ) =>
     api<ProjectActivationResponse>(
       `/api/v1/projects/${projectId}/activate`,
+      {
+        method: "POST",
+        body: {
+          reason,
+          preflight_fingerprint: preflightFingerprint,
+        },
+      },
+    ),
+  getArchivePreflight: (projectId: string) =>
+    api<ProjectArchivePreflight>(
+      `/api/v1/projects/${projectId}/archive-preflight`,
+    ),
+  archive: (
+    projectId: string,
+    reason: string,
+    preflightFingerprint: string,
+  ) =>
+    api<ProjectArchiveResponse>(
+      `/api/v1/projects/${projectId}/archive`,
+      {
+        method: "POST",
+        body: {
+          reason,
+          preflight_fingerprint: preflightFingerprint,
+        },
+      },
+    ),
+  getRestorePreflight: (projectId: string) =>
+    api<ProjectRestorePreflight>(
+      `/api/v1/projects/${projectId}/restore-preflight`,
+    ),
+  restore: (
+    projectId: string,
+    reason: string,
+    preflightFingerprint: string,
+  ) =>
+    api<ProjectRestoreResponse>(
+      `/api/v1/projects/${projectId}/restore`,
       {
         method: "POST",
         body: {
