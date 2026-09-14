@@ -18,3 +18,6 @@ data/staged/geography_lgd/
 # Web exploratory test artifacts: screenshots, logs, reports.
 web/test-artifacts/
 web/test-artifacts/admin-smoke-matrix/
+
+# Durable generated national validation-metadata rollout runs.
+data/staged/core_stack/boundary_validation_metadata_rollout_runs/

@@ -76,4 +76,4 @@ The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smok
 - `nwdp-boundary-runtime-promotion-design.md` — design for promoting reviewed NWDP boundary staging rows into future runtime/API/Android-consumable boundary tables.
 - `nwdp-boundary-admin-review-ui-spec.md` — NWDP boundary admin review UI, smoke coverage, operational handoff, and CSV export checkpoint.
 - `nwdp-boundary-api-android-consumption-plan.md` — staged plan for reviewed NWDP boundary API and Android consumption, including Stage 1 promotion dry-run checkpoint.
-- `nwdp-boundary-pilot-promotion-review-workflow.md` — guarded workflow for selecting and reviewing a tiny NWDP boundary pilot before runtime promotion.
+- `nwdp-boundary-pilot-promotion-review-workflow.md` — guarded workflow for selecting and reviewing a tiny NWDP boundary pilot before runtime promotion.\n- [Boundary validation metadata national rollout plan](boundary-validation-metadata-national-rollout-plan.md) — read-only, durable and resumable national planning contract.\n
