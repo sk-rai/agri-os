@@ -17,6 +17,10 @@ sys.path.insert(0, str(BACKEND))
 from scripts.plan_boundary_geometry_validation_metadata_bounded_state import (  # noqa: E402
     canonical_checksum,
 )
+from scripts import (  # noqa: E402
+    apply_boundary_geometry_validation_metadata_authorized_state_batch
+    as state_engine,
+)
 from scripts.plan_boundary_geometry_validation_metadata_national_rollout import (  # noqa: E402
     database_inventory,
 )
@@ -107,6 +111,70 @@ def manifest_checksum(manifest: dict[str, Any]) -> str:
     return canonical_checksum(payload)
 
 
+def state_authorization_document(
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    approval = manifest.get("authorization") or {}
+    policy = manifest.get("execution_policy") or {}
+
+    authorization = {
+        "schema_version": state_engine.AUTHORIZATION_SCHEMA,
+        "status": "AUTHORIZED",
+        "national_plan_checksum":
+            manifest["national_plan_checksum"],
+        "state": {
+            "state_slug": state["state_slug"],
+            "state_or_ut": state["state_or_ut"],
+            "import_batch_id": state["import_batch_id"],
+            "source_sha256": state["source_sha256"],
+            "batch_id": state["batch_id"],
+            "plan_checksum": state["plan_checksum"],
+            "selected_row_count":
+                state["selected_row_count"],
+            "first_source_feature_index":
+                state["first_source_feature_index"],
+            "last_source_feature_index":
+                state["last_source_feature_index"],
+            "rollback_token": state["rollback_token"],
+        },
+        "approval": {
+            "operator": approval["operator"],
+            "approver": approval["approver"],
+            "approval_reference":
+                approval["approval_reference"],
+        },
+        "permissions": {
+            "apply_authorized":
+                state["apply_authorized"],
+            "rollback_authorized":
+                state["rollback_authorized"],
+            "maximum_row_count":
+                policy["maximum_rows_per_transaction"],
+            "validated_without_repair_only":
+                policy["validated_without_repair_only"],
+            "geometry_repair_allowed":
+                policy["geometry_repair_allowed"],
+            "runtime_eligibility_change_allowed":
+                policy["runtime_eligibility_change_allowed"],
+            "candidate_write_allowed": (
+                policy["candidate_activation_allowed"]
+                or policy["candidate_promotion_allowed"]
+            ),
+            "runtime_table_write_allowed":
+                policy["runtime_table_write_allowed"],
+            "runtime_lookup_enablement_allowed":
+                policy["runtime_lookup_enablement_allowed"],
+            "android_behavior_change_allowed":
+                policy["android_behavior_change_allowed"],
+        },
+    }
+    authorization["authorization_checksum"] = (
+        state_engine.authorization_checksum(authorization)
+    )
+    return authorization
+
+
 def structural_error(
     args: argparse.Namespace,
     manifest: dict[str, Any],
@@ -154,6 +222,23 @@ def structural_error(
         for state in states
     ):
         return "MANIFEST_STATE_ROW_COUNT_INVALID"
+
+    if any(
+        not isinstance(
+            state.get("first_source_feature_index"),
+            int,
+        )
+        or not isinstance(
+            state.get("last_source_feature_index"),
+            int,
+        )
+        or state["first_source_feature_index"] >
+            state["last_source_feature_index"]
+        or not state.get("plan_json")
+        or not state.get("checkpoint_json")
+        for state in states
+    ):
+        return "MANIFEST_STATE_DISPATCH_IDENTITY_INCOMPLETE"
 
     return None
 

@@ -41,6 +41,8 @@ def states(authorized: bool = False) -> list[dict]:
                 f"10000000-0000-0000-0000-{sequence:012d}",
             "plan_checksum": f"{sequence + 100:064x}",
             "selected_row_count": 1,
+            "first_source_feature_index": sequence - 1,
+            "last_source_feature_index": sequence - 1,
             "rollback_token":
                 f"fixture-state-{sequence:02d}-rollback",
             "plan_json":
@@ -219,6 +221,50 @@ def main() -> int:
     expect(
         approved,
         "NATIONAL_EXECUTION_ENGINE_NOT_ENABLED",
+    )
+
+    derived = [
+        orchestrator.state_authorization_document(
+            approved,
+            state,
+        )
+        for state in approved["states"]
+    ]
+    check(
+        len(derived) == 36
+        and len({
+            item["authorization_checksum"]
+            for item in derived
+        }) == 36,
+        "Orchestrator derives 36 unique state authorizations",
+    )
+    check(
+        all(
+            item["schema_version"] ==
+                orchestrator.state_engine.AUTHORIZATION_SCHEMA
+            and item["status"] == "AUTHORIZED"
+            and item["national_plan_checksum"] ==
+                approved["national_plan_checksum"]
+            and item["permissions"]["apply_authorized"]
+                is True
+            and item["permissions"]["rollback_authorized"]
+                is True
+            and orchestrator.state_engine.authorization_checksum(
+                item
+            ) == item["authorization_checksum"]
+            for item in derived
+        ),
+        "Derived state authorizations satisfy engine contract",
+        derived,
+    )
+
+    altered = copy.deepcopy(derived[0])
+    altered["state"]["selected_row_count"] = 2
+    check(
+        orchestrator.state_engine.authorization_checksum(
+            altered
+        ) != altered["authorization_checksum"],
+        "Derived authorization detects state-batch tampering",
     )
 
     missing_global_apply = copy.deepcopy(approved)
