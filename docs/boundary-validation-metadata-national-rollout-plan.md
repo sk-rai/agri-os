@@ -249,3 +249,37 @@ This rollout does not:
 6. Produce a separately reviewable national execution authorization.
 7. Apply state batches independently with stop-on-first-failure.
 8. Reconcile exact national counts and immutable events.
+
+## Resumable national dispatch
+
+The authorized national execution path dispatches exactly one state batch at a
+time through the generic authorized state-batch engine. Apply order is ascending
+by the manifest's deterministic state sequence. Rollback order is the exact
+reverse.
+
+Each state receives a durable directory containing:
+
+- the derived state authorization document;
+- the state engine audit and row report;
+- an atomic dispatch checkpoint pinned to the manifest, national plan, state
+  batch, source, rollback token and authorization checksums.
+
+A successful resume reuses only checkpoints whose checksum, identity and
+underlying state-engine audit all remain valid. Missing evidence, stale
+identity, modified audit data or a failed state stops the national dispatcher
+before the next state begins. Existing checkpoints require explicit
+`--resume`; they are never silently overwritten.
+
+The dispatcher validates all 36 source files, plans and planning checkpoints
+before invoking the first state engine process. It also retains the existing
+requirements for explicit apply or rollback selection, the national metadata
+write flag, plan and integrity review, rollback-procedure review, administrator
+confirmation, safe execution policy and complete national and per-state
+authorization.
+
+The durable operational proposal remains
+`PROPOSED_NOT_AUTHORIZED`. Wiring the dispatcher does not authorize that
+proposal. An actual national apply requires a separate checksum-pinned
+authorized manifest and an explicit operator command. Runtime promotion,
+candidate writes, geometry repair, runtime lookup and Android behavior remain
+outside this execution boundary.

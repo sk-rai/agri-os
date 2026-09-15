@@ -909,7 +909,7 @@ def structural_error(
 def authorization_error(
     args: argparse.Namespace,
     manifest: dict[str, Any],
-) -> str:
+) -> str | None:
     if args.apply == args.rollback:
         return "EXACTLY_ONE_OF_APPLY_OR_ROLLBACK_REQUIRED"
 
@@ -1002,7 +1002,7 @@ def authorization_error(
     if not args.admin_confirmation:
         return "ADMIN_CONFIRMATION_REQUIRED"
 
-    return "NATIONAL_EXECUTION_ENGINE_NOT_ENABLED"
+    return None
 
 
 def guardrails() -> dict[str, bool]:
@@ -1042,27 +1042,69 @@ def write_audit(
 def main() -> int:
     args = arguments()
     _, before = database_inventory()
+    dispatch: dict[str, Any] | None = None
+    artifact_errors: list[str] = []
 
     try:
         manifest = load_manifest(args.manifest_json)
         error = authorization_error(args, manifest)
+
+        if error is None:
+            artifact_errors = manifest_artifact_errors(manifest)
+            if artifact_errors:
+                error = (
+                    "MANIFEST_STATE_ARTIFACT_VALIDATION_FAILED"
+                )
+
+        if error is None:
+            dispatch = dispatch_authorized_manifest(
+                manifest=manifest,
+                output_dir=args.output_dir / "dispatch",
+                rollback=args.rollback,
+                resume=args.resume,
+            )
+            if dispatch.get("healthy") is not True:
+                error = (
+                    dispatch.get("error")
+                    or "NATIONAL_DISPATCH_FAILED"
+                )
     except ValueError as exc:
         manifest = {}
         error = str(exc)
 
     _, after = database_inventory()
+    completed = (
+        error is None
+        and dispatch is not None
+        and dispatch.get("healthy") is True
+    )
+    dispatched_count = int(
+        (dispatch or {}).get("dispatched_state_count") or 0
+    )
+
+    audit_guardrails = guardrails()
+    audit_guardrails["database_writes_attempted"] = (
+        dispatched_count > 0
+    )
+    audit_guardrails["validation_metadata_written"] = (
+        dispatched_count > 0
+    )
+    audit_guardrails["validation_events_written"] = (
+        dispatched_count > 0 and args.apply
+    )
 
     audit = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "healthy": False,
+        "healthy": completed,
         "mode": (
             "NATIONAL_VALIDATION_METADATA_ROLLBACK"
             if args.rollback
             else "NATIONAL_VALIDATION_METADATA_APPLY"
         ),
-        "status": "REJECTED",
+        "status": "COMPLETED" if completed else "REJECTED",
         "error": error,
+        "artifact_errors": artifact_errors,
         "manifest": {
             "path": str(args.manifest_json),
             "schema_version": manifest.get("schema_version"),
@@ -1092,19 +1134,20 @@ def main() -> int:
                 args.rollback_procedure_reviewed,
             "admin_confirmation": args.admin_confirmation,
         },
+        "dispatch": dispatch,
         "database_counts": {
             "before": before,
             "after": after,
             "unchanged": before == after,
         },
-        "guardrails": guardrails(),
+        "guardrails": audit_guardrails,
     }
 
     output = write_audit(args.output_dir, audit)
     audit["output"] = str(output)
 
     print(json.dumps(audit, indent=2, sort_keys=True))
-    return 1
+    return 0 if completed else 1
 
 
 if __name__ == "__main__":

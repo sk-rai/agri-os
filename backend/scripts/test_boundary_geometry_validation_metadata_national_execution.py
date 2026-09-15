@@ -219,9 +219,12 @@ def main() -> int:
         ) is None,
         "Authorized fixture manifest is structurally valid",
     )
-    expect(
-        approved,
-        "NATIONAL_EXECUTION_ENGINE_NOT_ENABLED",
+    check(
+        orchestrator.authorization_error(
+            args_for(approved),
+            approved,
+        ) is None,
+        "Fully authorized manifest reaches dispatch boundary",
     )
 
     derived = [
@@ -1015,8 +1018,8 @@ def main() -> int:
         orchestrator.authorization_error(
             rollback,
             approved,
-        ) == "NATIONAL_EXECUTION_ENGINE_NOT_ENABLED",
-        "Authorized rollback reaches final disabled gate",
+        ) is None,
+        "Fully authorized rollback reaches dispatch boundary",
     )
 
     print("=" * 72)
