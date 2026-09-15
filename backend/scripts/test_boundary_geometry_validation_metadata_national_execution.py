@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import tempfile
 from argparse import Namespace
 from pathlib import Path
 
@@ -266,6 +267,187 @@ def main() -> int:
         ) != altered["authorization_checksum"],
         "Derived authorization detects state-batch tampering",
     )
+
+    with tempfile.TemporaryDirectory(
+        prefix="national-execution-artifact-"
+    ) as temporary:
+        fixture_dir = Path(temporary)
+        source_path = fixture_dir / "fixture_state.geojson"
+        source_path.write_bytes(b"fixture-source")
+        source_sha256 = orchestrator.sha256_file(source_path)
+
+        row = {
+            "sequence": 1,
+            "source_feature_id":
+                "20000000-0000-0000-0000-000000000001",
+            "source_feature_index": 0,
+            "source_vlcode": "000001",
+            "current_geometry_validation_status":
+                "NOT_VALIDATED",
+            "planned_geometry_validation_status":
+                "VALIDATED",
+            "classification": "VALIDATED_NO_REPAIR",
+            "source_geometry_hash": "b" * 64,
+            "source_bbox": [0, 0, 1, 1],
+            "transformed_bbox": [0, 0, 1, 1],
+            "transformed_centroid": {
+                "type": "Point",
+                "coordinates": [0.5, 0.5],
+            },
+            "runtime_eligibility_change_planned": False,
+        }
+        import_batch_id = (
+            "30000000-0000-0000-0000-000000000001"
+        )
+        batch_id = (
+            "40000000-0000-0000-0000-000000000001"
+        )
+        plan = {
+            "schema_version": (
+                "boundary_geometry_validation_metadata_"
+                "bounded_state_plan.v1"
+            ),
+            "healthy": True,
+            "scope": {
+                "state_slug": "fixture_state",
+                "state_or_ut": "Fixture State",
+                "import_batch_id": import_batch_id,
+                "cursor_after_index": -1,
+                "limit": 500,
+            },
+            "source": {
+                "path": str(source_path),
+                "sha256": source_sha256,
+                "feature_count": 1,
+                "geometry_hash_algorithm":
+                    "NWDP_GEOJSON_GEOMETRY_CANONICAL_V1",
+            },
+            "batch": {
+                "batch_id": batch_id,
+                "plan_checksum": "",
+                "selected_row_count": 1,
+                "first_source_feature_index": 0,
+                "last_source_feature_index": 0,
+            },
+            "rows": [row],
+            "database_counts": {
+                "before": {},
+                "after": {},
+                "unchanged": True,
+            },
+        }
+        plan["batch"]["plan_checksum"] = (
+            orchestrator.state_engine.recompute_plan_checksum(
+                plan
+            )
+        )
+
+        plan_path = fixture_dir / "plan.json"
+        checkpoint_path = fixture_dir / "checkpoint.json"
+        plan_path.write_text(
+            json.dumps(plan, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        checkpoint = {
+            "schema_version": (
+                "boundary_geometry_validation_metadata_"
+                "national_state_checkpoint.v1"
+            ),
+            "identity": {
+                "state_slug": "fixture_state",
+                "state_or_ut": "Fixture State",
+                "import_batch_id": import_batch_id,
+                "source_sha256": source_sha256,
+                "source_feature_count": 1,
+                "database_not_validated_count": 1,
+                "database_validated_count": 0,
+                "batch_limit": 500,
+            },
+            "batch_id": batch_id,
+            "plan_checksum":
+                plan["batch"]["plan_checksum"],
+        }
+        checkpoint_path.write_text(
+            json.dumps(
+                checkpoint,
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
+            encoding="utf-8",
+        )
+
+        state = {
+            "state_slug": "fixture_state",
+            "state_or_ut": "Fixture State",
+            "import_batch_id": import_batch_id,
+            "source_sha256": source_sha256,
+            "source_feature_count": 1,
+            "database_not_validated_count": 1,
+            "database_validated_count": 0,
+            "batch_id": batch_id,
+            "plan_checksum":
+                plan["batch"]["plan_checksum"],
+            "selected_row_count": 1,
+            "first_source_feature_index": 0,
+            "last_source_feature_index": 0,
+            "rollback_token": "fixture-rollback-token",
+            "plan_json": str(plan_path),
+            "checkpoint_json": str(checkpoint_path),
+            "apply_authorized": True,
+            "rollback_authorized": True,
+        }
+
+        check(
+            orchestrator.state_artifact_error(state) is None,
+            "Valid state plan and checkpoint artifacts are accepted",
+        )
+
+        incomplete = copy.deepcopy(state)
+        del incomplete["source_feature_count"]
+        check(
+            "MANIFEST_STATE_ARTIFACT_IDENTITY_INCOMPLETE"
+            in (
+                orchestrator.state_artifact_error(incomplete)
+                or ""
+            ),
+            "Missing manifest artifact identity is rejected",
+        )
+
+        tampered_plan = copy.deepcopy(plan)
+        tampered_plan["rows"][0][
+            "current_geometry_validation_status"
+        ] = "VALIDATED"
+        plan_path.write_text(
+            json.dumps(
+                tampered_plan,
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        check(
+            "STATE_PLAN_CONTENT_CHECKSUM_MISMATCH"
+            in (
+                orchestrator.state_artifact_error(state)
+                or ""
+            ),
+            "Tampered state plan is rejected",
+        )
+
+        plan_path.write_text(
+            json.dumps(plan, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        source_path.write_bytes(b"changed-fixture-source")
+        check(
+            "CURRENT_SOURCE_CHECKSUM_MISMATCH"
+            in (
+                orchestrator.state_artifact_error(state)
+                or ""
+            ),
+            "Changed source file is rejected immediately",
+        )
 
     missing_global_apply = copy.deepcopy(approved)
     missing_global_apply["authorization"][

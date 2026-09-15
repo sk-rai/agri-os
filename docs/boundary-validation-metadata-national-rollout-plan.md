@@ -194,6 +194,23 @@ manifest reaches the explicit `NATIONAL_EXECUTION_ENGINE_NOT_ENABLED` gate.
 The real proposal remains `PROPOSED_NOT_AUTHORIZED` and is rejected before
 any state execution or database write.
 
+Immediately before dispatch, every state artifact is revalidated against:
+
+- manifest state and import-batch identity
+- current source-file SHA-256
+- bounded-plan content checksum
+- durable checkpoint plan checksum and batch ID
+- source feature and validation-status counts
+- selected-row count and 500-row ceiling
+- first and last source-feature indexes
+- ordered, duplicate-free indexes
+- `VALIDATED_NO_REPAIR` classification
+- `NOT_VALIDATED` to `VALIDATED` transition
+- unchanged runtime eligibility
+
+The 36-state operational artifact audit validates all 15,308 wave-1 rows with
+no artifact errors. The manifest remains non-authorizing.
+
 ## Apply authorization boundary
 
 Planner completion does not authorize application.

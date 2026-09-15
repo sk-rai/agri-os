@@ -111,6 +111,213 @@ def manifest_checksum(manifest: dict[str, Any]) -> str:
     return canonical_checksum(payload)
 
 
+def load_json_object(
+    path: Path,
+    error_prefix: str,
+) -> dict[str, Any]:
+    if not path.is_file():
+        raise ValueError(f"{error_prefix}_NOT_FOUND")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{error_prefix}_INVALID") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{error_prefix}_INVALID")
+    return value
+
+
+def sha256_file(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def state_artifact_error(
+    state: dict[str, Any],
+) -> str | None:
+    slug = state.get("state_slug") or "unknown"
+    required = [
+        "state_slug",
+        "state_or_ut",
+        "import_batch_id",
+        "source_sha256",
+        "source_feature_count",
+        "database_not_validated_count",
+        "database_validated_count",
+        "batch_id",
+        "plan_checksum",
+        "selected_row_count",
+        "first_source_feature_index",
+        "last_source_feature_index",
+        "rollback_token",
+        "plan_json",
+        "checkpoint_json",
+    ]
+    missing = [
+        key for key in required
+        if state.get(key) is None
+    ]
+    if missing:
+        return (
+            f"{slug}:MANIFEST_STATE_ARTIFACT_IDENTITY_INCOMPLETE:"
+            + ",".join(missing)
+        )
+
+    try:
+        plan_path = Path(state["plan_json"])
+        checkpoint_path = Path(state["checkpoint_json"])
+        plan = load_json_object(
+            plan_path,
+            "STATE_PLAN_JSON",
+        )
+        checkpoint = load_json_object(
+            checkpoint_path,
+            "STATE_CHECKPOINT_JSON",
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        return f"{slug}:{exc}"
+
+    scope = plan.get("scope") or {}
+    source = plan.get("source") or {}
+    batch = plan.get("batch") or {}
+    rows = plan.get("rows") or []
+    identity = checkpoint.get("identity") or {}
+
+    if (
+        plan.get("schema_version") !=
+            "boundary_geometry_validation_metadata_"
+            "bounded_state_plan.v1"
+        or plan.get("healthy") is not True
+        or plan.get("database_counts", {}).get("unchanged")
+            is not True
+    ):
+        return f"{slug}:STATE_PLAN_NOT_HEALTHY"
+
+    expected = {
+        "state_slug": state["state_slug"],
+        "state_or_ut": state["state_or_ut"],
+        "import_batch_id": state["import_batch_id"],
+        "source_sha256": state["source_sha256"],
+        "batch_id": state["batch_id"],
+        "plan_checksum": state["plan_checksum"],
+        "selected_row_count":
+            int(state["selected_row_count"]),
+        "first_source_feature_index":
+            state["first_source_feature_index"],
+        "last_source_feature_index":
+            state["last_source_feature_index"],
+    }
+    actual = {
+        "state_slug": scope.get("state_slug"),
+        "state_or_ut": scope.get("state_or_ut"),
+        "import_batch_id": scope.get("import_batch_id"),
+        "source_sha256": source.get("sha256"),
+        "batch_id": batch.get("batch_id"),
+        "plan_checksum": batch.get("plan_checksum"),
+        "selected_row_count":
+            int(batch.get("selected_row_count") or 0),
+        "first_source_feature_index":
+            batch.get("first_source_feature_index"),
+        "last_source_feature_index":
+            batch.get("last_source_feature_index"),
+    }
+    if actual != expected:
+        return f"{slug}:STATE_PLAN_IDENTITY_MISMATCH"
+
+    if state_engine.recompute_plan_checksum(plan) != expected[
+        "plan_checksum"
+    ]:
+        return f"{slug}:STATE_PLAN_CONTENT_CHECKSUM_MISMATCH"
+
+    if len(rows) != expected["selected_row_count"]:
+        return f"{slug}:STATE_PLAN_ROW_COUNT_MISMATCH"
+    if len(rows) < 1 or len(rows) > 500:
+        return f"{slug}:STATE_PLAN_ROW_LIMIT_INVALID"
+
+    indexes = [
+        row.get("source_feature_index")
+        for row in rows
+    ]
+    if (
+        indexes != sorted(indexes)
+        or len(indexes) != len(set(indexes))
+        or indexes[0] != expected[
+            "first_source_feature_index"
+        ]
+        or indexes[-1] != expected[
+            "last_source_feature_index"
+        ]
+    ):
+        return f"{slug}:STATE_PLAN_INDEX_BOUNDARY_MISMATCH"
+
+    if not all(
+        row.get("classification") == "VALIDATED_NO_REPAIR"
+        and row.get("current_geometry_validation_status")
+            == "NOT_VALIDATED"
+        and row.get("planned_geometry_validation_status")
+            == "VALIDATED"
+        and row.get("runtime_eligibility_change_planned")
+            is False
+        and row.get("source_feature_id")
+        for row in rows
+    ):
+        return f"{slug}:STATE_PLAN_CONTAINS_UNSAFE_ROWS"
+
+    if checkpoint.get("schema_version") != (
+        "boundary_geometry_validation_metadata_"
+        "national_state_checkpoint.v1"
+    ):
+        return f"{slug}:STATE_CHECKPOINT_SCHEMA_MISMATCH"
+    if (
+        checkpoint.get("plan_checksum") !=
+            expected["plan_checksum"]
+        or checkpoint.get("batch_id") !=
+            expected["batch_id"]
+    ):
+        return f"{slug}:STATE_CHECKPOINT_BATCH_MISMATCH"
+
+    checkpoint_expected = {
+        "state_slug": expected["state_slug"],
+        "state_or_ut": expected["state_or_ut"],
+        "import_batch_id": expected["import_batch_id"],
+        "source_sha256": expected["source_sha256"],
+        "source_feature_count":
+            int(state["source_feature_count"]),
+        "database_not_validated_count":
+            int(state["database_not_validated_count"]),
+        "database_validated_count":
+            int(state["database_validated_count"]),
+        "batch_limit": 500,
+    }
+    if identity != checkpoint_expected:
+        return f"{slug}:STATE_CHECKPOINT_IDENTITY_MISMATCH"
+
+    source_path_value = source.get("path")
+    if not source_path_value:
+        return f"{slug}:SOURCE_PATH_REQUIRED"
+    source_path = Path(source_path_value)
+    if not source_path.is_file():
+        return f"{slug}:SOURCE_FILE_NOT_FOUND"
+    if sha256_file(source_path) != expected["source_sha256"]:
+        return f"{slug}:CURRENT_SOURCE_CHECKSUM_MISMATCH"
+
+    return None
+
+
+def manifest_artifact_errors(
+    manifest: dict[str, Any],
+) -> list[str]:
+    return [
+        error
+        for state in manifest.get("states") or []
+        if (error := state_artifact_error(state)) is not None
+    ]
+
+
 def state_authorization_document(
     manifest: dict[str, Any],
     state: dict[str, Any],
