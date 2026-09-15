@@ -130,6 +130,42 @@ The planner must fail or mark the state blocked for:
 - LGD geography change
 - Android behavior change
 
+## Generic authorized state-batch engine
+
+The generic engine is implemented separately from the historical
+Andaman-pinned executor. It contains no embedded state, source, batch, plan,
+operator, approver or rollback-token identity.
+
+Every invocation must independently pin:
+
+- a state-batch authorization JSON document
+- the authorization document checksum
+- the national plan checksum
+- the bounded state plan checksum
+- the source checksum
+- the rollback token
+- operator, approver and approval reference
+- explicit apply or rollback mode
+- write-policy, review and administrator confirmations
+
+Authorization is fail closed. The engine rejects proposed, malformed, altered,
+oversized or unsafe authorization documents. Geometry repair, runtime
+eligibility, candidate writes, runtime-table writes, runtime lookup and Android
+behavior remain prohibited.
+
+Fixture regressions prove:
+
+- forced mid-batch failure rolls back source and event writes atomically
+- an exact authorized batch can be applied and rolled back
+- apply and rollback retries are idempotent
+- rollback restores exact source-row values
+- rollback evidence is immutable and inactive
+- the outer fixture transaction leaves no persistent database changes
+
+The generic engine does not make the national proposal executable. National
+apply remains unauthorized until a separately reviewed authorization changes
+the explicit authorization and readiness fields.
+
 ## Apply authorization boundary
 
 Planner completion does not authorize application.
