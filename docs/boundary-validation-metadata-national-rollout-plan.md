@@ -166,6 +166,34 @@ The generic engine does not make the national proposal executable. National
 apply remains unauthorized until a separately reviewed authorization changes
 the explicit authorization and readiness fields.
 
+## National execution orchestrator authorization gate
+
+The national orchestrator currently implements a fail-closed authorization
+gate and does not dispatch state transactions.
+
+The gate verifies:
+
+- exactly one of apply or rollback is requested
+- the externally supplied manifest checksum
+- the externally supplied national-plan checksum
+- all 36 unique state, batch, plan and rollback-token identities
+- a maximum of 500 rows per state transaction
+- global apply or rollback authorization
+- matching per-state apply or rollback authorization
+- operator, approver, approval reference and approval timestamp
+- stop-on-first-failure and one-state-batch-per-transaction policy
+- exact plan, source, import-batch and rollback-token requirements
+- explicit plan, integrity, rollback and administrator confirmations
+
+The manifest checksum includes status, evidence, authorization, execution
+policy, readiness and deterministic state identities. Changing authorization
+or readiness therefore invalidates the externally pinned checksum.
+
+Unsafe policy permissions remain prohibited. A fully authorized synthetic
+manifest reaches the explicit `NATIONAL_EXECUTION_ENGINE_NOT_ENABLED` gate.
+The real proposal remains `PROPOSED_NOT_AUTHORIZED` and is rejected before
+any state execution or database write.
+
 ## Apply authorization boundary
 
 Planner completion does not authorize application.
