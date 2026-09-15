@@ -449,6 +449,483 @@ def main() -> int:
             "Changed source file is rejected immediately",
         )
 
+
+    apply_order = orchestrator.ordered_dispatch_states(
+        approved,
+        rollback=False,
+    )
+    rollback_order = orchestrator.ordered_dispatch_states(
+        approved,
+        rollback=True,
+    )
+    check(
+        [state["sequence"] for state in apply_order] ==
+            list(range(1, 37))
+        and [state["sequence"] for state in rollback_order] ==
+            list(range(36, 0, -1)),
+        "Dispatch ordering is deterministic and rollback reverses apply",
+    )
+
+    with tempfile.TemporaryDirectory(
+        prefix="national-dispatch-primitives-"
+    ) as temporary:
+        dispatch_dir = Path(temporary)
+        dispatch_state = approved["states"][0]
+        dispatch_authorization = (
+            orchestrator.state_authorization_document(
+                approved,
+                dispatch_state,
+            )
+        )
+        paths = orchestrator.state_dispatch_paths(
+            dispatch_dir,
+            dispatch_state,
+        )
+
+        orchestrator.atomic_write_json(
+            paths["authorization_json"],
+            dispatch_authorization,
+        )
+        check(
+            paths["authorization_json"].is_file()
+            and not paths["authorization_json"].with_suffix(
+                ".json.writing"
+            ).exists(),
+            "Authorization is written atomically",
+        )
+
+        command = orchestrator.state_engine_command(
+            manifest=approved,
+            state=dispatch_state,
+            authorization=dispatch_authorization,
+            authorization_json=paths["authorization_json"],
+            engine_output_dir=paths["engine_output_dir"],
+            rollback=False,
+        )
+        required_pairs = [
+            (
+                "--authorization-checksum",
+                dispatch_authorization[
+                    "authorization_checksum"
+                ],
+            ),
+            (
+                "--national-plan-checksum",
+                approved["national_plan_checksum"],
+            ),
+            (
+                "--plan-checksum",
+                dispatch_state["plan_checksum"],
+            ),
+            (
+                "--source-sha256",
+                dispatch_state["source_sha256"],
+            ),
+            (
+                "--rollback-token",
+                dispatch_state["rollback_token"],
+            ),
+        ]
+        check(
+            "--apply" in command
+            and "--rollback" not in command
+            and all(
+                command[command.index(flag) + 1] == expected
+                for flag, expected in required_pairs
+            ),
+            "State engine command pins every approved identity",
+            command,
+        )
+
+        rollback_command = orchestrator.state_engine_command(
+            manifest=approved,
+            state=dispatch_state,
+            authorization=dispatch_authorization,
+            authorization_json=paths["authorization_json"],
+            engine_output_dir=paths["engine_output_dir"],
+            rollback=True,
+        )
+        check(
+            "--rollback" in rollback_command
+            and "--apply" not in rollback_command,
+            "Rollback command selects only rollback mode",
+            rollback_command,
+        )
+
+        audit_path = (
+            paths["engine_output_dir"]
+            / "boundary_validation_metadata_"
+              "bounded_state_apply_audit.json"
+        )
+        audit = {
+            "healthy": True,
+            "mode": (
+                "AUTHORIZED_STATE_BATCH_"
+                "VALIDATION_METADATA_APPLY"
+            ),
+            "action": "APPLIED",
+            "national_plan_checksum":
+                approved["national_plan_checksum"],
+            "plan_checksum":
+                dispatch_state["plan_checksum"],
+            "authorization_checksum":
+                dispatch_authorization[
+                    "authorization_checksum"
+                ],
+            "rollback_token":
+                dispatch_state["rollback_token"],
+            "approval": {
+                "approved_batch_id":
+                    dispatch_state["batch_id"],
+                "approved_row_count":
+                    dispatch_state["selected_row_count"],
+            },
+            "guardrails": {
+                "source_files_changed": False,
+                "geometry_repair_persisted": False,
+                "source_runtime_eligibility_changed": False,
+                "boundary_candidates_promoted": False,
+                "boundary_candidates_activated": False,
+                "runtime_tables_written": False,
+                "runtime_lookup_enabled": False,
+                "lgd_geography_overwritten": False,
+                "android_behavior_changed": False,
+            },
+        }
+        orchestrator.atomic_write_json(audit_path, audit)
+
+        checkpoint = (
+            orchestrator.successful_dispatch_checkpoint(
+                manifest=approved,
+                state=dispatch_state,
+                authorization=dispatch_authorization,
+                mode="APPLY",
+                audit_json=audit_path,
+            )
+        )
+        orchestrator.atomic_write_json(
+            paths["checkpoint_json"],
+            checkpoint,
+        )
+        check(
+            orchestrator.reusable_dispatch_checkpoint_error(
+                checkpoint_path=paths["checkpoint_json"],
+                manifest=approved,
+                state=dispatch_state,
+                authorization=dispatch_authorization,
+                mode="APPLY",
+            ) is None,
+            "Validated successful checkpoint is reusable",
+        )
+
+        tampered_checkpoint = copy.deepcopy(checkpoint)
+        tampered_checkpoint["plan_checksum"] = "0" * 64
+        orchestrator.atomic_write_json(
+            paths["checkpoint_json"],
+            tampered_checkpoint,
+        )
+        check(
+            orchestrator.reusable_dispatch_checkpoint_error(
+                checkpoint_path=paths["checkpoint_json"],
+                manifest=approved,
+                state=dispatch_state,
+                authorization=dispatch_authorization,
+                mode="APPLY",
+            ) ==
+                "DISPATCH_CHECKPOINT_IDENTITY_MISMATCH",
+            "Tampered checkpoint identity is rejected",
+        )
+
+        orchestrator.atomic_write_json(
+            paths["checkpoint_json"],
+            checkpoint,
+        )
+        tampered_audit = copy.deepcopy(audit)
+        tampered_audit["rollback_token"] = "wrong-token"
+        orchestrator.atomic_write_json(
+            audit_path,
+            tampered_audit,
+        )
+        check(
+            orchestrator.reusable_dispatch_checkpoint_error(
+                checkpoint_path=paths["checkpoint_json"],
+                manifest=approved,
+                state=dispatch_state,
+                authorization=dispatch_authorization,
+                mode="APPLY",
+            ) ==
+                "STATE_ENGINE_AUDIT_IDENTITY_MISMATCH",
+            "Tampered state audit prevents checkpoint reuse",
+        )
+
+
+
+    class FakeProcess:
+        def __init__(
+            self,
+            returncode: int = 0,
+            stdout: str = "",
+            stderr: str = "",
+        ):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def command_value(command: list[str], flag: str) -> str:
+        return command[command.index(flag) + 1]
+
+    def successful_fake_runner(
+        calls: list[list[str]],
+        *,
+        fail_on_call: int | None = None,
+    ):
+        def run(command, **kwargs):
+            calls.append(list(command))
+            if (
+                fail_on_call is not None
+                and len(calls) == fail_on_call
+            ):
+                return FakeProcess(
+                    returncode=1,
+                    stderr="fixture state-engine failure",
+                )
+
+            authorization_path = Path(
+                command_value(command, "--authorization-json")
+            )
+            authorization = json.loads(
+                authorization_path.read_text(encoding="utf-8")
+            )
+            state_identity = authorization["state"]
+            output_dir = Path(
+                command_value(command, "--output-dir")
+            )
+            rollback = "--rollback" in command
+            audit = {
+                "healthy": True,
+                "mode": (
+                    "AUTHORIZED_STATE_BATCH_"
+                    "VALIDATION_METADATA_ROLLBACK"
+                    if rollback
+                    else
+                    "AUTHORIZED_STATE_BATCH_"
+                    "VALIDATION_METADATA_APPLY"
+                ),
+                "action": (
+                    "ROLLED_BACK" if rollback else "APPLIED"
+                ),
+                "national_plan_checksum":
+                    command_value(
+                        command,
+                        "--national-plan-checksum",
+                    ),
+                "plan_checksum":
+                    command_value(command, "--plan-checksum"),
+                "authorization_checksum":
+                    command_value(
+                        command,
+                        "--authorization-checksum",
+                    ),
+                "rollback_token":
+                    command_value(command, "--rollback-token"),
+                "approval": {
+                    "approved_batch_id":
+                        state_identity["batch_id"],
+                    "approved_row_count":
+                        state_identity["selected_row_count"],
+                },
+                "guardrails": {
+                    "source_files_changed": False,
+                    "geometry_repair_persisted": False,
+                    "source_runtime_eligibility_changed":
+                        False,
+                    "boundary_candidates_promoted": False,
+                    "boundary_candidates_activated": False,
+                    "runtime_tables_written": False,
+                    "runtime_lookup_enabled": False,
+                    "lgd_geography_overwritten": False,
+                    "android_behavior_changed": False,
+                },
+            }
+            orchestrator.atomic_write_json(
+                output_dir
+                / "boundary_validation_metadata_"
+                  "authorized_state_batch_audit.json",
+                audit,
+            )
+            return FakeProcess(
+                returncode=0,
+                stdout=json.dumps(audit),
+            )
+
+        return run
+
+    with tempfile.TemporaryDirectory(
+        prefix="national-dispatch-loop-"
+    ) as temporary:
+        dispatch_root = Path(temporary)
+        apply_calls: list[list[str]] = []
+        apply_result = (
+            orchestrator.dispatch_authorized_manifest(
+                manifest=approved,
+                output_dir=dispatch_root,
+                rollback=False,
+                resume=False,
+                runner=successful_fake_runner(apply_calls),
+            )
+        )
+        check(
+            apply_result["healthy"] is True
+            and apply_result["status"] == "COMPLETED"
+            and apply_result["state_count"] == 36
+            and apply_result["dispatched_state_count"] == 36
+            and apply_result["resumed_state_count"] == 0
+            and len(apply_calls) == 36,
+            "Sequential dispatcher completes all 36 states",
+            apply_result,
+        )
+        check(
+            [
+                Path(
+                    command_value(
+                        command,
+                        "--authorization-json",
+                    )
+                ).parent.name
+                for command in apply_calls
+            ] == [
+                f"{sequence:02d}-fixture_state_{sequence:02d}"
+                for sequence in range(1, 37)
+            ],
+            "Apply dispatch is strictly ascending and sequential",
+        )
+
+        resume_calls: list[list[str]] = []
+        resume_result = (
+            orchestrator.dispatch_authorized_manifest(
+                manifest=approved,
+                output_dir=dispatch_root,
+                rollback=False,
+                resume=True,
+                runner=successful_fake_runner(resume_calls),
+            )
+        )
+        check(
+            resume_result["healthy"] is True
+            and resume_result["dispatched_state_count"] == 0
+            and resume_result["resumed_state_count"] == 36
+            and resume_calls == [],
+            "Resume reuses all 36 validated checkpoints",
+            resume_result,
+        )
+
+        first_paths = orchestrator.state_dispatch_paths(
+            dispatch_root,
+            approved["states"][0],
+        )
+        first_checkpoint = json.loads(
+            first_paths["checkpoint_json"].read_text(
+                encoding="utf-8"
+            )
+        )
+        first_checkpoint["source_sha256"] = "0" * 64
+        orchestrator.atomic_write_json(
+            first_paths["checkpoint_json"],
+            first_checkpoint,
+        )
+
+        stale_calls: list[list[str]] = []
+        stale_result = (
+            orchestrator.dispatch_authorized_manifest(
+                manifest=approved,
+                output_dir=dispatch_root,
+                rollback=False,
+                resume=True,
+                runner=successful_fake_runner(stale_calls),
+            )
+        )
+        check(
+            stale_result["healthy"] is False
+            and stale_result["error"] ==
+                "STATE_DISPATCH_CHECKPOINT_REJECTED"
+            and stale_result["failed_state"] ==
+                "fixture_state_01"
+            and stale_calls == [],
+            "Resume rejects a stale checkpoint before dispatch",
+            stale_result,
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix="national-rollback-loop-"
+    ) as temporary:
+        rollback_calls: list[list[str]] = []
+        rollback_result = (
+            orchestrator.dispatch_authorized_manifest(
+                manifest=approved,
+                output_dir=Path(temporary),
+                rollback=True,
+                resume=False,
+                runner=successful_fake_runner(
+                    rollback_calls
+                ),
+            )
+        )
+        check(
+            rollback_result["healthy"] is True
+            and len(rollback_calls) == 36
+            and all(
+                "--rollback" in command
+                and "--apply" not in command
+                for command in rollback_calls
+            ),
+            "Sequential rollback dispatcher completes 36 states",
+            rollback_result,
+        )
+        check(
+            [
+                Path(
+                    command_value(
+                        command,
+                        "--authorization-json",
+                    )
+                ).parent.name
+                for command in rollback_calls
+            ] == [
+                f"{sequence:02d}-fixture_state_{sequence:02d}"
+                for sequence in range(36, 0, -1)
+            ],
+            "Rollback dispatch strictly reverses apply order",
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix="national-dispatch-failure-"
+    ) as temporary:
+        failure_calls: list[list[str]] = []
+        failure_result = (
+            orchestrator.dispatch_authorized_manifest(
+                manifest=approved,
+                output_dir=Path(temporary),
+                rollback=False,
+                resume=False,
+                runner=successful_fake_runner(
+                    failure_calls,
+                    fail_on_call=4,
+                ),
+            )
+        )
+        check(
+            failure_result["healthy"] is False
+            and failure_result["error"] ==
+                "STATE_ENGINE_PROCESS_FAILED"
+            and failure_result["failed_state"] ==
+                "fixture_state_04"
+            and failure_result["dispatched_state_count"] == 4
+            and len(failure_calls) == 4,
+            "Dispatcher stops immediately on first state failure",
+            failure_result,
+        )
+
+
     missing_global_apply = copy.deepcopy(approved)
     missing_global_apply["authorization"][
         "apply_authorized"

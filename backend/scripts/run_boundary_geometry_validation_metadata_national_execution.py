@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,10 @@ PROPOSAL_SCHEMA = (
 AUTHORIZED_SCHEMA = (
     "national_validation_metadata_"
     "execution_manifest_authorization.v1"
+)
+DISPATCH_CHECKPOINT_SCHEMA = (
+    "national_validation_metadata_"
+    "state_dispatch_checkpoint.v1"
 )
 
 
@@ -382,6 +387,450 @@ def state_authorization_document(
     return authorization
 
 
+
+def atomic_write_json(
+    path: Path,
+    value: dict[str, Any],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".writing")
+    temporary.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def ordered_dispatch_states(
+    manifest: dict[str, Any],
+    *,
+    rollback: bool,
+) -> list[dict[str, Any]]:
+    states = list(manifest.get("states") or [])
+    return sorted(
+        states,
+        key=lambda state: (
+            int(state.get("sequence") or 0),
+            str(state.get("state_slug") or ""),
+        ),
+        reverse=rollback,
+    )
+
+
+def state_dispatch_paths(
+    output_dir: Path,
+    state: dict[str, Any],
+) -> dict[str, Path]:
+    state_dir = (
+        output_dir
+        / "states"
+        / f"{int(state['sequence']):02d}-{state['state_slug']}"
+    )
+    return {
+        "state_dir": state_dir,
+        "authorization_json":
+            state_dir / "authorization.json",
+        "engine_output_dir":
+            state_dir / "engine",
+        "checkpoint_json":
+            state_dir / "dispatch_checkpoint.json",
+    }
+
+
+def state_engine_command(
+    *,
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+    authorization: dict[str, Any],
+    authorization_json: Path,
+    engine_output_dir: Path,
+    rollback: bool,
+) -> list[str]:
+    approval = manifest["authorization"]
+    return [
+        sys.executable,
+        str(Path(state_engine.__file__).resolve()),
+        "--authorization-json",
+        str(authorization_json),
+        "--authorization-checksum",
+        authorization["authorization_checksum"],
+        "--national-plan-checksum",
+        manifest["national_plan_checksum"],
+        "--plan-json",
+        str(state["plan_json"]),
+        "--plan-checksum",
+        state["plan_checksum"],
+        "--source-sha256",
+        state["source_sha256"],
+        "--rollback-token",
+        state["rollback_token"],
+        "--output-dir",
+        str(engine_output_dir),
+        "--operator",
+        approval["operator"],
+        "--approver",
+        approval["approver"],
+        "--approval-reference",
+        approval["approval_reference"],
+        "--rollback" if rollback else "--apply",
+        "--enable-validation-metadata-write",
+        "--dry-run-reviewed",
+        "--event-schema-reviewed",
+        "--admin-confirmation",
+    ]
+
+
+def dispatch_checkpoint_checksum(
+    checkpoint: dict[str, Any],
+) -> str:
+    return canonical_checksum({
+        key: value
+        for key, value in checkpoint.items()
+        if key != "checkpoint_checksum"
+    })
+
+
+def successful_dispatch_checkpoint(
+    *,
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+    authorization: dict[str, Any],
+    mode: str,
+    audit_json: Path,
+) -> dict[str, Any]:
+    checkpoint = {
+        "schema_version": DISPATCH_CHECKPOINT_SCHEMA,
+        "status": "SUCCEEDED",
+        "mode": mode,
+        "manifest_checksum": manifest["manifest_checksum"],
+        "national_plan_checksum":
+            manifest["national_plan_checksum"],
+        "state_sequence": int(state["sequence"]),
+        "state_slug": state["state_slug"],
+        "batch_id": state["batch_id"],
+        "plan_checksum": state["plan_checksum"],
+        "source_sha256": state["source_sha256"],
+        "rollback_token": state["rollback_token"],
+        "authorization_checksum":
+            authorization["authorization_checksum"],
+        "audit_json": str(audit_json),
+    }
+    checkpoint["checkpoint_checksum"] = (
+        dispatch_checkpoint_checksum(checkpoint)
+    )
+    return checkpoint
+
+
+def reusable_dispatch_checkpoint_error(
+    *,
+    checkpoint_path: Path,
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+    authorization: dict[str, Any],
+    mode: str,
+) -> str | None:
+    try:
+        checkpoint = load_json_object(
+            checkpoint_path,
+            "DISPATCH_CHECKPOINT_JSON",
+        )
+    except ValueError as exc:
+        return str(exc)
+
+    expected = {
+        "schema_version": DISPATCH_CHECKPOINT_SCHEMA,
+        "status": "SUCCEEDED",
+        "mode": mode,
+        "manifest_checksum": manifest["manifest_checksum"],
+        "national_plan_checksum":
+            manifest["national_plan_checksum"],
+        "state_sequence": int(state["sequence"]),
+        "state_slug": state["state_slug"],
+        "batch_id": state["batch_id"],
+        "plan_checksum": state["plan_checksum"],
+        "source_sha256": state["source_sha256"],
+        "rollback_token": state["rollback_token"],
+        "authorization_checksum":
+            authorization["authorization_checksum"],
+    }
+    if any(
+        checkpoint.get(key) != value
+        for key, value in expected.items()
+    ):
+        return "DISPATCH_CHECKPOINT_IDENTITY_MISMATCH"
+
+    if checkpoint.get("checkpoint_checksum") != (
+        dispatch_checkpoint_checksum(checkpoint)
+    ):
+        return "DISPATCH_CHECKPOINT_CHECKSUM_MISMATCH"
+
+    audit_value = checkpoint.get("audit_json")
+    if not audit_value:
+        return "DISPATCH_CHECKPOINT_AUDIT_REQUIRED"
+
+    try:
+        audit = load_json_object(
+            Path(audit_value),
+            "STATE_ENGINE_AUDIT_JSON",
+        )
+    except ValueError as exc:
+        return str(exc)
+
+    audit_error = state_engine_audit_error(
+        audit=audit,
+        manifest=manifest,
+        state=state,
+        authorization=authorization,
+        mode=mode,
+    )
+    if audit_error:
+        return audit_error
+
+    return None
+
+
+def state_engine_audit_error(
+    *,
+    audit: dict[str, Any],
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+    authorization: dict[str, Any],
+    mode: str,
+) -> str | None:
+    expected_mode = (
+        "AUTHORIZED_STATE_BATCH_VALIDATION_METADATA_ROLLBACK"
+        if mode == "ROLLBACK"
+        else "AUTHORIZED_STATE_BATCH_VALIDATION_METADATA_APPLY"
+    )
+    allowed_actions = (
+        {"ROLLED_BACK", "IDEMPOTENT_ROLLBACK_NO_OP"}
+        if mode == "ROLLBACK"
+        else {"APPLIED", "IDEMPOTENT_NO_OP"}
+    )
+
+    if (
+        audit.get("healthy") is not True
+        or audit.get("mode") != expected_mode
+        or audit.get("action") not in allowed_actions
+        or audit.get("national_plan_checksum") !=
+            manifest["national_plan_checksum"]
+        or audit.get("plan_checksum") !=
+            state["plan_checksum"]
+        or audit.get("authorization_checksum") !=
+            authorization["authorization_checksum"]
+        or audit.get("rollback_token") !=
+            state["rollback_token"]
+        or audit.get("approval", {}).get(
+            "approved_batch_id"
+        ) != state["batch_id"]
+        or int(
+            audit.get("approval", {}).get(
+                "approved_row_count"
+            ) or 0
+        ) != int(state["selected_row_count"])
+    ):
+        return "STATE_ENGINE_AUDIT_IDENTITY_MISMATCH"
+
+    guardrail = audit.get("guardrails") or {}
+    if any(
+        guardrail.get(key) is not False
+        for key in [
+            "source_files_changed",
+            "geometry_repair_persisted",
+            "source_runtime_eligibility_changed",
+            "boundary_candidates_promoted",
+            "boundary_candidates_activated",
+            "runtime_tables_written",
+            "runtime_lookup_enabled",
+            "lgd_geography_overwritten",
+            "android_behavior_changed",
+        ]
+    ):
+        return "STATE_ENGINE_AUDIT_GUARDRAIL_VIOLATION"
+
+    return None
+
+
+def dispatch_authorized_manifest(
+    *,
+    manifest: dict[str, Any],
+    output_dir: Path,
+    rollback: bool,
+    resume: bool,
+    runner=subprocess.run,
+) -> dict[str, Any]:
+    mode = "ROLLBACK" if rollback else "APPLY"
+    results: list[dict[str, Any]] = []
+    dispatched_count = 0
+    resumed_count = 0
+
+    for state in ordered_dispatch_states(
+        manifest,
+        rollback=rollback,
+    ):
+        authorization = state_authorization_document(
+            manifest,
+            state,
+        )
+        paths = state_dispatch_paths(output_dir, state)
+        checkpoint_path = paths["checkpoint_json"]
+
+        if checkpoint_path.exists():
+            if not resume:
+                return {
+                    "healthy": False,
+                    "status": "FAILED",
+                    "mode": mode,
+                    "error":
+                        "STATE_DISPATCH_CHECKPOINT_EXISTS_USE_RESUME",
+                    "failed_state": state["state_slug"],
+                    "dispatched_state_count": dispatched_count,
+                    "resumed_state_count": resumed_count,
+                    "results": results,
+                }
+
+            checkpoint_error = (
+                reusable_dispatch_checkpoint_error(
+                    checkpoint_path=checkpoint_path,
+                    manifest=manifest,
+                    state=state,
+                    authorization=authorization,
+                    mode=mode,
+                )
+            )
+            if checkpoint_error:
+                return {
+                    "healthy": False,
+                    "status": "FAILED",
+                    "mode": mode,
+                    "error":
+                        "STATE_DISPATCH_CHECKPOINT_REJECTED",
+                    "detail": checkpoint_error,
+                    "failed_state": state["state_slug"],
+                    "dispatched_state_count": dispatched_count,
+                    "resumed_state_count": resumed_count,
+                    "results": results,
+                }
+
+            resumed_count += 1
+            results.append({
+                "sequence": int(state["sequence"]),
+                "state_slug": state["state_slug"],
+                "status": "RESUMED",
+                "checkpoint_json": str(checkpoint_path),
+            })
+            continue
+
+        atomic_write_json(
+            paths["authorization_json"],
+            authorization,
+        )
+        command = state_engine_command(
+            manifest=manifest,
+            state=state,
+            authorization=authorization,
+            authorization_json=paths["authorization_json"],
+            engine_output_dir=paths["engine_output_dir"],
+            rollback=rollback,
+        )
+        process = runner(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        dispatched_count += 1
+
+        audit_path = (
+            paths["engine_output_dir"]
+            / "boundary_validation_metadata_"
+              "authorized_state_batch_audit.json"
+        )
+        if process.returncode != 0:
+            return {
+                "healthy": False,
+                "status": "FAILED",
+                "mode": mode,
+                "error": "STATE_ENGINE_PROCESS_FAILED",
+                "failed_state": state["state_slug"],
+                "state_engine_exit_code":
+                    process.returncode,
+                "state_engine_stdout":
+                    process.stdout[-4000:],
+                "state_engine_stderr":
+                    process.stderr[-4000:],
+                "dispatched_state_count": dispatched_count,
+                "resumed_state_count": resumed_count,
+                "results": results,
+            }
+
+        try:
+            audit = load_json_object(
+                audit_path,
+                "STATE_ENGINE_AUDIT_JSON",
+            )
+        except ValueError as exc:
+            return {
+                "healthy": False,
+                "status": "FAILED",
+                "mode": mode,
+                "error": str(exc),
+                "failed_state": state["state_slug"],
+                "dispatched_state_count": dispatched_count,
+                "resumed_state_count": resumed_count,
+                "results": results,
+            }
+
+        audit_error = state_engine_audit_error(
+            audit=audit,
+            manifest=manifest,
+            state=state,
+            authorization=authorization,
+            mode=mode,
+        )
+        if audit_error:
+            return {
+                "healthy": False,
+                "status": "FAILED",
+                "mode": mode,
+                "error": audit_error,
+                "failed_state": state["state_slug"],
+                "dispatched_state_count": dispatched_count,
+                "resumed_state_count": resumed_count,
+                "results": results,
+            }
+
+        checkpoint = successful_dispatch_checkpoint(
+            manifest=manifest,
+            state=state,
+            authorization=authorization,
+            mode=mode,
+            audit_json=audit_path,
+        )
+        atomic_write_json(checkpoint_path, checkpoint)
+        results.append({
+            "sequence": int(state["sequence"]),
+            "state_slug": state["state_slug"],
+            "status": "DISPATCHED",
+            "authorization_json":
+                str(paths["authorization_json"]),
+            "audit_json": str(audit_path),
+            "checkpoint_json": str(checkpoint_path),
+        })
+
+    return {
+        "healthy": True,
+        "status": "COMPLETED",
+        "mode": mode,
+        "error": None,
+        "failed_state": None,
+        "state_count": len(results),
+        "dispatched_state_count": dispatched_count,
+        "resumed_state_count": resumed_count,
+        "results": results,
+    }
+
+
 def structural_error(
     args: argparse.Namespace,
     manifest: dict[str, Any],
@@ -408,6 +857,13 @@ def structural_error(
     states = manifest.get("states") or []
     if len(states) != 36:
         return "EXACT_NATIONAL_STATE_COUNT_REQUIRED"
+
+    sequences = [state.get("sequence") for state in states]
+    if (
+        any(not isinstance(value, int) for value in sequences)
+        or sorted(sequences) != list(range(1, 37))
+    ):
+        return "MANIFEST_STATE_SEQUENCE_INVALID"
 
     slugs = [state.get("state_slug") for state in states]
     batches = [state.get("batch_id") for state in states]
