@@ -101,8 +101,8 @@ def proposal_error(
         return "PROPOSAL_ALREADY_AUTHORIZES_EXECUTION"
 
     states = proposal.get("states") or []
-    if len(states) != 36:
-        return "EXACT_NATIONAL_STATE_COUNT_REQUIRED"
+    if len(states) < 1 or len(states) > 36:
+        return "NATIONAL_STATE_COUNT_INVALID"
     if any(
         state.get("apply_authorized") is not False
         or state.get("rollback_authorized") is not False

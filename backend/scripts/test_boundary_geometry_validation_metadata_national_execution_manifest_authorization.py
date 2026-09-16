@@ -150,6 +150,22 @@ def main() -> int:
         "Valid proposal is accepted for separate authorization",
     )
 
+    reduced_source = copy.deepcopy(source)
+    reduced_source["states"] = reduced_source["states"][:2]
+    reduced_source["manifest_checksum"] = (
+        orchestrator.manifest_checksum(reduced_source)
+    )
+    check(
+        authorizer.proposal_error(
+            reduced_source,
+            proposal_manifest_checksum=
+                reduced_source["manifest_checksum"],
+            national_plan_checksum=
+                reduced_source["national_plan_checksum"],
+        ) is None,
+        "Reduced-state proposal is accepted",
+    )
+
     apply_one = authorizer.authorize_manifest(
         source,
         mode="APPLY",

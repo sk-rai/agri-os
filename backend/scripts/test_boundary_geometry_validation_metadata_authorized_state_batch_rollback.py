@@ -22,15 +22,19 @@ from scripts import (  # noqa: E402
     as apply_engine,
 )
 
-RUN_ID = "20260914-national-validation-metadata-wave-1"
-RUN_DIR = (
+RUN_ROOT = (
     ROOT / "data/staged/core_stack/"
-    "boundary_validation_metadata_rollout_runs" / RUN_ID
+    "boundary_validation_metadata_rollout_runs"
 )
-STATE_SLUG = "chandigarh"
-OUTPUT_DIR = (
-    RUN_DIR / "generic_engine_fixture_regression" /
-    "forced_failure"
+FIXTURE_ROOT = (
+    RUN_ROOT / "_generic_engine_dynamic_regression"
+)
+PLAN_DIR = FIXTURE_ROOT / "plan"
+STATE_SLUG = "bihar"
+OUTPUT_DIR = FIXTURE_ROOT / "execution"
+PLANNER = (
+    ROOT / "backend/scripts/"
+    "plan_boundary_geometry_validation_metadata_national_rollout.py"
 )
 ENGINE = (
     ROOT / "backend/scripts/"
@@ -134,12 +138,38 @@ def database_snapshot(
 
 
 def main() -> int:
-    if not RUN_DIR.is_dir():
-        raise SystemExit(f"NATIONAL_RUN_NOT_FOUND: {RUN_DIR}")
+    shutil.rmtree(FIXTURE_ROOT, ignore_errors=True)
+    PLAN_DIR.mkdir(parents=True)
+
+    plan_process = subprocess.run(
+        [
+            sys.executable,
+            str(PLANNER),
+            "--output-dir",
+            str(PLAN_DIR),
+            "--states",
+            STATE_SLUG,
+            "--batch-limit",
+            "500",
+            "--workers",
+            "1",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    check(
+        plan_process.returncode == 0,
+        "Fresh transaction fixture plan succeeds",
+        {
+            "stdout": plan_process.stdout,
+            "stderr": plan_process.stderr,
+        },
+    )
 
     national = json.loads(
         (
-            RUN_DIR /
+            PLAN_DIR /
             "national_validation_metadata_wave_plan.json"
         ).read_text(encoding="utf-8")
     )
@@ -155,8 +185,8 @@ def main() -> int:
     ]
 
     check(
-        len(rows) == 13,
-        "Chandigarh fixture contains exactly 13 rows",
+        len(rows) == 500,
+        "Dynamic Bihar fixture contains exactly 500 rows",
         {"row_count": len(rows)},
     )
     check(
@@ -207,7 +237,7 @@ def main() -> int:
         "permissions": {
             "apply_authorized": True,
             "rollback_authorized": True,
-            "maximum_row_count": 13,
+            "maximum_row_count": 500,
             "validated_without_repair_only": True,
             "geometry_repair_allowed": False,
             "runtime_eligibility_change_allowed": False,

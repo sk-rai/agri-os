@@ -56,7 +56,7 @@ def main() -> int:
 
     first = run(
         BASE / "first",
-        "--states", "chandigarh,lakshadweep",
+        "--states", "bihar,uttar_pradesh",
         "--batch-limit", "500",
         "--workers", "2",
     )
@@ -80,7 +80,7 @@ def main() -> int:
     check(
         report["summary"]["selected_state_count"] == 2
         and report["summary"]["planned_state_count"] == 2
-        and report["summary"]["selected_row_count"] == 47
+        and report["summary"]["selected_row_count"] == 1000
         and report["summary"][
             "failed_or_blocked_state_count"
         ] == 0,
@@ -93,13 +93,13 @@ def main() -> int:
         for row in report["states"]
     }
     check(
-        list(sorted(states)) == ["chandigarh", "lakshadweep"],
+        list(sorted(states)) == ["bihar", "uttar_pradesh"],
         "Requested state selection is exact",
         states,
     )
     check(
-        states["chandigarh"]["selected_row_count"] == 13
-        and states["lakshadweep"]["selected_row_count"] == 34,
+        states["bihar"]["selected_row_count"] == 500
+        and states["uttar_pradesh"]["selected_row_count"] == 500,
         "Per-state selected counts are exact",
         states,
     )
@@ -169,7 +169,7 @@ def main() -> int:
 
     second = run(
         BASE / "second",
-        "--states", "chandigarh,lakshadweep",
+        "--states", "bihar,uttar_pradesh",
         "--batch-limit", "500",
         "--workers", "1",
     )
@@ -187,7 +187,7 @@ def main() -> int:
 
     protected = run(
         BASE / "first",
-        "--states", "chandigarh,lakshadweep",
+        "--states", "bihar,uttar_pradesh",
         "--batch-limit", "500",
     )
     check(
@@ -205,7 +205,7 @@ def main() -> int:
     resumed = run(
         BASE / "first",
         "--resume",
-        "--states", "chandigarh,lakshadweep",
+        "--states", "bihar,uttar_pradesh",
         "--batch-limit", "500",
         "--workers", "2",
     )
@@ -239,7 +239,7 @@ def main() -> int:
     forced = run(
         BASE / "first",
         "--force",
-        "--states", "chandigarh,lakshadweep",
+        "--states", "bihar,uttar_pradesh",
         "--batch-limit", "500",
         "--workers", "1",
     )
@@ -273,7 +273,7 @@ def main() -> int:
     stale_dir = BASE / "stale"
     shutil.copytree(BASE / "first", stale_dir)
     stale_checkpoint_path = (
-        stale_dir / "states/chandigarh/checkpoint.json"
+        stale_dir / "states/bihar/checkpoint.json"
     )
     stale_checkpoint = json.loads(
         stale_checkpoint_path.read_text(encoding="utf-8")
@@ -287,7 +287,7 @@ def main() -> int:
     stale = run(
         stale_dir,
         "--resume",
-        "--states", "chandigarh,lakshadweep",
+        "--states", "bihar,uttar_pradesh",
         "--batch-limit", "500",
         "--workers", "2",
     )
@@ -306,12 +306,12 @@ def main() -> int:
         and stale_report["summary"][
             "checkpoint_rejected_state_count"
         ] == 1
-        and stale_states["chandigarh"]["status"] == "BLOCKED"
-        and stale_states["chandigarh"]["execution_status"] ==
+        and stale_states["bihar"]["status"] == "BLOCKED"
+        and stale_states["bihar"]["execution_status"] ==
             "CHECKPOINT_REJECTED"
         and "STALE_CACHED_STATE_PLAN" in
-            stale_states["chandigarh"]["error"]
-        and stale_states["lakshadweep"]["execution_status"] ==
+            stale_states["bihar"]["error"]
+        and stale_states["uttar_pradesh"]["execution_status"] ==
             "RESUMED",
         "Resume rejects stale state while preserving valid checkpoints",
         stale_report,
@@ -319,7 +319,7 @@ def main() -> int:
 
     bad_limit = run(
         BASE / "bad-limit",
-        "--states", "chandigarh",
+        "--states", "bihar",
         "--batch-limit", "501",
     )
     check(

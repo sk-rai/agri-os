@@ -227,6 +227,36 @@ def main() -> int:
         "Fully authorized manifest reaches dispatch boundary",
     )
 
+    reduced = copy.deepcopy(approved)
+    reduced["states"] = reduced["states"][:2]
+    reduced["manifest_checksum"] = (
+        orchestrator.manifest_checksum(reduced)
+    )
+    check(
+        orchestrator.structural_error(
+            args_for(reduced),
+            reduced,
+        ) is None
+        and orchestrator.authorization_error(
+            args_for(reduced),
+            reduced,
+        ) is None,
+        "Authorized reduced-state wave reaches dispatch boundary",
+    )
+
+    invalid_sequence = copy.deepcopy(reduced)
+    invalid_sequence["states"][1]["sequence"] = 3
+    invalid_sequence["manifest_checksum"] = (
+        orchestrator.manifest_checksum(invalid_sequence)
+    )
+    check(
+        orchestrator.structural_error(
+            args_for(invalid_sequence),
+            invalid_sequence,
+        ) == "MANIFEST_STATE_SEQUENCE_INVALID",
+        "Reduced-state wave requires contiguous sequence",
+    )
+
     derived = [
         orchestrator.state_authorization_document(
             approved,

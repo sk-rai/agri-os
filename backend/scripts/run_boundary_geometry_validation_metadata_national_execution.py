@@ -855,13 +855,15 @@ def structural_error(
         return "MANIFEST_BATCH_LIMIT_MISMATCH"
 
     states = manifest.get("states") or []
-    if len(states) != 36:
-        return "EXACT_NATIONAL_STATE_COUNT_REQUIRED"
+    state_count = len(states)
+    if state_count < 1 or state_count > 36:
+        return "NATIONAL_STATE_COUNT_INVALID"
 
     sequences = [state.get("sequence") for state in states]
     if (
         any(not isinstance(value, int) for value in sequences)
-        or sorted(sequences) != list(range(1, 37))
+        or sorted(sequences) !=
+            list(range(1, state_count + 1))
     ):
         return "MANIFEST_STATE_SEQUENCE_INVALID"
 
@@ -872,10 +874,10 @@ def structural_error(
 
     if (
         any(not value for value in slugs + batches + plans + tokens)
-        or len(set(slugs)) != 36
-        or len(set(batches)) != 36
-        or len(set(plans)) != 36
-        or len(set(tokens)) != 36
+        or len(set(slugs)) != state_count
+        or len(set(batches)) != state_count
+        or len(set(plans)) != state_count
+        or len(set(tokens)) != state_count
     ):
         return "MANIFEST_STATE_IDENTITY_NOT_UNIQUE"
 

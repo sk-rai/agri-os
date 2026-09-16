@@ -271,7 +271,7 @@ identity, modified audit data or a failed state stops the national dispatcher
 before the next state begins. Existing checkpoints require explicit
 `--resume`; they are never silently overwritten.
 
-The dispatcher validates all 36 source files, plans and planning checkpoints
+The dispatcher validates every included source file, plan and planning checkpoint
 before invoking the first state engine process. It also retains the existing
 requirements for explicit apply or rollback selection, the national metadata
 write flag, plan and integrity review, rollback-procedure review, administrator
@@ -298,7 +298,7 @@ operator and approver identities, an approval reference, artifact review,
 rollback-procedure review and the explicit confirmation phrase
 `AUTHORIZE_NATIONAL_VALIDATION_METADATA_EXECUTION`.
 
-Before writing an authorization manifest, all 36 state plans, source checksums
-and planning checkpoints are validated again. The generated manifest receives
+Before writing an authorization manifest, every included state plan, source checksum
+and planning checkpoint are validated again. The generated manifest receives
 a new checksum covering its authorization, readiness and per-state permission
 changes.
