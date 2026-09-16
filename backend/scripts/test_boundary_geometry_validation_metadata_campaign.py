@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Regression for the bounded validation-metadata campaign controller."""
+
+from __future__ import annotations
+
+import copy
+import importlib
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "backend"
+sys.path.insert(0, str(BACKEND))
+
+campaign = importlib.import_module(
+    "scripts.run_boundary_geometry_validation_metadata_campaign"
+)
+
+
+def check(condition: bool, label: str, detail=None) -> None:
+    if not condition:
+        print(f"FAIL {label}")
+        if detail is not None:
+            print(json.dumps(detail, indent=2, default=str))
+        raise AssertionError(label)
+    print(f"PASS {label}")
+
+
+def expect_error(value: dict, expected: str) -> None:
+    try:
+        campaign.validate_proposal(
+            value,
+            value.get("campaign_checksum") or "",
+        )
+    except ValueError as exc:
+        check(
+            expected in str(exc),
+            f"Campaign rejects {expected}",
+            str(exc),
+        )
+        return
+    raise AssertionError(f"Expected {expected}")
+
+
+def proposal() -> dict:
+    value = {
+        "schema_version": campaign.CAMPAIGN_SCHEMA,
+        "status": "PROPOSED_NOT_AUTHORIZED",
+        "campaign_id": "fixture-campaign",
+        "generated_at": "2026-09-16T00:00:00+00:00",
+        "start_database_counts": {
+            "source_feature_rows": 654285,
+            "not_validated_rows": 625171,
+            "validated_rows": 29114,
+        },
+        "remaining_eligible_row_count": 625171,
+        "limits": {
+            "maximum_wave_count": 10,
+            "maximum_campaign_row_count": 150000,
+            "maximum_rows_per_state_transaction": 500,
+            "maximum_states_per_wave": 36,
+            "maximum_parallel_state_transactions": 1,
+        },
+        "execution_policy": {
+            "stop_on_first_failure": True,
+            "reconcile_after_every_wave": True,
+            "next_wave_requires_previous_reconciliation": True,
+            "one_state_batch_per_transaction": True,
+        },
+        "prohibited_changes": {
+            "geometry_repair_allowed": False,
+            "runtime_eligibility_change_allowed": False,
+            "candidate_activation_allowed": False,
+            "candidate_promotion_allowed": False,
+            "runtime_table_write_allowed": False,
+            "runtime_lookup_enablement_allowed": False,
+            "lgd_geography_overwrite_allowed": False,
+            "android_behavior_change_allowed": False,
+        },
+        "authorization": {
+            "campaign_execution_authorized": False,
+            "operator": None,
+            "approver": None,
+            "approval_reference": None,
+            "approved_at": None,
+        },
+        "readiness": {
+            "ready_for_campaign_review": True,
+            "ready_for_campaign_execution": False,
+            "database_writes_attempted": False,
+            "execution_started": False,
+        },
+        "wave_template": {
+            "planner_batch_limit": 500,
+            "planner_workers": 4,
+        },
+    }
+    value["campaign_checksum"] = (
+        campaign.canonical_checksum(value)
+    )
+    return value
+
+
+def main() -> int:
+    source = proposal()
+
+    campaign.validate_proposal(
+        source,
+        source["campaign_checksum"],
+    )
+    check(
+        True,
+        "Valid bounded campaign proposal is accepted",
+    )
+
+    initial = campaign.initial_checkpoint(source)
+    check(
+        initial["status"] == "READY"
+        and initial["completed_wave_count"] == 0
+        and initial["completed_row_count"] == 0
+        and initial["waves"] == [],
+        "Initial campaign checkpoint is empty and deterministic",
+    )
+
+    altered = copy.deepcopy(source)
+    altered["limits"]["maximum_wave_count"] = 11
+    expect_error(altered, "CAMPAIGN_CONTENT_CHECKSUM_MISMATCH")
+
+    oversized = copy.deepcopy(source)
+    oversized["limits"]["maximum_campaign_row_count"] = 150001
+    oversized["campaign_checksum"] = (
+        campaign.canonical_checksum(oversized)
+    )
+    expect_error(oversized, "CAMPAIGN_LIMITS_INVALID")
+
+    transaction = copy.deepcopy(source)
+    transaction["limits"][
+        "maximum_rows_per_state_transaction"
+    ] = 501
+    transaction["campaign_checksum"] = (
+        campaign.canonical_checksum(transaction)
+    )
+    expect_error(transaction, "CAMPAIGN_LIMITS_INVALID")
+
+    parallel = copy.deepcopy(source)
+    parallel["limits"][
+        "maximum_parallel_state_transactions"
+    ] = 2
+    parallel["campaign_checksum"] = (
+        campaign.canonical_checksum(parallel)
+    )
+    expect_error(parallel, "CAMPAIGN_LIMITS_INVALID")
+
+    unsafe = copy.deepcopy(source)
+    unsafe["prohibited_changes"][
+        "runtime_lookup_enablement_allowed"
+    ] = True
+    unsafe["campaign_checksum"] = (
+        campaign.canonical_checksum(unsafe)
+    )
+    expect_error(
+        unsafe,
+        "CAMPAIGN_PROHIBITED_PERMISSION_ENABLED",
+    )
+
+    authorized = copy.deepcopy(source)
+    authorized["authorization"][
+        "campaign_execution_authorized"
+    ] = True
+    authorized["campaign_checksum"] = (
+        campaign.canonical_checksum(authorized)
+    )
+    expect_error(
+        authorized,
+        "CAMPAIGN_PROPOSAL_MUST_NOT_AUTHORIZE",
+    )
+
+    with tempfile.TemporaryDirectory(
+        prefix="campaign-regression-"
+    ) as temporary:
+        root = Path(temporary)
+        proposal_path = root / "proposal.json"
+        proposal_path.write_text(
+            json.dumps(source, indent=2, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
+
+        process = subprocess.run(
+            [
+                sys.executable,
+                str(Path(campaign.__file__).resolve()),
+                "--campaign-proposal",
+                str(proposal_path),
+                "--campaign-checksum",
+                source["campaign_checksum"],
+                "--campaign-dir",
+                str(root / "campaign"),
+                "--run-root",
+                str(root / "runs"),
+                "--command",
+                "execute-wave",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        check(
+            process.returncode != 0
+            and "CAMPAIGN_EXECUTION_NOT_AUTHORIZED"
+                in (process.stdout + process.stderr),
+            "Campaign execution remains disconnected",
+            {
+                "returncode": process.returncode,
+                "stdout": process.stdout,
+                "stderr": process.stderr,
+            },
+        )
+
+    print("=" * 66)
+    print(
+        "# NATIONAL VALIDATION METADATA CAMPAIGN REGRESSION PASSED"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
