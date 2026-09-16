@@ -168,8 +168,9 @@ the explicit authorization and readiness fields.
 
 ## National execution orchestrator authorization gate
 
-The national orchestrator currently implements a fail-closed authorization
-gate and does not dispatch state transactions.
+The national orchestrator implements a fail-closed authorization gate and
+dispatches state transactions only after every authorization, policy,
+confirmation and artifact check succeeds.
 
 The gate verifies:
 
@@ -283,3 +284,21 @@ proposal. An actual national apply requires a separate checksum-pinned
 authorized manifest and an explicit operator command. Runtime promotion,
 candidate writes, geometry repair, runtime lookup and Android behavior remain
 outside this execution boundary.
+
+## Authorization manifest generation
+
+The authorization generator creates a new checksum-pinned manifest from the
+reviewed proposal. It never edits the proposal in place and never starts
+execution.
+
+Authorization is deliberately directional. An apply manifest grants apply
+permission only; rollback requires a separately generated rollback manifest.
+The generator requires exact external proposal and national-plan checksums,
+operator and approver identities, an approval reference, artifact review,
+rollback-procedure review and the explicit confirmation phrase
+`AUTHORIZE_NATIONAL_VALIDATION_METADATA_EXECUTION`.
+
+Before writing an authorization manifest, all 36 state plans, source checksums
+and planning checkpoints are validated again. The generated manifest receives
+a new checksum covering its authorization, readiness and per-state permission
+changes.
