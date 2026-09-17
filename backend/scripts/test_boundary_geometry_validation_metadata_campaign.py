@@ -58,9 +58,11 @@ def proposal() -> dict:
         },
         "remaining_eligible_row_count": 625171,
         "limits": {
-            "maximum_wave_count": 10,
-            "maximum_campaign_row_count": 150000,
-            "maximum_rows_per_state_transaction": 500,
+            "maximum_wave_count": campaign.MAXIMUM_WAVE_COUNT,
+            "maximum_campaign_row_count":
+                campaign.MAXIMUM_CAMPAIGN_ROW_COUNT,
+            "maximum_rows_per_state_transaction":
+                campaign.MAXIMUM_ROWS_PER_STATE_TRANSACTION,
             "maximum_states_per_wave": 36,
             "maximum_parallel_state_transactions": 1,
         },
@@ -126,11 +128,11 @@ def main() -> int:
     )
 
     altered = copy.deepcopy(source)
-    altered["limits"]["maximum_wave_count"] = 11
+    altered["limits"]["maximum_wave_count"] = 17
     expect_error(altered, "CAMPAIGN_CONTENT_CHECKSUM_MISMATCH")
 
     oversized = copy.deepcopy(source)
-    oversized["limits"]["maximum_campaign_row_count"] = 150001
+    oversized["limits"]["maximum_campaign_row_count"] = 175001
     oversized["campaign_checksum"] = (
         campaign.canonical_checksum(oversized)
     )

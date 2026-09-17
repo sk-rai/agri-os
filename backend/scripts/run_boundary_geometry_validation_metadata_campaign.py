@@ -24,6 +24,10 @@ from scripts import (  # noqa: E402
 CAMPAIGN_SCHEMA = (
     "national_validation_metadata_campaign_proposal.v1"
 )
+
+MAXIMUM_WAVE_COUNT = 16
+MAXIMUM_CAMPAIGN_ROW_COUNT = 175000
+MAXIMUM_ROWS_PER_STATE_TRANSACTION = 500
 CHECKPOINT_SCHEMA = (
     "national_validation_metadata_campaign_checkpoint.v1"
 )
@@ -121,15 +125,16 @@ def validate_proposal(
 
     limits = proposal.get("limits") or {}
     if (
-        int(limits.get("maximum_wave_count") or 0) != 10
+        int(limits.get("maximum_wave_count") or 0)
+        != MAXIMUM_WAVE_COUNT
         or int(
             limits.get("maximum_campaign_row_count") or 0
-        ) != 150000
+        ) != MAXIMUM_CAMPAIGN_ROW_COUNT
         or int(
             limits.get(
                 "maximum_rows_per_state_transaction"
             ) or 0
-        ) != 500
+        ) != MAXIMUM_ROWS_PER_STATE_TRANSACTION
         or int(
             limits.get(
                 "maximum_parallel_state_transactions"
