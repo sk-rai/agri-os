@@ -178,6 +178,92 @@ def main() -> int:
         "CAMPAIGN_PROPOSAL_MUST_NOT_AUTHORIZE",
     )
 
+    campaign_authorization = copy.deepcopy(source)
+    campaign_authorization["schema_version"] = (
+        "national_validation_metadata_"
+        "campaign_authorization.v1"
+    )
+    campaign_authorization["status"] = "AUTHORIZED"
+    campaign_authorization[
+        "proposal_campaign_checksum"
+    ] = source["campaign_checksum"]
+    campaign_authorization.pop("campaign_checksum", None)
+    campaign_authorization["authorization"] = {
+        "campaign_execution_authorized": True,
+        "operator": "admin-regression",
+        "approver": "admin-regression",
+        "approval_reference": "fixture-campaign-approval",
+        "approved_at": "2026-09-17T00:00:00+00:00",
+        "confirmation": (
+            "Authorize fixture campaign for bounded execution"
+        ),
+    }
+    campaign_authorization["authorization_checksum"] = (
+        campaign.campaign_authorization_checksum(
+            campaign_authorization
+        )
+    )
+
+    campaign.validate_campaign_authorization(
+        source,
+        campaign_authorization,
+    )
+    check(
+        True,
+        "Valid campaign authorization is accepted",
+    )
+
+    tampered_authorization = copy.deepcopy(
+        campaign_authorization
+    )
+    tampered_authorization["limits"][
+        "maximum_campaign_row_count"
+    ] = 150001
+    try:
+        campaign.validate_campaign_authorization(
+            source,
+            tampered_authorization,
+        )
+    except ValueError as exc:
+        check(
+            "CAMPAIGN_AUTHORIZATION_CHECKSUM_MISMATCH"
+            in str(exc),
+            "Tampered campaign authorization is rejected",
+            str(exc),
+        )
+    else:
+        raise AssertionError(
+            "Tampered campaign authorization was accepted"
+        )
+
+    wrong_identity = copy.deepcopy(
+        campaign_authorization
+    )
+    wrong_identity["authorization"]["operator"] = (
+        "unexpected-operator"
+    )
+    wrong_identity["authorization_checksum"] = (
+        campaign.campaign_authorization_checksum(
+            wrong_identity
+        )
+    )
+    try:
+        campaign.validate_campaign_authorization(
+            source,
+            wrong_identity,
+        )
+    except ValueError as exc:
+        check(
+            "CAMPAIGN_AUTHORIZATION_IDENTITY_INVALID"
+            in str(exc),
+            "Unexpected campaign identity is rejected",
+            str(exc),
+        )
+    else:
+        raise AssertionError(
+            "Unexpected campaign identity was accepted"
+        )
+
     with tempfile.TemporaryDirectory(
         prefix="campaign-regression-"
     ) as temporary:
