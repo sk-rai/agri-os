@@ -266,6 +266,17 @@ def main() -> int:
             "Unexpected campaign identity was accepted"
         )
 
+    controller_source = Path(
+        campaign.__file__
+    ).read_text(encoding="utf-8")
+    check(
+        'planner_command.append("--resume")'
+        in controller_source
+        and "wave_dir.is_dir()" in controller_source
+        and "any(wave_dir.iterdir())" in controller_source,
+        "Partial wave planning directories resume safely",
+    )
+
     with tempfile.TemporaryDirectory(
         prefix="campaign-regression-"
     ) as temporary:

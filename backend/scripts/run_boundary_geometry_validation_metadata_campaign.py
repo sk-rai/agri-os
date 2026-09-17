@@ -231,7 +231,7 @@ def prepare_next_wave(
         / "plan_boundary_geometry_validation_metadata_"
           "national_rollout.py"
     )
-    subprocess.run([
+    planner_command = [
         sys.executable,
         str(planner),
         "--run-root",
@@ -242,7 +242,14 @@ def prepare_next_wave(
         "500",
         "--workers",
         str(args.workers),
-    ], check=True)
+    ]
+    if (
+        wave_dir.is_dir()
+        and any(wave_dir.iterdir())
+    ):
+        planner_command.append("--resume")
+
+    subprocess.run(planner_command, check=True)
 
     national_plan_path = (
         wave_dir
