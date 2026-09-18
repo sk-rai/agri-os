@@ -28,6 +28,9 @@ from scripts.plan_boundary_geometry_validation_metadata_dry_run import (  # noqa
     SOURCE_SYSTEM,
     geometry_hash,
 )
+from scripts.boundary_validation_metadata_throughput_v2 import (  # noqa: E402
+    MAXIMUM_ROWS_PER_STATE_TRANSACTION,
+)
 from scripts.report_boundary_geometry_validation_repair_dry_run import (  # noqa: E402
     TARGET_CRS,
     classify_feature,
@@ -45,6 +48,14 @@ def args() -> argparse.Namespace:
     parser.add_argument("--expected-source-sha256", required=True)
     parser.add_argument("--cursor-after-index", type=int, default=-1)
     parser.add_argument("--limit", type=int, default=500)
+    parser.add_argument(
+        "--throughput-v2",
+        action="store_true",
+        help=(
+            "Permit a bounded V2 plan above the V1 500-row ceiling; "
+            "does not authorize execution"
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
         "--raw-dir",
@@ -140,8 +151,21 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 def main() -> int:
     options = args()
 
-    if options.limit < 1 or options.limit > 500:
-        raise SystemExit("--limit must be between 1 and 500")
+    maximum_limit = (
+        MAXIMUM_ROWS_PER_STATE_TRANSACTION
+        if options.throughput_v2
+        else 500
+    )
+    if options.limit < 1 or options.limit > maximum_limit:
+        if options.throughput_v2:
+            raise SystemExit(
+                "--limit must be between 1 and "
+                f"{MAXIMUM_ROWS_PER_STATE_TRANSACTION} "
+                "in throughput V2 mode"
+            )
+        raise SystemExit(
+            "--limit must be between 1 and 500"
+        )
     if options.cursor_after_index < -1:
         raise SystemExit("--cursor-after-index must be at least -1")
 
@@ -321,6 +345,8 @@ def main() -> int:
             "import_batch_id": import_batch_id,
             "cursor_after_index": options.cursor_after_index,
             "limit": options.limit,
+            "throughput_v2": options.throughput_v2,
+            "maximum_permitted_limit": maximum_limit,
         },
         "source": {
             "path": str(source_path),
