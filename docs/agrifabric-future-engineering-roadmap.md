@@ -219,6 +219,84 @@ Define provenance-aware adapters for:
 External observations should attach to the appropriate tenant, project,
 farmer, parcel, crop cycle, stage or field event.
 
+
+### 9. CORS-ready and raw-GNSS positioning evidence
+
+Keep AgriFabric hardware-neutral while allowing supported Android devices,
+survey providers and future external adapters to contribute higher-quality
+positioning evidence.
+
+This is a deferred research and design item. It does not authorize direct
+RTK/NTRIP integration, require specialized hardware, change current parcel
+capture, or imply that ordinary phone coordinates can be converted into
+survey-grade positions.
+
+Potential future capabilities:
+
+- detect Android GNSS measurement capabilities by device and OS version
+- collect raw GNSS measurement sessions on compatible Android devices
+- retain ordinary latitude/longitude and reported accuracy as the original
+  observation
+- queue raw observations offline and synchronize them through the existing
+  deterministic sync architecture
+- export or normalize observations into a processing-compatible format such
+  as RINEX where technically valid
+- submit synchronized sessions to a backend post-processing adapter using
+  compatible CORS reference observations for the same time period
+- retain original and post-processed coordinates without destructive
+  replacement
+- store processing method, engine/version, reference station or network,
+  input checksums, quality status, uncertainty and audit history
+- associate accepted observations with parcel vertices, parcel boundaries,
+  ground-control points or other location evidence
+- import externally corrected point and polygon observations from FPOs,
+  companies or survey providers without depending on a particular receiver
+  vendor
+
+The future design should distinguish at least:
+
+- ordinary location-only capture
+- raw-GNSS capture suitable for later analysis
+- externally corrected observations
+- backend post-processed observations
+- imagery-aligned geometry
+- authoritative cadastral or government reference geometry
+
+CORS is a positioning-correction source, not another administrative or
+thematic GIS layer. Post-processed observations may be visualized as map
+evidence, uncertainty and corrected geometry, but their provenance should
+remain separate from canonical LGD identity, village boundaries, DigiPin and
+the final parcel object.
+
+DigiPin remains a deterministic address/grid code derived from coordinates.
+It does not correct those coordinates. A future processing pipeline may
+derive DigiPin from an accepted post-processed coordinate while preserving
+the original coordinate and its originally derived DigiPin where required
+for audit.
+
+Backend correction is feasible only when the captured observations contain
+sufficient raw GNSS and timing information and compatible reference data is
+available. A correction inferred from one accurately surveyed parcel must
+not be applied to unrelated nearby phone coordinates. Precision anchors may
+instead support imagery alignment, ground control, validation and quality
+assessment for surrounding parcels.
+
+Before product implementation, run a bounded device-capability and
+ground-truth study covering representative low-, mid- and higher-capability
+Android phones. The study should determine measurement availability,
+offline log durability, processing success rate, achieved uncertainty,
+battery/storage cost and operational usability. No accuracy claim should be
+made solely because CORS data participated in processing.
+
+This capability must remain optional and inclusive. AgriFabric serves an
+older and low-digital-literacy population, including farmers who may not own
+a smartphone. The normal assisted and offline-first workflows must continue
+to work without raw-GNSS support. Where suitable phones are available, field
+agents or participating farmers may collect richer sessions for a subset of
+parcels; those observations can improve parcel evidence, reference control
+and imagery alignment without making precision capture a prerequisite for
+enrollment or service access.
+
 ## Opportunities to track without immediate implementation
 
 - verified market-price feeds
@@ -272,9 +350,11 @@ lines.
 ### P3 — Ecosystem integration
 
 1. External evidence adapter framework.
-2. Market and downstream transaction integrations.
-3. Batch and custody traceability.
-4. Outcome-driven intelligence after adequate data accumulation.
+2. CORS-ready/raw-GNSS capability study and backend post-processing adapter
+   design, without hardware dependency.
+3. Market and downstream transaction integrations.
+4. Batch and custody traceability.
+5. Outcome-driven intelligence after adequate data accumulation.
 
 ## Current implementation hold
 
