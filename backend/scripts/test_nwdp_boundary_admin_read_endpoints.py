@@ -113,7 +113,7 @@ def main() -> int:
             "/api/v1/master-data/geography/boundary-runtime-pilot/inspection?limit=10",
             headers=headers,
         )
-        check(runtime_inspection.status_code == 200, "Admin viewer can inspect inactive runtime pilot rows", runtime_inspection.text[:800])
+        check(runtime_inspection.status_code == 200, "Admin viewer can inspect active runtime pilot rows", runtime_inspection.text[:800])
         runtime_inspection_data = runtime_inspection.json()
         check(runtime_inspection_data["schema_version"] == "nwdp_boundary_runtime_pilot_inspection.v1", "Runtime inspection schema version is stable", runtime_inspection_data)
         check(runtime_inspection_data["mode"] == "READ_ONLY_RUNTIME_PILOT_INSPECTION", "Runtime inspection is read-only", runtime_inspection_data)
@@ -127,7 +127,20 @@ def main() -> int:
             "geography_boundary_runtime_crosswalks": 10,
             "geography_boundary_runtime_promotion_events": 1,
         }, "Runtime inspection reports pilot row shape", runtime_inspection_data["inspection"]["runtime_counts"])
-        check(all(value == 0 for value in runtime_inspection_data["inspection"]["runtime_active_counts"].values()), "Runtime inspection reports no active runtime rows", runtime_inspection_data["inspection"]["runtime_active_counts"])
+        check(
+            runtime_inspection_data[
+                "inspection"
+            ]["runtime_active_counts"] == {
+                "geography_boundary_runtime_sets": 1,
+                "geography_boundary_runtime_features": 10,
+                "geography_boundary_runtime_crosswalks": 10,
+                "geography_boundary_runtime_promotion_events": 0,
+            },
+            "Runtime inspection reports authorized active pilot shape",
+            runtime_inspection_data[
+                "inspection"
+            ]["runtime_active_counts"],
+        )
         check(runtime_inspection_data["readiness"]["lookup_api_enabled"] is False, "Runtime inspection keeps lookup disabled", runtime_inspection_data["readiness"])
         check(runtime_inspection_data["readiness"]["ready_for_runtime_spatial_matching"] is False, "Runtime inspection keeps spatial matching disabled", runtime_inspection_data["readiness"])
 

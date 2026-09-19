@@ -54,7 +54,16 @@ def main() -> None:
         "geography_boundary_runtime_promotion_events": 1,
     }
     assert_pass("Inspection reports runtime pilot row shape", inspection.get("runtime_counts") == expected_counts, inspection.get("runtime_counts"))
-    assert_pass("Inspection reports no active runtime rows", all(value == 0 for value in (inspection.get("runtime_active_counts") or {}).values()), inspection.get("runtime_active_counts"))
+    assert_pass(
+        "Inspection reports authorized active runtime shape",
+        inspection.get("runtime_active_counts") == {
+            "geography_boundary_runtime_sets": 1,
+            "geography_boundary_runtime_features": 10,
+            "geography_boundary_runtime_crosswalks": 10,
+            "geography_boundary_runtime_promotion_events": 0,
+        },
+        inspection.get("runtime_active_counts"),
+    )
     assert_pass("Inspection reports staging guardrails", inspection.get("staging_guardrails") == {
         "linked_candidate_count": 10,
         "inactive_count": 10,
@@ -63,8 +72,22 @@ def main() -> None:
         "accepted_direct_count": 10,
     }, inspection.get("staging_guardrails"))
     assert_pass("Inspection returns 10 crosswalks", len(inspection.get("crosswalks") or []) == 10, inspection.get("crosswalks"))
-    assert_pass("Inspection crosswalks are inactive", all(not row.get("runtime_crosswalk_active") for row in inspection.get("crosswalks") or []), inspection.get("crosswalks"))
-    assert_pass("Inspection runtime features are inactive", all(not row.get("runtime_feature_active") for row in inspection.get("crosswalks") or []), inspection.get("crosswalks"))
+    assert_pass(
+        "Inspection crosswalks are active",
+        all(
+            row.get("runtime_crosswalk_active") is True
+            for row in inspection.get("crosswalks") or []
+        ),
+        inspection.get("crosswalks"),
+    )
+    assert_pass(
+        "Inspection runtime features are active",
+        all(
+            row.get("runtime_feature_active") is True
+            for row in inspection.get("crosswalks") or []
+        ),
+        inspection.get("crosswalks"),
+    )
     assert_pass("Inspection staging candidates remain inactive", all(not row.get("staging_candidate_active") for row in inspection.get("crosswalks") or []), inspection.get("crosswalks"))
     assert_pass("Inspection readiness keeps lookup disabled", data["readiness"]["lookup_api_enabled"] is False, data["readiness"])
     assert_pass("Inspection readiness keeps matching disabled", data["readiness"]["ready_for_runtime_spatial_matching"] is False, data["readiness"])

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only inspection report for inactive NWDP boundary runtime pilot rows."""
+"""Read-only inspection report for the NWDP boundary runtime pilot."""
 
 from __future__ import annotations
 
@@ -135,7 +135,12 @@ def main() -> int:
     }
     healthy = (
         inspection["runtime_counts"] == expected_counts
-        and all(value == 0 for value in inspection["runtime_active_counts"].values())
+        and inspection["runtime_active_counts"] == {
+            "geography_boundary_runtime_sets": 1,
+            "geography_boundary_runtime_features": 10,
+            "geography_boundary_runtime_crosswalks": 10,
+            "geography_boundary_runtime_promotion_events": 0,
+        }
         and inspection["staging_guardrails"] == {
             "linked_candidate_count": 10,
             "inactive_count": 10,
