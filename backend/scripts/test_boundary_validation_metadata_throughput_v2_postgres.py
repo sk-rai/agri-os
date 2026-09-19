@@ -135,7 +135,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def build_plan(output_dir: Path) -> dict[str, Any]:
+def build_plan(
+    output_dir: Path,
+    row_count: int = 2,
+) -> dict[str, Any]:
     raw_dir = (
         ROOT
         / "data/raw/nwdp_boundary_all_state"
@@ -171,10 +174,13 @@ def build_plan(output_dir: Path) -> dict[str, Any]:
         "--cursor-after-index",
         "-1",
         "--limit",
-        "2",
+        str(row_count),
         "--output-dir",
         str(output_dir),
     ]
+
+    if row_count > 500:
+        command.append("--throughput-v2")
 
     subprocess.run(command, check=True)
 
@@ -191,9 +197,11 @@ def build_plan(output_dir: Path) -> dict[str, Any]:
 
     if plan.get("healthy") is not True:
         raise AssertionError("FIXTURE_PLAN_NOT_HEALTHY")
-    if len(plan.get("rows") or []) != 2:
+    if len(plan.get("rows") or []) != row_count:
         raise AssertionError(
-            "FIXTURE_REQUIRES_EXACTLY_TWO_ROWS"
+            "FIXTURE_PLAN_ROW_COUNT_MISMATCH:"
+            f"{len(plan.get('rows') or [])}:"
+            f"{row_count}"
         )
 
     return plan

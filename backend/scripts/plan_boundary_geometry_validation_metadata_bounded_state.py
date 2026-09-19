@@ -220,17 +220,44 @@ def main() -> int:
 
         import_batch_id = batches[0]["import_batch_id"]
 
-        db_rows = list(db.execute(text("""
-            select
-              id::text as source_feature_id,
-              source_feature_index,
-              source_vlcode,
-              geometry_validation_status,
-              eligible_for_runtime_after_promotion
-            from geography_boundary_source_features
-            where import_batch_id = cast(:batch_id as uuid)
-            order by source_feature_index
-        """), {"batch_id": import_batch_id}).mappings())
+        if options.throughput_v2:
+            db_rows = list(db.execute(text("""
+                select
+                  id::text as source_feature_id,
+                  source_feature_index,
+                  source_vlcode,
+                  geometry_validation_status,
+                  eligible_for_runtime_after_promotion
+                from geography_boundary_source_features
+                where import_batch_id =
+                        cast(:batch_id as uuid)
+                  and source_feature_index >
+                        :cursor_after_index
+                  and geometry_validation_status =
+                        'NOT_VALIDATED'
+                  and eligible_for_runtime_after_promotion =
+                        false
+                order by source_feature_index
+            """), {
+                "batch_id": import_batch_id,
+                "cursor_after_index":
+                    options.cursor_after_index,
+            }).mappings())
+        else:
+            db_rows = list(db.execute(text("""
+                select
+                  id::text as source_feature_id,
+                  source_feature_index,
+                  source_vlcode,
+                  geometry_validation_status,
+                  eligible_for_runtime_after_promotion
+                from geography_boundary_source_features
+                where import_batch_id =
+                        cast(:batch_id as uuid)
+                order by source_feature_index
+            """), {
+                "batch_id": import_batch_id,
+            }).mappings())
 
         after_counts = database_counts(db)
 
@@ -239,9 +266,22 @@ def main() -> int:
     state_repair_required_count = 0
     state_validation_review_count = 0
     eligible_after_cursor_count = 0
+    last_scanned_index = options.cursor_after_index
+    v2_candidate_count = (
+        len(db_rows)
+        if options.throughput_v2
+        else 0
+    )
 
     for db_row in db_rows:
+        if (
+            options.throughput_v2
+            and len(selected) >= options.limit
+        ):
+            break
+
         index = int(db_row["source_feature_index"])
+        last_scanned_index = index
         feature = features[index]
         validation = classify_feature(index, feature, transformer)
         classification = validation["classification"]
@@ -298,13 +338,32 @@ def main() -> int:
         })
 
     next_cursor = (
-        selected[-1]["source_feature_index"]
-        if selected
-        else options.cursor_after_index
+        last_scanned_index
+        if options.throughput_v2
+        else (
+            selected[-1]["source_feature_index"]
+            if selected
+            else options.cursor_after_index
+        )
     )
-    remaining_count = max(
-        eligible_after_cursor_count - len(selected),
-        0,
+    remaining_count = (
+        max(
+            v2_candidate_count
+            - (
+                sum(
+                    1
+                    for row in db_rows
+                    if int(row["source_feature_index"])
+                    <= last_scanned_index
+                )
+            ),
+            0,
+        )
+        if options.throughput_v2
+        else max(
+            eligible_after_cursor_count - len(selected),
+            0,
+        )
     )
 
     checksum_payload = {
@@ -370,9 +429,26 @@ def main() -> int:
             ),
             "next_cursor_after_index": next_cursor,
             "remaining_valid_not_validated_count": remaining_count,
+            "remaining_count_is_upper_bound":
+                options.throughput_v2,
+            "remaining_not_validated_candidate_upper_bound_count": (
+                remaining_count
+                if options.throughput_v2
+                else None
+            ),
             "has_more": remaining_count > 0,
         },
         "state_classification": {
+            "scope": (
+                "SELECTED_V2_WINDOW"
+                if options.throughput_v2
+                else "FULL_STATE"
+            ),
+            "scanned_feature_count": (
+                state_valid_count
+                + state_repair_required_count
+                + state_validation_review_count
+            ),
             "valid_without_repair_count": state_valid_count,
             "repair_required_count": state_repair_required_count,
             "validation_review_count": state_validation_review_count,

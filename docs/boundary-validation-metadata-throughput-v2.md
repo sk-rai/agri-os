@@ -50,3 +50,31 @@ roll back.
    an authorization ceiling, not the default.
 6. Generate and explicitly authorize a new V2 proposal. Existing V1 campaign
    authorizations cannot authorize V2 execution.
+
+## Benchmark evidence
+
+Rollback-only PostgreSQL benchmarks were run against Uttar Pradesh with the
+outer transaction always rolled back and post-run source, event, candidate,
+runtime and eligibility counts verified unchanged.
+
+| Rows | Planning | Apply | Rollback | Transaction | Apply rate |
+|---:|---:|---:|---:|---:|---:|
+| 500 | 83.5 s | 1.4 s | 0.1 s | 1.5 s | 354 rows/s |
+| 5,000, original planner | 94-140 s | 6.0-7.6 s | 1.3-1.4 s | 7.6-9.2 s | 658-829 rows/s |
+| 5,000, windowed V2 planner | 43.0 s | 7.2 s | 1.1 s | 8.5 s | 690 rows/s |
+| 25,000, windowed V2 planner | 67.2 s | 19.3 s | 7.2 s | 27.6 s | 1,298 rows/s |
+
+The 25,000-row transaction generated approximately 505 MB of observed
+cluster-wide WAL. This observation can include unrelated PostgreSQL activity
+and is not an exact per-transaction measurement.
+
+The benchmark supports 25,000 rows as the initial production transaction
+default. The 50,000-row authorization ceiling remains available but is not
+approved as a default and was intentionally not benchmarked.
+
+In throughput V2 mode, the planner classifies only the selected window.
+Therefore `remaining_valid_not_validated_count` is retained for schema
+compatibility but explicitly marked as an upper bound. The authoritative V2
+field is `remaining_not_validated_candidate_upper_bound_count`. A final state
+drain may encounter repair-required rows and return fewer selected rows than
+the configured transaction target.
