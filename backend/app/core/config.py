@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     SOIL_PROVIDER_API_SECRET: str | None = None
     SOIL_PROVIDER_LIVE_EXECUTION_ENABLED: bool = False
 
+    # Fail-closed until separately authorized.
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED: bool = False
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

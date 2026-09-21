@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.core.admin_auth import AdminPermission, require_admin_permission
+from app.core.config import settings
 from app.core.database import get_db
 from scripts.report_project_boundary_readiness import (
     SOURCE_SYSTEM as PROJECT_BOUNDARY_SOURCE_SYSTEM,
@@ -2185,6 +2186,145 @@ def get_project_geography_readiness(
         },
     }
 
+
+
+
+
+@router.get("/nwdp-boundary-runtime/point-lookup")
+def get_nwdp_boundary_runtime_point_lookup(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    runtime_set_id: Optional[UUID] = Query(None),
+    db: Session = Depends(get_db),
+    _principal=Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
+) -> dict:
+    """Resolve a point against active native runtime geometry."""
+
+    if not settings.NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "NWDP_RUNTIME_LOOKUP_DISABLED",
+                "message":
+                    "NWDP boundary runtime lookup is disabled",
+            },
+        )
+
+    rows = [
+        dict(row)
+        for row in db.execute(
+            text("""
+                with requested_point as (
+                  select ST_SetSRID(
+                    ST_MakePoint(
+                      :longitude,
+                      :latitude
+                    ),
+                    4326
+                  ) as geom
+                )
+                select
+                  rs.id::text as runtime_set_id,
+                  rf.id::text as runtime_feature_id,
+                  rw.id::text as runtime_crosswalk_id,
+                  rw.village_id::text as village_id,
+                  rw.village_lgd_code::text
+                    as village_lgd_code,
+                  rw.runtime_scope,
+                  rf.geometry_hash
+                from requested_point point
+                join geography_boundary_runtime_sets rs
+                  on rs.is_active = true
+                 and (
+                   cast(:runtime_set_id as uuid) is null
+                   or rs.id =
+                     cast(:runtime_set_id as uuid)
+                 )
+                join geography_boundary_runtime_features rf
+                  on rf.runtime_set_id = rs.id
+                 and rf.is_active = true
+                 and rf.geometry_validation_status =
+                       'VALIDATED'
+                 and rf.geometry_wgs84_geom is not null
+                 and rf.geometry_wgs84_geom
+                       && point.geom
+                 and ST_Covers(
+                       rf.geometry_wgs84_geom,
+                       point.geom
+                     )
+                join geography_boundary_runtime_crosswalks rw
+                  on rw.runtime_set_id = rs.id
+                 and rw.runtime_feature_id = rf.id
+                 and rw.is_active = true
+                 and rw.runtime_scope = 'village'
+                join geography_boundary_source_features sf
+                  on sf.id = rf.source_feature_id
+                 and sf.geometry_validation_status =
+                       'VALIDATED'
+                 and
+                   sf.eligible_for_runtime_after_promotion
+                     = true
+                order by rs.id, rf.id
+                limit 2
+            """),
+            {
+                "latitude": latitude,
+                "longitude": longitude,
+                "runtime_set_id": (
+                    str(runtime_set_id)
+                    if runtime_set_id
+                    else None
+                ),
+            },
+        ).mappings().all()
+    ]
+
+    if len(rows) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "NWDP_RUNTIME_LOOKUP_AMBIGUOUS",
+                "message":
+                    "Multiple active polygons cover point",
+                "match_count_lower_bound": len(rows),
+            },
+        )
+
+    point = {
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+
+    if not rows:
+        return {
+            "schema_version":
+                "nwdp_boundary_runtime_point_lookup.v1",
+            "status": "UNMATCHED",
+            "point": point,
+            "match_count": 0,
+            "runtime_set_id": (
+                str(runtime_set_id)
+                if runtime_set_id
+                else None
+            ),
+            "runtime_feature_id": None,
+            "runtime_crosswalk_id": None,
+            "village_id": None,
+            "village_lgd_code": None,
+            "runtime_scope": None,
+            "geometry_hash": None,
+        }
+
+    return {
+        "schema_version":
+            "nwdp_boundary_runtime_point_lookup.v1",
+        "status": "MATCHED",
+        "point": point,
+        "match_count": 1,
+        **rows[0],
+    }
 
 
 @router.get("/nwdp-boundary-project-matching/project-preview")
