@@ -88,6 +88,7 @@ def main() -> int:
             params={
                 "latitude": 15.9,
                 "longitude": 75.5,
+                "runtime_set_id": RUNTIME_SET_ID,
             },
         )
         check(
@@ -109,6 +110,7 @@ def main() -> int:
             params={
                 "latitude": 15.9,
                 "longitude": 75.5,
+                "runtime_set_id": RUNTIME_SET_ID,
             },
             headers=headers,
         )
@@ -124,11 +126,26 @@ def main() -> int:
             disabled.text,
         )
 
+        missing_scope = client.get(
+            ENDPOINT,
+            params={
+                "latitude": 15.9,
+                "longitude": 75.5,
+            },
+            headers=headers,
+        )
+        check(
+            missing_scope.status_code == 422,
+            "Runtime set scope is required",
+            missing_scope.text,
+        )
+
         invalid = client.get(
             ENDPOINT,
             params={
                 "latitude": 91,
                 "longitude": 75.5,
+                "runtime_set_id": RUNTIME_SET_ID,
             },
             headers=headers,
         )

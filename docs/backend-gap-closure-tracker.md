@@ -68,6 +68,8 @@ This tracker records discussed backend/demo-readiness items so each item is eith
 | Android DigiPin GPS materialization | Closed | Android Flow 39 now covers parcel centroid and farmer home DigiPin end-to-end: Android sends deterministic lat/lng, backend computes 4P3JK852C9, Android displays backend response, null-without-GPS is verified, and Android emits no-local-computation evidence. | `docs/android-digipin-gps-materialization-test.md`, `maestro/39-land-summary-digipin-debug-smoke.yaml`, `backend/scripts/test_digipin_utility.py`, `backend/scripts/test_digipin_farmer_parcel_fields.py`, `backend/scripts/test_sync_digipin_materialization.py` |
 
 
+| NWDP runtime lookup shared rate limiting | Deferred | The current lookup is an admin-only, explicitly scoped, 10-row internal pilot protected by a default-off feature flag, required runtime_set_id, GiST index, bounded ambiguity probe, and transaction-local database statement timeout. Add shared gateway/distributed rate limiting before customer, Android, public, multi-worker production, or national-scale lookup exposure. An in-process counter is not sufficient. | `backend/app/modules/master_data/api/geography.py`, `backend/app/core/config.py` |
+
 ## Current next backend priority
 
 After importing CoRE Stack class metadata, the next climate/geography step is polygon/LGD overlay planning:

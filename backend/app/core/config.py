@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # Fail-closed until separately authorized.
     NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED: bool = False
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_STATEMENT_TIMEOUT_MS: int = 2000
 
     @property
     def DATABASE_URL(self) -> str:

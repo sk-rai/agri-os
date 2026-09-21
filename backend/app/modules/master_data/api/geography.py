@@ -2194,7 +2194,7 @@ def get_project_geography_readiness(
 def get_nwdp_boundary_runtime_point_lookup(
     latitude: float = Query(..., ge=-90, le=90),
     longitude: float = Query(..., ge=-180, le=180),
-    runtime_set_id: Optional[UUID] = Query(None),
+    runtime_set_id: UUID = Query(...),
     db: Session = Depends(get_db),
     _principal=Depends(
         require_admin_permission(AdminPermission.VIEW)
@@ -2211,6 +2211,21 @@ def get_nwdp_boundary_runtime_point_lookup(
                     "NWDP boundary runtime lookup is disabled",
             },
         )
+
+    db.execute(
+        text("""
+            select set_config(
+              'statement_timeout',
+              :statement_timeout,
+              true
+            )
+        """),
+        {
+            "statement_timeout": (
+                f"{settings.NWDP_BOUNDARY_RUNTIME_LOOKUP_STATEMENT_TIMEOUT_MS}ms"
+            ),
+        },
+    )
 
     rows = [
         dict(row)
@@ -2237,11 +2252,8 @@ def get_nwdp_boundary_runtime_point_lookup(
                 from requested_point point
                 join geography_boundary_runtime_sets rs
                   on rs.is_active = true
-                 and (
-                   cast(:runtime_set_id as uuid) is null
-                   or rs.id =
+                 and rs.id =
                      cast(:runtime_set_id as uuid)
-                 )
                 join geography_boundary_runtime_features rf
                   on rf.runtime_set_id = rs.id
                  and rf.is_active = true
@@ -2272,11 +2284,8 @@ def get_nwdp_boundary_runtime_point_lookup(
             {
                 "latitude": latitude,
                 "longitude": longitude,
-                "runtime_set_id": (
-                    str(runtime_set_id)
-                    if runtime_set_id
-                    else None
-                ),
+                "runtime_set_id":
+                    str(runtime_set_id),
             },
         ).mappings().all()
     ]
@@ -2304,11 +2313,8 @@ def get_nwdp_boundary_runtime_point_lookup(
             "status": "UNMATCHED",
             "point": point,
             "match_count": 0,
-            "runtime_set_id": (
-                str(runtime_set_id)
-                if runtime_set_id
-                else None
-            ),
+            "runtime_set_id":
+                str(runtime_set_id),
             "runtime_feature_id": None,
             "runtime_crosswalk_id": None,
             "village_id": None,
