@@ -215,3 +215,48 @@ Both retain:
 - exact reconciliation;
 - rollback-only rehearsal;
 - proposal-scoped rollback.
+
+## Normalized direct-village rehabilitation proposal
+
+A subsequent read-only audit found that the blocked source-caveat
+population used zero-padded NWDP hierarchy and village codes. Numeric
+normalization recovered 57,146 structurally consistent direct matches
+across eight states. A conservative deterministic name audit retained
+49,606 rows:
+
+- 34,099 exact or punctuation-normalized name matches;
+- 15,507 matches differing only by a trailing parenthesized numeric or
+  slash-delimited cadastral suffix;
+- 7,540 remaining name mismatches reserved for manual review.
+
+The 49,606-row proposal covers Delhi, Haryana, Himachal Pradesh, Jammu &
+Kashmir, Ladakh, Punjab, Rajasthan, and Uttarakhand. Every row is pinned
+to its candidate, source feature, import batch, canonical hierarchy,
+source index, source geometry hash, reconstructed runtime geometry hash,
+and source-file checksum.
+
+Three invalid source geometries have previously authorized
+`SHAPELY_MAKE_VALID` repairs. They are pinned individually by source
+feature ID, source index, repaired geometry hash, repair proposal,
+authorization, and row checksum. All three reconstruct as valid
+polygons with relative area change below the authorized threshold.
+
+The read-only manifest reconciled:
+
+- row count: 49,606;
+- state count: 8;
+- existing candidate-crosswalk collisions: 0;
+- existing runtime source-feature collisions: 0;
+- database writes attempted: false;
+- ordered national row manifest:
+  `da132eb9cbf0446638d1ef060c866fc9313e02c5a934842b06f4929cb44101f5`;
+- manifest checksum:
+  `bf7aad382b660d5af1d91ac62d618ce1828b84e74ed4cc6abdb0d789c2ee51cc`;
+- manifest file SHA-256:
+  `050562fd5bd15928c567cbce5913ea370011bdd4615a010f9d4652357fc87984`.
+
+This is proposal evidence only. Candidate reclassification, runtime
+eligibility changes, runtime row creation, activation, lookup changes,
+project matches, source writes, and Android changes remain unauthorized.
+The 7,540 name mismatches and all other blocked/manual-review rows remain
+outside this proposal.
