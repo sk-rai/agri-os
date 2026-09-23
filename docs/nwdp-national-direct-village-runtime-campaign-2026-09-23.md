@@ -255,8 +255,55 @@ The read-only manifest reconciled:
 - manifest file SHA-256:
   `050562fd5bd15928c567cbce5913ea370011bdd4615a010f9d4652357fc87984`.
 
-This is proposal evidence only. Candidate reclassification, runtime
-eligibility changes, runtime row creation, activation, lookup changes,
-project matches, source writes, and Android changes remain unauthorized.
+The proposal was subsequently authorized for exactly these 49,606 rows.
 The 7,540 name mismatches and all other blocked/manual-review rows remain
-outside this proposal.
+outside the authorization.
+
+## Normalized direct-village inactive staging
+
+The authorized rehabilitation engine was committed as `23cefe2` with
+script SHA-256:
+
+`72ab211e1860ee765b12269a2864405db70a9c40f3aebc21a448f5b1aca53b4f`
+
+Authorization was pinned to:
+
+- proposal checksum:
+  `11bc682d32ea23c72403cbe374bc615e38fb6e1652a271e10692455dc8110691`;
+- authorization checksum:
+  `825fa696b79d24d28d86fa68e66c300b0a7c6bd0c6622af236fa422dddb117cb`;
+- ordered national row manifest:
+  `da132eb9cbf0446638d1ef060c866fc9313e02c5a934842b06f4929cb44101f5`;
+- manifest checksum:
+  `bf7aad382b660d5af1d91ac62d618ce1828b84e74ed4cc6abdb0d789c2ee51cc`.
+
+A read-only dry run reconciled all 49,606 rows across eight states.
+A rollback-only rehearsal staged all 33 Delhi rows inside a transaction,
+verified inactive native geometry and exact counts, exercised the
+proposal-scoped rollback path, restored 33 candidate and source rows,
+deleted 33 runtime features and crosswalks plus one promotion event, and
+left database state unchanged.
+
+The guarded apply then completed eight bounded single-writer
+transactions:
+
+- 49,606 candidate review-metadata updates;
+- 49,606 authorized runtime-eligibility updates;
+- 49,606 inactive runtime features;
+- 49,606 inactive village crosswalks;
+- 8 inactive promotion events.
+
+Post-apply reconciliation found zero active staged rows, zero candidate
+activation or promotion changes, zero candidate identity changes, zero
+invalid native geometries, zero duplicate villages, and zero project
+matches. Existing active runtime features and crosswalks remained
+unchanged at 449,899 each. The final checkpoint is complete at 49,606
+rows and 8 states with checksum:
+
+`adbc0685e9a22a91fb326c59c9d49b1f422da54fe401f330ed5d519bb621dab5`
+
+This milestone is inactive staging only. It does not authorize or perform
+runtime activation, runtime-set identity changes, lookup exposure,
+project matching, source geometry/file changes, or Android changes.
+The remaining 47,670 rows from the original 97,276-row blocked
+population remain outside this staged cohort.
