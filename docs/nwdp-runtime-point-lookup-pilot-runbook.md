@@ -2,19 +2,24 @@
 
 ## Scope
 
-This runbook covers the internal admin-only Karnataka pilot for:
+This runbook covers the guarded admin-only runtime lookup for:
 
 `GET /api/v1/master-data/geography/nwdp-boundary-runtime/point-lookup`
 
-The pilot is limited to runtime set:
+The lookup is limited to runtime set:
 
 `e5f93e27-a0bd-5c8b-bef3-d97986e14c55`
 
-It currently contains 10 active runtime features and 10 active village
-crosswalks backed by native PostGIS geometry.
+It currently contains 449,899 active runtime features and 449,899 active
+village crosswalks backed by native PostGIS geometry: 110 preserved pilot
+rows plus 449,789 rows from the separately authorized national V2 campaign.
+
+The national campaign covers 30 state/UT source batches. It is not complete
+36-state/UT coverage.
 
 This runbook does not authorize Android, public, customer, project-scoped,
-national-scale, or additional runtime-set access.
+or additional runtime-set access. National runtime rows being active does
+not itself authorize enabling the lookup endpoint.
 
 ## Request contract
 
@@ -45,9 +50,9 @@ The local project reads it from:
 
 `/home/lynksavvy/projects/farmint/.env`
 
-The current internal pilot value is:
+The current post-campaign value is:
 
-`NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED=true`
+`NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED=false`
 
 Restart the backend after changing the value.
 
@@ -91,10 +96,11 @@ An outside point should return `UNMATCHED` with match count `0`.
 
 ## Deferred controls
 
-Shared gateway or distributed rate limiting is intentionally deferred for this
-10-row internal admin pilot. It is mandatory before customer, Android, public,
-multi-worker production, or national-scale exposure. An in-process counter is
-not considered sufficient.
+Shared gateway or distributed rate limiting is mandatory before customer,
+Android, public, multi-worker production, or national-scale exposure. The
+national runtime rows are active, but lookup remains disabled until that
+control and a separate lookup-enablement authorization are in place. An
+in-process counter is not considered sufficient.
 
 ## Expansion governance
 
