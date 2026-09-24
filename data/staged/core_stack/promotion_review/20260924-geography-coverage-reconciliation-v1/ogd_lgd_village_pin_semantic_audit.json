@@ -1,0 +1,421 @@
+{
+  "chandigarh": null,
+  "distinct_pin_codes": 17059,
+  "distinct_state_codes": 35,
+  "distinct_village_codes": 560150,
+  "distinct_village_pin_pairs": 560316,
+  "duplicate_mapping_excess_rows": 117007,
+  "malformed_rows": 0,
+  "mapping_rows": 677323,
+  "missing_fields": {},
+  "sample_codes_in_multiple_states": {},
+  "sample_identity_conflicts": {
+    "476380": [
+      [
+        "23",
+        "410",
+        "3543",
+        "Bhicholi Mardana (Og)"
+      ],
+      [
+        "23",
+        "410",
+        "7013",
+        "Bhicholi Mardana (Og)"
+      ]
+    ]
+  },
+  "source_file": "data/staged/ogd_geography/20260725T095703Z/lgd_village_pin_links.jsonl",
+  "source_file_sha256": "a9d7fbe403442c5477082437abbbeca5ca9288e8d54bc14b38c83920bd52bb7c",
+  "states": [
+    {
+      "distinct_district_codes": 20,
+      "distinct_pin_codes": 175,
+      "distinct_subdistrict_codes": 208,
+      "distinct_village_codes": 5615,
+      "mapping_rows": 6939,
+      "state_lgd_code": "1",
+      "state_names": {
+        "Jammu And Kashmir": 6939
+      }
+    },
+    {
+      "distinct_district_codes": 12,
+      "distinct_pin_codes": 430,
+      "distinct_subdistrict_codes": 193,
+      "distinct_village_codes": 17676,
+      "mapping_rows": 21851,
+      "state_lgd_code": "2",
+      "state_names": {
+        "Himachal Pradesh": 21851
+      }
+    },
+    {
+      "distinct_district_codes": 23,
+      "distinct_pin_codes": 504,
+      "distinct_subdistrict_codes": 97,
+      "distinct_village_codes": 10567,
+      "mapping_rows": 15417,
+      "state_lgd_code": "3",
+      "state_names": {
+        "Punjab": 15417
+      }
+    },
+    {
+      "distinct_district_codes": 13,
+      "distinct_pin_codes": 274,
+      "distinct_subdistrict_codes": 129,
+      "distinct_village_codes": 15850,
+      "mapping_rows": 19910,
+      "state_lgd_code": "5",
+      "state_names": {
+        "Uttarakhand": 19910
+      }
+    },
+    {
+      "distinct_district_codes": 23,
+      "distinct_pin_codes": 274,
+      "distinct_subdistrict_codes": 143,
+      "distinct_village_codes": 4126,
+      "mapping_rows": 5224,
+      "state_lgd_code": "6",
+      "state_names": {
+        "Haryana": 5224
+      }
+    },
+    {
+      "distinct_district_codes": 10,
+      "distinct_pin_codes": 35,
+      "distinct_subdistrict_codes": 30,
+      "distinct_village_codes": 188,
+      "mapping_rows": 243,
+      "state_lgd_code": "7",
+      "state_names": {
+        "Delhi": 243
+      }
+    },
+    {
+      "distinct_district_codes": 41,
+      "distinct_pin_codes": 975,
+      "distinct_subdistrict_codes": 425,
+      "distinct_village_codes": 38957,
+      "mapping_rows": 45130,
+      "state_lgd_code": "8",
+      "state_names": {
+        "Rajasthan": 45130
+      }
+    },
+    {
+      "distinct_district_codes": 75,
+      "distinct_pin_codes": 1580,
+      "distinct_subdistrict_codes": 350,
+      "distinct_village_codes": 94342,
+      "mapping_rows": 120086,
+      "state_lgd_code": "9",
+      "state_names": {
+        "Uttar Pradesh": 120086
+      }
+    },
+    {
+      "distinct_district_codes": 38,
+      "distinct_pin_codes": 785,
+      "distinct_subdistrict_codes": 537,
+      "distinct_village_codes": 35245,
+      "mapping_rows": 43649,
+      "state_lgd_code": "10",
+      "state_names": {
+        "Bihar": 43649
+      }
+    },
+    {
+      "distinct_district_codes": 6,
+      "distinct_pin_codes": 18,
+      "distinct_subdistrict_codes": 19,
+      "distinct_village_codes": 381,
+      "mapping_rows": 513,
+      "state_lgd_code": "11",
+      "state_names": {
+        "Sikkim": 513
+      }
+    },
+    {
+      "distinct_district_codes": 27,
+      "distinct_pin_codes": 47,
+      "distinct_subdistrict_codes": 209,
+      "distinct_village_codes": 4421,
+      "mapping_rows": 4803,
+      "state_lgd_code": "12",
+      "state_names": {
+        "Arunachal Pradesh": 4803
+      }
+    },
+    {
+      "distinct_district_codes": 17,
+      "distinct_pin_codes": 39,
+      "distinct_subdistrict_codes": 119,
+      "distinct_village_codes": 1332,
+      "mapping_rows": 1544,
+      "state_lgd_code": "13",
+      "state_names": {
+        "Nagaland": 1544
+      }
+    },
+    {
+      "distinct_district_codes": 16,
+      "distinct_pin_codes": 49,
+      "distinct_subdistrict_codes": 65,
+      "distinct_village_codes": 3081,
+      "mapping_rows": 3483,
+      "state_lgd_code": "14",
+      "state_names": {
+        "Manipur": 3483
+      }
+    },
+    {
+      "distinct_district_codes": 11,
+      "distinct_pin_codes": 34,
+      "distinct_subdistrict_codes": 28,
+      "distinct_village_codes": 725,
+      "mapping_rows": 726,
+      "state_lgd_code": "15",
+      "state_names": {
+        "Mizoram": 726
+      }
+    },
+    {
+      "distinct_district_codes": 8,
+      "distinct_pin_codes": 73,
+      "distinct_subdistrict_codes": 23,
+      "distinct_village_codes": 828,
+      "mapping_rows": 828,
+      "state_lgd_code": "16",
+      "state_names": {
+        "Tripura": 828
+      }
+    },
+    {
+      "distinct_district_codes": 12,
+      "distinct_pin_codes": 64,
+      "distinct_subdistrict_codes": 56,
+      "distinct_village_codes": 5262,
+      "mapping_rows": 5299,
+      "state_lgd_code": "17",
+      "state_names": {
+        "Meghalaya": 5299
+      }
+    },
+    {
+      "distinct_district_codes": 35,
+      "distinct_pin_codes": 514,
+      "distinct_subdistrict_codes": 157,
+      "distinct_village_codes": 24553,
+      "mapping_rows": 30691,
+      "state_lgd_code": "18",
+      "state_names": {
+        "Assam": 30691
+      }
+    },
+    {
+      "distinct_district_codes": 22,
+      "distinct_pin_codes": 870,
+      "distinct_subdistrict_codes": 345,
+      "distinct_village_codes": 33522,
+      "mapping_rows": 39855,
+      "state_lgd_code": "19",
+      "state_names": {
+        "West Bengal": 39855
+      }
+    },
+    {
+      "distinct_district_codes": 24,
+      "distinct_pin_codes": 253,
+      "distinct_subdistrict_codes": 263,
+      "distinct_village_codes": 28322,
+      "mapping_rows": 35177,
+      "state_lgd_code": "20",
+      "state_names": {
+        "Jharkhand": 35177
+      }
+    },
+    {
+      "distinct_district_codes": 30,
+      "distinct_pin_codes": 814,
+      "distinct_subdistrict_codes": 317,
+      "distinct_village_codes": 47374,
+      "mapping_rows": 58310,
+      "state_lgd_code": "21",
+      "state_names": {
+        "Odisha": 58310
+      }
+    },
+    {
+      "distinct_district_codes": 33,
+      "distinct_pin_codes": 254,
+      "distinct_subdistrict_codes": 251,
+      "distinct_village_codes": 18373,
+      "mapping_rows": 20962,
+      "state_lgd_code": "22",
+      "state_names": {
+        "Chhattisgarh": 20962
+      }
+    },
+    {
+      "distinct_district_codes": 55,
+      "distinct_pin_codes": 721,
+      "distinct_subdistrict_codes": 444,
+      "distinct_village_codes": 46977,
+      "mapping_rows": 53679,
+      "state_lgd_code": "23",
+      "state_names": {
+        "Madhya Pradesh": 53679
+      }
+    },
+    {
+      "distinct_district_codes": 34,
+      "distinct_pin_codes": 903,
+      "distinct_subdistrict_codes": 296,
+      "distinct_village_codes": 16323,
+      "mapping_rows": 17304,
+      "state_lgd_code": "24",
+      "state_names": {
+        "Gujarat": 17304
+      }
+    },
+    {
+      "distinct_district_codes": 35,
+      "distinct_pin_codes": 1450,
+      "distinct_subdistrict_codes": 358,
+      "distinct_village_codes": 38951,
+      "mapping_rows": 43695,
+      "state_lgd_code": "27",
+      "state_names": {
+        "Maharashtra": 43695
+      }
+    },
+    {
+      "distinct_district_codes": 28,
+      "distinct_pin_codes": 1120,
+      "distinct_subdistrict_codes": 685,
+      "distinct_village_codes": 11236,
+      "mapping_rows": 12682,
+      "state_lgd_code": "28",
+      "state_names": {
+        "Andhra Pradesh": 12682
+      }
+    },
+    {
+      "distinct_district_codes": 31,
+      "distinct_pin_codes": 1199,
+      "distinct_subdistrict_codes": 240,
+      "distinct_village_codes": 25525,
+      "mapping_rows": 32517,
+      "state_lgd_code": "29",
+      "state_names": {
+        "Karnataka": 32517
+      }
+    },
+    {
+      "distinct_district_codes": 3,
+      "distinct_pin_codes": 75,
+      "distinct_subdistrict_codes": 12,
+      "distinct_village_codes": 429,
+      "mapping_rows": 509,
+      "state_lgd_code": "30",
+      "state_names": {
+        "Goa": 509
+      }
+    },
+    {
+      "distinct_district_codes": 1,
+      "distinct_pin_codes": 9,
+      "distinct_subdistrict_codes": 10,
+      "distinct_village_codes": 27,
+      "mapping_rows": 34,
+      "state_lgd_code": "31",
+      "state_names": {
+        "Lakshadweep": 34
+      }
+    },
+    {
+      "distinct_district_codes": 14,
+      "distinct_pin_codes": 1020,
+      "distinct_subdistrict_codes": 78,
+      "distinct_village_codes": 1666,
+      "mapping_rows": 2322,
+      "state_lgd_code": "32",
+      "state_names": {
+        "Kerala": 2322
+      }
+    },
+    {
+      "distinct_district_codes": 38,
+      "distinct_pin_codes": 1850,
+      "distinct_subdistrict_codes": 317,
+      "distinct_village_codes": 17265,
+      "mapping_rows": 21008,
+      "state_lgd_code": "33",
+      "state_names": {
+        "Tamil Nadu": 21008
+      }
+    },
+    {
+      "distinct_district_codes": 2,
+      "distinct_pin_codes": 29,
+      "distinct_subdistrict_codes": 7,
+      "distinct_village_codes": 141,
+      "mapping_rows": 199,
+      "state_lgd_code": "34",
+      "state_names": {
+        "Puducherry": 199
+      }
+    },
+    {
+      "distinct_district_codes": 3,
+      "distinct_pin_codes": 18,
+      "distinct_subdistrict_codes": 9,
+      "distinct_village_codes": 559,
+      "mapping_rows": 785,
+      "state_lgd_code": "35",
+      "state_names": {
+        "Andaman And Nicobar Islands": 785
+      }
+    },
+    {
+      "distinct_district_codes": 33,
+      "distinct_pin_codes": 607,
+      "distinct_subdistrict_codes": 617,
+      "distinct_village_codes": 10024,
+      "mapping_rows": 11585,
+      "state_lgd_code": "36",
+      "state_names": {
+        "Telangana": 11585
+      }
+    },
+    {
+      "distinct_district_codes": 2,
+      "distinct_pin_codes": 13,
+      "distinct_subdistrict_codes": 15,
+      "distinct_village_codes": 205,
+      "mapping_rows": 257,
+      "state_lgd_code": "37",
+      "state_names": {
+        "Ladakh": 257
+      }
+    },
+    {
+      "distinct_district_codes": 3,
+      "distinct_pin_codes": 9,
+      "distinct_subdistrict_codes": 3,
+      "distinct_village_codes": 82,
+      "mapping_rows": 107,
+      "state_lgd_code": "38",
+      "state_names": {
+        "The Dadra And Nagar Haveli And Daman And Diu": 107
+      }
+    }
+  ],
+  "village_codes_in_multiple_states": 0,
+  "village_identity_conflicts": 1,
+  "villages_with_multiple_pin_codes": 166,
+  "villages_with_multiple_rows": 117108
+}

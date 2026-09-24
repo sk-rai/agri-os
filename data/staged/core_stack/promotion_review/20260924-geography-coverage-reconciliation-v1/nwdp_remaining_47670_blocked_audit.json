@@ -1,0 +1,146 @@
+{
+  "checks": {
+    "database_writes_attempted_false": true,
+    "moved_to_no_village_exact": true,
+    "original_population_exact": true,
+    "preliminary_subdistrict_total_exact": true,
+    "reason_counts_exact": true,
+    "reason_sum_exact": true,
+    "state_sum_exact": true,
+    "true_subdistrict_total_exact": true
+  },
+  "classification_correction": {
+    "moved_to_no_canonical_village": 5088,
+    "preliminary_subdistrict_total": 5232,
+    "state_corrections": [
+      {
+        "move_to_no_canonical_village": 70,
+        "preliminary_subdistrict_total": 119,
+        "source_state": "Delhi",
+        "true_source_subdistrict_mismatch": 49
+      },
+      {
+        "move_to_no_canonical_village": 31,
+        "preliminary_subdistrict_total": 91,
+        "source_state": "Himachal Pradesh",
+        "true_source_subdistrict_mismatch": 60
+      },
+      {
+        "move_to_no_canonical_village": 185,
+        "preliminary_subdistrict_total": 185,
+        "source_state": "Punjab",
+        "true_source_subdistrict_mismatch": 0
+      },
+      {
+        "move_to_no_canonical_village": 4802,
+        "preliminary_subdistrict_total": 4837,
+        "source_state": "Rajasthan",
+        "true_source_subdistrict_mismatch": 35
+      }
+    ],
+    "true_source_subdistrict_mismatch": 144
+  },
+  "classification_precedence": [
+    "SOURCE_CODE_NON_NUMERIC",
+    "MISSING_CANONICAL_STATE",
+    "MISSING_CANONICAL_DISTRICT",
+    "NO_CANONICAL_VILLAGE_MATCH",
+    "SOURCE_SUBDISTRICT_MISMATCH",
+    "CANONICAL_BLOCK_MISMATCH",
+    "NAME_MISMATCH_REVIEW_REQUIRED"
+  ],
+  "database_writes_attempted": false,
+  "distinct_candidate_count": 47670,
+  "distinct_source_feature_count": 47670,
+  "expected_row_count": 47670,
+  "healthy": true,
+  "mode": "READ_ONLY_AUDIT",
+  "population": {
+    "candidate_bucket": "BLOCKED_SOURCE_CAVEAT",
+    "geometry_validation_status": "VALIDATED",
+    "is_active": false,
+    "promotion_status": "NOT_PROMOTED",
+    "review_status": "BLOCKED"
+  },
+  "prohibitions": {
+    "android_change": true,
+    "candidate_activation": true,
+    "candidate_promotion": true,
+    "lookup_change": true,
+    "project_match_write": true,
+    "runtime_activation": true,
+    "runtime_row_creation": true,
+    "source_file_write": true,
+    "source_row_write": true
+  },
+  "row_count": 47670,
+  "schema_version": "nwdp_remaining_blocked_rows_audit.v2",
+  "state_reason_matrix": {
+    "Chandigarh": {
+      "MISSING_CANONICAL_STATE": 12
+    },
+    "Delhi": {
+      "CANONICAL_BLOCK_MISMATCH": 28,
+      "MISSING_CANONICAL_DISTRICT": 11,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 1,
+      "NO_CANONICAL_VILLAGE_MATCH": 101,
+      "SOURCE_SUBDISTRICT_MISMATCH": 49
+    },
+    "Haryana": {
+      "CANONICAL_BLOCK_MISMATCH": 1033,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 750,
+      "NO_CANONICAL_VILLAGE_MATCH": 2940
+    },
+    "Himachal Pradesh": {
+      "CANONICAL_BLOCK_MISMATCH": 4165,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 4218,
+      "NO_CANONICAL_VILLAGE_MATCH": 3807,
+      "SOURCE_SUBDISTRICT_MISMATCH": 60
+    },
+    "Jammu & Kashmir": {
+      "CANONICAL_BLOCK_MISMATCH": 224,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 1,
+      "NO_CANONICAL_VILLAGE_MATCH": 987
+    },
+    "Ladakh": {
+      "CANONICAL_BLOCK_MISMATCH": 102,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 37,
+      "NO_CANONICAL_VILLAGE_MATCH": 43
+    },
+    "Punjab": {
+      "CANONICAL_BLOCK_MISMATCH": 1319,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 1476,
+      "NO_CANONICAL_VILLAGE_MATCH": 2344
+    },
+    "Rajasthan": {
+      "CANONICAL_BLOCK_MISMATCH": 3122,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 412,
+      "NO_CANONICAL_VILLAGE_MATCH": 14443,
+      "SOURCE_SUBDISTRICT_MISMATCH": 35
+    },
+    "Uttarakhand": {
+      "CANONICAL_BLOCK_MISMATCH": 3843,
+      "NAME_MISMATCH_REVIEW_REQUIRED": 645,
+      "NO_CANONICAL_VILLAGE_MATCH": 1462
+    }
+  },
+  "totals_by_reason": {
+    "CANONICAL_BLOCK_MISMATCH": 13836,
+    "MISSING_CANONICAL_DISTRICT": 11,
+    "MISSING_CANONICAL_STATE": 12,
+    "NAME_MISMATCH_REVIEW_REQUIRED": 7540,
+    "NO_CANONICAL_VILLAGE_MATCH": 26127,
+    "SOURCE_SUBDISTRICT_MISMATCH": 144
+  },
+  "totals_by_state": {
+    "Chandigarh": 12,
+    "Delhi": 190,
+    "Haryana": 4723,
+    "Himachal Pradesh": 12250,
+    "Jammu & Kashmir": 1212,
+    "Ladakh": 182,
+    "Punjab": 5139,
+    "Rajasthan": 18012,
+    "Uttarakhand": 5950
+  }
+}

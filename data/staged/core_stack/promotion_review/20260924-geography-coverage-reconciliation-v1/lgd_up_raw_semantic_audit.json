@@ -1,0 +1,138 @@
+{
+  "block_village_mapping": {
+    "distinct_block_codes": 826,
+    "distinct_block_village_pairs": 107479,
+    "distinct_village_codes": 107479,
+    "pair_duplicates": {
+      "duplicate_excess_rows": 0,
+      "duplicate_value_count": 0,
+      "largest_duplicates": []
+    },
+    "physical_mapping_rows": 107479,
+    "states": {
+      "9": 107479
+    },
+    "village_code_duplicates": {
+      "duplicate_excess_rows": 0,
+      "duplicate_value_count": 0,
+      "largest_duplicates": []
+    }
+  },
+  "cross_file_reconciliation": {
+    "block_coverage_not_in_master": 0,
+    "block_covered_unique_villages": 107479,
+    "gp_not_in_master": 0,
+    "gp_unique_villages": 110274,
+    "master_missing_from_block_coverage": 2795,
+    "master_missing_from_gp": 0,
+    "master_unique_villages": 110274,
+    "sample_block_not_in_master": [],
+    "sample_gp_not_in_master": [],
+    "sample_master_missing_from_block": [
+      "109203",
+      "109208",
+      "111120",
+      "111138",
+      "111328",
+      "118592",
+      "118688",
+      "118755",
+      "118765",
+      "118782",
+      "119103",
+      "119199",
+      "119256",
+      "119301",
+      "119326",
+      "119350",
+      "119430",
+      "119453",
+      "119507",
+      "119679",
+      "119758",
+      "119761",
+      "120115",
+      "120116",
+      "120117",
+      "120118",
+      "120119",
+      "120120",
+      "120121",
+      "120122",
+      "120123",
+      "120128",
+      "120138",
+      "120139",
+      "120140",
+      "120141",
+      "120142",
+      "120143",
+      "120144",
+      "120145",
+      "120146",
+      "120147",
+      "120148",
+      "120149",
+      "120150",
+      "120151",
+      "120152",
+      "120153",
+      "120154",
+      "120155"
+    ],
+    "sample_master_missing_from_gp": []
+  },
+  "village_gp_mapping": {
+    "distinct_local_body_codes": 57694,
+    "distinct_serials": 110274,
+    "distinct_village_codes": 110274,
+    "distinct_village_local_body_pairs": 110274,
+    "pair_duplicates": {
+      "duplicate_excess_rows": 0,
+      "duplicate_value_count": 0,
+      "largest_duplicates": []
+    },
+    "physical_mapping_rows": 110274,
+    "rows_missing_local_body": 6441,
+    "serial_max": 110274,
+    "serial_min": 1,
+    "village_code_duplicates": {
+      "duplicate_excess_rows": 0,
+      "duplicate_value_count": 0,
+      "largest_duplicates": []
+    }
+  },
+  "village_master": {
+    "distinct_district_codes": 75,
+    "distinct_serials": 110274,
+    "distinct_subdistrict_codes": 350,
+    "distinct_village_codes": 110274,
+    "distinct_village_names": 80108,
+    "ignored_numeric_rows": [],
+    "missing_serial_count": 0,
+    "physical_data_rows": 110274,
+    "serial_max": 110274,
+    "serial_min": 1,
+    "statuses": {
+      "Forest": 22,
+      "Inhabitant": 105575,
+      "Un-Inhabitant": 4677
+    },
+    "versions": {
+      "1": 90473,
+      "2": 13030,
+      "3": 5280,
+      "4": 1036,
+      "5": 391,
+      "6": 40,
+      "7": 19,
+      "8": 4,
+      "9": 1
+    },
+    "village_code_duplicates": {
+      "duplicate_excess_rows": 0,
+      "duplicate_value_count": 0,
+      "largest_duplicates": []
+    }
+  }
+}

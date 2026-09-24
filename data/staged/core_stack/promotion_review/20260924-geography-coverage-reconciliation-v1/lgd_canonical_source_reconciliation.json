@@ -1,0 +1,87 @@
+{
+  "checks": {
+    "chandigarh_absent_from_ogd": true,
+    "database_distinct_codes_exact": true,
+    "database_rows_exact": true,
+    "expected_union_exact": true,
+    "no_expected_codes_missing": true,
+    "no_unexpected_database_codes": true,
+    "ogd_distinct_codes_exact": true,
+    "ogd_mapping_rows_exact": true,
+    "one_database_duplicate_code": true,
+    "one_ogd_identity_conflict": true,
+    "up_master_exact": true,
+    "up_ogd_overlap_exact": true
+  },
+  "database_duplicate_codes": {
+    "476380": [
+      {
+        "district_code": "410",
+        "district_name": "Indore",
+        "state_code": "23",
+        "state_name": "Madhya Pradesh",
+        "village_code": "476380",
+        "village_id": "5141b213-2c6d-4125-8837-dd144e2e3578",
+        "village_name": "Bhicholi Mardana (Og)"
+      },
+      {
+        "district_code": "410",
+        "district_name": "Indore",
+        "state_code": "23",
+        "state_name": "Madhya Pradesh",
+        "village_code": "476380",
+        "village_id": "a36c353b-7fb2-438c-947a-7dace256185f",
+        "village_name": "Bhicholi Mardana (Og)"
+      }
+    ]
+  },
+  "database_writes_attempted": false,
+  "healthy": true,
+  "ogd_identity_conflicts": {
+    "476380": [
+      [
+        "23",
+        "410",
+        "3543",
+        "Bhicholi Mardana (Og)"
+      ],
+      [
+        "23",
+        "410",
+        "7013",
+        "Bhicholi Mardana (Og)"
+      ]
+    ]
+  },
+  "schema_version": "lgd_canonical_source_reconciliation.v1",
+  "set_reconciliation": {
+    "database_codes_not_expected": 0,
+    "database_distinct_codes": 576082,
+    "database_rows": 576083,
+    "expected_missing_from_database": 0,
+    "expected_union": 576082,
+    "ogd_codes": 560150,
+    "ogd_only": 465808,
+    "sample_database_codes_not_expected": [],
+    "sample_expected_missing_from_database": [],
+    "up_codes": 110274,
+    "up_ogd_overlap": 94342,
+    "up_only": 15932
+  },
+  "sources": {
+    "ogd_village_pin_mapping": {
+      "chandigarh_present": false,
+      "distinct_state_codes": 35,
+      "distinct_village_codes": 560150,
+      "file": "/home/lynksavvy/projects/farmint/data/staged/ogd_geography/20260725T095703Z/lgd_village_pin_links.jsonl",
+      "file_sha256": "a9d7fbe403442c5477082437abbbeca5ca9288e8d54bc14b38c83920bd52bb7c",
+      "mapping_rows": 677323
+    },
+    "up_master": {
+      "distinct_village_codes": 110274,
+      "file": "/home/lynksavvy/projects/farmint/data/staged/geography_lgd/20260812T085319Z/villages.jsonl",
+      "file_sha256": "503932fbeec60948516cc0ba84af8335e30a3a9d01b8b2d7e2d21742c4ffe19b",
+      "rows": 110274
+    }
+  }
+}

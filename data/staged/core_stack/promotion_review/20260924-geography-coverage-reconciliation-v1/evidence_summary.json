@@ -1,0 +1,81 @@
+{
+  "canonical_geography": {
+    "database_rows": 576083,
+    "distinct_village_codes": 576082,
+    "duplicate_lgd_code": "476380",
+    "missing_state": "Chandigarh",
+    "ogd_distinct_village_codes": 560150,
+    "ogd_village_pin_mapping_rows": 677323,
+    "up_master_codes": 110274,
+    "up_ogd_overlap": 94342
+  },
+  "database_writes_attempted": false,
+  "evidence_checksum": "c5745a8f9903501b7f93b7d326ccc674ba619db6757bcd723c1b6f16cddf8240",
+  "files": {
+    "lgd_canonical_source_reconciliation.json": {
+      "database_writes_attempted": false,
+      "healthy": true,
+      "schema_version": "lgd_canonical_source_reconciliation.v1",
+      "sha256": "3fb868eeeabd0ad21932c9b9f668d24ee2d4f4b9f313fafc75b92d2f4f1fe2c7"
+    },
+    "lgd_nwdp_coverage_baseline.json": {
+      "database_writes_attempted": false,
+      "healthy": null,
+      "schema_version": "lgd_nwdp_raw_coverage_baseline.v1",
+      "sha256": "bcf49c98ddcff66769cd417e18e0d4c05cc4415e8218076c9fac456a80017531"
+    },
+    "lgd_up_raw_semantic_audit.json": {
+      "database_writes_attempted": null,
+      "healthy": null,
+      "schema_version": null,
+      "sha256": "52bedc991512e663635153f40c534b0ea3051d70d7772ddae041164b96fc88a7"
+    },
+    "nwdp_parent_drift_actionability_audit.json": {
+      "database_writes_attempted": false,
+      "healthy": true,
+      "schema_version": "nwdp_parent_drift_actionability_audit.v1",
+      "sha256": "855f04ffe069f0cd1ccfc62fa9bb54f68cbefe0849dbb6e35c1d58ddcf02dd13"
+    },
+    "nwdp_remaining_47670_blocked_audit.json": {
+      "database_writes_attempted": false,
+      "healthy": true,
+      "schema_version": "nwdp_remaining_blocked_rows_audit.v2",
+      "sha256": "d936eb86e1d1e254a370a02ef489a4d8ac81058976fd59154521518698de8ad0"
+    },
+    "ogd_lgd_village_pin_semantic_audit.json": {
+      "database_writes_attempted": null,
+      "healthy": null,
+      "schema_version": null,
+      "sha256": "78cdbc175a3863bd865ce18dcabdbdeca8420904fb3395eebbe2ad16a82bce09"
+    }
+  },
+  "nwdp": {
+    "active_runtime_rows": 449899,
+    "inactive_rehabilitation_rows": 49606,
+    "parent_drift_deterministic_rows": 11676,
+    "raw_boundary_features": 654285,
+    "raw_to_staging_loss": 0,
+    "remaining_blocked_rows": 47670,
+    "residual_after_parent_drift": 35994
+  },
+  "parent_drift_proposal_evidence": {
+    "active_runtime_conflicts": 0,
+    "authorized": false,
+    "candidate_rows": 11676,
+    "database_writes_attempted": false,
+    "duplicate_target_villages": 0,
+    "exact_or_punctuation": 7095,
+    "inactive_runtime_conflicts": 0,
+    "trailing_numeric_suffix": 4581
+  },
+  "remaining_blocked_reasons": {
+    "CANONICAL_BLOCK_MISMATCH": 13836,
+    "MISSING_CANONICAL_DISTRICT": 11,
+    "MISSING_CANONICAL_STATE": 12,
+    "NAME_MISMATCH_REVIEW_REQUIRED": 7540,
+    "NO_CANONICAL_VILLAGE_MATCH": 26127,
+    "SOURCE_SUBDISTRICT_MISMATCH": 144
+  },
+  "schema_version": "geography_coverage_reconciliation_evidence.v1",
+  "status": "READ_ONLY_EVIDENCE_COMPLETE"
+}
