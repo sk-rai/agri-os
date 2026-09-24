@@ -306,4 +306,46 @@ This milestone is inactive staging only. It does not authorize or perform
 runtime activation, runtime-set identity changes, lookup exposure,
 project matching, source geometry/file changes, or Android changes.
 The remaining 47,670 rows from the original 97,276-row blocked
-population remain outside this staged cohort.
+population were subsequently audited by exact failure reason.
+
+## Parent-drift inactive rehabilitation
+
+The follow-up audit identified 13,980 rows whose source parent disagreed
+with the canonical village parent. A conservative checksum-pinned
+proposal retained 11,676 rows with unique target villages, no active or
+inactive runtime collision, and either an exact/punctuation-normalized
+name or an accepted trailing numeric suffix. The other 2,304
+parent-drift name mismatches remain held.
+
+The authorized single-writer engine passed a read-only dry run and a
+76-row Delhi transactional apply/rollback rehearsal. The guarded apply
+then completed eight state transactions:
+
+- 11,676 candidate review-metadata updates;
+- 11,676 runtime-eligibility updates;
+- 11,676 inactive runtime features;
+- 11,676 inactive village crosswalks;
+- 8 inactive promotion events.
+
+Post-apply reconciliation found zero active staged rows, zero candidate
+identity, activation, bucket, or promotion changes, zero invalid native
+geometries, zero duplicate target villages, and zero project matches.
+The active runtime baseline remained 449,899 features and crosswalks.
+Combined inactive rehabilitation now totals 61,282 features and
+crosswalks.
+
+The final parent-drift checkpoint completed 11,676 rows across eight
+states with checksum:
+
+`e2cfba583631a1b271a15063dcfb8933769f65a23019798fab94c989e88815e2`
+
+The unresolved population is now 35,994 rows: 26,127 without a canonical
+village match, 7,540 normal hierarchy-matched name mismatches, 2,272
+unsafe-name canonical-block mismatches, 32 unsafe-name source-subdistrict
+mismatches, 12 Chandigarh rows without a canonical state, and 11 Delhi
+rows without a canonical district.
+
+Detailed count reconciliation and source interpretation are recorded in
+`docs/geography-coverage-reconciliation-2026-09-24.md`. These rows remain
+inactive; activation, lookup exposure, canonical geography changes,
+project matching, source writes, and Android changes remain unauthorized.

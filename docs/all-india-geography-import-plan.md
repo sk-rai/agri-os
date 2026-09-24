@@ -122,3 +122,19 @@ The current parsed UP CSV files can be mapper-ready when the loader supplies an 
 ## Current green baseline
 
 Before all-India expansion, the current single-state local-file pipeline is green: local source inventory, parsed CSV readiness, parsed CSV staging, staged-vs-DB diff, full backend handoff check, and web build have all passed. This baseline should remain the regression guard while adding new all-India source-file adapters.
+
+## 2026-09-24 canonical-source reconciliation
+
+The current canonical database is not based on a single all-India LGD
+village export. Its 576,082 distinct village codes reconcile exactly to
+the union of the 560,150-code OGD village/PIN source and the 110,274-code
+UP LGD master, with 94,342 overlapping codes. The repeated UP staging
+JSONL files are byte-identical single-state snapshots and must not be
+described as national LGD exports.
+
+Future all-India refresh work should obtain a current authoritative
+national LGD village master carrying state and district context, diff it
+against the canonical union, resolve Chandigarh coverage, and explicitly
+handle duplicate code 476380 before replacing canonical identity rows.
+The NWDP boundary source remains a geometry source, not the authoritative
+national village-identity count.

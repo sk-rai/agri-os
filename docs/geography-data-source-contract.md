@@ -148,6 +148,24 @@ Before ingestion, create a source manifest and pilot-state audit covering resour
 
 Detailed source-readiness note: `docs/nwdp-village-boundary-source-readiness.md`.
 
+## Canonical village-count interpretation
+
+The 2026-09-24 reconciliation established that the commonly compared
+geography totals describe different populations:
+
+- 677,323 OGD village/PIN mapping rows;
+- 560,316 distinct OGD village/PIN pairs;
+- 560,150 distinct OGD village codes;
+- 654,285 NWDP boundary features;
+- 576,082 distinct canonical village codes;
+- 576,083 canonical database rows because code 476380 is duplicated.
+
+The canonical code set exactly equals the union of 560,150 OGD codes and
+110,274 UP master codes with 94,342 codes in their overlap. These counts
+must not be used interchangeably as a measure of missing NWDP or LGD
+villages. See
+`docs/geography-coverage-reconciliation-2026-09-24.md`.
+
 ## OGD geography operational runbook
 
 The local development database has been populated from the OGD all-India geography snapshot. Cloud or Render environments must not assume this local data exists. They should reproduce the load from source snapshots using the same staged-data workflow.
