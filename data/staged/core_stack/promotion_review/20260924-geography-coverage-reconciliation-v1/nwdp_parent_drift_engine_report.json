@@ -4,10 +4,10 @@
   "authorized_row_count": 11676,
   "authorized_state_count": 8,
   "batch_size": 25000,
-  "checkpoint_checksum": "d6ad2963330cb5425d2e26665cae50621f7bcca620f41b6d6ef5f3852a443b7a",
+  "checkpoint_checksum": "e2cfba583631a1b271a15063dcfb8933769f65a23019798fab94c989e88815e2",
   "database_writes_attempted": true,
-  "database_writes_committed": false,
-  "generated_at": "2026-09-24T12:31:09.601318+00:00",
+  "database_writes_committed": true,
+  "generated_at": "2026-09-24T12:36:01.970113+00:00",
   "guardrails": {
     "android_changed": false,
     "candidate_activation_changed": false,
@@ -21,7 +21,7 @@
   },
   "healthy": true,
   "manifest_checksum": "50fd3c9dc2d1a7251793d41927f116cc5e32612793e6cc606199d517d5cb55a0",
-  "mode": "ROLLBACK_ONLY_REHEARSAL",
+  "mode": "APPLY",
   "ordered_national_row_manifest_sha256": "b9748e503dc0ee0412c350125039bf163b63b4f596896904b5ba23db88d2f5db",
   "preflight": {
     "checks": {
@@ -50,22 +50,11 @@
   },
   "proposal_checksum": "277bc7d767daa68111b26cc4de8157d87fc4796ebb649eac119eb7d87d815af0",
   "proposal_status": "PROPOSED_NOT_AUTHORIZED",
-  "rollback_rehearsal": {
-    "after": {
-      "maximum_source_feature_index": -1,
-      "review_metadata": 0,
-      "runtime_crosswalks": 0,
-      "runtime_eligibility": 0,
-      "runtime_features": 0
-    },
-    "after_proposal_scoped_rollback": {
-      "maximum_source_feature_index": -1,
-      "review_metadata": 0,
-      "runtime_crosswalks": 0,
-      "runtime_eligibility": 0,
-      "runtime_features": 0
-    },
-    "apply_report": {
+  "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55",
+  "schema_version": "nwdp_parent_drift_state_engine.v1",
+  "single_writer": true,
+  "transactions": [
+    {
       "counts": {
         "promotion_events": 1,
         "review_metadata": 76,
@@ -89,39 +78,198 @@
       "last_source_feature_index": 252,
       "promotion_event_id": "8a6cc197-3f1f-58b8-adfa-d2751614f3f0",
       "row_count": 76,
+      "state_lgd_code": "7",
       "transaction_id": "d8d9f345-a2d9-58f9-893a-cea4b4d2453f"
     },
-    "before": {
-      "maximum_source_feature_index": -1,
-      "review_metadata": 0,
-      "runtime_crosswalks": 0,
-      "runtime_eligibility": 0,
-      "runtime_features": 0
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 712,
+        "runtime_crosswalks": 712,
+        "runtime_eligibility": 712,
+        "runtime_features": 712
+      },
+      "first_source_feature_index": 17,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 6960,
+      "promotion_event_id": "f502984b-c474-5432-be7d-c1c586cb3005",
+      "row_count": 712,
+      "state_lgd_code": "6",
+      "transaction_id": "247eb89c-8348-5214-b026-41e1ad8e74f8"
     },
-    "checkpoint_written": false,
-    "database_state_unchanged": true,
-    "during_transaction": {
-      "maximum_source_feature_index": 252,
-      "review_metadata": 76,
-      "runtime_crosswalks": 76,
-      "runtime_eligibility": 76,
-      "runtime_features": 76
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 2952,
+        "runtime_crosswalks": 2952,
+        "runtime_eligibility": 2952,
+        "runtime_features": 2952
+      },
+      "first_source_feature_index": 1,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 20688,
+      "promotion_event_id": "e11c51bb-4582-55c4-9f3f-a1fdc81be544",
+      "row_count": 2952,
+      "state_lgd_code": "2",
+      "transaction_id": "ee923dc5-7c7c-5998-9626-24d075a68260"
     },
-    "proposal_scoped_rollback_report": {
-      "candidate_rows_restored": 76,
-      "promotion_events_deleted": 1,
-      "runtime_crosswalks_deleted": 76,
-      "runtime_features_deleted": 76,
-      "source_rows_restored": 76
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 224,
+        "runtime_crosswalks": 224,
+        "runtime_eligibility": 224,
+        "runtime_features": 224
+      },
+      "first_source_feature_index": 52,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 6589,
+      "promotion_event_id": "ddbacb09-3f32-5b8e-b781-9b9ae65d9cbe",
+      "row_count": 224,
+      "state_lgd_code": "1",
+      "transaction_id": "375bd5d6-4128-50f9-aacc-401a92048c8e"
     },
-    "rollback_executed": true,
-    "row_count": 76,
-    "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/delhi.geojson",
-    "source_file_sha256": "0411a0da45bb021ef95c82572a9d7966a0f11bd2ca45dbc7eb9cf909e0e507a9",
-    "state_lgd_code": "7"
-  },
-  "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55",
-  "schema_version": "nwdp_parent_drift_state_engine.v1",
-  "single_writer": true,
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 60,
+        "runtime_crosswalks": 60,
+        "runtime_eligibility": 60,
+        "runtime_features": 60
+      },
+      "first_source_feature_index": 13,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 246,
+      "promotion_event_id": "6fa1546f-e8a8-5c84-8a00-735d3624b0de",
+      "row_count": 60,
+      "state_lgd_code": "37",
+      "transaction_id": "1e61a772-7dcd-5836-aa4a-964d2edd4b8b"
+    },
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 945,
+        "runtime_crosswalks": 945,
+        "runtime_eligibility": 945,
+        "runtime_features": 945
+      },
+      "first_source_feature_index": 43,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 12490,
+      "promotion_event_id": "f4c2ee57-604b-58a7-ae75-40d132dbb32e",
+      "row_count": 945,
+      "state_lgd_code": "3",
+      "transaction_id": "9ed2598c-a607-5c05-94f0-dfa6a1b8f4a9"
+    },
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 3086,
+        "runtime_crosswalks": 3086,
+        "runtime_eligibility": 3086,
+        "runtime_features": 3086
+      },
+      "first_source_feature_index": 0,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 45006,
+      "promotion_event_id": "3f900176-d392-51ae-9790-9df226834bb8",
+      "row_count": 3086,
+      "state_lgd_code": "8",
+      "transaction_id": "70f13c44-ee63-5bc5-b3a8-e79a88502223"
+    },
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 3621,
+        "runtime_crosswalks": 3621,
+        "runtime_eligibility": 3621,
+        "runtime_features": 3621
+      },
+      "first_source_feature_index": 10,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 16893,
+      "promotion_event_id": "aa1a0776-0969-5851-adec-4644891eb648",
+      "row_count": 3621,
+      "state_lgd_code": "5",
+      "transaction_id": "36496f98-b95f-52f7-8ecf-804f6b056dd1"
+    }
+  ],
   "writer_count": 1
 }
