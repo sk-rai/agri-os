@@ -1,0 +1,70 @@
+{
+  "authorization": {
+    "authorized": false,
+    "status": "REVALIDATED_NOT_AUTHORIZED"
+  },
+  "checks": {
+    "all_query_results_present": true,
+    "candidate_identity_unique": true,
+    "disposition_sum_exact": true,
+    "eligible_targets_unique": true,
+    "input_row_count_exact": true,
+    "source_feature_identity_unique": true
+  },
+  "counts_by_runtime_disposition": {
+    "ELIGIBLE_NO_RUNTIME_CONFLICT": 3723
+  },
+  "counts_by_state": {
+    "Delhi": 61,
+    "Haryana": 30,
+    "Jammu & Kashmir": 6,
+    "Punjab": 112,
+    "Rajasthan": 3511,
+    "Uttarakhand": 3
+  },
+  "database_writes_attempted": false,
+  "eligible_guardrails": {
+    "distinct_candidate_ids": 3723,
+    "distinct_source_feature_ids": 3723,
+    "distinct_target_village_ids": 3723,
+    "duplicate_target_villages": 0,
+    "eligible_rows": 3723
+  },
+  "healthy": true,
+  "mode": "READ_ONLY",
+  "name_runtime_matrix": {
+    "EXACT_OR_PUNCTUATION_MATCH": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 3581
+    },
+    "TRAILING_NUMERIC_SUFFIX_ONLY": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 142
+    }
+  },
+  "row_count": 3723,
+  "row_evidence": {
+    "path": "/home/lynksavvy/projects/farmint/data/staged/core_stack/promotion_review/20260924-nwdp-no-canonical-village-audit-v1/nwdp_district_drift_runtime_revalidation.jsonl",
+    "sha256": "2e89584d5112e7d05a4ca2ba43c076a45688afe31ae9ffd40bb22ad60f36c90b"
+  },
+  "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55",
+  "schema_version": "nwdp_district_drift_runtime_revalidation.v1",
+  "state_runtime_matrix": {
+    "Delhi": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 61
+    },
+    "Haryana": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 30
+    },
+    "Jammu & Kashmir": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 6
+    },
+    "Punjab": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 112
+    },
+    "Rajasthan": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 3511
+    },
+    "Uttarakhand": {
+      "ELIGIBLE_NO_RUNTIME_CONFLICT": 3
+    }
+  }
+}

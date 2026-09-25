@@ -1,0 +1,181 @@
+{
+  "authorization": {
+    "authorization_artifact_created": false,
+    "database_mutation_permitted": false,
+    "required_next_step": "Independent review followed by an explicit checksum-pinned authorization artifact.",
+    "status": "NOT_AUTHORIZED"
+  },
+  "authorized": false,
+  "database_writes_attempted": false,
+  "excluded_residual": {
+    "authorization_requested": false,
+    "reasons": {
+      "ABSENT_FROM_CANONICAL_GLOBALLY": 22219,
+      "CANONICAL_BLOCK_MISMATCH_NAME_REVIEW_REQUIRED": 2272,
+      "DISTRICT_DRIFT_NAME_REVIEW_REQUIRED": 185,
+      "HIERARCHY_MATCHED_NAME_MISMATCH": 7540,
+      "MISSING_CANONICAL_DISTRICT": 11,
+      "MISSING_CANONICAL_STATE": 12,
+      "SOURCE_SUBDISTRICT_MISMATCH_NAME_REVIEW_REQUIRED": 32
+    },
+    "row_count": 32271
+  },
+  "explicitly_prohibited_effects": {
+    "android_behavior_change": true,
+    "candidate_activation": true,
+    "candidate_identity_change": true,
+    "candidate_promotion": true,
+    "canonical_geography_change": true,
+    "lookup_expansion": true,
+    "project_match_write": true,
+    "runtime_activation": true,
+    "source_file_write": true,
+    "source_geometry_write": true
+  },
+  "generated_at": "2026-09-25T03:44:55.594603+00:00",
+  "geometry_evidence": {
+    "authorized_make_valid_repairs": 1,
+    "raw_geometry_hash_matches": 3722,
+    "repair_authorization_checksum": "d3fe59a5650c6c8cbeacf9a827d0f7ae2ee69f6e9927c8d1089c9c59fcc2964b",
+    "repair_proposal_checksum": "560fcd926530ff694e139559b1ddf2ef070192f22e571678e195946d4907ba2a"
+  },
+  "guardrails": {
+    "android_changed": false,
+    "candidate_activation_changed": false,
+    "candidate_identity_changed": false,
+    "candidate_promotion_changed": false,
+    "canonical_geography_changed": false,
+    "lookup_changed": false,
+    "project_matches_written": false,
+    "runtime_activation_changed": false,
+    "source_files_written": false,
+    "source_geometry_written": false
+  },
+  "healthy": true,
+  "pinned_evidence": {
+    "district_drift_audit_sha256": "c0a517d9a694dd2861d334f95e175033165dd921b418b96e523b7bbfe3e96078",
+    "manifest_builder_script_sha256": "c32f992320459dff7bdda6cdf4ac6a17e0743d41bcd6dcf69479116da77d0207",
+    "no_canonical_audit_sha256": "09ff191ceed1cb894b18c2ec2cca7ab542757618b3adf257b886cee16ca99f1d",
+    "runtime_revalidation_sha256": "ccdae8e45d99ca030755a4e1b60a7130e08e5d2ed20e7d3c136a7dad665e21e7",
+    "selector_script_sha256": "772f52675d5cbe9d8ab383eb45f9dd4ff00c1e31eee7768b9d39e3f3685882bd"
+  },
+  "pinned_manifest": {
+    "file_sha256": "82d71abbb04c41aa46875669ea4e6888e48857762433f083df190475d9b490fb",
+    "manifest_checksum": "cae4e558e34188cfebb950d43ec0dae998761bdb1080f6bf5b28be6d2cedbb00",
+    "ordered_national_row_manifest_sha256": "cfc95ce7d4da3b4a62367a6161037b65fe7df5b3630a5a35499ce3741d5f790e",
+    "path": "/home/lynksavvy/projects/farmint/data/staged/core_stack/promotion_review/20260924-nwdp-no-canonical-village-audit-v1/nwdp_district_drift_manifest.json"
+  },
+  "proposal_checksum": "fabc768bab4eb8570251da9c2febf1b15113bcff84f46b5187944c425b64724f",
+  "proposal_scope": {
+    "counts_by_name_disposition": {
+      "EXACT_OR_PUNCTUATION_MATCH": 3581,
+      "TRAILING_NUMERIC_SUFFIX_ONLY": 142
+    },
+    "counts_by_parent_issue": {
+      "CANONICAL_DISTRICT_DRIFT": 3723
+    },
+    "counts_by_state": {
+      "Delhi": 61,
+      "Haryana": 30,
+      "Jammu & Kashmir": 6,
+      "Punjab": 112,
+      "Rajasthan": 3511,
+      "Uttarakhand": 3
+    },
+    "description": "Deterministic village-code matches whose NWDP source district differs from the canonical village district.",
+    "policy": "Canonical LGD village, state, district, and block identity remain authoritative. Source district disagreement is retained as evidence and is not written into canonical geography.",
+    "row_count": 3723,
+    "state_count": 6
+  },
+  "proposed_effects": {
+    "candidate_review_metadata": "Approve only checksum-pinned candidate identities for inactive staging.",
+    "promotion_events": "Create inactive audit events only.",
+    "runtime_crosswalks": "Create checksum-pinned inactive village crosswalks using canonical LGD hierarchy identity.",
+    "runtime_eligibility": "Mark only checksum-pinned source features eligible for this inactive staging.",
+    "runtime_features": "Create checksum-pinned inactive runtime features with native EPSG:4326 geometry."
+  },
+  "requested_permissions": {
+    "android_behavior_change_allowed": false,
+    "bounded_review_metadata_write_allowed": true,
+    "bounded_runtime_eligibility_write_allowed": true,
+    "candidate_activation_allowed": false,
+    "candidate_identity_change_allowed": false,
+    "candidate_promotion_allowed": false,
+    "canonical_geography_write_allowed": false,
+    "inactive_runtime_crosswalk_write_allowed": true,
+    "inactive_runtime_feature_write_allowed": true,
+    "inactive_runtime_promotion_event_write_allowed": true,
+    "lookup_scope_change_allowed": false,
+    "native_geometry_write_allowed": true,
+    "project_match_write_allowed": false,
+    "runtime_activation_change_allowed": false,
+    "runtime_set_identity_change_allowed": false,
+    "source_file_write_allowed": false,
+    "source_geometry_write_allowed": false,
+    "state_checkpoint_write_allowed": true
+  },
+  "schema_version": "nwdp_district_drift_proposal.v1",
+  "state_manifests": [
+    {
+      "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+      "ordered_row_manifest_sha256": "5648eea018a30933193c7aeea64035938bc045db451cf43c781b06038ece009b",
+      "row_count": 61,
+      "sequence": 1,
+      "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/delhi.geojson",
+      "source_file_sha256": "0411a0da45bb021ef95c82572a9d7966a0f11bd2ca45dbc7eb9cf909e0e507a9",
+      "state": "Delhi",
+      "state_lgd_code": "7"
+    },
+    {
+      "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+      "ordered_row_manifest_sha256": "eebf234198712a9799d2d13342c13b3bc9ec49e241dfa5c92b9ad07f5979f77f",
+      "row_count": 30,
+      "sequence": 2,
+      "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/haryana.geojson",
+      "source_file_sha256": "d39dda744162fec3e20943ea6a5d67bbeddad82d102ee68f0567994ab7fdc54f",
+      "state": "Haryana",
+      "state_lgd_code": "6"
+    },
+    {
+      "import_batch_id": "989f3796-a0c2-5dc6-9ef3-08f1e3dc7ba1",
+      "ordered_row_manifest_sha256": "09a533efa790cc32c3fc2838780d7e6c7f02ef75ab9087808637a092abb97228",
+      "row_count": 6,
+      "sequence": 3,
+      "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/jammu_kashmir.geojson",
+      "source_file_sha256": "bd1bcd4cec614cca521f09dc1160a75254f3120bee5dd0ad7f521280c3d9a155",
+      "state": "Jammu & Kashmir",
+      "state_lgd_code": "1"
+    },
+    {
+      "import_batch_id": "fce1db5d-2c16-5a92-9f2a-86b1cd199ea9",
+      "ordered_row_manifest_sha256": "a6468e275a9c44da794586d6d991a86e496c0a4a7740be007243c376b781bef4",
+      "row_count": 112,
+      "sequence": 4,
+      "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/punjab.geojson",
+      "source_file_sha256": "37abcedd638eb93ad5c55b4a3b5600482f0b9834a7779021b92c9e5749393424",
+      "state": "Punjab",
+      "state_lgd_code": "3"
+    },
+    {
+      "import_batch_id": "1739144c-184a-5dd3-a677-2f820a65adbd",
+      "ordered_row_manifest_sha256": "c17b6c00da9559b82f38cf8a9d866ace7631f12f5111bddf00b1b67eebca61e5",
+      "row_count": 3511,
+      "sequence": 5,
+      "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/rajasthan.geojson",
+      "source_file_sha256": "fbfffeba1d6918adf882f95964bf25cd55e3adaf886138a044a4f1ad7dbd9364",
+      "state": "Rajasthan",
+      "state_lgd_code": "8"
+    },
+    {
+      "import_batch_id": "270e12e0-d49c-56d6-a6c7-7b9c06bad0d5",
+      "ordered_row_manifest_sha256": "02e1bd3ebdf204feb92bab56e51aed50cacbbefef70609beb4f042f536eb8fac",
+      "row_count": 3,
+      "sequence": 6,
+      "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/uttarakhand.geojson",
+      "source_file_sha256": "5b3d40c3af0e711c31e0e9ff08013f19a7e162d15ff3dd785b4cb5293cba1ad6",
+      "state": "Uttarakhand",
+      "state_lgd_code": "5"
+    }
+  ],
+  "status": "PROPOSED_NOT_AUTHORIZED"
+}

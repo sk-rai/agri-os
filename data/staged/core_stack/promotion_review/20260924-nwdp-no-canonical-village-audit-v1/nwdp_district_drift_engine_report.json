@@ -1,0 +1,127 @@
+{
+  "authorization_checksum": "3bf3f0a4dbeaec984c1d4db31d0d72832cf205b78c097c5543d2eb46222add0e",
+  "authorization_status": "AUTHORIZED",
+  "authorized_row_count": 3723,
+  "authorized_state_count": 6,
+  "batch_size": 25000,
+  "checkpoint_checksum": "cde9611420652423e5cd6ce628558d424ecb694468dca86b9e44cff13afdb567",
+  "database_writes_attempted": true,
+  "database_writes_committed": false,
+  "generated_at": "2026-09-25T07:02:42.936491+00:00",
+  "guardrails": {
+    "android_changed": false,
+    "candidate_activation_changed": false,
+    "candidate_identity_changed": false,
+    "candidate_promotion_changed": false,
+    "lookup_changed": false,
+    "project_matches_written": false,
+    "runtime_activation_changed": false,
+    "source_files_written": false,
+    "source_geometry_written": false
+  },
+  "healthy": true,
+  "manifest_checksum": "cae4e558e34188cfebb950d43ec0dae998761bdb1080f6bf5b28be6d2cedbb00",
+  "mode": "ROLLBACK_ONLY_REHEARSAL",
+  "ordered_national_row_manifest_sha256": "cfc95ce7d4da3b4a62367a6161037b65fe7df5b3630a5a35499ce3741d5f790e",
+  "preflight": {
+    "checks": {
+      "native_geometry_column": true,
+      "postgis_available": true,
+      "project_matches_zero": true,
+      "runtime_set_exists": true,
+      "runtime_set_identity": true,
+      "schema_revision_059": true
+    },
+    "runtime_set": {
+      "activation_status": "ACTIVE",
+      "is_active": true,
+      "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55"
+    },
+    "snapshot": {
+      "active_candidates": 0,
+      "active_runtime_crosswalks": 449899,
+      "active_runtime_features": 449899,
+      "native_column": true,
+      "postgis_geometry": true,
+      "project_matches": 0,
+      "promoted_candidates": 0,
+      "revision": "059"
+    }
+  },
+  "proposal_checksum": "fabc768bab4eb8570251da9c2febf1b15113bcff84f46b5187944c425b64724f",
+  "proposal_status": "PROPOSED_NOT_AUTHORIZED",
+  "rollback_rehearsal": {
+    "after": {
+      "maximum_source_feature_index": -1,
+      "review_metadata": 0,
+      "runtime_crosswalks": 0,
+      "runtime_eligibility": 0,
+      "runtime_features": 0
+    },
+    "after_proposal_scoped_rollback": {
+      "maximum_source_feature_index": -1,
+      "review_metadata": 0,
+      "runtime_crosswalks": 0,
+      "runtime_eligibility": 0,
+      "runtime_features": 0
+    },
+    "apply_report": {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 61,
+        "runtime_crosswalks": 61,
+        "runtime_eligibility": 61,
+        "runtime_features": 61
+      },
+      "first_source_feature_index": 72,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 247,
+      "promotion_event_id": "1b5a7f26-6512-5cb3-9675-be87bd30ac4d",
+      "row_count": 61,
+      "transaction_id": "42c01edd-8247-50f9-aa00-2149c25d0df9"
+    },
+    "before": {
+      "maximum_source_feature_index": -1,
+      "review_metadata": 0,
+      "runtime_crosswalks": 0,
+      "runtime_eligibility": 0,
+      "runtime_features": 0
+    },
+    "checkpoint_written": false,
+    "database_state_unchanged": true,
+    "during_transaction": {
+      "maximum_source_feature_index": 247,
+      "review_metadata": 61,
+      "runtime_crosswalks": 61,
+      "runtime_eligibility": 61,
+      "runtime_features": 61
+    },
+    "proposal_scoped_rollback_report": {
+      "candidate_rows_restored": 61,
+      "promotion_events_deleted": 1,
+      "runtime_crosswalks_deleted": 61,
+      "runtime_features_deleted": 61,
+      "source_rows_restored": 61
+    },
+    "rollback_executed": true,
+    "row_count": 61,
+    "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/delhi.geojson",
+    "source_file_sha256": "0411a0da45bb021ef95c82572a9d7966a0f11bd2ca45dbc7eb9cf909e0e507a9",
+    "state_lgd_code": "7"
+  },
+  "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55",
+  "schema_version": "nwdp_district_drift_state_engine.v1",
+  "single_writer": true,
+  "writer_count": 1
+}

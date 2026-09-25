@@ -1,0 +1,1081 @@
+{
+  "authorization": {
+    "authorized": false,
+    "status": "AUDIT_ONLY_NOT_AUTHORIZED"
+  },
+  "checks": {
+    "actionability_sum_exact": true,
+    "candidate_identity_unique": true,
+    "no_unclassified_rows": true,
+    "row_count_exact": true,
+    "source_feature_identity_unique": true
+  },
+  "counts_by_actionability": {
+    "DETERMINISTIC_DISTRICT_DRIFT": 3723,
+    "NAME_REVIEW_REQUIRED": 185
+  },
+  "counts_by_state": {
+    "Delhi": 61,
+    "Haryana": 53,
+    "Jammu & Kashmir": 6,
+    "Punjab": 188,
+    "Rajasthan": 3597,
+    "Uttarakhand": 3
+  },
+  "database_connection_attempted": false,
+  "database_writes_attempted": false,
+  "deterministic_target_collision_guardrail": {
+    "deterministic_rows": 3723,
+    "distinct_target_villages": 3723,
+    "duplicate_target_villages": 0,
+    "largest_duplicate_targets": [],
+    "rows_in_duplicate_targets": 0
+  },
+  "healthy": true,
+  "interpretation": {
+    "AMBIGUOUS_CANONICAL_TARGET": "The LGD code resolves to more than one canonical village row.",
+    "DETERMINISTIC_DISTRICT_DRIFT": "Exactly one canonical village target exists in the expected state and its name is deterministic.",
+    "NAME_REVIEW_REQUIRED": "A unique canonical target exists, but the source and canonical names require manual review."
+  },
+  "mode": "OFFLINE_READ_ONLY_EVIDENCE_AUDIT",
+  "row_count": 3908,
+  "samples": {
+    "DETERMINISTIC_DISTRICT_DRIFT": [
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "551bc998-1bad-5812-a79a-08d049b1b357",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7582",
+            "block_id": "f82f7eb6-9da2-49b9-959a-b2d18db1d480",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63923",
+            "village_id": "5d62e05f-a020-41fd-beba-84996384da00",
+            "village_name": "Darya Pur Kalan (Ct)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "9d58d6ac-de3c-4b61-b3a5-3dffaa49602a",
+        "expected_district_name": "North",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "080",
+        "source_district_name": "North",
+        "source_feature_id": "47c5e2f1-e1f8-5612-9b5b-68d0c3fda621",
+        "source_feature_index": 72,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "0430",
+        "source_subdistrict_name": "Narela",
+        "source_village_code": "063923",
+        "source_village_name": "Darya Pur Kalan CT",
+        "target_assessments": [
+          {
+            "block_code": "7582",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63923",
+            "village_id": "5d62e05f-a020-41fd-beba-84996384da00",
+            "village_name": "Darya Pur Kalan (Ct)"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "d8adddee-4e07-5f96-a192-b46898a789f7",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7583",
+            "block_id": "85980f62-01f1-4d61-ac27-38c8215419a7",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63993",
+            "village_id": "f14c125a-d1ea-4402-8598-197859825858",
+            "village_name": "Neel Wal"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "7bb2aa65-6f90-45a4-b5b6-3c599c1ae69e",
+        "expected_district_name": "West",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "085",
+        "source_district_name": "West",
+        "source_feature_id": "1045f0f4-8765-5029-9e6f-3854e8f5cd0e",
+        "source_feature_index": 82,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "0450",
+        "source_subdistrict_name": "Punjabi Bagh",
+        "source_village_code": "063993",
+        "source_village_name": "Neel Wal",
+        "target_assessments": [
+          {
+            "block_code": "7583",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63993",
+            "village_id": "f14c125a-d1ea-4402-8598-197859825858",
+            "village_name": "Neel Wal"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "99317894-94a6-5b11-a672-e968d73d2f5b",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7582",
+            "block_id": "f82f7eb6-9da2-49b9-959a-b2d18db1d480",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63888",
+            "village_id": "16b5778c-11b6-41b6-88da-7f0d0e5ea3c3",
+            "village_name": "Mungesh Pur"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "9d58d6ac-de3c-4b61-b3a5-3dffaa49602a",
+        "expected_district_name": "North",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "080",
+        "source_district_name": "North",
+        "source_feature_id": "b1e02100-ce24-5a89-92bb-d2aa7f809ff1",
+        "source_feature_index": 87,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "0430",
+        "source_subdistrict_name": "Narela",
+        "source_village_code": "063888",
+        "source_village_name": "Mungesh Pur",
+        "target_assessments": [
+          {
+            "block_code": "7582",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63888",
+            "village_id": "16b5778c-11b6-41b6-88da-7f0d0e5ea3c3",
+            "village_name": "Mungesh Pur"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "a2bd676e-2bf6-58b7-822f-3d8e088f176f",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7583",
+            "block_id": "85980f62-01f1-4d61-ac27-38c8215419a7",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63933",
+            "village_id": "531fc796-a389-4fbe-85e7-6f6c87fcfc57",
+            "village_name": "Jonti"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "faf46e0c-c25a-45a4-8fd9-8927a73f02e6",
+        "expected_district_name": "North West",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "082",
+        "source_district_name": "North West",
+        "source_feature_id": "65d7eb14-caab-52be-b2d8-d5c696f32ed1",
+        "source_feature_index": 88,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "6078",
+        "source_subdistrict_name": "Kanjhawala",
+        "source_village_code": "063933",
+        "source_village_name": "Jonti",
+        "target_assessments": [
+          {
+            "block_code": "7583",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63933",
+            "village_id": "531fc796-a389-4fbe-85e7-6f6c87fcfc57",
+            "village_name": "Jonti"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "961edb42-ea2e-5cd5-8dce-10fe72dee267",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7583",
+            "block_id": "85980f62-01f1-4d61-ac27-38c8215419a7",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63932",
+            "village_id": "f4ff510a-b449-4ad9-a0ae-a54de30bbd14",
+            "village_name": "Chatesar"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "faf46e0c-c25a-45a4-8fd9-8927a73f02e6",
+        "expected_district_name": "North West",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "082",
+        "source_district_name": "North West",
+        "source_feature_id": "ce297e82-66b8-5959-8db5-e7df2dd1e941",
+        "source_feature_index": 91,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "6078",
+        "source_subdistrict_name": "Kanjhawala",
+        "source_village_code": "063932",
+        "source_village_name": "Chatesar",
+        "target_assessments": [
+          {
+            "block_code": "7583",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63932",
+            "village_id": "f4ff510a-b449-4ad9-a0ae-a54de30bbd14",
+            "village_name": "Chatesar"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "ee002060-8ddb-5a57-92b8-8fd61e8a32d0",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7583",
+            "block_id": "85980f62-01f1-4d61-ac27-38c8215419a7",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63935",
+            "village_id": "6c415774-88ff-4502-8369-45e5bd0e5418",
+            "village_name": "Nizam Pur Rashid Pur"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "faf46e0c-c25a-45a4-8fd9-8927a73f02e6",
+        "expected_district_name": "North West",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "082",
+        "source_district_name": "North West",
+        "source_feature_id": "8a4b5f46-2839-57ae-822c-8ee0188f3301",
+        "source_feature_index": 94,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "6078",
+        "source_subdistrict_name": "Kanjhawala",
+        "source_village_code": "063935",
+        "source_village_name": "Nizam Pur Rashid Pur",
+        "target_assessments": [
+          {
+            "block_code": "7583",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63935",
+            "village_id": "6c415774-88ff-4502-8369-45e5bd0e5418",
+            "village_name": "Nizam Pur Rashid Pur"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "1abb5c2b-62e8-5962-a857-5dd2d3992c8e",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7583",
+            "block_id": "85980f62-01f1-4d61-ac27-38c8215419a7",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63934",
+            "village_id": "d00ad019-af6b-4f9b-a3fe-c1612c8671cd",
+            "village_name": "Garhi Rindhala"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "faf46e0c-c25a-45a4-8fd9-8927a73f02e6",
+        "expected_district_name": "North West",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "082",
+        "source_district_name": "North West",
+        "source_feature_id": "3f784358-3d0c-5096-bcf2-7d2fcf8092b2",
+        "source_feature_index": 95,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "6078",
+        "source_subdistrict_name": "Kanjhawala",
+        "source_village_code": "063934",
+        "source_village_name": "Garhi Rindhala",
+        "target_assessments": [
+          {
+            "block_code": "7583",
+            "block_name": "Mundka",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63934",
+            "village_id": "d00ad019-af6b-4f9b-a3fe-c1612c8671cd",
+            "village_name": "Garhi Rindhala"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "9cfe3d10-62d1-5ad1-a383-42a18a512457",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7582",
+            "block_id": "f82f7eb6-9da2-49b9-959a-b2d18db1d480",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63892",
+            "village_id": "e8b16ca8-965e-487b-ba0c-e6725eac1286",
+            "village_name": "Sultan Pur Dabas"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "9d58d6ac-de3c-4b61-b3a5-3dffaa49602a",
+        "expected_district_name": "North",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "080",
+        "source_district_name": "North",
+        "source_feature_id": "37a6ec24-7149-5a0f-a066-119cf4cdb11c",
+        "source_feature_index": 98,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "0430",
+        "source_subdistrict_name": "Narela",
+        "source_village_code": "063892",
+        "source_village_name": "Sultan Pur Dabas",
+        "target_assessments": [
+          {
+            "block_code": "7582",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63892",
+            "village_id": "e8b16ca8-965e-487b-ba0c-e6725eac1286",
+            "village_name": "Sultan Pur Dabas"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "8a60ceac-3954-520c-8e44-462035cd8e4a",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "7582",
+            "block_id": "f82f7eb6-9da2-49b9-959a-b2d18db1d480",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63904",
+            "village_id": "178a580c-c977-4314-b9ac-322216178aa5",
+            "village_name": "Pansali"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "9d58d6ac-de3c-4b61-b3a5-3dffaa49602a",
+        "expected_district_name": "North",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "080",
+        "source_district_name": "North",
+        "source_feature_id": "a58955fa-771b-5253-914d-e3a6545b170b",
+        "source_feature_index": 99,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "0430",
+        "source_subdistrict_name": "Narela",
+        "source_village_code": "063904",
+        "source_village_name": "Pansali",
+        "target_assessments": [
+          {
+            "block_code": "7582",
+            "block_name": "Bawana",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63904",
+            "village_id": "178a580c-c977-4314-b9ac-322216178aa5",
+            "village_name": "Pansali"
+          }
+        ]
+      },
+      {
+        "actionability": "DETERMINISTIC_DISTRICT_DRIFT",
+        "candidate_id": "d4f55b16-5206-57eb-8f43-f470ac20e165",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "430",
+            "block_id": "b8c9a1a9-4228-4e29-8baf-1e4c34ef67b2",
+            "block_name": "Narela",
+            "district_code": "794",
+            "district_id": "001530be-4a96-4444-a2d0-cf9fb45c2280",
+            "district_name": "Outer North",
+            "state_code": "7",
+            "state_id": "09ac77fa-5690-48f2-b355-57b82be528bc",
+            "state_name": "Delhi",
+            "village_code": "63897",
+            "village_id": "dc0806d8-d8a2-4a20-b2c4-48ad33a5c7a0",
+            "village_name": "Hiranki"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "9d58d6ac-de3c-4b61-b3a5-3dffaa49602a",
+        "expected_district_name": "North",
+        "expected_state_lgd_code": "7",
+        "import_batch_id": "99077b8f-119d-5a00-9641-feadd2bb2e06",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "080",
+        "source_district_name": "North",
+        "source_feature_id": "876c4b70-dae8-5aca-81ca-094efd9aee9f",
+        "source_feature_index": 106,
+        "source_state": "Delhi",
+        "source_subdistrict_code": "6076",
+        "source_subdistrict_name": "Alipur",
+        "source_village_code": "063897",
+        "source_village_name": "Hiranki",
+        "target_assessments": [
+          {
+            "block_code": "430",
+            "block_name": "Narela",
+            "district_code": "794",
+            "district_name": "Outer North",
+            "name_disposition": "EXACT_OR_PUNCTUATION_MATCH",
+            "village_code": "63897",
+            "village_id": "dc0806d8-d8a2-4a20-b2c4-48ad33a5c7a0",
+            "village_name": "Hiranki"
+          }
+        ]
+      }
+    ],
+    "NAME_REVIEW_REQUIRED": [
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "eb3786e7-fc66-529f-b283-7fac6d375c1a",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61074",
+            "village_id": "c580e29b-df13-495c-bfe6-d71779b6ff51",
+            "village_name": "Dhamiyan (29)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "7b0ddf4d-5746-5b5a-957d-04bd5ee96443",
+        "source_feature_index": 1753,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061074",
+        "source_village_name": "Dhamian",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61074",
+            "village_id": "c580e29b-df13-495c-bfe6-d71779b6ff51",
+            "village_name": "Dhamiyan (29)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "5c718dfb-d0e6-50bc-bdcd-af48911ba3e8",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61072",
+            "village_id": "eda64415-6a0c-4acd-9ccf-a8d797bbb45e",
+            "village_name": "Dhandheri (117)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "b8a88ba7-ebd6-5d23-8fd0-b8ba8e90474d",
+        "source_feature_index": 1757,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061072",
+        "source_village_name": "Dhanderi",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61072",
+            "village_id": "eda64415-6a0c-4acd-9ccf-a8d797bbb45e",
+            "village_name": "Dhandheri (117)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "28cafe05-9fee-522c-82dc-067329b1038d",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "6408",
+            "block_id": "ef2f8a8a-196b-4038-82e4-b16a55ff1381",
+            "block_name": "Bass",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61107",
+            "village_id": "dd3708a1-4323-41d3-b6f6-7102751a3aae",
+            "village_name": "Mohlla (62)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "42f286d5-f2d5-5eaa-8dd5-142772d83400",
+        "source_feature_index": 3653,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061107",
+        "source_village_name": "Mohla",
+        "target_assessments": [
+          {
+            "block_code": "6408",
+            "block_name": "Bass",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61107",
+            "village_id": "dd3708a1-4323-41d3-b6f6-7102751a3aae",
+            "village_name": "Mohlla (62)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "8d95cd11-fd62-5d96-85a8-cdc4147b219c",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61055",
+            "village_id": "c6ed40d0-c5b7-4b2f-ae01-27ed49ccfcad",
+            "village_name": "Ghirya (24)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "0330e5f8-ebd2-5e2a-80a2-e33800511753",
+        "source_feature_index": 3669,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061055",
+        "source_village_name": "Ghirai",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61055",
+            "village_id": "c6ed40d0-c5b7-4b2f-ae01-27ed49ccfcad",
+            "village_name": "Ghirya (24)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "529cd85a-37db-5c2d-8275-287c091b14fe",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61058",
+            "village_id": "a07adde5-b9c0-42f9-ab54-bf42479e4aa8",
+            "village_name": "Masudpur (85)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "0537d661-370f-55aa-9ba1-8c0301e444a8",
+        "source_feature_index": 3671,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061058",
+        "source_village_name": "Masoodpur",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61058",
+            "village_id": "a07adde5-b9c0-42f9-ab54-bf42479e4aa8",
+            "village_name": "Masudpur (85)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "6e3399b2-4a23-514a-ba8d-333723075017",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61060",
+            "village_id": "3aa13123-45da-45c6-b698-283d173749a2",
+            "village_name": "Sala Diary (86)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "57c835d9-f14d-58d6-b6fd-4ab7fc7e56a8",
+        "source_feature_index": 3672,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061060",
+        "source_village_name": "Shala Dheri",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61060",
+            "village_id": "3aa13123-45da-45c6-b698-283d173749a2",
+            "village_name": "Sala Diary (86)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "928dde0e-2e75-5a79-9fa9-0af3cf86863e",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61057",
+            "village_id": "ae0cbbcb-45a8-4e6b-ac3e-544848bdfc24",
+            "village_name": "Channout (112)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "c6ba869a-7c3a-5cd2-8a0d-7d5534828e18",
+        "source_feature_index": 3673,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061057",
+        "source_village_name": "Channot",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61057",
+            "village_id": "ae0cbbcb-45a8-4e6b-ac3e-544848bdfc24",
+            "village_name": "Channout (112)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "2dc283ff-53c6-5eac-a568-ac0990aaab47",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61063",
+            "village_id": "6c8ba24d-032f-4140-86d0-cd84c45d7a0a",
+            "village_name": "Sisai Kali Ravan (109)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "13619ad8-546f-5ab2-9414-188f4a9b1a55",
+        "source_feature_index": 3674,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061063",
+        "source_village_name": "Sisai Kali Rawan",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61063",
+            "village_id": "6c8ba24d-032f-4140-86d0-cd84c45d7a0a",
+            "village_name": "Sisai Kali Ravan (109)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "bf494521-f18a-5750-a92a-e2c181b59792",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61084",
+            "village_id": "aa416563-896e-43ce-9918-6e791d06e197",
+            "village_name": "Kumbha(125)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "5a4bdd58-be56-5a1d-bcb8-a85da9a80a5c",
+        "source_feature_index": 3681,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061084",
+        "source_village_name": "Khumba",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61084",
+            "village_id": "aa416563-896e-43ce-9918-6e791d06e197",
+            "village_name": "Kumbha(125)"
+          }
+        ]
+      },
+      {
+        "actionability": "NAME_REVIEW_REQUIRED",
+        "candidate_id": "f4755b03-b0d0-5083-bbfa-9a521c44293b",
+        "canonical_match_count": 1,
+        "canonical_matches": [
+          {
+            "block_code": "396",
+            "block_id": "aaa7ce2c-9cf0-47e0-9d5d-f8cbdc14feb3",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_id": "13f33403-4350-4709-8742-29c64f075e27",
+            "district_name": "Hansi",
+            "state_code": "6",
+            "state_id": "b45d6e8a-032a-4581-a0d0-cb6996322478",
+            "state_name": "Haryana",
+            "village_code": "61081",
+            "village_id": "6b1b1159-d055-4614-96ee-bc0d9b9d3fcb",
+            "village_name": "Sekhpura (121)"
+          }
+        ],
+        "disposition": "PRESENT_SAME_STATE_OTHER_DISTRICT",
+        "distinct_target_count": 1,
+        "expected_district_id": "def855bc-464a-4e7f-8b06-81089af59adb",
+        "expected_district_name": "Hisar",
+        "expected_state_lgd_code": "6",
+        "import_batch_id": "3b5a631e-1c4f-5d24-b63b-7fdeaa1f1e22",
+        "other_state_match_count": 0,
+        "same_state_match_count": 1,
+        "source_district_code": "063",
+        "source_district_name": "Hisar",
+        "source_feature_id": "adf8fb3e-5551-537d-98d1-f2b3f0976d65",
+        "source_feature_index": 3682,
+        "source_state": "Haryana",
+        "source_subdistrict_code": "0396",
+        "source_subdistrict_name": "Hansi",
+        "source_village_code": "061081",
+        "source_village_name": "Sheikhpura",
+        "target_assessments": [
+          {
+            "block_code": "396",
+            "block_name": "Hansi",
+            "district_code": "792",
+            "district_name": "Hansi",
+            "name_disposition": "NAME_MISMATCH_REVIEW_REQUIRED",
+            "village_code": "61081",
+            "village_id": "6b1b1159-d055-4614-96ee-bc0d9b9d3fcb",
+            "village_name": "Sekhpura (121)"
+          }
+        ]
+      }
+    ]
+  },
+  "schema_version": "nwdp_same_state_district_drift_audit.v1",
+  "source_evidence": {
+    "path": "/home/lynksavvy/projects/farmint/data/staged/core_stack/promotion_review/20260924-nwdp-no-canonical-village-audit-v1/nwdp_no_canonical_village_rows.jsonl",
+    "sha256": "d6d5cdb566e94fbe3e230162dbb95200b084e4cc635511192e012d1dad565a02"
+  },
+  "state_actionability_matrix": {
+    "Delhi": {
+      "DETERMINISTIC_DISTRICT_DRIFT": 61
+    },
+    "Haryana": {
+      "DETERMINISTIC_DISTRICT_DRIFT": 30,
+      "NAME_REVIEW_REQUIRED": 23
+    },
+    "Jammu & Kashmir": {
+      "DETERMINISTIC_DISTRICT_DRIFT": 6
+    },
+    "Punjab": {
+      "DETERMINISTIC_DISTRICT_DRIFT": 112,
+      "NAME_REVIEW_REQUIRED": 76
+    },
+    "Rajasthan": {
+      "DETERMINISTIC_DISTRICT_DRIFT": 3511,
+      "NAME_REVIEW_REQUIRED": 86
+    },
+    "Uttarakhand": {
+      "DETERMINISTIC_DISTRICT_DRIFT": 3
+    }
+  },
+  "target_name_dispositions": {
+    "EXACT_OR_PUNCTUATION_MATCH": 3581,
+    "NAME_MISMATCH_REVIEW_REQUIRED": 185,
+    "TRAILING_NUMERIC_SUFFIX_ONLY": 142
+  }
+}
