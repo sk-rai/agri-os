@@ -84,10 +84,11 @@ The active runtime baseline remains unchanged at `449,899` features and
 Two separately authorized cohorts are staged inactive:
 
 1. normalized direct-village rehabilitation: `49,606` rows;
-2. deterministic parent-drift rehabilitation: `11,676` rows.
+2. deterministic parent-drift rehabilitation: `11,676` rows;
+3. deterministic district-drift rehabilitation: `3,723` rows.
 
-The combined inactive runtime total is therefore `61,282` features and
-`61,282` crosswalks.
+The combined inactive runtime total is therefore `65,005` features and
+`65,005` crosswalks.
 
 The parent-drift cohort contains:
 
@@ -114,25 +115,53 @@ Parent-drift execution pins:
 - final checkpoint checksum:
   `e2cfba583631a1b271a15063dcfb8933769f65a23019798fab94c989e88815e2`.
 
+## District-drift inactive rehabilitation
+
+The no-canonical-village audit found `3,908` NWDP village codes that are
+present in canonical LGD within the same state but under a different
+district. Deterministic name validation retained `3,723` rows:
+
+- `3,581` exact or punctuation-normalized names;
+- `142` names differing only by an accepted trailing numeric suffix;
+- six states;
+- `3,723` unique candidate, source-feature, and target-village identities;
+- zero active or inactive runtime collisions.
+
+The remaining `185` district-drift name mismatches remain held for
+manual review. The authorized engine passed a read-only dry run and a
+61-row Delhi transactional apply/rollback rehearsal before completing
+six state transactions.
+
+Post-apply reconciliation found `3,723` inactive runtime features,
+`3,723` inactive crosswalks, six inactive promotion events, zero active
+staged rows, zero duplicate targets, zero invalid native geometries,
+zero candidate identity changes, and zero project matches. Active
+runtime totals remained `449,899` features and crosswalks.
+
+The final district-drift checkpoint checksum is:
+
+`2c548a99ee7c8d3bef1f29eea9ecf76db799025d39311fe0917b13b59fc11f37`
+
 ## Remaining blocked population
 
-After both inactive rehabilitation cohorts, `35,994` rows remain outside
-authorization:
+After all three inactive rehabilitation cohorts, `32,271` rows remain
+outside authorization:
 
 | Reason | Rows |
 | --- | ---: |
-| No canonical village match | 26,127 |
-| Name mismatch requiring review | 7,540 |
+| Absent from canonical LGD globally | 22,219 |
+| Normal hierarchy-matched name mismatch requiring review | 7,540 |
 | Canonical block mismatch with unsafe name disposition | 2,272 |
+| District drift with unsafe name disposition | 185 |
 | Source subdistrict mismatch with unsafe name disposition | 32 |
 | Missing canonical state — Chandigarh | 12 |
 | Missing canonical district — Delhi | 11 |
-| **Total** | **35,994** |
+| **Total** | **32,271** |
 
-The `7,540` normal hierarchy-matched name mismatches and the `2,304`
-parent-drift name mismatches require review rather than deterministic
-approval. The `26,127` no-village rows require canonical-source
-completion or an explicit unmatched-boundary policy. Chandigarh requires
+The `10,029` name-review rows remain held rather than deterministically
+approved. The `22,219` globally absent village codes require a current
+authoritative national LGD village master or an explicit unmatched-
+boundary policy. Chandigarh requires
 a canonical state and hierarchy before its 12 rows can be reconsidered.
 
 ## Readiness decision
@@ -143,8 +172,8 @@ authorized deterministic cohorts.
 
 Geography is not fully closed for runtime use:
 
-- the remaining `35,994` rows are unresolved;
-- all `61,282` rehabilitation rows remain inactive;
+- the remaining `32,271` rows are unresolved;
+- all `65,005` rehabilitation rows remain inactive;
 - lookup remains disabled;
 - activation requires a separate checksum-pinned authorization;
 - shared gateway/distributed rate limiting remains required before wider

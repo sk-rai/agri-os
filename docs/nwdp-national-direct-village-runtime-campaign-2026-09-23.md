@@ -349,3 +349,45 @@ Detailed count reconciliation and source interpretation are recorded in
 `docs/geography-coverage-reconciliation-2026-09-24.md`. These rows remain
 inactive; activation, lookup exposure, canonical geography changes,
 project matching, source writes, and Android changes remain unauthorized.
+
+## District-drift inactive rehabilitation
+
+A subsequent audit split the `26,127` no-canonical-village rows into
+`22,219` village codes absent from canonical LGD globally and `3,908`
+codes present in the same state under another canonical district.
+Conservative name validation retained `3,723` deterministic rows and
+held `185` name mismatches for manual review.
+
+The checksum-pinned cohort contains `3,581` exact or punctuation-
+normalized matches and `142` accepted trailing-numeric-suffix matches
+across Delhi, Haryana, Jammu & Kashmir, Punjab, Rajasthan, and
+Uttarakhand. Every candidate, source feature, and target village is
+unique, with zero pre-existing runtime collision.
+
+The authorized single-writer engine passed a read-only dry run and a
+61-row Delhi transactional rollback-only rehearsal. The guarded apply
+then completed six state transactions:
+
+- `3,723` candidate review-metadata updates;
+- `3,723` runtime-eligibility updates;
+- `3,723` inactive runtime features;
+- `3,723` inactive village crosswalks;
+- six inactive promotion events.
+
+Independent post-apply reconciliation found zero active staged rows,
+zero candidate identity, bucket, activation, or promotion changes, zero
+invalid native geometries, zero duplicate target villages, and zero
+project matches. Active runtime totals remain `449,899`; combined
+inactive rehabilitation now totals `65,005` features and crosswalks.
+
+The completed district-drift checkpoint checksum is:
+
+`2c548a99ee7c8d3bef1f29eea9ecf76db799025d39311fe0917b13b59fc11f37`
+
+The unresolved population is now `32,271`: `22,219` codes absent from
+canonical LGD globally, `10,029` held name mismatches, 12 Chandigarh
+rows without a canonical state, and 11 Delhi rows without a canonical
+district. Activation, lookup exposure, canonical geography writes,
+project matching, source writes, and Android changes remain
+unauthorized.
+

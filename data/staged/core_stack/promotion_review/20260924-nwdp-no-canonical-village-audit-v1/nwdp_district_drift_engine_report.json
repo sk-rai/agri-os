@@ -4,10 +4,10 @@
   "authorized_row_count": 3723,
   "authorized_state_count": 6,
   "batch_size": 25000,
-  "checkpoint_checksum": "cde9611420652423e5cd6ce628558d424ecb694468dca86b9e44cff13afdb567",
+  "checkpoint_checksum": "2c548a99ee7c8d3bef1f29eea9ecf76db799025d39311fe0917b13b59fc11f37",
   "database_writes_attempted": true,
-  "database_writes_committed": false,
-  "generated_at": "2026-09-25T07:02:42.936491+00:00",
+  "database_writes_committed": true,
+  "generated_at": "2026-09-25T07:05:54.503087+00:00",
   "guardrails": {
     "android_changed": false,
     "candidate_activation_changed": false,
@@ -21,7 +21,7 @@
   },
   "healthy": true,
   "manifest_checksum": "cae4e558e34188cfebb950d43ec0dae998761bdb1080f6bf5b28be6d2cedbb00",
-  "mode": "ROLLBACK_ONLY_REHEARSAL",
+  "mode": "APPLY",
   "ordered_national_row_manifest_sha256": "cfc95ce7d4da3b4a62367a6161037b65fe7df5b3630a5a35499ce3741d5f790e",
   "preflight": {
     "checks": {
@@ -50,22 +50,11 @@
   },
   "proposal_checksum": "fabc768bab4eb8570251da9c2febf1b15113bcff84f46b5187944c425b64724f",
   "proposal_status": "PROPOSED_NOT_AUTHORIZED",
-  "rollback_rehearsal": {
-    "after": {
-      "maximum_source_feature_index": -1,
-      "review_metadata": 0,
-      "runtime_crosswalks": 0,
-      "runtime_eligibility": 0,
-      "runtime_features": 0
-    },
-    "after_proposal_scoped_rollback": {
-      "maximum_source_feature_index": -1,
-      "review_metadata": 0,
-      "runtime_crosswalks": 0,
-      "runtime_eligibility": 0,
-      "runtime_features": 0
-    },
-    "apply_report": {
+  "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55",
+  "schema_version": "nwdp_district_drift_state_engine.v1",
+  "single_writer": true,
+  "transactions": [
+    {
       "counts": {
         "promotion_events": 1,
         "review_metadata": 61,
@@ -89,39 +78,144 @@
       "last_source_feature_index": 247,
       "promotion_event_id": "1b5a7f26-6512-5cb3-9675-be87bd30ac4d",
       "row_count": 61,
+      "state_lgd_code": "7",
       "transaction_id": "42c01edd-8247-50f9-aa00-2149c25d0df9"
     },
-    "before": {
-      "maximum_source_feature_index": -1,
-      "review_metadata": 0,
-      "runtime_crosswalks": 0,
-      "runtime_eligibility": 0,
-      "runtime_features": 0
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 30,
+        "runtime_crosswalks": 30,
+        "runtime_eligibility": 30,
+        "runtime_features": 30
+      },
+      "first_source_feature_index": 47,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 4787,
+      "promotion_event_id": "d385ebb4-5b5c-5133-b155-0eb6fb80c6a5",
+      "row_count": 30,
+      "state_lgd_code": "6",
+      "transaction_id": "0a83f016-89f6-5f07-baab-0356ee360fa0"
     },
-    "checkpoint_written": false,
-    "database_state_unchanged": true,
-    "during_transaction": {
-      "maximum_source_feature_index": 247,
-      "review_metadata": 61,
-      "runtime_crosswalks": 61,
-      "runtime_eligibility": 61,
-      "runtime_features": 61
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 6,
+        "runtime_crosswalks": 6,
+        "runtime_eligibility": 6,
+        "runtime_features": 6
+      },
+      "first_source_feature_index": 2143,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 3575,
+      "promotion_event_id": "859097a2-241b-56ec-8c8d-799b4f9ef660",
+      "row_count": 6,
+      "state_lgd_code": "1",
+      "transaction_id": "73683aaa-1048-50b6-b89e-6f090bd3e23a"
     },
-    "proposal_scoped_rollback_report": {
-      "candidate_rows_restored": 61,
-      "promotion_events_deleted": 1,
-      "runtime_crosswalks_deleted": 61,
-      "runtime_features_deleted": 61,
-      "source_rows_restored": 61
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 112,
+        "runtime_crosswalks": 112,
+        "runtime_eligibility": 112,
+        "runtime_features": 112
+      },
+      "first_source_feature_index": 61,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 9549,
+      "promotion_event_id": "43b4e92b-b75e-5e04-bbd2-e6bd6eddf05e",
+      "row_count": 112,
+      "state_lgd_code": "3",
+      "transaction_id": "61d1213d-1a5e-5b0f-82ff-e674e6c5608b"
     },
-    "rollback_executed": true,
-    "row_count": 61,
-    "source_file": "/home/lynksavvy/projects/farmint/data/raw/nwdp_boundary_all_state/20260824T110250Z/delhi.geojson",
-    "source_file_sha256": "0411a0da45bb021ef95c82572a9d7966a0f11bd2ca45dbc7eb9cf909e0e507a9",
-    "state_lgd_code": "7"
-  },
-  "runtime_set_id": "e5f93e27-a0bd-5c8b-bef3-d97986e14c55",
-  "schema_version": "nwdp_district_drift_state_engine.v1",
-  "single_writer": true,
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 3511,
+        "runtime_crosswalks": 3511,
+        "runtime_eligibility": 3511,
+        "runtime_features": 3511
+      },
+      "first_source_feature_index": 18,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 44830,
+      "promotion_event_id": "7ffde8d1-d76a-51a0-a850-6e0e22538440",
+      "row_count": 3511,
+      "state_lgd_code": "8",
+      "transaction_id": "312da6a5-6a97-5325-952b-8e95e170fa67"
+    },
+    {
+      "counts": {
+        "promotion_events": 1,
+        "review_metadata": 3,
+        "runtime_crosswalks": 3,
+        "runtime_eligibility": 3,
+        "runtime_features": 3
+      },
+      "first_source_feature_index": 563,
+      "guardrails": {
+        "active_candidates": 0,
+        "active_crosswalks": 0,
+        "active_events": 0,
+        "active_features": 0,
+        "changed_candidate_buckets": 0,
+        "changed_candidate_identity": 0,
+        "invalid_native_geometry": 0,
+        "invalid_native_srid": 0,
+        "missing_native_geometry": 0,
+        "promoted_candidates": 0
+      },
+      "last_source_feature_index": 14730,
+      "promotion_event_id": "1135458a-eed5-53c6-be18-f897aa1f90ed",
+      "row_count": 3,
+      "state_lgd_code": "5",
+      "transaction_id": "0c00f9bb-d4dc-5517-b0f3-469908d57cbd"
+    }
+  ],
   "writer_count": 1
 }
