@@ -21,3 +21,4 @@ web/test-artifacts/admin-smoke-matrix/
 
 # Durable generated national validation-metadata rollout runs.
 data/staged/core_stack/boundary_validation_metadata_rollout_runs/
+data/staged/core_stack/promotion_review/*-lgd-priority-state-reconciliation-*/
