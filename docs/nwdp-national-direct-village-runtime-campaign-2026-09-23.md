@@ -391,3 +391,56 @@ district. Activation, lookup exposure, canonical geography writes,
 project matching, source writes, and Android changes remain
 unauthorized.
 
+## Current-LGD additive reconciliation and inactive staging
+
+Current data.gov.in LGD village exports for eight priority states were
+reconciled against the canonical hierarchy using checksum-pinned,
+deterministic builders. A separately authorized additive canonical
+import inserted one district, five subdistricts, and `24,564` villages.
+It did not update, deactivate, delete, or reparent any existing
+canonical row and did not create PIN links, project matches, runtime
+crosswalks, farmer links, parcel links, or demographic profiles.
+
+The additive import resolved `20,365` of the `22,219` NWDP rows whose
+village codes had previously been absent from canonical LGD:
+
+- `18,928` now resolve in their expected district;
+- `1,437` resolve in the same state under another district;
+- `1,854` remain absent from canonical geography.
+
+Strict post-import actionability classification retained `17,498`
+deterministic inactive-staging rows. The remaining `4,721` rows from
+this cohort stay held:
+
+| Disposition | Rows |
+| --- | ---: |
+| Name review required | 2,867 |
+| Canonical reparent review required | 1,076 |
+| Absent from current LGD review required | 400 |
+| Other structural review required | 378 |
+| **Total** | **4,721** |
+
+The authorized single-writer engine passed a read-only dry run and an
+821-row Jammu & Kashmir transactional rollback-only rehearsal. The
+guarded apply then completed eight state transactions:
+
+- `17,498` candidate review-metadata updates;
+- `17,498` runtime-eligibility updates;
+- `17,498` inactive runtime features;
+- `17,498` inactive village crosswalks;
+- eight inactive promotion events.
+
+Post-apply reconciliation confirmed zero active staged rows, zero
+candidate activation, promotion, bucket, or identity changes, zero
+missing or invalid native geometries, and zero project, lookup,
+canonical, source-file, source-geometry, or Android changes. Active
+runtime totals remain `449,899` features and crosswalks. Combined
+inactive staging now totals `82,503` features and `82,503` crosswalks.
+
+The completed post-LGD staging checkpoint checksum is:
+
+`9e6372b9f70df1869321abd13565ecfc59bc0480a6fde149902a6d28f9628c03`
+
+The unresolved population is now `14,773`: the `4,721` held post-LGD
+rows above plus the `10,052` rows already held outside the globally
+absent cohort. Activation and lookup exposure remain unauthorized.

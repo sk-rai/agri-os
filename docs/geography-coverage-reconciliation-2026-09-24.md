@@ -142,27 +142,69 @@ The final district-drift checkpoint checksum is:
 
 `2c548a99ee7c8d3bef1f29eea9ecf76db799025d39311fe0917b13b59fc11f37`
 
+## Current-LGD priority-state reconciliation
+
+Checksum-pinned current LGD exports for Delhi, Haryana, Himachal
+Pradesh, Jammu & Kashmir, Ladakh, Punjab, Rajasthan, and Uttarakhand
+were reconciled against canonical geography. A separately authorized
+additive import inserted one district, five subdistricts, and `24,564`
+villages without updating, deactivating, deleting, or reparenting
+existing canonical rows.
+
+The import resolved `20,365` of the `22,219` NWDP rows previously
+classified as absent from canonical LGD. Strict name and hierarchy
+validation selected `17,498` rows for inactive-only staging:
+
+| State | Rows |
+| --- | ---: |
+| Jammu & Kashmir | 821 |
+| Himachal Pradesh | 2,433 |
+| Punjab | 1,625 |
+| Uttarakhand | 1,359 |
+| Haryana | 1,922 |
+| Delhi | 8 |
+| Rajasthan | 9,309 |
+| Ladakh | 21 |
+| **Total** | **17,498** |
+
+The guarded apply completed eight transactions and created `17,498`
+inactive runtime features, `17,498` inactive crosswalks, and eight
+inactive promotion events. All state reconciliation checks passed.
+Active runtime totals remained `449,899`; inactive totals increased
+from `65,005` to `82,503`.
+
+The remaining `4,721` rows from the formerly globally absent cohort
+require name, reparenting, current-LGD, or other structural review.
+Together with the `10,052` previously held rows outside that cohort,
+the unresolved population is now `14,773`.
+
+The completed post-LGD checkpoint checksum is:
+
+`9e6372b9f70df1869321abd13565ecfc59bc0480a6fde149902a6d28f9628c03`
+
 ## Remaining blocked population
 
-After all three inactive rehabilitation cohorts, `32,271` rows remain
+After all four inactive rehabilitation cohorts, `14,773` rows remain
 outside authorization:
 
 | Reason | Rows |
 | --- | ---: |
-| Absent from canonical LGD globally | 22,219 |
+| Post-LGD name review required | 2,867 |
+| Post-LGD canonical reparent review required | 1,076 |
+| Post-LGD absent from current LGD review required | 400 |
+| Post-LGD other structural review required | 378 |
 | Normal hierarchy-matched name mismatch requiring review | 7,540 |
 | Canonical block mismatch with unsafe name disposition | 2,272 |
 | District drift with unsafe name disposition | 185 |
 | Source subdistrict mismatch with unsafe name disposition | 32 |
 | Missing canonical state — Chandigarh | 12 |
 | Missing canonical district — Delhi | 11 |
-| **Total** | **32,271** |
+| **Total** | **14,773** |
 
-The `10,029` name-review rows remain held rather than deterministically
-approved. The `22,219` globally absent village codes require a current
-authoritative national LGD village master or an explicit unmatched-
-boundary policy. Chandigarh requires
-a canonical state and hierarchy before its 12 rows can be reconsidered.
+All remaining rows stay held rather than being fuzzily or structurally
+approved. Canonical reparenting requires separate review and
+authorization. Chandigarh requires a canonical state and hierarchy
+before its 12 rows can be reconsidered.
 
 ## Readiness decision
 
@@ -172,8 +214,8 @@ authorized deterministic cohorts.
 
 Geography is not fully closed for runtime use:
 
-- the remaining `32,271` rows are unresolved;
-- all `65,005` rehabilitation rows remain inactive;
+- the remaining `14,773` rows are unresolved;
+- all `82,503` rehabilitation rows remain inactive;
 - lookup remains disabled;
 - activation requires a separate checksum-pinned authorization;
 - shared gateway/distributed rate limiting remains required before wider
