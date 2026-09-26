@@ -21,7 +21,7 @@ from lgd_priority_state_common import (
 )
 
 
-SCHEMA_VERSION = "nwdp_legacy_strong_name_review_batch.v1"
+SCHEMA_VERSION = "nwdp_legacy_strong_name_review_batch.v2"
 EXPECTED_INPUT_SHA256 = (
     "dd7d68ea2db24f1bb1de9243bdfb9f217a7917fad0f8dc2168d316d4e2af6d62"
 )
@@ -57,6 +57,8 @@ CSV_FIELDS = [
     "levenshtein_distance",
     "sequence_similarity",
     "token_jaccard",
+    "evidence_basis",
+    "evidence_reference",
     "review_decision",
     "reviewer",
     "review_notes",
@@ -179,9 +181,18 @@ def main() -> int:
         batch_rows.append({
             **row,
             "sequence": sequence,
+            "evidence_basis": "",
+            "evidence_reference": "",
             "review_decision": "",
             "reviewer": "",
             "review_notes": "",
+            "allowed_evidence_bases": [
+                "ADMINISTRATIVE_QUALIFIER",
+                "TOKEN_ORDER_EQUIVALENCE",
+                "VERNACULAR_TRANSLITERATION_EQUIVALENCE",
+                "AUTHORITATIVE_SOURCE_CONFIRMATION",
+                "OTHER_DOCUMENTED_EVIDENCE",
+            ],
             "allowed_review_decisions": [
                 "APPROVE_EQUIVALENCE",
                 "REJECT_EQUIVALENCE",
@@ -241,6 +252,14 @@ def main() -> int:
         ),
         "review_decisions_blank": all(
             row["review_decision"] == ""
+            for row in batch_rows
+        ),
+        "evidence_bases_blank": all(
+            row["evidence_basis"] == ""
+            for row in batch_rows
+        ),
+        "evidence_references_blank": all(
+            row["evidence_reference"] == ""
             for row in batch_rows
         ),
         "reviewers_blank": all(
@@ -304,6 +323,13 @@ def main() -> int:
             sorted(band_counts.items())
         ),
         "counts_by_state": dict(sorted(state_counts.items())),
+        "allowed_evidence_bases": [
+            "ADMINISTRATIVE_QUALIFIER",
+            "TOKEN_ORDER_EQUIVALENCE",
+            "VERNACULAR_TRANSLITERATION_EQUIVALENCE",
+            "AUTHORITATIVE_SOURCE_CONFIRMATION",
+            "OTHER_DOCUMENTED_EVIDENCE",
+        ],
         "allowed_review_decisions": [
             "APPROVE_EQUIVALENCE",
             "REJECT_EQUIVALENCE",
