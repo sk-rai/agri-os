@@ -19,11 +19,38 @@ from lgd_priority_state_common import (
 )
 
 
-SCHEMA_VERSION = "nwdp_legacy_name_review_decisions.v1"
-EXPECTED_TEMPLATE_ROWS_SHA256 = (
-    "7cb16e8003488db5e9d2fb08c4f3248ce277cef757954ba3161f22c58dbb3b8b"
-)
-EXPECTED_ROWS = 217
+SCHEMA_VERSION = "nwdp_legacy_name_review_decisions.v2"
+
+PROFILE_CONFIGS = {
+    "strong": {
+        "template_rows_filename":
+            "nwdp_legacy_strong_name_review_batch_rows.jsonl",
+        "reviewed_csv_filename":
+            "nwdp_legacy_strong_name_review_batch.csv",
+        "expected_template_rows_sha256":
+            "7cb16e8003488db5e9d2fb08c4f3248ce277cef757954ba3161f22c58dbb3b8b",
+        "expected_rows": 217,
+        "output_prefix": "nwdp_legacy_name_review",
+        "additional_required_columns": set(),
+    },
+    "high-similarity": {
+        "template_rows_filename":
+            "nwdp_legacy_high_similarity_review_batch_rows.jsonl",
+        "reviewed_csv_filename":
+            "nwdp_legacy_high_similarity_review_batch.csv",
+        "expected_template_rows_sha256":
+            "13eab896a106893f5709b018200745123874f643072cac0f673ef259511c75ae",
+        "expected_rows": 4_004,
+        "output_prefix":
+            "nwdp_legacy_high_similarity_name_review",
+        "additional_required_columns": {
+            "review_priority",
+            "review_focus",
+            "source_name_normalized",
+            "canonical_name_normalized",
+        },
+    },
+}
 
 ALLOWED_DECISIONS = {
     "APPROVE_EQUIVALENCE",
@@ -86,20 +113,19 @@ REQUIRED_COLUMNS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--profile",
+        choices=sorted(PROFILE_CONFIGS),
+        default="strong",
+    )
+    parser.add_argument(
         "--template-rows",
         type=Path,
-        default=(
-            DEFAULT_OUTPUT_DIR
-            / "nwdp_legacy_strong_name_review_batch_rows.jsonl"
-        ),
+        default=None,
     )
     parser.add_argument(
         "--reviewed-csv",
         type=Path,
-        default=(
-            DEFAULT_OUTPUT_DIR
-            / "nwdp_legacy_strong_name_review_batch.csv"
-        ),
+        default=None,
     )
     parser.add_argument(
         "--output-dir",
@@ -228,10 +254,36 @@ def validate_review_row(
 
 def main() -> int:
     args = parse_args()
-    template_path = args.template_rows.resolve()
-    reviewed_csv_path = args.reviewed_csv.resolve()
+    config = PROFILE_CONFIGS[args.profile]
+
+    template_path = (
+        args.template_rows
+        if args.template_rows is not None
+        else (
+            DEFAULT_OUTPUT_DIR
+            / config["template_rows_filename"]
+        )
+    ).resolve()
+    reviewed_csv_path = (
+        args.reviewed_csv
+        if args.reviewed_csv is not None
+        else (
+            DEFAULT_OUTPUT_DIR
+            / config["reviewed_csv_filename"]
+        )
+    ).resolve()
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    expected_template_sha256 = str(
+        config["expected_template_rows_sha256"]
+    )
+    expected_rows = int(config["expected_rows"])
+    output_prefix = str(config["output_prefix"])
+    required_columns = (
+        REQUIRED_COLUMNS
+        | set(config["additional_required_columns"])
+    )
 
     if not template_path.is_file():
         raise ValueError(
@@ -265,7 +317,7 @@ def main() -> int:
     )
 
     missing_columns = sorted(
-        REQUIRED_COLUMNS - set(headers)
+        required_columns - set(headers)
     )
     unexpected_candidate_ids = sorted(
         candidate_id
@@ -278,7 +330,7 @@ def main() -> int:
     )
 
     immutable_columns = sorted(
-        REQUIRED_COLUMNS - MUTABLE_FIELDS
+        required_columns - MUTABLE_FIELDS
     )
 
     validated_rows: list[dict[str, Any]] = []
@@ -362,13 +414,13 @@ def main() -> int:
     checks = {
         "template_sha256_pinned": (
             template_sha256
-            == EXPECTED_TEMPLATE_ROWS_SHA256
+            == expected_template_sha256
         ),
         "template_row_count_exact": (
-            len(template_rows) == EXPECTED_ROWS
+            len(template_rows) == expected_rows
         ),
         "reviewed_row_count_exact": (
-            len(reviewed_rows) == EXPECTED_ROWS
+            len(reviewed_rows) == expected_rows
         ),
         "required_columns_present": not missing_columns,
         "template_candidate_identity_unique": (
@@ -382,14 +434,14 @@ def main() -> int:
             and not unexpected_candidate_ids
         ),
         "all_rows_valid": (
-            len(validated_rows) == EXPECTED_ROWS
+            len(validated_rows) == expected_rows
             and not invalid_rows
         ),
         "decision_partition_exact": (
             len(approved_rows)
             + len(rejected_rows)
             + len(deferred_rows)
-            == EXPECTED_ROWS
+            == expected_rows
         ),
         "no_database_writes": True,
         "not_authorized_for_apply": True,
@@ -399,23 +451,23 @@ def main() -> int:
 
     approved_path = (
         output_dir
-        / "nwdp_legacy_name_review_approved_rows.jsonl"
+        / f"{output_prefix}_approved_rows.jsonl"
     )
     rejected_path = (
         output_dir
-        / "nwdp_legacy_name_review_rejected_rows.jsonl"
+        / f"{output_prefix}_rejected_rows.jsonl"
     )
     deferred_path = (
         output_dir
-        / "nwdp_legacy_name_review_deferred_rows.jsonl"
+        / f"{output_prefix}_deferred_rows.jsonl"
     )
     invalid_path = (
         output_dir
-        / "nwdp_legacy_name_review_invalid_rows.jsonl"
+        / f"{output_prefix}_invalid_rows.jsonl"
     )
     summary_path = (
         output_dir
-        / "nwdp_legacy_name_review_decision_validation.json"
+        / f"{output_prefix}_decision_validation.json"
     )
 
     atomic_write_jsonl(approved_path, approved_rows)
@@ -425,6 +477,8 @@ def main() -> int:
 
     summary: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
+        "profile": args.profile,
+        "expected_row_count": expected_rows,
         "status": (
             "VALIDATED_NOT_AUTHORIZED_FOR_APPLY"
             if healthy
