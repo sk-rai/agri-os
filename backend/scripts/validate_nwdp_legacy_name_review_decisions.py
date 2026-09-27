@@ -31,6 +31,13 @@ PROFILE_CONFIGS = {
             "7cb16e8003488db5e9d2fb08c4f3248ce277cef757954ba3161f22c58dbb3b8b",
         "expected_rows": 217,
         "output_prefix": "nwdp_legacy_name_review",
+        "allowed_evidence_bases": {
+            "ADMINISTRATIVE_QUALIFIER",
+            "TOKEN_ORDER_EQUIVALENCE",
+            "VERNACULAR_TRANSLITERATION_EQUIVALENCE",
+            "AUTHORITATIVE_SOURCE_CONFIRMATION",
+            "OTHER_DOCUMENTED_EVIDENCE",
+        },
         "additional_required_columns": set(),
     },
     "high-similarity": {
@@ -43,6 +50,11 @@ PROFILE_CONFIGS = {
         "expected_rows": 4_004,
         "output_prefix":
             "nwdp_legacy_high_similarity_name_review",
+        "allowed_evidence_bases": {
+            "VERNACULAR_TRANSLITERATION_EQUIVALENCE",
+            "AUTHORITATIVE_SOURCE_CONFIRMATION",
+            "OTHER_DOCUMENTED_EVIDENCE",
+        },
         "additional_required_columns": {
             "review_priority",
             "review_focus",
@@ -60,6 +72,33 @@ PROFILE_CONFIGS = {
         "expected_rows": 1_877,
         "output_prefix":
             "nwdp_legacy_moderate_similarity_name_review",
+        "allowed_evidence_bases": {
+            "VERNACULAR_TRANSLITERATION_EQUIVALENCE",
+            "AUTHORITATIVE_SOURCE_CONFIRMATION",
+            "OTHER_DOCUMENTED_EVIDENCE",
+        },
+        "additional_required_columns": {
+            "review_priority",
+            "review_focus",
+            "source_name_normalized",
+            "canonical_name_normalized",
+        },
+    },
+
+    "low-similarity": {
+        "template_rows_filename":
+            "nwdp_legacy_low_similarity_review_batch_rows.jsonl",
+        "reviewed_csv_filename":
+            "nwdp_legacy_low_similarity_review_batch.csv",
+        "expected_template_rows_sha256":
+            "52969883443199b87d3b805df4ec6c38861b19421899f20a2f8b3b9b11bf92e1",
+        "expected_rows": 1_442,
+        "output_prefix":
+            "nwdp_legacy_low_similarity_name_review",
+        "allowed_evidence_bases": {
+            "VERNACULAR_TRANSLITERATION_EQUIVALENCE",
+            "AUTHORITATIVE_SOURCE_CONFIRMATION",
+        },
         "additional_required_columns": {
             "review_priority",
             "review_focus",
@@ -208,6 +247,7 @@ def validate_review_row(
     row: dict[str, str],
     template: dict[str, Any],
     immutable_columns: list[str],
+    profile_allowed_evidence_bases: set[str],
 ) -> list[str]:
     failures: list[str] = []
 
@@ -241,6 +281,13 @@ def validate_review_row(
 
     if basis and basis not in ALLOWED_EVIDENCE_BASES:
         failures.append(f"EVIDENCE_BASIS_INVALID:{basis}")
+    elif (
+        basis
+        and basis not in profile_allowed_evidence_bases
+    ):
+        failures.append(
+            f"EVIDENCE_BASIS_NOT_ALLOWED_FOR_PROFILE:{basis}"
+        )
 
     if decision == "APPROVE_EQUIVALENCE":
         if not basis:
@@ -298,6 +345,9 @@ def main() -> int:
     )
     expected_rows = int(config["expected_rows"])
     output_prefix = str(config["output_prefix"])
+    profile_allowed_evidence_bases = set(
+        config["allowed_evidence_bases"]
+    )
     required_columns = (
         REQUIRED_COLUMNS
         | set(config["additional_required_columns"])
@@ -366,6 +416,7 @@ def main() -> int:
                 row,
                 template,
                 immutable_columns,
+                profile_allowed_evidence_bases,
             )
 
             validated = {
@@ -497,6 +548,9 @@ def main() -> int:
         "schema_version": SCHEMA_VERSION,
         "profile": args.profile,
         "expected_row_count": expected_rows,
+        "allowed_evidence_bases": sorted(
+            profile_allowed_evidence_bases
+        ),
         "status": (
             "VALIDATED_NOT_AUTHORIZED_FOR_APPLY"
             if healthy
