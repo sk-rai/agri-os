@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -14,6 +15,7 @@ from sqlalchemy import text
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.farmer.models import ProjectRole
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -56,6 +58,7 @@ def main() -> int:
     client = TestClient(app)
     db = SessionLocal()
     admin = None
+    project_role_id = None
 
     try:
         project_id = choose_project_id(db)
@@ -67,13 +70,51 @@ def main() -> int:
         )
         check(denied.status_code in {401, 403}, "Unauthenticated project preview is denied", denied.text[:500])
 
-        admin, headers = create_test_admin(db, role="ADMIN_VIEWER", tenant_id="default")
+        admin, headers = create_test_admin(
+            db,
+            role="ADMIN_VIEWER",
+            tenant_id="default",
+        )
+        project_role_id = uuid.uuid4()
+        db.add(
+            ProjectRole(
+                id=project_role_id,
+                project_id=uuid.UUID(project_id),
+                user_id=admin.id,
+                role="MANAGER",
+                territory_scope={},
+                is_active=True,
+            )
+        )
+        db.commit()
 
         missing_project = client.get(
             "/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview",
             headers=headers,
         )
-        check(missing_project.status_code == 422, "Endpoint requires project_id", missing_project.text[:500])
+        check(
+            missing_project.status_code == 400,
+            "Project-scoped authorization requires project_id",
+            missing_project.text[:500],
+        )
+        check(
+            missing_project.json()["detail"]
+            == "Project-scoped permission requires project_id.",
+            "Missing project rejection reason is stable",
+            missing_project.json(),
+        )
+
+        wrong_tenant_headers = dict(headers)
+        wrong_tenant_headers["X-Tenant-ID"] = "wrong-tenant"
+        wrong_tenant = client.get(
+            f"/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?project_id={project_id}&limit=25",
+            headers=wrong_tenant_headers,
+        )
+        check(
+            wrong_tenant.status_code == 403,
+            "Cross-tenant project preview is denied",
+            wrong_tenant.text[:500],
+        )
 
         response = client.get(
             f"/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?project_id={project_id}&limit=25",
@@ -116,6 +157,11 @@ def main() -> int:
         print("=" * 72)
         return 0
     finally:
+        if project_role_id is not None:
+            db.query(ProjectRole).filter(
+                ProjectRole.id == project_role_id
+            ).delete(synchronize_session=False)
+            db.commit()
         if admin is not None:
             delete_test_admin(db, admin.id)
         db.close()

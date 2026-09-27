@@ -2338,7 +2338,9 @@ def get_nwdp_boundary_project_matching_project_preview(
     project_id: UUID = Query(...),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
-    principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+    principal=Depends(
+        require_admin_permission(AdminPermission.VIEW, project_scoped=True)
+    ),
 ) -> dict:
     result = _nwdp_boundary_project_matching_project_preview(db, project_id, limit)
     return {
