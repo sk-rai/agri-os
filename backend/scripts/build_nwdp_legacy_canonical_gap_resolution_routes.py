@@ -44,6 +44,8 @@ CSV_FIELDS = [
     "canonical_target_district_code",
     "canonical_target_district_name",
     "geometry_validation_status",
+    "project_tenant_id",
+    "project_id",
     "review_decision",
     "reviewer",
     "review_notes",
@@ -92,6 +94,8 @@ def route_row(source: dict) -> dict:
         "canonical_target_district_name": target.get("district_name"),
         "geometry_validation_status":
             source.get("geometry_validation_status"),
+        "project_tenant_id": "",
+        "project_id": "",
         "review_decision": "",
         "reviewer": "",
         "review_notes": "",
@@ -151,6 +155,8 @@ def main() -> int:
             not row[field]
             for row in rows
             for field in (
+                "project_tenant_id",
+                "project_id",
                 "review_decision",
                 "reviewer",
                 "review_notes",
@@ -202,7 +208,7 @@ def main() -> int:
 
     summary_core = {
         "schema_version":
-            "nwdp_legacy_canonical_gap_resolution_routes.v1",
+            "nwdp_legacy_canonical_gap_resolution_routes.v2",
         "status":
             "ROUTED_NOT_AUTHORIZED"
             if healthy else "ROUTING_INVALID",
@@ -230,6 +236,11 @@ def main() -> int:
             "project_mapping_apply_authorized": False,
             "runtime_activation_authorized": False,
         },
+        "allowed_review_decisions": [
+            "APPROVE_PROJECT_SCOPED_MANUAL_MAPPING",
+            "CONFIRM_GLOBAL_REMEDIATION_ROUTE",
+            "DEFER_FOR_AUTHORITATIVE_RESEARCH",
+        ],
         "rows": str(rows_path.resolve()),
         "rows_sha256": sha256(rows_path),
         "csv": str(csv_path.resolve()),
