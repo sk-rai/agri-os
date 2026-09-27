@@ -50,6 +50,24 @@ PROFILE_CONFIGS = {
             "canonical_name_normalized",
         },
     },
+    "moderate-similarity": {
+        "template_rows_filename":
+            "nwdp_legacy_moderate_similarity_review_batch_rows.jsonl",
+        "reviewed_csv_filename":
+            "nwdp_legacy_moderate_similarity_review_batch.csv",
+        "expected_template_rows_sha256":
+            "f11610c7b31f6de52ecd13af11e86ee3f88e134c66dfc2a31204fc113616af4a",
+        "expected_rows": 1_877,
+        "output_prefix":
+            "nwdp_legacy_moderate_similarity_name_review",
+        "additional_required_columns": {
+            "review_priority",
+            "review_focus",
+            "source_name_normalized",
+            "canonical_name_normalized",
+        },
+    },
+
 }
 
 ALLOWED_DECISIONS = {
