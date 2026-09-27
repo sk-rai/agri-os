@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
-SCHEMA_VERSION = "nwdp_legacy_source_hierarchy_review_batch.v1"
+SCHEMA_VERSION = "nwdp_legacy_source_hierarchy_review_batch.v2"
 INPUT_SHA256 = (
     "71513ec165ea100a5412688a1ac876a122eafd722bc71a62d89d1edf4adba2d0"
 )
@@ -26,6 +26,8 @@ CSV_FIELDS = (
     "source_district_code",
     "source_subdistrict_name",
     "source_subdistrict_code",
+    "replacement_subdistrict_code",
+    "replacement_subdistrict_name",
     "village_row_count",
     "canonical_block_count",
     "canonical_block_codes",
@@ -132,6 +134,8 @@ def build(input_path, rows_path, csv_path):
             "canonical_block_count": len(blocks),
             "canonical_block_names":
                 "|".join(name for _, name in sorted(blocks)),
+            "replacement_subdistrict_code": "",
+            "replacement_subdistrict_name": "",
             "review_decision": "",
             "review_evidence_basis": "",
             "review_evidence_reference": "",
@@ -206,6 +210,8 @@ def build(input_path, rows_path, csv_path):
             and not row["reviewer"]
             and not row["review_evidence_basis"]
             and not row["review_evidence_reference"]
+            and not row["replacement_subdistrict_code"]
+            and not row["replacement_subdistrict_name"]
             for row in output
         ),
         "review_row_count_exact":
