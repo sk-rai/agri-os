@@ -2369,6 +2369,194 @@ def get_nwdp_boundary_project_matching_project_preview(
 
 
 
+
+def _nwdp_project_manual_hierarchy_candidate_rows(
+    db: Session,
+) -> list[dict]:
+    rows = db.execute(text("""
+        with candidate_targets as (
+          select
+            c.id::text as candidate_id,
+            c.source_feature_id::text as source_feature_id,
+            c.candidate_bucket,
+            c.review_status,
+            c.promotion_status,
+            c.is_active as candidate_is_active,
+            b.source_system,
+            b.state_or_ut,
+            sf.source_feature_index,
+            sf.source_stcode,
+            sf.source_dtcode,
+            sf.source_sdcode,
+            sf.source_vlcode,
+            sf.source_state_name,
+            sf.source_district_name,
+            sf.source_subdistrict_name,
+            sf.source_village_name,
+            sf.geometry_validation_status,
+            sf.source_geometry_hash,
+            gs.id::text as canonical_state_id,
+            gs.lgd_code as canonical_state_code,
+            gs.canonical_name as canonical_state_name,
+            gv.id::text as canonical_village_id,
+            gv.lgd_code as canonical_village_code,
+            gv.canonical_name as canonical_village_name,
+            gd.id::text as canonical_district_id,
+            gd.lgd_code as canonical_district_code,
+            gd.canonical_name as canonical_district_name,
+            gb.id::text as canonical_block_id,
+            gb.lgd_code as canonical_block_code,
+            gb.canonical_name as canonical_block_name,
+            count(*) over (
+              partition by c.id
+            )::integer as canonical_target_count
+          from geography_boundary_crosswalk_candidates c
+          join geography_boundary_import_batches b
+            on b.id = c.import_batch_id
+          join geography_boundary_source_features sf
+            on sf.id = c.source_feature_id
+          join geography_states gs
+            on gs.is_active = true
+           and (
+             case
+               when ltrim(coalesce(gs.lgd_code, ''), '0') = ''
+               then '0'
+               else ltrim(coalesce(gs.lgd_code, ''), '0')
+             end
+           ) = (
+             case
+               when ltrim(coalesce(sf.source_stcode, ''), '0') = ''
+               then '0'
+               else ltrim(coalesce(sf.source_stcode, ''), '0')
+             end
+           )
+          join geography_villages gv
+            on gv.is_active = true
+           and (
+             case
+               when ltrim(coalesce(gv.lgd_code, ''), '0') = ''
+               then '0'
+               else ltrim(coalesce(gv.lgd_code, ''), '0')
+             end
+           ) = (
+             case
+               when ltrim(coalesce(sf.source_vlcode, ''), '0') = ''
+               then '0'
+               else ltrim(coalesce(sf.source_vlcode, ''), '0')
+             end
+           )
+          join geography_districts gd
+            on gd.id = gv.district_id
+           and gd.state_id = gs.id
+           and gd.is_active = true
+          left join geography_blocks gb
+            on gb.id = gv.block_id
+           and gb.is_active = true
+          left join geography_districts source_district
+            on source_district.state_id = gs.id
+           and source_district.is_active = true
+           and (
+             case
+               when ltrim(
+                 coalesce(source_district.lgd_code, ''),
+                 '0'
+               ) = ''
+               then '0'
+               else ltrim(
+                 coalesce(source_district.lgd_code, ''),
+                 '0'
+               )
+             end
+           ) = (
+             case
+               when ltrim(coalesce(sf.source_dtcode, ''), '0') = ''
+               then '0'
+               else ltrim(coalesce(sf.source_dtcode, ''), '0')
+             end
+           )
+          where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+            and c.candidate_bucket = 'BLOCKED_SOURCE_CAVEAT'
+            and c.review_status = 'BLOCKED'
+            and c.promotion_status = 'NOT_PROMOTED'
+            and c.is_active = false
+            and c.proposed_village_id is null
+            and sf.geometry_validation_status = 'VALIDATED'
+            and source_district.id is null
+        )
+        select *
+        from candidate_targets
+        where canonical_target_count = 1
+        order by candidate_id
+    """)).mappings().all()
+    return [dict(row) for row in rows]
+
+
+@router.get(
+    "/nwdp-boundary-project-matching/projects/"
+    "{project_id}/manual-hierarchy-candidates"
+)
+def list_nwdp_project_manual_hierarchy_candidates(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal=Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+) -> dict:
+    all_candidates = _nwdp_project_manual_hierarchy_candidate_rows(
+        db
+    )
+    items = [
+        row
+        for row in all_candidates
+        if _project_contains_village(
+            db,
+            project_id,
+            UUID(row["canonical_village_id"]),
+        )
+    ]
+
+    return {
+        "schema_version":
+            "nwdp_boundary_project_manual_hierarchy_candidates.v1",
+        "mode":
+            "READ_ONLY_PROJECT_SCOPED_MANUAL_HIERARCHY_CANDIDATES",
+        "claim_boundary": (
+            "Returns validated blocked NWDP candidates whose source "
+            "district is absent from the current hierarchy and whose "
+            "source village code resolves to exactly one active village "
+            "in the same state. Results are restricted to villages in "
+            "the authenticated tenant project. It does not modify global "
+            "candidates, canonical geography, project assignments, "
+            "runtime tables, lookup behavior, or Android behavior."
+        ),
+        "project_id": str(project_id),
+        "tenant_id": x_tenant_id,
+        "count": len(items),
+        "items": items,
+        "guardrails": {
+            "db_writes_attempted": False,
+            "candidate_rows_mutated": False,
+            "canonical_geography_mutated": False,
+            "global_equivalence_created": False,
+            "project_assignments_written": False,
+            "runtime_tables_written": False,
+            "runtime_spatial_matching_changed": False,
+            "lookup_api_enabled": False,
+            "android_behavior_changed": False,
+        },
+        "readiness": {
+            "ready_for_project_admin_read": True,
+            "ready_for_project_manual_apply": False,
+            "ready_for_global_reuse": False,
+            "ready_for_runtime_activation": False,
+        },
+    }
+
+
 @router.get("/boundary-runtime-pilot/inspection", response_model=NwdpBoundaryRuntimePilotInspectionResponse)
 def get_nwdp_boundary_runtime_pilot_inspection(
     limit: int = Query(25, ge=1, le=200),
