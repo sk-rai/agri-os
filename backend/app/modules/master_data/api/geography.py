@@ -2981,7 +2981,7 @@ def assign_nwdp_boundary_to_project_village(
     if not candidate:
         raise HTTPException(status_code=404, detail="Boundary candidate not found")
 
-    eligible = (
+    direct_eligible = (
         candidate["source_system"] == "NWDP_GSI_VILLAGE_BOUNDARY"
         and candidate["village_id"] == str(village_id)
         and candidate["candidate_bucket"] == "DIRECT_VLCODE_MATCH"
@@ -2990,6 +2990,19 @@ def assign_nwdp_boundary_to_project_village(
         and candidate["candidate_is_active"] is False
         and candidate["geometry_validation_status"] == "VALIDATED"
     )
+
+    manual_hierarchy_candidate = next(
+        (
+            row
+            for row in _nwdp_project_manual_hierarchy_candidate_rows(db)
+            if row["candidate_id"] == str(body.candidate_id)
+            and row["canonical_village_id"] == str(village_id)
+        ),
+        None,
+    )
+    manual_hierarchy_eligible = manual_hierarchy_candidate is not None
+    eligible = direct_eligible or manual_hierarchy_eligible
+
     if not eligible:
         raise HTTPException(
             status_code=409,
@@ -3028,6 +3041,11 @@ def assign_nwdp_boundary_to_project_village(
         )
 
     actor = str(principal.user_id)
+    match_source = (
+        "ADMIN_PROJECT_MANUAL_HIERARCHY_OVERRIDE"
+        if manual_hierarchy_eligible
+        else "ADMIN_PROJECT_MATCHING"
+    )
 
     if existing:
         db.execute(text("""
@@ -3053,17 +3071,57 @@ def assign_nwdp_boundary_to_project_village(
     match_id = uuid4()
     metadata = {
         "reason": body.reason,
-        "assignment_source": "admin_project_boundary_api",
+        "assignment_source": (
+            "admin_project_manual_hierarchy_override"
+            if manual_hierarchy_eligible
+            else "admin_project_boundary_api"
+        ),
+        "assignment_scope": "PROJECT_ONLY",
+        "match_source": match_source,
         "geometry_validation_status": "VALIDATED",
         "runtime_eligibility_changed": False,
+        "global_candidate_status_changed": False,
+        "canonical_geography_changed": False,
+        "global_equivalence_created": False,
     }
+    if manual_hierarchy_candidate:
+        metadata["manual_hierarchy_evidence"] = {
+            "source_state_name":
+                manual_hierarchy_candidate["source_state_name"],
+            "source_district_name":
+                manual_hierarchy_candidate["source_district_name"],
+            "source_subdistrict_name":
+                manual_hierarchy_candidate["source_subdistrict_name"],
+            "source_village_name":
+                manual_hierarchy_candidate["source_village_name"],
+            "source_vlcode":
+                manual_hierarchy_candidate["source_vlcode"],
+            "canonical_state_name":
+                manual_hierarchy_candidate["canonical_state_name"],
+            "canonical_district_name":
+                manual_hierarchy_candidate["canonical_district_name"],
+            "canonical_block_name":
+                manual_hierarchy_candidate["canonical_block_name"],
+            "canonical_village_name":
+                manual_hierarchy_candidate["canonical_village_name"],
+            "canonical_village_code":
+                manual_hierarchy_candidate["canonical_village_code"],
+            "resolution_basis":
+                "SAME_STATE_EXACT_VILLAGE_CODE_SINGLE_CANONICAL_TARGET",
+        }
+
     apply_report = {
         "schema_version": "nwdp_boundary_project_assignment.v1",
         "project_id": str(project_id),
         "village_id": str(village_id),
         "candidate_id": str(body.candidate_id),
+        "match_source": match_source,
+        "assignment_scope": "PROJECT_ONLY",
         "applied_by": actor,
         "superseded_existing": bool(existing),
+        "global_candidate_status_changed": False,
+        "canonical_geography_changed": False,
+        "runtime_eligibility_changed": False,
     }
 
     db.execute(text("""
@@ -3075,7 +3133,7 @@ def assign_nwdp_boundary_to_project_village(
         )
         values (
           :id, :tenant_id, :project_id, :village_id, :candidate_id,
-          'NWDP_GSI_VILLAGE_BOUNDARY', 'ADMIN_PROJECT_MATCHING', 'APPLIED',
+          'NWDP_GSI_VILLAGE_BOUNDARY', :match_source, 'APPLIED',
           :actor, now(), :rollback_token, '{}'::jsonb,
           cast(:apply_report as jsonb), '{}'::jsonb,
           cast(:metadata as jsonb), true, now(), now(), 'v1.0'
@@ -3086,6 +3144,7 @@ def assign_nwdp_boundary_to_project_village(
         "project_id": str(project_id),
         "village_id": str(village_id),
         "candidate_id": str(body.candidate_id),
+        "match_source": match_source,
         "actor": actor,
         "rollback_token": body.rollback_token,
         "apply_report": json.dumps(apply_report),

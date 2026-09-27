@@ -58,7 +58,7 @@ def validated_candidate(db):
     return dict(row)
 
 
-def non_validated_candidate(db):
+def non_assignable_candidate(db):
     row = db.execute(text("""
         select
           c.id::text as candidate_id,
@@ -67,20 +67,45 @@ def non_validated_candidate(db):
           b.state_or_ut,
           f.geometry_validation_status
         from geography_boundary_crosswalk_candidates c
-        join geography_boundary_import_batches b on b.id = c.import_batch_id
-        join geography_boundary_source_features f on f.id = c.source_feature_id
+        join geography_boundary_import_batches b
+          on b.id = c.import_batch_id
+        join geography_boundary_source_features f
+          on f.id = c.source_feature_id
         where b.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
-          and c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
-          and c.review_status = 'AUTO_CANDIDATE'
-          and c.promotion_status = 'NOT_PROMOTED'
-          and c.is_active = false
           and c.proposed_village_id is not null
-          and f.geometry_validation_status <> 'VALIDATED'
-        order by f.source_feature_index
+          and not (
+            c.candidate_bucket = 'DIRECT_VLCODE_MATCH'
+            and c.review_status = 'AUTO_CANDIDATE'
+            and c.promotion_status = 'NOT_PROMOTED'
+            and c.is_active = false
+            and f.geometry_validation_status = 'VALIDATED'
+          )
+          and not exists (
+            select 1
+            from geography_boundary_crosswalk_candidates eligible
+            join geography_boundary_import_batches eligible_batch
+              on eligible_batch.id = eligible.import_batch_id
+            join geography_boundary_source_features eligible_feature
+              on eligible_feature.id = eligible.source_feature_id
+            where eligible.proposed_village_id
+                    = c.proposed_village_id
+              and eligible_batch.source_system
+                    = 'NWDP_GSI_VILLAGE_BOUNDARY'
+              and eligible.candidate_bucket
+                    = 'DIRECT_VLCODE_MATCH'
+              and eligible.review_status = 'AUTO_CANDIDATE'
+              and eligible.promotion_status = 'NOT_PROMOTED'
+              and eligible.is_active = false
+              and eligible_feature.geometry_validation_status
+                    = 'VALIDATED'
+          )
+        order by f.source_feature_index, c.id
         limit 1
     """)).mappings().first()
     if not row:
-        raise RuntimeError("No non-validated boundary candidate found")
+        raise RuntimeError(
+            "No isolated non-assignable boundary candidate found"
+        )
     return dict(row)
 
 
@@ -176,7 +201,7 @@ def main():
 
     try:
         candidate = validated_candidate(db)
-        unsafe_candidate = non_validated_candidate(db)
+        unsafe_candidate = non_assignable_candidate(db)
         baseline = counts(db)
         create_project_fixture(db, project_id, farmer_id, candidate)
 
@@ -295,7 +320,7 @@ def main():
         unsafe_body = {
             "candidate_id": unsafe_candidate["candidate_id"],
             "rollback_token": ROLLBACK_TOKEN,
-            "reason": "Must reject non-validated geometry",
+            "reason": "Must reject non-assignable candidate",
             "supersede_existing": False,
         }
         unsafe_response = client.put(
@@ -305,13 +330,13 @@ def main():
         )
         check(
             unsafe_response.status_code == 409,
-            "Non-validated boundary candidate is rejected",
+            "Non-assignable boundary candidate is rejected",
             unsafe_response.text,
         )
         check(
             unsafe_response.json()["detail"]
             == "BOUNDARY_CANDIDATE_NOT_ASSIGNABLE",
-            "Non-validated rejection reason is stable",
+            "Non-assignable rejection reason is stable",
             unsafe_response.json(),
         )
         check(counts(db) == baseline, "Rejected safety cases write no matches")
