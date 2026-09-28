@@ -280,6 +280,19 @@ type ClimateReadiness = {
   ready_for_android_behavior_change: boolean;
 };
 
+const CORE_DISTRICT_REVIEW_BASELINE = {
+  asOf: "2026-09-28",
+  totalDistricts: 779,
+  mappedDistricts: 186,
+  remainingDistricts: 593,
+  overlayBackedDistricts: 570,
+  authoritativeSourceDistricts: 23,
+  readyForNormalReviewDistricts: 515,
+  lowOverlapReviewDistricts: 42,
+  staleHierarchyDistricts: 2,
+  missingCurrentGeometryDistricts: 11,
+} as const;
+
 type ExternalApiReadiness = {
   summary: {
     provider_surface_count: number;
@@ -631,6 +644,67 @@ export default function GeographyLayerReadinessPage() {
                   tone="blue"
                   note={`${formatNumber(climate.active_crops_without_climate_rules_count)} active crops lack rules`}
                 />
+              </div>
+
+              <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-950">
+                      Core district crosswalk review baseline
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Reviewed planning snapshot as of {CORE_DISTRICT_REVIEW_BASELINE.asOf}. These counts
+                      describe inactive review routes; they are not live mappings and do not authorize
+                      database apply, runtime activation, canonical LGD changes, or Android behavior changes.
+                    </p>
+                  </div>
+                  <a
+                    href="/core-lgd-review"
+                    className="inline-flex shrink-0 items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                  >
+                    Open Core LGD review
+                  </a>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard
+                    label="Mapped districts"
+                    value={CORE_DISTRICT_REVIEW_BASELINE.mappedDistricts}
+                    tone="emerald"
+                    note={`of ${formatNumber(CORE_DISTRICT_REVIEW_BASELINE.totalDistricts)} canonical LGD districts`}
+                  />
+                  <StatCard
+                    label="Remaining districts"
+                    value={CORE_DISTRICT_REVIEW_BASELINE.remainingDistricts}
+                    tone="amber"
+                    note="Not yet covered by active climate mappings"
+                  />
+                  <StatCard
+                    label="Overlay-backed routes"
+                    value={CORE_DISTRICT_REVIEW_BASELINE.overlayBackedDistricts}
+                    tone="blue"
+                    note={`${formatNumber(CORE_DISTRICT_REVIEW_BASELINE.readyForNormalReviewDistricts)} normal; ${formatNumber(CORE_DISTRICT_REVIEW_BASELINE.lowOverlapReviewDistricts)} low-overlap review`}
+                  />
+                  <StatCard
+                    label="Authoritative source needed"
+                    value={CORE_DISTRICT_REVIEW_BASELINE.authoritativeSourceDistricts}
+                    tone="rose"
+                    note="No verified overlay route; source evidence or new geometry required"
+                  />
+                </div>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    <span className="font-semibold text-slate-950">Stale hierarchy conflicts:</span>{" "}
+                    {formatNumber(CORE_DISTRICT_REVIEW_BASELINE.staleHierarchyDistricts)} districts
+                    require LGD/source hierarchy reconciliation.
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    <span className="font-semibold text-slate-950">Current district geometry gaps:</span>{" "}
+                    {formatNumber(CORE_DISTRICT_REVIEW_BASELINE.missingCurrentGeometryDistricts)}
+                    districts require current authoritative geometry.
+                  </div>
+                </div>
               </div>
             </section>
           )}
