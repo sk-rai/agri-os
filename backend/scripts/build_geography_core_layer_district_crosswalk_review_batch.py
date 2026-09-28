@@ -59,6 +59,12 @@ ALLOWED_DECISIONS = (
     "DEFER_FOR_AUTHORITATIVE_RESEARCH",
 )
 
+ALLOWED_EVIDENCE_BASES = (
+    "POLYGON_OVERLAP_MANUAL_REVIEW",
+    "AUTHORITATIVE_AGRO_CLIMATE_SOURCE",
+    "OTHER_DOCUMENTED_EVIDENCE",
+)
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -315,6 +321,7 @@ def main() -> int:
                         )
                     ),
                     "review_decision": "",
+                    "review_evidence_basis": "",
                     "reviewer": "",
                     "review_notes": "",
                 }
@@ -414,6 +421,7 @@ def main() -> int:
         ),
         "review_fields_blank": all(
             not row["review_decision"]
+            and not row["review_evidence_basis"]
             and not row["reviewer"]
             and not row["review_notes"]
             for row in review_rows
@@ -460,7 +468,7 @@ def main() -> int:
 
     result: dict[str, Any] = {
         "schema_version": (
-            "geography_core_layer_district_crosswalk_review_batch.v1"
+            "geography_core_layer_district_crosswalk_review_batch.v2"
         ),
         "status": (
             "DISTRICT_CROSSWALK_REVIEW_BATCH_BUILT_NOT_AUTHORIZED"
@@ -469,6 +477,9 @@ def main() -> int:
         "checks": checks,
         "allowed_review_decisions": list(
             ALLOWED_DECISIONS
+        ),
+        "allowed_evidence_bases": list(
+            ALLOWED_EVIDENCE_BASES
         ),
         "required_region_systems": list(REGION_SYSTEMS),
         "source_artifacts": {
