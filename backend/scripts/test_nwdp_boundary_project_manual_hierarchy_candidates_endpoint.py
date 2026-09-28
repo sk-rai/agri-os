@@ -262,8 +262,14 @@ def main() -> int:
             ] is False
             and data["readiness"][
                 "ready_for_project_manual_apply"
+            ] is True
+            and data["readiness"][
+                "ready_for_global_reuse"
+            ] is False
+            and data["readiness"][
+                "ready_for_runtime_activation"
             ] is False,
-            "Endpoint authorizes no writes or apply",
+            "Endpoint advertises guarded project-only apply",
             data,
         )
 

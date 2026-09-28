@@ -240,6 +240,55 @@ type ProjectBoundaryAssignmentMutationResponse = {
   assignment: ProjectBoundaryAssignment;
 };
 
+type ManualHierarchyCandidate = {
+  candidate_id: string;
+  source_feature_id: string;
+  source_feature_index: number;
+  source_system: string;
+  source_state_name: string;
+  source_district_name: string;
+  source_subdistrict_name: string;
+  source_village_name: string;
+  source_vlcode: string;
+  canonical_state_name: string;
+  canonical_district_name: string;
+  canonical_block_name: string;
+  canonical_village_id: string;
+  canonical_village_name: string;
+  canonical_village_code: string;
+  geometry_validation_status: string;
+  candidate_bucket: string;
+  review_status: string;
+  promotion_status: string;
+  candidate_is_active: boolean;
+};
+
+type ManualHierarchyCandidatesResponse = {
+  schema_version: string;
+  mode: "READ_ONLY_PROJECT_SCOPED_MANUAL_HIERARCHY_CANDIDATES";
+  project_id: string;
+  tenant_id: string;
+  count: number;
+  items: ManualHierarchyCandidate[];
+  guardrails: {
+    db_writes_attempted: boolean;
+    project_assignments_written: boolean;
+    candidate_rows_mutated: boolean;
+    canonical_geography_mutated: boolean;
+    global_equivalence_created: boolean;
+    runtime_tables_written: boolean;
+    runtime_spatial_matching_changed: boolean;
+    lookup_api_enabled: boolean;
+    android_behavior_changed: boolean;
+  };
+  readiness: {
+    ready_for_project_admin_read: boolean;
+    ready_for_project_manual_apply: boolean;
+    ready_for_global_reuse: boolean;
+    ready_for_runtime_activation: boolean;
+  };
+};
+
 const BUCKETS = [
   "",
   "DIRECT_VLCODE_MATCH",
@@ -271,8 +320,8 @@ const SCOPES = [
 ];
 
 
-const BACKEND_GEOGRAPHY_VILLAGES = 576_083;
-const BACKEND_GEOGRAPHY_VILLAGES_WITH_LGD = 576_082;
+const BACKEND_GEOGRAPHY_VILLAGES = 600_647;
+const BACKEND_GEOGRAPHY_VILLAGES_WITH_LGD = 600_647;
 const SAFE_DIRECT_AUTO_NWDP_MATCHES = 313_667;
 
 const DECISIONS = [
@@ -319,6 +368,7 @@ export default function NwdpBoundaryReviewPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectPreview, setProjectPreview] = useState<ProjectBoundaryPreviewResponse | null>(null);
   const [projectAssignments, setProjectAssignments] = useState<ProjectBoundaryAssignmentsResponse | null>(null);
+  const [manualHierarchyData, setManualHierarchyData] = useState<ManualHierarchyCandidatesResponse | null>(null);
   const [assignmentBusyVillage, setAssignmentBusyVillage] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -487,12 +537,16 @@ export default function NwdpBoundaryReviewPage() {
     setError(null);
     try {
       const params = new URLSearchParams({ project_id: selectedProjectId, limit: "25" });
-      const [preview, assignments] = await Promise.all([
+      const [preview, assignments, manualHierarchy] = await Promise.all([
         api<ProjectBoundaryPreviewResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/project-preview?${params.toString()}`),
         api<ProjectBoundaryAssignmentsResponse>(`/api/v1/master-data/geography/nwdp-boundary-project-matching/projects/${selectedProjectId}/assignments`),
+        api<ManualHierarchyCandidatesResponse>(
+          `/api/v1/master-data/geography/nwdp-boundary-project-matching/projects/${selectedProjectId}/manual-hierarchy-candidates`,
+        ),
       ]);
       setProjectPreview(preview);
       setProjectAssignments(assignments);
+      setManualHierarchyData(manualHierarchy);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load project boundary preview");
     } finally {
@@ -503,15 +557,23 @@ export default function NwdpBoundaryReviewPage() {
   const assignProjectBoundary = useCallback(async (
     villageId: string,
     candidateId: string,
+    assignmentKind: "DIRECT" | "MANUAL_HIERARCHY" = "DIRECT",
   ) => {
     if (!selectedProjectId) return;
+    const manualHierarchy = assignmentKind === "MANUAL_HIERARCHY";
     const reason = window.prompt(
-      "Reason for assigning this validated boundary to the project:",
-      "Assign validated NWDP village boundary",
+      manualHierarchy
+        ? "Reason for selecting this reviewed hierarchy boundary for this project only:"
+        : "Reason for assigning this validated boundary to the project:",
+      manualHierarchy
+        ? "Project-only reviewed hierarchy selection"
+        : "Assign validated NWDP village boundary",
     );
     if (!reason || reason.trim().length < 3) return;
     if (!window.confirm(
-      "Assign this validated boundary to the selected project village? This does not enable runtime lookup or Android behavior.",
+      manualHierarchy
+        ? "Apply this reviewed hierarchy boundary only to the selected project? The global candidate remains blocked and inactive."
+        : "Assign this validated boundary to the selected project village? This does not enable runtime lookup or Android behavior.",
     )) return;
 
     const rollbackToken = [
@@ -922,8 +984,147 @@ export default function NwdpBoundaryReviewPage() {
             </table>
           </div>
 
+          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                  Reviewed hierarchy exceptions
+                </p>
+                <h4 className="mt-1 font-semibold text-gray-900">
+                  Project-only manual boundary mappings
+                </h4>
+                <p className="mt-1 max-w-3xl text-sm text-gray-600">
+                  These validated candidates have an exact same-state village-code target but unresolved historical
+                  district or subdistrict hierarchy. A company admin may select them only for this project. The global
+                  candidate remains blocked, inactive, and unavailable to other projects unless separately selected.
+                </p>
+              </div>
+              <Badge className="border-blue-200 bg-white text-blue-700">
+                {`${manualHierarchyData?.count ?? 0} available`}
+              </Badge>
+            </div>
+
+            <div className="mt-4 overflow-x-auto rounded-lg border border-blue-200 bg-white">
+              <table className="min-w-full divide-y text-sm">
+                <thead className="bg-blue-50 text-left text-xs uppercase tracking-wide text-blue-800">
+                  <tr>
+                    <th className="px-4 py-3">NWDP source hierarchy</th>
+                    <th className="px-4 py-3">Canonical LGD target</th>
+                    <th className="px-4 py-3">Evidence</th>
+                    <th className="px-4 py-3">Project mapping</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {(manualHierarchyData?.items || []).map((row) => {
+                    const assignment = projectAssignments?.items.find(
+                      (item) =>
+                        item.village_id === row.canonical_village_id
+                        && item.boundary_candidate_id === row.candidate_id
+                        && item.is_active,
+                    );
+                    return (
+                      <tr key={row.candidate_id}>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">
+                            {row.source_village_name}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {[row.source_state_name, row.source_district_name, row.source_subdistrict_name]
+                              .filter(Boolean)
+                              .join(" / ")}
+                          </div>
+                          <div className="mt-1 font-mono text-xs text-gray-500">
+                            {row.source_vlcode}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">
+                            {row.canonical_village_name}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {[row.canonical_state_name, row.canonical_district_name, row.canonical_block_name]
+                              .filter(Boolean)
+                              .join(" / ")}
+                          </div>
+                          <div className="mt-1 font-mono text-xs text-gray-500">
+                            LGD {row.canonical_village_code}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge className="border-green-200 bg-green-50 text-green-700">
+                            Exact village code
+                          </Badge>
+                          <div className="mt-2 text-xs text-gray-500">
+                            {row.geometry_validation_status} geometry · single canonical target
+                          </div>
+                          <div className="mt-1 text-xs text-amber-700">
+                            Global status: {row.review_status} / {row.promotion_status}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {assignment ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge className="border-blue-200 bg-blue-50 text-blue-700">
+                                Project override active
+                              </Badge>
+                              <button
+                                type="button"
+                                className="rounded border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                disabled={assignmentBusyVillage === row.canonical_village_id}
+                                onClick={() => void unassignProjectBoundary(assignment)}
+                              >
+                                {assignmentBusyVillage === row.canonical_village_id ? "Working…" : "Roll back"}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                              disabled={assignmentBusyVillage === row.canonical_village_id}
+                              onClick={() => void assignProjectBoundary(
+                                row.canonical_village_id,
+                                row.candidate_id,
+                                "MANUAL_HIERARCHY",
+                              )}
+                            >
+                              {assignmentBusyVillage === row.canonical_village_id
+                                ? "Working…"
+                                : "Use for this project"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!projectPreviewLoading && manualHierarchyData?.items.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-6 text-sm text-gray-500" colSpan={4}>
+                        No reviewed hierarchy exceptions are available within this project geography.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {projectPreviewLoading ? (
+                    <tr>
+                      <td className="px-4 py-6 text-sm text-gray-500" colSpan={4}>
+                        Loading reviewed hierarchy candidates…
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-3 text-xs text-blue-800">
+              Scope boundary: this writes only a tenant/project assignment record. It does not change canonical LGD
+              geography, create a global equivalence, activate or promote the candidate, enable runtime lookup, or
+              alter Android behavior.
+            </p>
+          </div>
+
           <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Assignments are project-scoped and require PROJECT_EDIT permission. Only VALIDATED direct-code candidates can be assigned. Candidate promotion, runtime eligibility, global lookup, and Android behavior remain unchanged.
+            Assignments require PROJECT_EDIT permission. VALIDATED direct-code candidates and explicitly reviewed
+            project hierarchy exceptions may be assigned. Candidate promotion, global canonical geography, runtime
+            eligibility, lookup behavior, and Android behavior remain unchanged.
           </p>
         </div>
       </section>

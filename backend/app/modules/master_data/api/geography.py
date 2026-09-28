@@ -2550,7 +2550,7 @@ def list_nwdp_project_manual_hierarchy_candidates(
         },
         "readiness": {
             "ready_for_project_admin_read": True,
-            "ready_for_project_manual_apply": False,
+            "ready_for_project_manual_apply": True,
             "ready_for_global_reuse": False,
             "ready_for_runtime_activation": False,
         },
