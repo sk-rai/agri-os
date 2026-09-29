@@ -558,10 +558,15 @@ export default function GeographyLayerReadinessPage() {
         </div>
       </section>
 
-      <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
+      <form
+        data-testid="geography-readiness-filters"
+        onSubmit={onSubmit}
+        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3"
+      >
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">State / UT</span>
           <select
+            aria-label="State / UT"
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             value={stateId}
             disabled={loadingStates}
@@ -581,6 +586,7 @@ export default function GeographyLayerReadinessPage() {
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">District</span>
           <select
+            aria-label="District"
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             value={districtId}
             disabled={!stateId || loadingDistricts}
