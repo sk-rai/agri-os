@@ -494,7 +494,10 @@ export default function CoreLayerProjectOverridePanel() {
   );
 
   return (
-    <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+    <div
+      data-testid="core-layer-project-override-panel"
+      className="mt-5 rounded-xl border border-blue-200 bg-blue-50/40 p-4"
+    >
       <div>
         <h3 className="text-sm font-semibold text-slate-950">
           Project-specific Core-layer overrides
