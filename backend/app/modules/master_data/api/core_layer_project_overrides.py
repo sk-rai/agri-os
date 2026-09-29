@@ -566,3 +566,302 @@ def rollback_project_core_layer_override(
         "assignment": _payload(db, existing["id"]),
         "guardrails": _guardrails(True),
     }
+
+
+
+def resolve_effective_project_core_layers(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id: UUID,
+    village_id: UUID,
+) -> dict:
+    """Resolve project override first, then canonical global fallback."""
+
+    project = _project(db, project_id, tenant_id)
+    if not _project_contains_village(
+        db,
+        project_id,
+        village_id,
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="VILLAGE_NOT_IN_PROJECT_SCOPE",
+        )
+
+    village = db.execute(text("""
+        select
+          v.id::text as village_id,
+          v.lgd_code::text as village_lgd_code,
+          v.canonical_name as village_name,
+          d.lgd_code::text as district_lgd_code,
+          d.canonical_name as district_name,
+          s.lgd_code::text as state_lgd_code,
+          s.canonical_name as state_name
+        from geography_villages v
+        join geography_districts d on d.id = v.district_id
+        join geography_states s on s.id = d.state_id
+        where v.id = :village_id
+          and v.is_active = true
+          and d.is_active = true
+          and s.is_active = true
+    """), {
+        "village_id": str(village_id),
+    }).mappings().first()
+
+    if not village:
+        raise HTTPException(
+            status_code=404,
+            detail="ACTIVE_VILLAGE_HIERARCHY_NOT_FOUND",
+        )
+
+    fallback_rows = [
+        dict(row)
+        for row in db.execute(text("""
+            with village_context as (
+              select
+                v.id,
+                v.lgd_code::text as village_lgd_code,
+                d.lgd_code::text as district_lgd_code,
+                s.lgd_code::text as state_lgd_code
+              from geography_villages v
+              join geography_districts d on d.id = v.district_id
+              join geography_states s on s.id = d.state_id
+              where v.id = :village_id
+            ),
+            candidate_mappings as (
+              select
+                m.id as mapping_id,
+                m.region_id,
+                m.region_code,
+                m.scope_level,
+                m.confidence as mapping_confidence,
+                m.review_status as mapping_review_status,
+                case m.scope_level
+                  when 'VILLAGE' then 1
+                  when 'PIN' then 2
+                  when 'DISTRICT' then 3
+                  when 'STATE' then 4
+                  else 9
+                end as scope_rank
+              from geography_climate_region_mappings m
+              cross join village_context vc
+              where m.is_active = true
+                and (
+                  (
+                    m.scope_level = 'VILLAGE'
+                    and m.village_lgd_code =
+                        vc.village_lgd_code
+                  )
+                  or (
+                    m.scope_level = 'PIN'
+                    and exists (
+                      select 1
+                      from geography_village_pin_links vpl
+                      where vpl.geography_village_id = vc.id
+                        and vpl.is_active = true
+                        and vpl.match_status = 'MATCHED'
+                        and vpl.pin_code = m.pin_code
+                    )
+                  )
+                  or (
+                    m.scope_level = 'DISTRICT'
+                    and m.district_lgd_code =
+                        vc.district_lgd_code
+                  )
+                  or (
+                    m.scope_level = 'STATE'
+                    and m.state_lgd_code =
+                        vc.state_lgd_code
+                  )
+                )
+            ),
+            ranked as (
+              select
+                cm.*,
+                r.region_name,
+                r.region_system,
+                r.confidence as region_confidence,
+                r.review_status as region_review_status,
+                row_number() over (
+                  partition by r.region_system
+                  order by
+                    cm.scope_rank,
+                    cm.region_code,
+                    cm.mapping_id
+                ) as resolution_rank
+              from candidate_mappings cm
+              join geography_climate_regions r
+                on r.id = cm.region_id
+               and r.is_active = true
+              where r.region_system = any(:region_systems)
+            )
+            select
+              region_id::text,
+              region_code,
+              region_name,
+              region_system,
+              scope_level,
+              mapping_confidence,
+              mapping_review_status,
+              region_confidence,
+              region_review_status
+            from ranked
+            where resolution_rank = 1
+            order by region_system
+        """), {
+            "village_id": str(village_id),
+            "region_systems": sorted(
+                CORE_PROJECT_OVERRIDE_REGION_SYSTEMS
+            ),
+        }).mappings().all()
+    ]
+
+    override_rows = [
+        dict(row)
+        for row in db.execute(text("""
+            select
+              o.id::text as override_id,
+              o.region_id::text,
+              r.region_code,
+              r.region_name,
+              r.region_system,
+              r.confidence as region_confidence,
+              r.review_status as region_review_status,
+              o.evidence_basis,
+              o.reviewer,
+              o.review_notes,
+              o.applied_by,
+              o.applied_at,
+              o.rollback_token
+            from geography_core_layer_project_overrides o
+            join geography_climate_regions r
+              on r.id = o.region_id
+             and r.is_active = true
+            where o.tenant_id = :tenant_id
+              and o.project_id = :project_id
+              and o.village_id = :village_id
+              and o.is_active = true
+              and o.assignment_status = 'APPLIED'
+              and o.region_system = any(:region_systems)
+            order by o.region_system
+        """), {
+            "tenant_id": tenant_id,
+            "project_id": str(project_id),
+            "village_id": str(village_id),
+            "region_systems": sorted(
+                CORE_PROJECT_OVERRIDE_REGION_SYSTEMS
+            ),
+        }).mappings().all()
+    ]
+
+    fallback_by_system = {
+        row["region_system"]: row
+        for row in fallback_rows
+    }
+    override_by_system = {
+        row["region_system"]: row
+        for row in override_rows
+    }
+
+    effective = []
+    unresolved = []
+
+    for region_system in sorted(
+        CORE_PROJECT_OVERRIDE_REGION_SYSTEMS
+    ):
+        override = override_by_system.get(region_system)
+        fallback = fallback_by_system.get(region_system)
+
+        if override:
+            effective.append({
+                **override,
+                "resolution_source": "PROJECT_OVERRIDE",
+                "resolution_scope": "PROJECT_VILLAGE",
+                "global_fallback_available": fallback is not None,
+                "global_fallback_region_code": (
+                    fallback["region_code"]
+                    if fallback
+                    else None
+                ),
+                "global_fallback_region_name": (
+                    fallback["region_name"]
+                    if fallback
+                    else None
+                ),
+                "global_fallback_scope": (
+                    fallback["scope_level"]
+                    if fallback
+                    else None
+                ),
+            })
+        elif fallback:
+            effective.append({
+                **fallback,
+                "override_id": None,
+                "resolution_source": "GLOBAL_MAPPING_FALLBACK",
+                "resolution_scope": fallback["scope_level"],
+                "global_fallback_available": True,
+                "global_fallback_region_code":
+                    fallback["region_code"],
+                "global_fallback_region_name":
+                    fallback["region_name"],
+                "global_fallback_scope":
+                    fallback["scope_level"],
+            })
+        else:
+            unresolved.append(region_system)
+
+    return {
+        "schema_version":
+            "core_layer_project_effective_resolution.v1",
+        "mode":
+            "READ_ONLY_PROJECT_OVERRIDE_THEN_GLOBAL_FALLBACK",
+        "tenant_id": tenant_id,
+        "project": project,
+        "village": dict(village),
+        "precedence": [
+            "PROJECT_OVERRIDE",
+            "GLOBAL_VILLAGE_MAPPING",
+            "GLOBAL_PIN_MAPPING",
+            "GLOBAL_DISTRICT_MAPPING",
+            "GLOBAL_STATE_MAPPING",
+        ],
+        "effective_region_count": len(effective),
+        "project_override_count": len(override_rows),
+        "global_fallback_count": sum(
+            1
+            for row in effective
+            if row["resolution_source"]
+            == "GLOBAL_MAPPING_FALLBACK"
+        ),
+        "unresolved_region_systems": unresolved,
+        "effective_regions": effective,
+        "guardrails": _guardrails(False),
+    }
+
+
+@router.get(
+    "/projects/{project_id}/villages/{village_id}/effective"
+)
+def get_effective_project_core_layers(
+    project_id: UUID,
+    village_id: UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header(
+        "default",
+        alias="X-Tenant-ID",
+    ),
+    principal=Depends(
+        require_admin_permission(
+            AdminPermission.VIEW,
+            project_scoped=True,
+        )
+    ),
+) -> dict:
+    return resolve_effective_project_core_layers(
+        db,
+        tenant_id=x_tenant_id,
+        project_id=project_id,
+        village_id=village_id,
+    )
