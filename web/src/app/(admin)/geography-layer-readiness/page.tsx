@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import CoreLayerProjectOverridePanel from "@/components/admin/CoreLayerProjectOverridePanel";
 
 const numberFormatter = new Intl.NumberFormat("en-IN");
 
@@ -706,6 +707,8 @@ export default function GeographyLayerReadinessPage() {
                   </div>
                 </div>
               </div>
+
+              <CoreLayerProjectOverridePanel />
             </section>
           )}
 
