@@ -20,6 +20,7 @@ PAGE = (
 def main() -> int:
     component = COMPONENT.read_text(encoding="utf-8")
     page = PAGE.read_text(encoding="utf-8")
+    normalized_component = " ".join(component.split())
 
     checks = [
         (
@@ -99,7 +100,7 @@ def main() -> int:
         ),
         (
             "Android behavior remain unchanged",
-            component,
+            normalized_component,
             "Android guardrail is explicit",
         ),
     ]
