@@ -62,21 +62,6 @@ def main() -> int:
             "Project village fixture is discovered",
         ),
         (
-            "readinessResponsePromise",
-            smoke,
-            "Large readiness response is awaited",
-        ),
-        (
-            "{ timeout: 240000 }",
-            smoke,
-            "Readiness timeout matches long-running page behavior",
-        ),
-        (
-            "geography_layer_readiness_matrix.v1",
-            smoke,
-            "Readiness payload is validated",
-        ),
-        (
             "active_overrides.length === 0",
             normalized,
             "Existing assignments are protected",
@@ -157,6 +142,12 @@ def main() -> int:
             raise AssertionError(
                 f"Smoke script contains credential material: {needle}"
             )
+
+    if "readinessResponsePromise" in smoke:
+        raise AssertionError(
+            "Core smoke must not wait for the readiness matrix"
+        )
+    print("PASS Core smoke does not wait for the readiness matrix")
 
     print("PASS No password or database credential is embedded")
     print(

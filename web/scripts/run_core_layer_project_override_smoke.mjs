@@ -10,6 +10,7 @@
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 function argValue(name, fallback) {
   const prefix = `${name}=`;
@@ -40,7 +41,9 @@ function run(command, args, options = {}) {
   return result;
 }
 
-const webRoot = process.cwd();
+const scriptPath = fileURLToPath(import.meta.url);
+const scriptRoot = path.dirname(scriptPath);
+const webRoot = path.resolve(scriptRoot, "..");
 const repoRoot = path.resolve(webRoot, "..");
 const backendRoot = path.join(repoRoot, "backend");
 

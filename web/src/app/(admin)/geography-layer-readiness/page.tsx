@@ -1,7 +1,12 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import {
+  api,
+  geographyApi,
+  type GeographyDistrict,
+  type GeographyState,
+} from "@/lib/api";
 import CoreLayerProjectOverridePanel from "@/components/admin/CoreLayerProjectOverridePanel";
 
 const numberFormatter = new Intl.NumberFormat("en-IN");
@@ -415,21 +420,84 @@ function readinessTone(row: MatrixRow) {
 }
 
 export default function GeographyLayerReadinessPage() {
-  const [stateOrUt, setStateOrUt] = useState("");
-  const [district, setDistrict] = useState("");
-  const [limit, setLimit] = useState(5000);
+  const [states, setStates] = useState<GeographyState[]>([]);
+  const [districts, setDistricts] = useState<GeographyDistrict[]>([]);
+  const [stateId, setStateId] = useState("");
+  const [districtId, setDistrictId] = useState("");
+  const [loadingStates, setLoadingStates] = useState(true);
+  const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [data, setData] = useState<MatrixResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const selectedState = states.find((item) => item.id === stateId);
+  const selectedDistrict = districts.find((item) => item.id === districtId);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingStates(true);
+    geographyApi
+      .listStates()
+      .then((rows) => {
+        if (active) setStates(rows);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(err instanceof Error ? err.message : "Failed to load states");
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingStates(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setDistrictId("");
+    setDistricts([]);
+    setData(null);
+
+    if (!stateId) return;
+
+    let active = true;
+    setLoadingDistricts(true);
+    setError(null);
+
+    geographyApi
+      .listDistricts(stateId)
+      .then((rows) => {
+        if (active) setDistricts(rows);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load districts",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingDistricts(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [stateId]);
+
   const loadMatrix = useCallback(async () => {
+    if (!selectedState || !selectedDistrict) return;
+
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams();
-    if (stateOrUt.trim()) params.set("state_or_ut", stateOrUt.trim());
-    if (district.trim()) params.set("district", district.trim());
-    params.set("limit", String(limit));
+    const params = new URLSearchParams({
+      state_or_ut: selectedState.canonical_name,
+      district: selectedDistrict.canonical_name,
+      limit: "50",
+    });
 
     try {
       const response = await api<MatrixResponse>(`/api/v1/master-data/geography/layer-readiness?${params.toString()}`);
@@ -439,11 +507,7 @@ export default function GeographyLayerReadinessPage() {
     } finally {
       setLoading(false);
     }
-  }, [district, limit, stateOrUt]);
-
-  useEffect(() => {
-    void loadMatrix();
-  }, [loadMatrix]);
+  }, [selectedDistrict, selectedState]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -461,26 +525,7 @@ export default function GeographyLayerReadinessPage() {
   const selectedBoundaryRuntime = data?.selected_boundary_runtime_promotion_readiness;
   const externalApi = data?.external_api_readiness;
 
-  const stateOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.state_or_ut))).sort(),
-    [rows],
-  );
-
-  const districtOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          rows
-            .filter((row) => !stateOrUt || row.state_or_ut === stateOrUt)
-            .map((row) => row.district),
-        ),
-      ).sort(),
-    [rows, stateOrUt],
-  );
-
-  const filteredRows = rows
-    .filter((row) => !stateOrUt || row.state_or_ut === stateOrUt)
-    .filter((row) => !district || row.district === district);
+  const filteredRows = rows;
 
   return (
     <main className="space-y-6 p-6">
@@ -499,6 +544,8 @@ export default function GeographyLayerReadinessPage() {
         </p>
       </div>
 
+      <CoreLayerProjectOverridePanel />
+
       <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
         <h2 className="text-base font-semibold text-emerald-950">Runtime posture</h2>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -511,20 +558,22 @@ export default function GeographyLayerReadinessPage() {
         </div>
       </section>
 
-      <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+      <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">State / UT</span>
           <select
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            value={stateOrUt}
-            onChange={(event) => {
-              setStateOrUt(event.target.value);
-              setDistrict("");
-            }}
+            value={stateId}
+            disabled={loadingStates}
+            onChange={(event) => setStateId(event.target.value)}
           >
-            <option value="">All states</option>
-            {stateOptions.map((state) => (
-              <option key={state} value={state}>{state}</option>
+            <option value="">
+              {loadingStates ? "Loading states…" : "Select state"}
+            </option>
+            {states.map((state) => (
+              <option key={state.id} value={state.id}>
+                {state.canonical_name} ({state.lgd_code})
+              </option>
             ))}
           </select>
         </label>
@@ -533,32 +582,38 @@ export default function GeographyLayerReadinessPage() {
           <span className="text-xs font-medium text-slate-600">District</span>
           <select
             className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            value={district}
-            onChange={(event) => setDistrict(event.target.value)}
+            value={districtId}
+            disabled={!stateId || loadingDistricts}
+            onChange={(event) => {
+              setDistrictId(event.target.value);
+              setData(null);
+            }}
           >
-            <option value="">All districts</option>
-            {districtOptions.map((item) => (
-              <option key={item} value={item}>{item}</option>
+            <option value="">
+              {loadingDistricts ? "Loading districts…" : "Select district"}
+            </option>
+            {districts.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.canonical_name} ({item.lgd_code})
+              </option>
             ))}
           </select>
         </label>
 
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-600">Limit</span>
-          <input
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            min={1}
-            max={5000}
-            type="number"
-            value={limit}
-            onChange={(event) => setLimit(Number(event.target.value))}
-          />
-        </label>
-
-        <button className="self-end rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
-          Refresh
+        <button
+          disabled={!stateId || !districtId || loading}
+          className="self-end rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          Load readiness
         </button>
       </form>
+
+      {!stateId || !districtId ? (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          Select a state and district to load readiness. No readiness matrix
+          lookup runs before both filters are selected.
+        </div>
+      ) : null}
 
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -708,7 +763,7 @@ export default function GeographyLayerReadinessPage() {
                 </div>
               </div>
 
-              <CoreLayerProjectOverridePanel />
+
             </section>
           )}
 

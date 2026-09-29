@@ -172,33 +172,10 @@ async function findFixture() {
 const fixture = await findFixture();
 
 try {
-  const readinessResponsePromise = page.waitForResponse(
-    (response) =>
-      response.url().includes(
-        "/api/v1/master-data/geography/layer-readiness",
-      ) &&
-      response.status() === 200,
-    { timeout: 240000 },
-  );
-
   await page.goto(readinessUrl, {
     waitUntil: "domcontentloaded",
     timeout: 60000,
   });
-
-  const readinessResponse = await readinessResponsePromise;
-  const readinessPayload = await readinessResponse.json();
-
-  if (
-    readinessPayload.schema_version !==
-    "geography_layer_readiness_matrix.v1"
-  ) {
-    throw new Error(
-      `Unexpected readiness schema: ${
-        readinessPayload.schema_version
-      }`,
-    );
-  }
 
   const corePanel = page.getByTestId(
     "core-layer-project-override-panel",
