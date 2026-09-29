@@ -39,9 +39,14 @@ def main() -> int:
             "Tenant projects are loaded",
         ),
         (
-            "Canonical village UUID",
+            "Search project village",
             component,
-            "Canonical project village is explicit",
+            "Canonical project village search is explicit",
+        ),
+        (
+            "setVillageId(village.id)",
+            component,
+            "Canonical project village UUID is retained",
         ),
         (
             "core-layer-project-overrides",

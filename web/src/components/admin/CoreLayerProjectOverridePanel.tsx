@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, projectsApi, type Project } from "@/lib/api";
+import {
+  api,
+  geographyApi,
+  projectsApi,
+  type GeographyVillageDetails,
+  type Project,
+} from "@/lib/api";
 
 type RegionOption = {
   region_id: string;
@@ -94,6 +100,11 @@ export default function CoreLayerProjectOverridePanel() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [villageId, setVillageId] = useState("");
+  const [villageQuery, setVillageQuery] = useState("");
+  const [projectVillages, setProjectVillages] = useState<
+    GeographyVillageDetails[]
+  >([]);
+  const [loadingVillages, setLoadingVillages] = useState(false);
   const [context, setContext] = useState<OverrideContext | null>(null);
   const [selectedRegions, setSelectedRegions] = useState<
     Record<string, string>
@@ -127,6 +138,104 @@ export default function CoreLayerProjectOverridePanel() {
         );
       });
   }, []);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === projectId) || null,
+    [projectId, projects],
+  );
+
+  const selectedVillage = useMemo(
+    () =>
+      projectVillages.find((village) => village.id === villageId) ||
+      null,
+    [projectVillages, villageId],
+  );
+
+  const filteredProjectVillages = useMemo(() => {
+    const normalized = villageQuery.trim().toLocaleLowerCase();
+    if (normalized.length < 2) return [];
+
+    return projectVillages
+      .filter((village) =>
+        [
+          village.canonical_name,
+          village.lgd_code,
+          village.block_name,
+          village.district_name,
+          village.state_name,
+        ].some((value) =>
+          String(value || "")
+            .toLocaleLowerCase()
+            .includes(normalized),
+        ),
+      )
+      .slice(0, 30);
+  }, [projectVillages, villageQuery]);
+
+  useEffect(() => {
+    const rawCodes =
+      selectedProject?.geography_scope?.village_lgd_codes;
+    const codes = Array.isArray(rawCodes)
+      ? rawCodes.map(String).filter(Boolean)
+      : [];
+
+    setVillageId("");
+    setVillageQuery("");
+    setProjectVillages([]);
+    setContext(null);
+    setPending({});
+
+    if (!codes.length) {
+      setLoadingVillages(false);
+      return;
+    }
+
+    let active = true;
+    setLoadingVillages(true);
+    setError(null);
+
+    void geographyApi
+      .resolveVillagesByLgdCodes(codes)
+      .then((rows) => {
+        if (!active) return;
+        setProjectVillages(
+          [...rows].sort((left, right) =>
+            [
+              left.state_name,
+              left.district_name,
+              left.block_name,
+              left.canonical_name,
+              left.lgd_code,
+            ]
+              .join("|")
+              .localeCompare(
+                [
+                  right.state_name,
+                  right.district_name,
+                  right.block_name,
+                  right.canonical_name,
+                  right.lgd_code,
+                ].join("|"),
+              ),
+          ),
+        );
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load project villages",
+        );
+      })
+      .finally(() => {
+        if (active) setLoadingVillages(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedProject]);
 
   const loadContext = useCallback(async () => {
     if (!projectId || !villageId.trim()) return;
@@ -376,8 +485,6 @@ export default function CoreLayerProjectOverridePanel() {
             value={projectId}
             onChange={(event) => {
               setProjectId(event.target.value);
-              setContext(null);
-              setPending({});
             }}
           >
             {projects.map((project) => (
@@ -388,21 +495,132 @@ export default function CoreLayerProjectOverridePanel() {
           </select>
         </label>
 
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-600">
-            Canonical village UUID
-          </span>
+        <div className="relative space-y-1">
+          <label
+            htmlFor="core-project-village-search"
+            className="block text-xs font-medium text-slate-600"
+          >
+            Search project village
+          </label>
           <input
+            id="core-project-village-search"
+            type="search"
+            role="combobox"
+            aria-expanded={filteredProjectVillages.length > 0}
+            aria-controls="core-project-village-results"
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-            value={villageId}
+            value={villageQuery}
+            disabled={!projectId || loadingVillages}
             onChange={(event) => {
-              setVillageId(event.target.value);
+              setVillageQuery(event.target.value);
+              setVillageId("");
               setContext(null);
               setPending({});
             }}
-            placeholder="Village UUID within project scope"
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                filteredProjectVillages.length > 0
+              ) {
+                event.preventDefault();
+                const village = filteredProjectVillages[0];
+                setVillageId(village.id);
+                setVillageQuery(village.canonical_name);
+                setContext(null);
+                setPending({});
+              } else if (event.key === "Escape") {
+                setVillageQuery("");
+                setVillageId("");
+                setContext(null);
+                setPending({});
+              }
+            }}
+            placeholder={
+              loadingVillages
+                ? "Loading project villages…"
+                : projectVillages.length
+                  ? "Village name, LGD code, block, or district"
+                  : "Selected project has no canonical village scope"
+            }
           />
-        </label>
+
+          {villageQuery.trim().length >= 2 &&
+          !selectedVillage &&
+          !loadingVillages ? (
+            <div
+              id="core-project-village-results"
+              role="listbox"
+              aria-label="Project village search results"
+              className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+            >
+              {filteredProjectVillages.length ? (
+                filteredProjectVillages.map((village) => (
+                  <button
+                    key={village.id}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50"
+                    onClick={() => {
+                      setVillageId(village.id);
+                      setVillageQuery(village.canonical_name);
+                      setContext(null);
+                      setPending({});
+                    }}
+                  >
+                    <span className="block text-sm font-medium text-slate-950">
+                      {village.canonical_name}
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      LGD {village.lgd_code} · {village.block_name} ·{" "}
+                      {village.district_name} · {village.state_name}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <p className="px-3 py-3 text-xs text-slate-500">
+                  No villages in this project match the search.
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          {selectedVillage ? (
+            <div className="rounded-lg border border-blue-200 bg-white px-3 py-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">
+                    {selectedVillage.canonical_name}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    LGD {selectedVillage.lgd_code} ·{" "}
+                    {selectedVillage.block_name} ·{" "}
+                    {selectedVillage.district_name} ·{" "}
+                    {selectedVillage.state_name}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-blue-700 hover:underline"
+                  onClick={() => {
+                    setVillageId("");
+                    setVillageQuery("");
+                    setContext(null);
+                    setPending({});
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <p className="text-xs text-slate-500">
+            {loadingVillages
+              ? "Resolving canonical project villages…"
+              : `${projectVillages.length} canonical project villages available`}
+          </p>
+        </div>
 
         <button
           type="button"
