@@ -295,6 +295,7 @@ def get_crop_geography_suitability(
     district_lgd_code: str | None = Query(None),
     pin_code: str | None = Query(None),
     project_id: str | None = Query(None),
+    village_id: str | None = Query(None),
     tenant_id: str = Header("default", alias="X-Tenant-ID"),
     db: Session = Depends(get_db),
 ):
@@ -314,21 +315,61 @@ def get_crop_geography_suitability(
         raise HTTPException(404, "Crop not found")
 
     project_uuid = UUID(project_id) if project_id else None
+    village_uuid = UUID(village_id) if village_id else None
 
-    mapping_query = db.query(GeographyClimateRegionMapping).filter(
-        GeographyClimateRegionMapping.is_active == True
-    )
-    if pin_code:
-        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.pin_code == pin_code)
-    elif district_lgd_code:
-        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.district_lgd_code == district_lgd_code)
-    elif state_lgd_code:
-        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.state_lgd_code == state_lgd_code)
+    if village_uuid and not project_uuid:
+        raise HTTPException(
+            400,
+            "project_id is required when village_id is provided",
+        )
+
+    core_layer_resolution = None
+    if project_uuid and village_uuid:
+        from app.modules.master_data.api.core_layer_project_overrides import (
+            resolve_effective_project_core_layers,
+        )
+
+        core_layer_resolution = resolve_effective_project_core_layers(
+            db,
+            tenant_id=tenant_id,
+            project_id=project_uuid,
+            village_id=village_uuid,
+        )
+        mappings = []
+        region_codes = sorted({
+            row["region_code"]
+            for row in core_layer_resolution["effective_regions"]
+        })
     else:
-        raise HTTPException(400, "Provide state_lgd_code, district_lgd_code, or pin_code")
+        mapping_query = db.query(GeographyClimateRegionMapping).filter(
+            GeographyClimateRegionMapping.is_active == True
+        )
+        if pin_code:
+            mapping_query = mapping_query.filter(
+                GeographyClimateRegionMapping.pin_code == pin_code
+            )
+        elif district_lgd_code:
+            mapping_query = mapping_query.filter(
+                GeographyClimateRegionMapping.district_lgd_code
+                == district_lgd_code
+            )
+        elif state_lgd_code:
+            mapping_query = mapping_query.filter(
+                GeographyClimateRegionMapping.state_lgd_code
+                == state_lgd_code
+            )
+        else:
+            raise HTTPException(
+                400,
+                "Provide state_lgd_code, district_lgd_code, pin_code, "
+                "or project_id with village_id",
+            )
 
-    mappings = mapping_query.all()
-    region_codes = sorted({m.region_code for m in mappings})
+        mappings = mapping_query.all()
+        region_codes = sorted({
+            mapping.region_code
+            for mapping in mappings
+        })
 
     rules = []
     effective = []
@@ -383,6 +424,8 @@ def get_crop_geography_suitability(
         "schema_version": "crop_geography_suitability.v1",
         "tenant_id": tenant_id,
         "project_id": project_id,
+        "village_id": village_id,
+        "core_layer_resolution": core_layer_resolution,
         "crop_code": crop_code,
         "season_code": season_code,
         "geography": {

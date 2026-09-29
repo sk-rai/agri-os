@@ -7271,6 +7271,7 @@ def get_land_intelligence_context(
     crop_code: str | None = Query(None),
     season_code: str | None = Query(None),
     project_id: str | None = Query(None),
+    village_id: str | None = Query(None),
     tenant_id: str = Header("default", alias="X-Tenant-ID"),
     db: Session = Depends(get_db),
 ):
@@ -7289,32 +7290,76 @@ def get_land_intelligence_context(
     )
     from app.modules.master_data.api.crop_catalog import _first_effective_override
 
-    if not any([district_lgd_code, state_lgd_code, pin_code]):
-        raise HTTPException(400, "Provide district_lgd_code, state_lgd_code, or pin_code")
-
     crop_code_normalized = crop_code.upper() if crop_code else None
     season_code_normalized = season_code.upper() if season_code else None
     project_uuid = UUID(project_id) if project_id else None
+    village_uuid = UUID(village_id) if village_id else None
+
+    if village_uuid and not project_uuid:
+        raise HTTPException(
+            400,
+            "project_id is required when village_id is provided",
+        )
+
+    if (
+        not any([district_lgd_code, state_lgd_code, pin_code])
+        and not (project_uuid and village_uuid)
+    ):
+        raise HTTPException(
+            400,
+            "Provide district_lgd_code, state_lgd_code, pin_code, "
+            "or project_id with village_id",
+        )
 
     if crop_code_normalized and not db.query(Crop).filter(Crop.code == crop_code_normalized, Crop.is_active == True).first():
         raise HTTPException(404, "Crop not found")
 
-    mapping_query = db.query(GeographyClimateRegionMapping).filter(
-        GeographyClimateRegionMapping.is_active == True
-    )
-    mapping_level = None
-    if pin_code:
-        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.pin_code == pin_code)
-        mapping_level = "PIN"
-    elif district_lgd_code:
-        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.district_lgd_code == district_lgd_code)
-        mapping_level = "DISTRICT"
-    else:
-        mapping_query = mapping_query.filter(GeographyClimateRegionMapping.state_lgd_code == state_lgd_code)
-        mapping_level = "STATE"
+    core_layer_resolution = None
+    if project_uuid and village_uuid:
+        from app.modules.master_data.api.core_layer_project_overrides import (
+            resolve_effective_project_core_layers,
+        )
 
-    mappings = mapping_query.all()
-    region_codes = sorted({mapping.region_code for mapping in mappings})
+        core_layer_resolution = resolve_effective_project_core_layers(
+            db,
+            tenant_id=tenant_id,
+            project_id=project_uuid,
+            village_id=village_uuid,
+        )
+        mappings = []
+        mapping_level = "PROJECT_OVERRIDE_THEN_GLOBAL_FALLBACK"
+        region_codes = sorted({
+            row["region_code"]
+            for row in core_layer_resolution["effective_regions"]
+        })
+    else:
+        mapping_query = db.query(GeographyClimateRegionMapping).filter(
+            GeographyClimateRegionMapping.is_active == True
+        )
+        mapping_level = None
+        if pin_code:
+            mapping_query = mapping_query.filter(
+                GeographyClimateRegionMapping.pin_code == pin_code
+            )
+            mapping_level = "PIN"
+        elif district_lgd_code:
+            mapping_query = mapping_query.filter(
+                GeographyClimateRegionMapping.district_lgd_code
+                == district_lgd_code
+            )
+            mapping_level = "DISTRICT"
+        else:
+            mapping_query = mapping_query.filter(
+                GeographyClimateRegionMapping.state_lgd_code
+                == state_lgd_code
+            )
+            mapping_level = "STATE"
+
+        mappings = mapping_query.all()
+        region_codes = sorted({
+            mapping.region_code
+            for mapping in mappings
+        })
 
     regions = (
         db.query(GeographyClimateRegion)
@@ -7386,6 +7431,7 @@ def get_land_intelligence_context(
         "schema_version": "land_intelligence_context.v1",
         "tenant_id": tenant_id,
         "project_id": project_id,
+        "village_id": village_id,
         "geography": {
             "state_lgd_code": state_lgd_code,
             "district_lgd_code": district_lgd_code,
@@ -7393,6 +7439,7 @@ def get_land_intelligence_context(
             "mapping_level_used": mapping_level,
         },
         "climate_context": {
+            "core_layer_resolution": core_layer_resolution,
             "region_count": len(regions),
             "mapping_count": len(mappings),
             "mapping_level": mapping_level,
