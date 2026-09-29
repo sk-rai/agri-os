@@ -52,6 +52,30 @@ type OverrideContext = {
   guardrails: Record<string, boolean>;
 };
 
+type EffectiveRegion = RegionOption & {
+  override_id?: string | null;
+  resolution_source:
+    | "PROJECT_OVERRIDE"
+    | "GLOBAL_MAPPING_FALLBACK";
+  resolution_scope: string;
+  global_fallback_available: boolean;
+  global_fallback_region_code?: string | null;
+  global_fallback_region_name?: string | null;
+  global_fallback_scope?: string | null;
+};
+
+type EffectiveResolution = {
+  schema_version: string;
+  mode: string;
+  precedence: string[];
+  effective_region_count: number;
+  project_override_count: number;
+  global_fallback_count: number;
+  unresolved_region_systems: string[];
+  effective_regions: EffectiveRegion[];
+  guardrails: Record<string, boolean>;
+};
+
 type MutationResponse = {
   schema_version: string;
   mode: string;
@@ -106,6 +130,8 @@ export default function CoreLayerProjectOverridePanel() {
   >([]);
   const [loadingVillages, setLoadingVillages] = useState(false);
   const [context, setContext] = useState<OverrideContext | null>(null);
+  const [effectiveResolution, setEffectiveResolution] =
+    useState<EffectiveResolution | null>(null);
   const [selectedRegions, setSelectedRegions] = useState<
     Record<string, string>
   >({});
@@ -245,10 +271,16 @@ export default function CoreLayerProjectOverridePanel() {
     setMessage(null);
 
     try {
-      const response = await api<OverrideContext>(
-        `/api/v1/master-data/geography/core-layer-project-overrides/projects/${projectId}/villages/${villageId.trim()}`,
-      );
+      const baseUrl =
+        `/api/v1/master-data/geography/core-layer-project-overrides/projects/${projectId}/villages/${villageId.trim()}`;
+
+      const [response, effective] = await Promise.all([
+        api<OverrideContext>(baseUrl),
+        api<EffectiveResolution>(`${baseUrl}/effective`),
+      ]);
+
       setContext(response);
+      setEffectiveResolution(effective);
       setPending({});
 
       const nextSelections: Record<string, string> = {};
@@ -265,6 +297,7 @@ export default function CoreLayerProjectOverridePanel() {
       setSelectedRegions(nextSelections);
     } catch (err) {
       setContext(null);
+      setEffectiveResolution(null);
       setError(
         err instanceof Error
           ? err.message
@@ -690,6 +723,142 @@ export default function CoreLayerProjectOverridePanel() {
             </span>{" "}
             · LGD {context.village.village_lgd_code} · Project{" "}
             {context.project.name}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-950">
+                  Effective Core layers
+                </h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  Read-only project context. Project overrides win per
+                  layer; unresolved layers remain explicit.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">
+                  {effectiveResolution?.project_override_count ?? 0} project overrides
+                </span>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                  {effectiveResolution?.global_fallback_count ?? 0} global fallbacks
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-100">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Core layer</th>
+                    <th className="px-3 py-2">Effective region</th>
+                    <th className="px-3 py-2">Source</th>
+                    <th className="px-3 py-2">Fallback after rollback</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {context.allowed_region_systems.map((system) => {
+                    const effective =
+                      effectiveResolution?.effective_regions.find(
+                        (item) => item.region_system === system,
+                      );
+                    const unresolved =
+                      effectiveResolution?.unresolved_region_systems.includes(
+                        system,
+                      );
+
+                    return (
+                      <tr key={`effective-${system}`}>
+                        <td className="px-3 py-2 font-medium text-slate-900">
+                          {SYSTEM_LABELS[system] || system}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {effective ? (
+                            <>
+                              <span className="font-medium">
+                                {effective.region_name}
+                              </span>
+                              <span className="block text-xs text-slate-500">
+                                {effective.region_code}
+                              </span>
+                            </>
+                          ) : unresolved ? (
+                            <span className="font-medium text-amber-700">
+                              Unresolved
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {effective ? (
+                            <>
+                              <span
+                                className={
+                                  effective.resolution_source ===
+                                  "PROJECT_OVERRIDE"
+                                    ? "rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700"
+                                    : "rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700"
+                                }
+                              >
+                                {effective.resolution_source ===
+                                "PROJECT_OVERRIDE"
+                                  ? "Project override"
+                                  : "Global fallback"}
+                              </span>
+                              <span className="mt-1 block text-xs text-slate-500">
+                                Scope: {effective.resolution_scope}
+                              </span>
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {effective?.resolution_source ===
+                          "PROJECT_OVERRIDE" ? (
+                            effective.global_fallback_available ? (
+                              <>
+                                <span className="font-medium">
+                                  {effective.global_fallback_region_name}
+                                </span>
+                                <span className="block text-xs text-slate-500">
+                                  {effective.global_fallback_region_code} ·{" "}
+                                  {effective.global_fallback_scope}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-amber-700">
+                                No global fallback
+                              </span>
+                            )
+                          ) : effective ? (
+                            <span className="text-xs text-slate-500">
+                              Already using global fallback
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {effectiveResolution?.unresolved_region_systems.length ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Unresolved layers:{" "}
+                {effectiveResolution.unresolved_region_systems
+                  .map((system) => SYSTEM_LABELS[system] || system)
+                  .join(", ")}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">
+                All Core layers resolve for this project village.
+              </p>
+            )}
           </div>
 
           <div className="mt-4 grid gap-3 xl:grid-cols-3">
