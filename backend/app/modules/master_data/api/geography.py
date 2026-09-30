@@ -3343,21 +3343,136 @@ def apply_nwdp_boundary_project_matching_disabled(
 
 
 
+def _read_geography_layer_readiness_snapshot(
+    db: Session,
+    state_or_ut: str,
+    district: str,
+    limit: int = 50,
+) -> dict:
+    """Read one precomputed district readiness snapshot.
+
+    This interactive path performs no geometry, boundary reconciliation,
+    crosswalk inference, or readiness aggregation.
+    """
+
+    row = db.execute(
+        text(
+            """
+            select
+              snapshot.id::text as snapshot_id,
+              snapshot.snapshot_schema_version,
+              snapshot.readiness_payload,
+              snapshot.source_versions,
+              snapshot.evidence_metadata,
+              snapshot.computed_at,
+              snapshot.refresh_run_id
+            from geography_layer_readiness_snapshots snapshot
+            where snapshot.is_active = true
+              and snapshot.calculation_status = 'READY'
+              and lower(trim(snapshot.state_or_ut))
+                    = lower(trim(:state_or_ut))
+              and lower(trim(snapshot.district))
+                    = lower(trim(:district))
+            limit 1
+            """
+        ),
+        {
+            "state_or_ut": state_or_ut,
+            "district": district,
+        },
+    ).mappings().first()
+
+    if row is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "schema_version":
+                    "geography_layer_readiness_snapshot_required.v1",
+                "status": "DISTRICT_READINESS_SNAPSHOT_REQUIRED",
+                "state_or_ut": state_or_ut,
+                "district": district,
+                "message": (
+                    "No active precomputed readiness snapshot exists "
+                    "for this district. Run the offline snapshot refresh "
+                    "before using the interactive readiness view."
+                ),
+                "interactive_computation_attempted": False,
+                "geometry_computation_attempted": False,
+                "canonical_geography_changed": False,
+                "runtime_activation_changed": False,
+                "android_behavior_changed": False,
+            },
+        )
+
+    payload = dict(row["readiness_payload"] or {})
+    computed_at = row["computed_at"]
+    now = datetime.now(timezone.utc)
+
+    if computed_at.tzinfo is None:
+        computed_at = computed_at.replace(tzinfo=timezone.utc)
+
+    age_seconds = max(
+        0,
+        int((now - computed_at).total_seconds()),
+    )
+
+    payload["mode"] = (
+        "READ_ONLY_PRECOMPUTED_DISTRICT_READINESS_SNAPSHOT"
+    )
+    payload["filters"] = {
+        "state_or_ut": state_or_ut,
+        "district": district,
+        "limit": limit,
+    }
+    payload["snapshot"] = {
+        "snapshot_id": row["snapshot_id"],
+        "snapshot_schema_version":
+            row["snapshot_schema_version"],
+        "computed_at": computed_at.isoformat(),
+        "age_seconds": age_seconds,
+        "freshness_status": "SNAPSHOT_AVAILABLE",
+        "refresh_run_id": row["refresh_run_id"],
+        "source_versions": row["source_versions"] or {},
+        "evidence_metadata": row["evidence_metadata"] or {},
+    }
+    payload["guardrails"] = {
+        **(payload.get("guardrails") or {}),
+        "interactive_computation_attempted": False,
+        "geometry_computation_attempted": False,
+        "snapshot_table_written": False,
+        "canonical_geography_changed": False,
+        "global_mapping_changed": False,
+        "project_override_changed": False,
+        "runtime_activation_changed": False,
+        "android_behavior_changed": False,
+    }
+    return payload
+
+
 @router.get("/layer-readiness")
 def get_geography_layer_readiness(
-    state_or_ut: Optional[str] = Query(None),
-    district: Optional[str] = Query(None),
-    limit: int = Query(5000, ge=1, le=5000),
+    state_or_ut: str = Query(
+        ...,
+        min_length=1,
+        description="Required canonical state or UT name",
+    ),
+    district: str = Query(
+        ...,
+        min_length=1,
+        description="Required canonical district name",
+    ),
+    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_permission(AdminPermission.VIEW)),
 ):
-    """Read-only admin geography layer readiness matrix.
+    """Read one precomputed district geography readiness snapshot.
 
-    This endpoint does not import rows, promote candidates, activate runtime
-    lookup, call external APIs, or change Android behavior.
+    Geometry validation, reconciliation, overlay analysis, and readiness
+    aggregation are offline responsibilities. This route performs one indexed
+    snapshot read and fails closed when no active snapshot exists.
     """
 
-    return _build_geography_layer_readiness_matrix(
+    return _read_geography_layer_readiness_snapshot(
         db=db,
         state_or_ut=state_or_ut,
         district=district,
