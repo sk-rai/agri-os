@@ -6,6 +6,11 @@ import { chromium } from "playwright";
 const token = process.env.WEB_SWEEP_TOKEN;
 const tenantId = process.env.WEB_SWEEP_TENANT_ID || "default";
 const actorId = process.env.WEB_SWEEP_ACTOR_ID;
+const requestedState =
+  process.env.READINESS_SWEEP_STATE || "";
+const maxReadMs = Number(
+  process.env.READINESS_SWEEP_MAX_MS || "5000",
+);
 
 if (!token || !actorId) {
   console.error(
@@ -166,7 +171,19 @@ try {
     throw new Error("No canonical state options were loaded.");
   }
 
-  const firstState = stateOptions[0];
+  const firstState = requestedState
+    ? stateOptions.find(
+        (option) =>
+          option.label.replace(/\s+\([^()]+\)$/, "") ===
+          requestedState,
+      )
+    : stateOptions[0];
+
+  if (!firstState) {
+    throw new Error(
+      `Requested state was not found: ${requestedState}`,
+    );
+  }
   const coverageResponsePromise = page.waitForResponse(
     (response) => {
       const url = new URL(response.url());
@@ -262,9 +279,20 @@ try {
     { timeout: 120000 },
   );
 
+  const readinessStartedAt = Date.now();
   await loadButton.click();
 
   const response = await responsePromise;
+  const readinessElapsedMs =
+    Date.now() - readinessStartedAt;
+
+  if (readinessElapsedMs > maxReadMs) {
+    throw new Error(
+      `Snapshot readiness read exceeded ${maxReadMs} ms: ` +
+      `${readinessElapsedMs} ms`,
+    );
+  }
+
   const responseUrl = new URL(response.url());
   const payload = await response.json();
 
@@ -381,8 +409,11 @@ try {
   }
 
   let stateResetVerified = true;
-  if (stateOptions.length > 1) {
-    await stateSelect.selectOption(stateOptions[1].value);
+  const resetState = stateOptions.find(
+    (option) => option.value !== firstState.value,
+  );
+  if (resetState) {
+    await stateSelect.selectOption(resetState.value);
 
     await page.waitForFunction(
       () => {
@@ -418,6 +449,9 @@ try {
     snapshot_coverage_summary: coveragePayload.summary,
     readiness_filters: actualFilters,
     response_row_count: payload.rows.length,
+    readiness_elapsed_ms: readinessElapsedMs,
+    maximum_allowed_read_ms: maxReadMs,
+    requested_state_anchor: requestedState || null,
     missing_district_blocked: missingDistrictBlocked,
     state_change_reset_verified: stateResetVerified,
     read_only: true,
