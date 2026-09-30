@@ -3343,6 +3343,156 @@ def apply_nwdp_boundary_project_matching_disabled(
 
 
 
+def _read_geography_layer_readiness_snapshot_coverage(
+    db: Session,
+    state_id: UUID,
+    stale_after_days: int = 7,
+) -> dict:
+    """Classify canonical districts by snapshot availability.
+
+    This is a read-only metadata lookup. It performs no readiness calculation,
+    geometry work, reconciliation, or snapshot refresh.
+    """
+
+    rows = db.execute(
+        text(
+            """
+            select
+              state.id::text as state_id,
+              state.lgd_code::text as state_lgd_code,
+              state.canonical_name as state_or_ut,
+              district.id::text as district_id,
+              district.lgd_code::text as district_lgd_code,
+              district.canonical_name as district,
+              snapshot.id::text as snapshot_id,
+              snapshot.snapshot_schema_version,
+              snapshot.computed_at,
+              snapshot.refresh_run_id,
+              snapshot.source_versions,
+              snapshot.evidence_metadata
+            from geography_states state
+            join geography_districts district
+              on district.state_id = state.id
+             and district.is_active = true
+            left join geography_layer_readiness_snapshots snapshot
+              on snapshot.state_id = state.id
+             and snapshot.district_id = district.id
+             and snapshot.is_active = true
+             and snapshot.calculation_status = 'READY'
+            where state.id = :state_id
+              and state.is_active = true
+            order by district.canonical_name, district.lgd_code
+            """
+        ),
+        {"state_id": str(state_id)},
+    ).mappings().all()
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "schema_version":
+                    "geography_layer_readiness_snapshot_coverage.v1",
+                "status": "CANONICAL_STATE_NOT_FOUND",
+                "state_id": str(state_id),
+                "database_writes_attempted": False,
+                "interactive_computation_attempted": False,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    stale_after_seconds = stale_after_days * 24 * 60 * 60
+    normalized = []
+
+    for source_row in rows:
+        row = dict(source_row)
+        computed_at = row["computed_at"]
+        age_seconds = None
+
+        if computed_at is None:
+            availability_status = "MISSING"
+        else:
+            if computed_at.tzinfo is None:
+                computed_at = computed_at.replace(
+                    tzinfo=timezone.utc
+                )
+            age_seconds = max(
+                0,
+                int((now - computed_at).total_seconds()),
+            )
+            availability_status = (
+                "STALE"
+                if age_seconds > stale_after_seconds
+                else "AVAILABLE"
+            )
+
+        normalized.append({
+            "state_id": row["state_id"],
+            "state_lgd_code": row["state_lgd_code"],
+            "state_or_ut": row["state_or_ut"],
+            "district_id": row["district_id"],
+            "district_lgd_code": row["district_lgd_code"],
+            "district": row["district"],
+            "availability_status": availability_status,
+            "offline_refresh_required":
+                availability_status != "AVAILABLE",
+            "snapshot_id": row["snapshot_id"],
+            "snapshot_schema_version":
+                row["snapshot_schema_version"],
+            "computed_at": (
+                computed_at.isoformat()
+                if computed_at is not None
+                else None
+            ),
+            "age_seconds": age_seconds,
+            "refresh_run_id": row["refresh_run_id"],
+            "source_versions": row["source_versions"] or {},
+            "evidence_metadata":
+                row["evidence_metadata"] or {},
+        })
+
+    counts = {
+        status: sum(
+            1
+            for row in normalized
+            if row["availability_status"] == status
+        )
+        for status in ("AVAILABLE", "STALE", "MISSING")
+    }
+
+    return {
+        "schema_version":
+            "geography_layer_readiness_snapshot_coverage.v1",
+        "status": "SNAPSHOT_COVERAGE_READ_ONLY",
+        "healthy": True,
+        "state": {
+            "state_id": normalized[0]["state_id"],
+            "state_lgd_code":
+                normalized[0]["state_lgd_code"],
+            "state_or_ut": normalized[0]["state_or_ut"],
+        },
+        "stale_after_days": stale_after_days,
+        "summary": {
+            "canonical_district_count": len(normalized),
+            "available_count": counts["AVAILABLE"],
+            "stale_count": counts["STALE"],
+            "missing_count": counts["MISSING"],
+            "offline_refresh_required_count":
+                counts["STALE"] + counts["MISSING"],
+        },
+        "rows": normalized,
+        "guardrails": {
+            "database_writes_attempted": False,
+            "interactive_computation_attempted": False,
+            "geometry_computation_attempted": False,
+            "snapshot_refresh_attempted": False,
+            "canonical_geography_changed": False,
+            "runtime_activation_changed": False,
+            "android_behavior_changed": False,
+        },
+    }
+
+
 def _read_geography_layer_readiness_snapshot(
     db: Session,
     state_or_ut: str,
@@ -3447,6 +3597,25 @@ def _read_geography_layer_readiness_snapshot(
         "android_behavior_changed": False,
     }
     return payload
+
+
+@router.get("/layer-readiness/snapshot-coverage")
+def get_geography_layer_readiness_snapshot_coverage(
+    state_id: UUID = Query(
+        ...,
+        description="Canonical state UUID",
+    ),
+    stale_after_days: int = Query(7, ge=1, le=365),
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_permission(AdminPermission.VIEW)),
+):
+    """List district snapshot availability for one canonical state."""
+
+    return _read_geography_layer_readiness_snapshot_coverage(
+        db=db,
+        state_id=state_id,
+        stale_after_days=stale_after_days,
+    )
 
 
 @router.get("/layer-readiness")
