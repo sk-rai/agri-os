@@ -88,3 +88,14 @@ The reusable global principles remain:
 - explicit project overrides with bounded scope and preserved history;
 - separation of canonical identity, enrichment, geometry, runtime activation,
   and mobile behavior.
+
+### India runtime-boundary status — 2026-09-30
+
+India now has `467,397` active runtime boundary features and crosswalks. This
+includes the independently audited `17,498`-row post-LGD deterministic cohort.
+Another `65,005` deterministic rehabilitation rows remain inactive and `14,773`
+rows remain held for review.
+
+This is India-profile runtime materialization, not a change to the reusable
+global geography model. External/public/Android spatial lookup exposure remains
+disabled pending shared gateway or distributed rate limiting.

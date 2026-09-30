@@ -35,11 +35,14 @@ complete:
   geography, boundary candidates, climate mappings, project overrides, runtime
   activation, or Android behavior.
 
-This does **not** mean every geography-data workstream is closed. Broad NWDP
-boundary activation, unresolved/manual-review boundary populations, canonical
-identity cleanup, remaining geometry validation and repair, broad climate
-runtime activation, SOI/BharatAtlas reconciliation, PIN freshness reporting,
-and external-provider activation remain separately controlled future work.
+This does **not** mean every geography-data workstream is closed. The reviewed
+`17,498`-row post-LGD deterministic cohort is now active in runtime tables, but
+the remaining inactive rehabilitation cohorts, unresolved/manual-review
+boundary populations, canonical identity cleanup, remaining geometry validation
+and repair, broad climate runtime activation, SOI/BharatAtlas reconciliation,
+PIN freshness reporting, and external-provider activation remain separately
+controlled future work. External/public/Android spatial lookup exposure remains
+disabled pending shared gateway or distributed rate limiting.
 
 ### Current canonical and snapshot baseline
 
@@ -101,6 +104,35 @@ Commits `ef1f18a` through `863aa2a` established:
 Snapshot payloads retain district-specific readiness rows plus explicitly
 labelled shared national compatibility context. Shared context is not evidence
 of interactive geometry computation.
+
+### Post-LGD runtime activation milestone
+
+Commits `4ccdf69` through `2cd87c0` established and verified activation of the
+reviewed post-LGD deterministic runtime cohort:
+
+- exactly `17,498` runtime features and `17,498` runtime crosswalks activated;
+- active runtime totals increased from `449,899` to `467,397`;
+- all eight state partitions reconciled exactly;
+- every activated row has valid native geometry with SRID 4326;
+- every activated row resolves through an active canonical
+  state/district/block/village hierarchy;
+- sampled production-shaped point lookups were correct and unambiguous;
+- the cold sampled lookup completed in approximately `121 ms`, with subsequent
+  samples approximately `4–7 ms`;
+- candidate rows remained inactive and `NOT_PROMOTED`;
+- canonical geography, project matches, lookup exposure, and Android behavior
+  remained unchanged;
+- `65,005` inactive rehabilitation rows remain across the normalized-direct,
+  parent-drift, and district-drift cohorts;
+- `14,773` unresolved rows remain held for review.
+
+The completed activation checkpoint covers eight states and `17,498` rows with
+checksum
+`21492ba7580dba2af0f4083dd6e9c564c5b87a35a206f8c9966a8c2e02a4ab9b`.
+
+Active runtime rows being queryable internally does not authorize customer,
+public, multi-worker, or Android lookup exposure. Shared gateway or distributed
+rate limiting remains the blocker for that separate decision.
 
 ### Scope of completion
 
@@ -832,6 +864,29 @@ The project editor changes only project configuration. Boundary promotion, runti
 10. Run application-wide geographically diverse concurrency, saturation,
     database-contention, cache, provider-failure, and mutation-workflow
     performance analysis as a separate engineering program.
+
+### Progress against the current sequence — 2026-09-30
+
+The first four items above have now been executed:
+
+1. the current canonical re-audit confirmed `14,773` unresolved rows;
+2. duplicate village LGD code `476380` and the missing Chandigarh hierarchy
+   were audited, with correction parked pending accessible authoritative LGD
+   evidence;
+3. the unresolved population was partitioned without automatic approval;
+4. the `17,498` clean post-LGD rows were revalidated, rehearsed with rollback,
+   activated through the checkpointed eight-state executor, and independently
+   audited.
+
+The next active sequence is:
+
+1. keep the remaining `65,005` inactive rehabilitation rows separately gated;
+2. add shared gateway or distributed rate limiting before wider spatial lookup
+   exposure;
+3. add periodic PIN-link freshness and provenance reporting;
+4. continue climate/ecology and SOI/BharatAtlas reconciliation;
+5. run broader concurrency, saturation, contention, cache, and provider-failure
+   performance analysis.
 
 ## Earlier recommended implementation sequence — historical baseline
 

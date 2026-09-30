@@ -258,3 +258,32 @@ must be re-audited against current canonical and runtime state.
 Duplicate LGD village code `476380`, Chandigarh hierarchy completeness,
 distributed rate limiting, and separately approved boundary promotion remain
 open items.
+
+## Post-LGD runtime activation status — 2026-09-30
+
+The historical reconciliation and inactive-staging counts above remain the
+2026-09-24 evidence baseline. Subsequent separately authorized work activated
+the exact `17,498`-row post-LGD deterministic cohort.
+
+Current runtime state:
+
+- active runtime features: `467,397`;
+- active runtime crosswalks: `467,397`;
+- activated post-LGD cohort: `17,498`;
+- remaining inactive rehabilitation rows: `65,005`;
+- unresolved held population: `14,773`;
+- active candidates: `0`;
+- promoted candidates: `0`;
+- project boundary matches: `0`.
+
+All eight state partitions reconcile exactly. Native geometry validity, SRID
+4326, active canonical hierarchy, identity uniqueness, and sampled
+production-shaped point lookup correctness passed. Sampled lookups were
+unambiguous and below the one-second audit ceiling.
+
+The completed apply checkpoint checksum is
+`21492ba7580dba2af0f4083dd6e9c564c5b87a35a206f8c9966a8c2e02a4ab9b`.
+
+This activation did not change candidate state, canonical geography, project
+matches, lookup exposure, or Android behavior. Wider lookup exposure remains
+disabled pending shared gateway or distributed rate limiting.
