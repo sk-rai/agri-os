@@ -1,7 +1,134 @@
 # Geography layer readiness and enablement roadmap
 
-Status date: 2026-09-14
+Status date: 2026-09-30
 Baseline purpose: committed readiness baseline after the geography matrix, admin endpoint, web page, project-boundary readiness, national boundary geometry validation, validation-metadata lifecycle proof, selected boundary runtime readiness, climate runtime dry-run, external API readiness, project geography-scope administration, audit-history visibility, hierarchy bulk selection, atomic project-creation geography, read-only activation preflight, fingerprint-guarded project activation, lifecycle history, and fingerprint-guarded project deactivation completed through 2026-09-14.
+
+## Superseding implementation status — 2026-09-30
+
+This section supersedes older current-state counts and implementation
+descriptions retained later in this document as historical milestones.
+
+### Completion statement
+
+The planned geography administration and readiness-serving control plane is
+complete:
+
+- canonical geography administration remains LGD-based;
+- project geography selection, audit, lifecycle gating, and project-boundary
+  assignment/rollback are operational;
+- project-specific Core-layer overrides support dry-run, explicit apply,
+  supersession history, token-guarded rollback, and tenant/project/village
+  authorization;
+- effective Core-layer resolution uses project override first and the existing
+  global mapping hierarchy as fallback;
+- crop suitability and land-intelligence reads consume effective project Core
+  geography when project and village context is supplied;
+- interactive geography readiness no longer performs national aggregation or
+  geometry work;
+- all `779` canonical districts have active readiness snapshots;
+- interactive readiness reads use one snapshot query and have demonstrated
+  approximately `8–21 ms` backend read time;
+- the authenticated five-state browser sweep observed `64–109 ms` end-to-end
+  readiness loads across island, northeast, plateau, arid, and coastal
+  geography;
+- no snapshot read, coverage lookup, or diverse browser sweep changed canonical
+  geography, boundary candidates, climate mappings, project overrides, runtime
+  activation, or Android behavior.
+
+This does **not** mean every geography-data workstream is closed. Broad NWDP
+boundary activation, unresolved/manual-review boundary populations, canonical
+identity cleanup, remaining geometry validation and repair, broad climate
+runtime activation, SOI/BharatAtlas reconciliation, PIN freshness reporting,
+and external-provider activation remain separately controlled future work.
+
+### Current canonical and snapshot baseline
+
+- active states/UTs: `35`
+- active districts: `779`
+- active villages: `600,647`
+- readiness snapshot rows: `780`
+- active district snapshots: `779`
+- unique active state/district snapshot identities: `779`
+- historical inactive snapshot rows: `1`
+- Alembic revision: `061`
+- interactive readiness mode:
+  `READ_ONLY_PRECOMPUTED_DISTRICT_SNAPSHOT`
+- offline candidate mode:
+  `OFFLINE_PRECOMPUTED_DISTRICT_SNAPSHOT_CANDIDATE`
+
+The prior Nicobars snapshot was preserved as inactive history when the reviewed
+national plan was applied. National apply inserted `778` new active snapshots
+and replaced one changed active Nicobars snapshot in a single guarded
+transaction.
+
+### Project-specific Core-layer milestone
+
+Commits `0110a1d` through `ff42c9c` established:
+
+- a dedicated project override table and migration;
+- tenant-, project-, and village-scoped authorization;
+- allowlisted Core region systems;
+- dry-run-by-default assignment;
+- explicit confirmed apply;
+- explicit supersession with preserved history;
+- rollback-token protection;
+- read-only effective resolution with project-first precedence;
+- integration into crop suitability and land-intelligence reads;
+- an admin panel with canonical project-village search;
+- effective-source and fallback preview;
+- authenticated apply/rollback browser proof;
+- unchanged global climate mappings, canonical geography, runtime activation,
+  and Android behavior.
+
+### District readiness snapshot milestone
+
+Commits `ef1f18a` through `863aa2a` established:
+
+- state/district-gated readiness lookup;
+- a measured filtered-query baseline proving the old interactive path could
+  take approximately `35–65 seconds`;
+- migration `061` and the dedicated
+  `geography_layer_readiness_snapshots` table;
+- offline district refresh with checksummed evidence;
+- one-query snapshot-only interactive reads;
+- read-only snapshot coverage reporting;
+- UI blocking for missing or stale snapshots;
+- a reviewed 779-district national plan;
+- a hash-pinned, explicitly confirmed, single-transaction national apply;
+- complete `779/779` active district snapshot coverage;
+- authenticated browser validation across five diverse states.
+
+Snapshot payloads retain district-specific readiness rows plus explicitly
+labelled shared national compatibility context. Shared context is not evidence
+of interactive geometry computation.
+
+### Scope of completion
+
+The following are complete:
+
+1. canonical geography administration;
+2. project geography scoping and audit;
+3. project lifecycle geography gates;
+4. project-specific Core-layer overrides;
+5. effective Core-layer read precedence;
+6. offline district readiness materialization;
+7. national district snapshot coverage;
+8. snapshot-gated admin visibility;
+9. focused backend and Playwright regression coverage.
+
+The following remain outside the completion claim:
+
+1. broad boundary runtime promotion;
+2. resolution of the historically documented blocked boundary population;
+3. activation of historically inactive rehabilitation cohorts;
+4. canonical duplicate LGD-code cleanup;
+5. Chandigarh hierarchy completion;
+6. remaining geometry-validation and repair authorization;
+7. broad climate/ecology runtime enablement;
+8. SOI/BharatAtlas production crosswalk completion;
+9. PIN freshness automation;
+10. external-provider activation;
+11. application-wide concurrent performance and resilience testing.
 
 ## Executive decision
 
@@ -679,7 +806,34 @@ The `/projects` admin page now additionally provides:
 
 The project editor changes only project configuration. Boundary promotion, runtime lookup, and Android behavior remain outside this surface.
 
-## Recommended next implementation sequence
+## Prioritized next implementation sequence — 2026-09-30
+
+1. Re-audit the historically unresolved NWDP boundary population against the
+   current `600,647`-village canonical baseline. Do not assume the
+   2026-09-24 count remains exact.
+2. Produce a read-only canonical identity audit for duplicate LGD village code
+   `476380` and the incomplete Chandigarh hierarchy. No correction is implied
+   without a separately reviewed plan.
+3. Partition the refreshed unresolved boundary population into deterministic
+   matches, manual name review, canonical reparent review, absent hierarchy,
+   and unsafe structural cases.
+4. Reconcile the historically inactive rehabilitation cohorts against current
+   canonical and runtime state before proposing any activation.
+5. Keep geometry validation and geometry repair separate. Safe metadata batches
+   must not silently repair or enable runtime geometry.
+6. Design any selected boundary runtime promotion with checksum-pinned scope,
+   explicit authorization, rollback, observability, and shared
+   gateway/distributed rate limiting.
+7. Add periodic PIN-link freshness and provenance reporting.
+8. Continue broad climate/ecology coverage closure while preserving
+   project-specific override precedence.
+9. Continue SOI/BharatAtlas crosswalk review and external-provider policy,
+   credential, cost, rate-limit, failure-audit, and rollback work.
+10. Run application-wide geographically diverse concurrency, saturation,
+    database-contention, cache, provider-failure, and mutation-workflow
+    performance analysis as a separate engineering program.
+
+## Earlier recommended implementation sequence — historical baseline
 
 1. Keep this roadmap, national source validation, bounded planner outputs, and
    production-shaped apply design as the committed readiness baseline.
@@ -782,6 +936,22 @@ The project editor changes only project configuration. Boundary promotion, runti
 17. Keep Android behavior unchanged until a separate Android-intended runtime enablement is explicitly approved.
 
 ## Current conclusion
+
+### 2026-09-30 conclusion
+
+Geography administration, project-scoped overrides, effective Core-layer
+resolution, district readiness precomputation, and interactive snapshot serving
+are operationally complete.
+
+The application can serve district readiness without runtime national
+aggregation or geometry computation. Complete snapshot coverage does not itself
+authorize boundary promotion, spatial lookup activation, climate runtime
+activation, provider activation, or Android behavior changes.
+
+The remaining geography work is data reconciliation, controlled promotion,
+freshness governance, and broader performance/resilience validation—not
+completion of the interactive readiness architecture.
+
 
 The application is ready to use LGD and village PIN-code geography for Android/runtime workflows.
 

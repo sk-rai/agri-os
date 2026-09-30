@@ -72,3 +72,19 @@ A read-only OGD geography source probe is now defined in `backend/scripts/probe_
 
 All-India geography import checkpoint
 An all-India geography import plan now defines the phased flow: source probe, raw snapshot acquisition, staging validation, diff, admin-approved apply, and local runtime serving. LGD remains canonical; PIN/post-office associations are separate postal references; Census is reserved for aliases, demographics, and business-opportunity enrichment without overriding LGD identity.
+
+## India implementation status — 2026-09-30
+
+The India profile now has complete active district-readiness snapshot coverage
+for all `779` canonical districts. Snapshots are an India-profile serving
+optimization, not a replacement for the canonical global model.
+
+The reusable global principles remain:
+
+- stable canonical geographic identities;
+- country-specific hierarchy profiles;
+- source provenance and versioning;
+- precomputed derived readiness where runtime recomputation is inappropriate;
+- explicit project overrides with bounded scope and preserved history;
+- separation of canonical identity, enrichment, geometry, runtime activation,
+  and mobile behavior.

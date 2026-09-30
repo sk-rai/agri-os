@@ -238,3 +238,23 @@ Key implementation files:
 - `backend/scripts/nwdp_parent_drift_selector.py`;
 - `backend/scripts/build_nwdp_parent_drift_manifest.py`;
 - `backend/scripts/run_nwdp_parent_drift_rehabilitation.py`.
+
+## Subsequent status — 2026-09-30
+
+This dated report remains the evidence baseline for the 2026-09-24
+reconciliation. Its original counts have not been rewritten.
+
+Subsequent work changed the canonical baseline to `35` states/UTs, `779`
+districts, and `600,647` active villages. Geography readiness is now served
+from `779` active district snapshots, with one prior Nicobars snapshot retained
+as inactive history.
+
+These snapshot and canonical-geography milestones did not activate inactive
+NWDP boundary rows, enable runtime spatial lookup, or resolve the blocked
+population documented above. Before any new boundary authorization, the
+historical `14,773` unresolved count and `82,503` inactive rehabilitation count
+must be re-audited against current canonical and runtime state.
+
+Duplicate LGD village code `476380`, Chandigarh hierarchy completeness,
+distributed rate limiting, and separately approved boundary promotion remain
+open items.

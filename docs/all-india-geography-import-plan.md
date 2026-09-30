@@ -138,3 +138,18 @@ against the canonical union, resolve Chandigarh coverage, and explicitly
 handle duplicate code 476380 before replacing canonical identity rows.
 The NWDP boundary source remains a geometry source, not the authoritative
 national village-identity count.
+
+## Current implementation addendum — 2026-09-30
+
+The current database baseline is `35` states/UTs, `779` districts, and
+`600,647` active villages. The original import phases and source evidence above
+remain historical records.
+
+Interactive geography readiness now reads precomputed district snapshots rather
+than rebuilding national readiness during a request. Migration `061` introduced
+the snapshot schema; a reviewed offline national plan produced and activated
+one snapshot for each of the `779` canonical districts.
+
+This snapshot layer does not replace LGD as canonical identity and does not
+authorize source import, canonical reparenting, boundary activation, runtime
+spatial lookup, or Android behavior changes.
