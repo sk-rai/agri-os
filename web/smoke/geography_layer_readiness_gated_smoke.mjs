@@ -51,15 +51,23 @@ await context.addInitScript(
 
 const page = await context.newPage();
 const readinessRequests = [];
+const coverageRequests = [];
 const browserEvents = [];
 
 page.on("request", (request) => {
+  const url = new URL(request.url());
   if (
-    request.url().includes(
-      "/api/v1/master-data/geography/layer-readiness",
-    )
+    url.pathname ===
+    "/api/v1/master-data/geography/layer-readiness"
   ) {
     readinessRequests.push(request.url());
+  }
+  if (
+    url.pathname ===
+    "/api/v1/master-data/geography/layer-readiness/" +
+      "snapshot-coverage"
+  ) {
+    coverageRequests.push(request.url());
   }
 });
 
@@ -159,7 +167,40 @@ try {
   }
 
   const firstState = stateOptions[0];
+  const coverageResponsePromise = page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname ===
+          "/api/v1/master-data/geography/layer-readiness/" +
+            "snapshot-coverage" &&
+        response.status() === 200
+      );
+    },
+    { timeout: 30000 },
+  );
+
   await stateSelect.selectOption(firstState.value);
+  const coverageResponse = await coverageResponsePromise;
+  const coveragePayload = await coverageResponse.json();
+
+  if (
+    coveragePayload.schema_version !==
+    "geography_layer_readiness_snapshot_coverage.v1"
+  ) {
+    throw new Error(
+      `Unexpected coverage schema: ${
+        coveragePayload.schema_version
+      }`,
+    );
+  }
+
+  if (coverageRequests.length !== 1) {
+    throw new Error(
+      "Expected one snapshot coverage request, received " +
+      `${coverageRequests.length}`,
+    );
+  }
 
   await page.waitForFunction(
     () => {
@@ -239,10 +280,9 @@ try {
     /\s+\([^()]+\)$/,
     "",
   );
-  const expectedDistrict = firstDistrict.label.replace(
-    /\s+\([^()]+\)$/,
-    "",
-  );
+  const expectedDistrict = firstDistrict.label
+    .replace(/\s+·\s+(AVAILABLE|STALE|MISSING|CHECKING)$/, "")
+    .replace(/\s+\([^()]+\)$/, "");
 
   const actualFilters = {
     state_or_ut: responseUrl.searchParams.get("state_or_ut"),
@@ -315,6 +355,31 @@ try {
     timeout: 60000,
   });
 
+  const missingDistrict = districtOptions.find(
+    (option) => option.label.endsWith("· MISSING"),
+  );
+  let missingDistrictBlocked = false;
+
+  if (missingDistrict) {
+    await districtSelect.selectOption(missingDistrict.value);
+
+    await page
+      .getByTestId(
+        "geography-readiness-offline-refresh-required",
+      )
+      .waitFor({ timeout: 15000 });
+
+    missingDistrictBlocked =
+      (await loadButton.isDisabled()) &&
+      readinessRequests.length === 1;
+
+    if (!missingDistrictBlocked) {
+      throw new Error(
+        "Missing district allowed an interactive readiness request.",
+      );
+    }
+  }
+
   let stateResetVerified = true;
   if (stateOptions.length > 1) {
     await stateSelect.selectOption(stateOptions[1].value);
@@ -349,8 +414,11 @@ try {
     selected_state: expectedState,
     selected_district: expectedDistrict,
     readiness_request_count: readinessRequests.length,
+    snapshot_coverage_request_count: coverageRequests.length,
+    snapshot_coverage_summary: coveragePayload.summary,
     readiness_filters: actualFilters,
     response_row_count: payload.rows.length,
+    missing_district_blocked: missingDistrictBlocked,
     state_change_reset_verified: stateResetVerified,
     read_only: true,
     screenshot:

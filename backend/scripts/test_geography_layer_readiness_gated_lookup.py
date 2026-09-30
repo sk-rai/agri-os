@@ -24,12 +24,12 @@ def main() -> int:
             "Canonical states are loaded independently",
         ),
         (
-            "geographyApi .listDistricts(stateId)",
+            "geographyApi.listDistricts(stateId)",
             "Districts load only for the selected state",
         ),
         (
-            "if (!selectedState || !selectedDistrict) return",
-            "Readiness lookup is gated",
+            "!selectedState || !selectedDistrict || !snapshotAvailable",
+            "Readiness lookup is gated by snapshot availability",
         ),
         (
             "state_or_ut: selectedState.canonical_name",
@@ -48,8 +48,8 @@ def main() -> int:
             "District selection requires a state",
         ),
         (
-            "disabled={!stateId || !districtId || loading}",
-            "Load requires state and district",
+            "!snapshotAvailable || loading",
+            "Load requires an available snapshot",
         ),
         (
             "Select a state and district to load readiness",

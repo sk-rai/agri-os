@@ -2149,6 +2149,55 @@ export interface GeographyBlock {
   canonical_name: string;
 }
 
+export type GeographyReadinessSnapshotAvailability =
+  | "AVAILABLE"
+  | "STALE"
+  | "MISSING";
+
+export interface GeographyReadinessSnapshotCoverageRow {
+  state_id: string;
+  state_lgd_code: string;
+  state_or_ut: string;
+  district_id: string;
+  district_lgd_code: string;
+  district: string;
+  availability_status: GeographyReadinessSnapshotAvailability;
+  offline_refresh_required: boolean;
+  snapshot_id: string | null;
+  snapshot_schema_version: string | null;
+  computed_at: string | null;
+  age_seconds: number | null;
+  refresh_run_id: string | null;
+  source_versions: Record<string, unknown>;
+  evidence_metadata: Record<string, unknown>;
+}
+
+export interface GeographyReadinessSnapshotCoverageResponse {
+  schema_version: string;
+  status: string;
+  healthy: boolean;
+  state: {
+    state_id: string;
+    state_lgd_code: string;
+    state_or_ut: string;
+  };
+  stale_after_days: number;
+  summary: {
+    canonical_district_count: number;
+    available_count: number;
+    stale_count: number;
+    missing_count: number;
+    offline_refresh_required_count: number;
+  };
+  rows: GeographyReadinessSnapshotCoverageRow[];
+  guardrails: {
+    database_writes_attempted: boolean;
+    interactive_computation_attempted: boolean;
+    geometry_computation_attempted: boolean;
+    snapshot_refresh_attempted: boolean;
+  };
+}
+
 export type GeographyBulkBoundaryStatus =
   | "ELIGIBLE"
   | "MISSING"
@@ -2674,6 +2723,15 @@ export const geographyApi = {
     api<GeographyDistrict[]>(
       `/api/v1/master-data/geography/districts?state_id=${encodeURIComponent(stateId)}`,
     ),
+  getLayerReadinessSnapshotCoverage: (stateId: string) => {
+    const params = new URLSearchParams({
+      state_id: stateId,
+      stale_after_days: "7",
+    });
+    return api<GeographyReadinessSnapshotCoverageResponse>(
+      `/api/v1/master-data/geography/layer-readiness/snapshot-coverage?${params.toString()}`,
+    );
+  },
   listBlocks: (districtId: string) =>
     api<GeographyBlock[]>(
       `/api/v1/master-data/geography/blocks?district_id=${encodeURIComponent(districtId)}`,

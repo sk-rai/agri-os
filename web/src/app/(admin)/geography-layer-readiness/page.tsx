@@ -5,6 +5,7 @@ import {
   api,
   geographyApi,
   type GeographyDistrict,
+  type GeographyReadinessSnapshotCoverageResponse,
   type GeographyState,
 } from "@/lib/api";
 import CoreLayerProjectOverridePanel from "@/components/admin/CoreLayerProjectOverridePanel";
@@ -426,12 +427,19 @@ export default function GeographyLayerReadinessPage() {
   const [districtId, setDistrictId] = useState("");
   const [loadingStates, setLoadingStates] = useState(true);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
+  const [snapshotCoverage, setSnapshotCoverage] =
+    useState<GeographyReadinessSnapshotCoverageResponse | null>(null);
   const [data, setData] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedState = states.find((item) => item.id === stateId);
   const selectedDistrict = districts.find((item) => item.id === districtId);
+  const selectedSnapshotCoverage = snapshotCoverage?.rows.find(
+    (item) => item.district_id === districtId,
+  );
+  const snapshotAvailable =
+    selectedSnapshotCoverage?.availability_status === "AVAILABLE";
 
   useEffect(() => {
     let active = true;
@@ -458,6 +466,7 @@ export default function GeographyLayerReadinessPage() {
   useEffect(() => {
     setDistrictId("");
     setDistricts([]);
+    setSnapshotCoverage(null);
     setData(null);
 
     if (!stateId) return;
@@ -466,15 +475,22 @@ export default function GeographyLayerReadinessPage() {
     setLoadingDistricts(true);
     setError(null);
 
-    geographyApi
-      .listDistricts(stateId)
-      .then((rows) => {
-        if (active) setDistricts(rows);
+    Promise.all([
+      geographyApi.listDistricts(stateId),
+      geographyApi.getLayerReadinessSnapshotCoverage(stateId),
+    ])
+      .then(([districtRows, coverage]) => {
+        if (active) {
+          setDistricts(districtRows);
+          setSnapshotCoverage(coverage);
+        }
       })
       .catch((err: unknown) => {
         if (active) {
           setError(
-            err instanceof Error ? err.message : "Failed to load districts",
+            err instanceof Error
+              ? err.message
+              : "Failed to load districts and snapshot coverage",
           );
         }
       })
@@ -488,7 +504,11 @@ export default function GeographyLayerReadinessPage() {
   }, [stateId]);
 
   const loadMatrix = useCallback(async () => {
-    if (!selectedState || !selectedDistrict) return;
+    if (
+      !selectedState ||
+      !selectedDistrict ||
+      !snapshotAvailable
+    ) return;
 
     setLoading(true);
     setError(null);
@@ -507,7 +527,7 @@ export default function GeographyLayerReadinessPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDistrict, selectedState]);
+  }, [selectedDistrict, selectedState, snapshotAvailable]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -598,21 +618,94 @@ export default function GeographyLayerReadinessPage() {
             <option value="">
               {loadingDistricts ? "Loading districts…" : "Select district"}
             </option>
-            {districts.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.canonical_name} ({item.lgd_code})
-              </option>
-            ))}
+            {districts.map((item) => {
+              const coverage = snapshotCoverage?.rows.find(
+                (row) => row.district_id === item.id,
+              );
+              return (
+                <option key={item.id} value={item.id}>
+                  {item.canonical_name} ({item.lgd_code}) ·{" "}
+                  {coverage?.availability_status ?? "CHECKING"}
+                </option>
+              );
+            })}
           </select>
         </label>
 
         <button
-          disabled={!stateId || !districtId || loading}
+          disabled={
+            !stateId ||
+            !districtId ||
+            !snapshotAvailable ||
+            loading
+          }
           className="self-end rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Load readiness
         </button>
       </form>
+
+      {snapshotCoverage && (
+        <div
+          data-testid="geography-readiness-snapshot-coverage"
+          className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm sm:grid-cols-4"
+        >
+          <div>
+            <div className="text-xs text-slate-500">District snapshots</div>
+            <div className="font-semibold text-slate-950">
+              {snapshotCoverage.summary.canonical_district_count}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">Available</div>
+            <div className="font-semibold text-emerald-700">
+              {snapshotCoverage.summary.available_count}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">Stale</div>
+            <div className="font-semibold text-amber-700">
+              {snapshotCoverage.summary.stale_count}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">
+              Offline refresh required
+            </div>
+            <div className="font-semibold text-rose-700">
+              {snapshotCoverage.summary.offline_refresh_required_count}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedSnapshotCoverage?.availability_status === "AVAILABLE" && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          Precomputed readiness snapshot available
+          {selectedSnapshotCoverage.computed_at
+            ? ` · computed ${new Date(
+                selectedSnapshotCoverage.computed_at,
+              ).toLocaleString()}`
+            : ""}
+          . Loading this district performs no geometry computation.
+        </div>
+      )}
+
+      {selectedSnapshotCoverage &&
+        selectedSnapshotCoverage.availability_status !== "AVAILABLE" && (
+          <div
+            data-testid="geography-readiness-offline-refresh-required"
+            className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+          >
+            Offline snapshot refresh required for{" "}
+            <span className="font-semibold">
+              {selectedSnapshotCoverage.district}
+            </span>
+            . Interactive geometry computation and readiness aggregation are
+            disabled. The district remains available for offline review and
+            project-specific manual assignment.
+          </div>
+        )}
 
       {!stateId || !districtId ? (
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
