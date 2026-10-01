@@ -60,8 +60,8 @@ def main():
         ),
         (
             "tracker",
-            "Implemented and locally Redis-tested; operational enablement pending",
-            "Tracker status distinguishes implementation from enablement",
+            "Local admin-only pilot enabled; wider exposure pending",
+            "Tracker status distinguishes local pilot from wider exposure",
         ),
         (
             "tracker",

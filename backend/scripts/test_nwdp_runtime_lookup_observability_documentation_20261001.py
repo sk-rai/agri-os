@@ -89,8 +89,9 @@ def main() -> int:
         ),
         (
             "tracker",
-            "lookup remains false while the limiter is true",
-            "Local lookup remains closed with limiter configured",
+            "lookup is true only for the separately authorized "
+            "authenticated-admin pilot",
+            "Local pilot state is distinguished from repository defaults",
         ),
         (
             "tracker",

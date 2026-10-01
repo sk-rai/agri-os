@@ -201,6 +201,66 @@ Android, public, or production exposure; tenant-tier mutation; canonical
 changes; runtime deactivation; or project changes. Actual lookup enablement
 requires a separate explicit authorization.
 
+## Local admin-only lookup pilot enabled — 2026-10-01
+
+The separately authorized `LOCAL_ADMIN_ONLY_RUNTIME_LOOKUP_PILOT` is active in
+the local WSL environment.
+
+Commit `60b1eab` added and passed the live authenticated canary. Commit
+`2e7e4b3` added the independent post-enablement audit, which passed with status
+`LOCAL_ADMIN_ONLY_LOOKUP_PILOT_ENABLED_AUDIT_PASSED`.
+
+Verified behavior:
+
+- authenticated `AdminPermission.VIEW` access is required;
+- anonymous access returns `401`;
+- the in-boundary canary returned one exact expected runtime feature and
+  village;
+- the outside-boundary canary remained unmatched;
+- tenant `default` resolved to `FREE`;
+- actor budget headers decremented exactly from `10` to `9` to `8`;
+- actor, tenant, and global Redis keys had bounded TTLs and expired;
+- active runtime features and crosswalks remained exactly `467,397`;
+- candidates remained inactive and `NOT_PROMOTED`;
+- project matches remained zero;
+- canonical geography, runtime data, projects, and Android behavior were
+  unchanged.
+
+This is local admin-only enablement. It does not authorize customer, Android,
+public, or production access. Repository defaults remain fail-closed. Rollback
+requires only setting `NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED=false` in the local
+environment and restarting the backend; runtime data must remain active.
+
+## Local admin-only lookup pilot enabled — 2026-10-01
+
+The separately authorized `LOCAL_ADMIN_ONLY_RUNTIME_LOOKUP_PILOT` is active in
+the local WSL environment.
+
+Commit `60b1eab` added and passed the live authenticated canary. Commit
+`2e7e4b3` added the independent post-enablement audit, which passed with status
+`LOCAL_ADMIN_ONLY_LOOKUP_PILOT_ENABLED_AUDIT_PASSED`.
+
+Verified behavior:
+
+- authenticated `AdminPermission.VIEW` access is required;
+- anonymous access returns `401`;
+- the in-boundary canary returned one exact expected runtime feature and
+  village;
+- the outside-boundary canary remained unmatched;
+- tenant `default` resolved to `FREE`;
+- actor budget headers decremented exactly from `10` to `9` to `8`;
+- actor, tenant, and global Redis keys had bounded TTLs and expired;
+- active runtime features and crosswalks remained exactly `467,397`;
+- candidates remained inactive and `NOT_PROMOTED`;
+- project matches remained zero;
+- canonical geography, runtime data, projects, and Android behavior were
+  unchanged.
+
+This is local admin-only enablement. It does not authorize customer, Android,
+public, or production access. Repository defaults remain fail-closed. Rollback
+requires only setting `NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED=false` in the local
+environment and restarting the backend; runtime data must remain active.
+
 ## Deferred controls
 
 The distributed limiter is implemented and locally integration-tested but is

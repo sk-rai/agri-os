@@ -199,6 +199,21 @@ The proposed local pilot is limited to authenticated
 remains disabled. Customer, Android, public, and production exposure remain
 outside this readiness result.
 
+### Local admin-only lookup pilot enabled — 2026-10-01
+
+Following separate authorization, the local WSL lookup flag was enabled only
+for the authenticated admin pilot. Commit `60b1eab` validated the live canary,
+and commit `2e7e4b3` independently audited the enabled state.
+
+The pilot returned one exact in-boundary match, preserved an unmatched outside
+point, enforced the `FREE` tier, denied anonymous access with `401`, created
+only bounded-TTL Redis budgets, and left all protected database counts
+unchanged. Active runtime coverage remains `467,397`.
+
+This milestone does not authorize customer, Android, public, or production
+lookup exposure. Repository defaults remain disabled, and local rollback is a
+single flag reversal plus backend restart without runtime-data deactivation.
+
 ### Scope of completion
 
 The following are complete:
