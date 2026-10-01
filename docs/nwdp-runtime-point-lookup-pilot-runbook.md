@@ -10,12 +10,13 @@ The lookup is limited to runtime set:
 
 `e5f93e27-a0bd-5c8b-bef3-d97986e14c55`
 
-It currently contains 449,899 active runtime features and 449,899 active
-village crosswalks backed by native PostGIS geometry: 110 preserved pilot
-rows plus 449,789 rows from the separately authorized national V2 campaign.
+It currently contains `467,397` active runtime features and `467,397`
+active village crosswalks backed by native PostGIS geometry. This includes the
+independently audited `17,498`-row post-LGD deterministic cohort activated
+across eight state transactions.
 
-The national campaign covers 30 state/UT source batches. It is not complete
-36-state/UT coverage.
+Another `65,005` deterministic rehabilitation rows remain inactive and
+`14,773` unresolved rows remain held for review.
 
 This runbook does not authorize Android, public, customer, project-scoped,
 or additional runtime-set access. National runtime rows being active does
@@ -94,13 +95,46 @@ An outside point should return `UNMATCHED` with match count `0`.
 4. Do not deactivate or delete runtime rows as part of the lookup rollback.
 5. Preserve native geometry and authorization/reconciliation artifacts.
 
+## Distributed rate-limit implementation — 2026-10-01
+
+Commit `f0b5e13` added a Redis-backed distributed limiter at the authenticated
+lookup boundary.
+
+Implemented controls:
+
+- atomic actor, tenant, and global budgets;
+- server-owned tenant tiers: `FREE`, `STANDARD`, `PRO`, and `ENTERPRISE`;
+- tier resolution from persisted `tenants.config`, never from a request header;
+- configurable per-tier actor and tenant quotas;
+- a configurable global quota and fixed window;
+- `429` responses with stable code, limit headers, and `Retry-After`;
+- fail-closed `503` behavior when Redis is missing, unavailable, or malformed;
+- no coordinates, bearer tokens, or untrusted forwarding headers in Redis keys;
+- the lookup feature flag is checked before Redis, so a disabled endpoint has
+  no Redis dependency;
+- Redis executes before spatial SQL when lookup is enabled;
+- existing lookup, ambiguity, authorization, and database-write regressions
+  remain green.
+
+Current default posture:
+
+- `NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED=false`;
+- `NWDP_BOUNDARY_RUNTIME_LOOKUP_RATE_LIMIT_ENABLED=false`;
+- Redis URL unset;
+- Android, customer, and public exposure unauthorized.
+
+The implementation has passed static, behavioral fake-Redis, existing lookup,
+and endpoint-boundary regressions. Real Redis atomicity, expiry, concurrent
+worker sharing, and backend-failure recovery still require local integration
+evidence before either feature flag can be enabled.
+
 ## Deferred controls
 
-Shared gateway or distributed rate limiting is mandatory before customer,
-Android, public, multi-worker production, or national-scale exposure. The
-national runtime rows are active, but lookup remains disabled until that
-control and a separate lookup-enablement authorization are in place. An
-in-process counter is not considered sufficient.
+The distributed limiter is implemented but not operationally enabled. Local
+Redis provisioning, real concurrent integration testing, deployment secret/TLS
+configuration, monitoring, and a separate lookup-enablement authorization
+remain mandatory before customer, Android, public, multi-worker production, or
+national-scale exposure. An in-process counter is not an acceptable fallback.
 
 ## Expansion governance
 

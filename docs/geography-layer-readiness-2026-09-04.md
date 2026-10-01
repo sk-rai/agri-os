@@ -134,6 +134,26 @@ Active runtime rows being queryable internally does not authorize customer,
 public, multi-worker, or Android lookup exposure. Shared gateway or distributed
 rate limiting remains the blocker for that separate decision.
 
+### Distributed lookup rate-limit milestone — 2026-10-01
+
+Commit `f0b5e13` implemented the previously documented shared-rate-limit
+application boundary:
+
+- Redis-backed atomic actor, tenant, and global quotas;
+- persisted server-owned customer tiers: `FREE`, `STANDARD`, `PRO`, and
+  `ENTERPRISE`;
+- configurable tier quotas without trusting customer-supplied tier headers;
+- fail-closed `503` behavior for unavailable or invalid Redis state;
+- stable `429`, `Retry-After`, and remaining-budget response contracts;
+- privacy-safe keys excluding coordinates and credentials;
+- limiter execution after authentication and before spatial SQL;
+- no Redis dependency while the lookup feature flag is disabled.
+
+Both lookup and rate-limit feature flags remain false. Redis is not yet
+configured locally, and no lookup, Android, customer, or public exposure is
+authorized. Real Redis expiry, atomicity, multi-process shared-budget, and
+failure-recovery tests remain the next operational gate.
+
 ### Scope of completion
 
 The following are complete:
