@@ -186,6 +186,19 @@ backup restoration, durable budget continuity, or zero-loss recovery.
 Production Redis secrets/TLS, persistence/HA policy, external alert routing,
 and separate lookup authorization remain open.
 
+### Admin-only lookup enablement readiness — 2026-10-01
+
+Commit `3257c35` reconciled the live database, active runtime set, local Redis,
+tenant-tier resolution, endpoint guardrails, spatial index, limiter ordering,
+observability, and rollback requirements without writes. The result is
+`READY_FOR_SEPARATE_ADMIN_ONLY_AUTHORIZATION`, not authorization.
+
+The proposed local pilot is limited to authenticated
+`AdminPermission.VIEW` callers with a required runtime-set scope. Tenant
+`default` currently resolves to `FREE` because no tier is persisted. Lookup
+remains disabled. Customer, Android, public, and production exposure remain
+outside this readiness result.
+
 ### Scope of completion
 
 The following are complete:

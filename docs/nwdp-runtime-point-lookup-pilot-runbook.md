@@ -174,6 +174,33 @@ gate proves shared-budget behavior, connection failure handling, and client
 recovery; it does not prove production persistence, replication, sentinel or
 cluster failover, backup recovery, or zero-loss behavior.
 
+## Admin-only lookup enablement readiness — 2026-10-01
+
+Commit `3257c35` added a read-only enablement readiness audit and authorization
+plan. The audit passed with status
+`READY_FOR_SEPARATE_ADMIN_ONLY_AUTHORIZATION`, but `authorized` remains false.
+
+Confirmed readiness:
+
+- `467,397` active runtime features and crosswalks remain exact;
+- canonical geography and protected database counts remain unchanged;
+- the active `PILOT_ACTIVE` runtime set is checksum-bound by source hashes;
+- `AdminPermission.VIEW`, required `runtime_set_id`, coordinate bounds,
+  statement timeout, ambiguity limit, GiST filtering, and limiter-before-SQL
+  ordering are present;
+- Redis is configured and healthy, the limiter is enabled locally, and lookup
+  remains disabled;
+- observability and stable `429`/fail-closed `503` contracts are present;
+- tenant `default` has no persisted lookup tier and therefore resolves to
+  `FREE`: 10 actor requests, 30 tenant requests, and 600 global requests per
+  60-second window.
+
+The proposed authorization scope is
+`LOCAL_ADMIN_ONLY_RUNTIME_LOOKUP_PILOT`. It does not authorize customer,
+Android, public, or production exposure; tenant-tier mutation; canonical
+changes; runtime deactivation; or project changes. Actual lookup enablement
+requires a separate explicit authorization.
+
 ## Deferred controls
 
 The distributed limiter is implemented and locally integration-tested but is
