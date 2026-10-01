@@ -132,6 +132,26 @@ their configured quotas, TTL reset and namespace isolation passed, and all test
 keys were removed. Both application feature flags and the application Redis URL
 remained unset during this evidence run.
 
+## Limiter observability — 2026-10-01
+
+Commit `e710753` added privacy-safe limiter observability:
+
+- bounded counters by outcome, server-owned tier, rejection dimension, and
+  stable error code;
+- cumulative latency buckets and count/sum measurements;
+- aggregate remaining-budget count, sum, minimum, and maximum;
+- exactly one structured event for each allowed, rejected, or failed limiter
+  evaluation;
+- no actor ID, tenant ID, request coordinates, authorization token, Redis key,
+  or Redis URL in metric labels or structured events;
+- explicit process-local snapshot scope, with structured logs as the
+  cross-worker and cross-replica aggregation boundary;
+- deterministic reset support for tests without changing Redis budgets.
+
+The instrumentation is implemented and regression-tested, but it is not a
+public metrics endpoint and does not itself provide production log collection,
+dashboards, alert routing, or retention. Lookup remains disabled.
+
 ## Deferred controls
 
 The distributed limiter is implemented and locally integration-tested but is

@@ -154,8 +154,23 @@ URL remains unset, and no lookup, Android, customer, or public exposure is
 authorized. Commit `bd07091` validated real Redis expiry, atomicity, namespace
 isolation, differentiated tier quotas, and shared budgets across threads and
 four independent worker processes against a loopback-only system Redis service.
-Production secret/TLS configuration, monitoring, multi-replica failure testing,
-and separate lookup authorization remain the next operational gates.
+Production secret/TLS configuration, external log collection and alert routing,
+multi-replica failure testing, and separate lookup authorization remain the
+next operational gates.
+
+### Distributed limiter observability milestone — 2026-10-01
+
+Commit `e710753` instrumented each limiter evaluation with bounded
+process-local counters, cumulative latency buckets, remaining-budget
+aggregates, and one privacy-safe structured event. Labels are restricted to
+outcome, server-owned tier, rejection dimension, and stable error code.
+Customer and request identities, coordinates, credentials, Redis keys, and
+Redis URLs are excluded.
+
+Structured events provide the intended aggregation boundary across workers and
+replicas. This milestone does not add a public metrics endpoint, enable lookup,
+or claim that production log collection, dashboards, alert routing, retention,
+multi-replica failover, or production Redis TLS are complete.
 
 ### Scope of completion
 
