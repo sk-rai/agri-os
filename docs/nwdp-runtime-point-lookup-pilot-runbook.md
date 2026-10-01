@@ -124,17 +124,24 @@ Current default posture:
 - Android, customer, and public exposure unauthorized.
 
 The implementation has passed static, behavioral fake-Redis, existing lookup,
-and endpoint-boundary regressions. Real Redis atomicity, expiry, concurrent
-worker sharing, and backend-failure recovery still require local integration
-evidence before either feature flag can be enabled.
+and endpoint-boundary regressions. Commit `bd07091` also validated the limiter
+against the system-wide local Redis service at `127.0.0.1:6379`: atomic budgets
+were exact across threads and four independent worker processes, actor/tenant/
+global exhaustion remained distinguishable, all four customer tiers received
+their configured quotas, TTL reset and namespace isolation passed, and all test
+keys were removed. Both application feature flags and the application Redis URL
+remained unset during this evidence run.
 
 ## Deferred controls
 
-The distributed limiter is implemented but not operationally enabled. Local
-Redis provisioning, real concurrent integration testing, deployment secret/TLS
-configuration, monitoring, and a separate lookup-enablement authorization
-remain mandatory before customer, Android, public, multi-worker production, or
-national-scale exposure. An in-process counter is not an acceptable fallback.
+The distributed limiter is implemented and locally integration-tested but is
+not operationally enabled for Farmint. Production deployment secret/TLS
+configuration, monitoring, multi-replica failure testing, and a separate
+lookup-enablement authorization remain mandatory before customer, Android,
+public, production multi-worker, or national-scale exposure. The local Redis
+service is loopback-only with protected mode enabled; that is suitable for
+local development, not evidence of production Redis readiness. An in-process
+counter is not an acceptable fallback.
 
 ## Expansion governance
 

@@ -55,12 +55,12 @@ def main():
         ),
         (
             "runbook",
-            "Real Redis atomicity, expiry, concurrent",
-            "Remaining Redis integration work is explicit",
+            "Commit `bd07091` also validated the limiter",
+            "Real Redis integration evidence is recorded",
         ),
         (
             "tracker",
-            "Implemented in code; Redis integration and enablement pending",
+            "Implemented and locally Redis-tested; operational enablement pending",
             "Tracker status distinguishes implementation from enablement",
         ),
         (
@@ -77,6 +77,11 @@ def main():
             "roadmap",
             "no Redis dependency while the lookup feature flag is disabled",
             "Disabled lookup independence is documented",
+        ),
+        (
+            "roadmap",
+            "four independent worker processes",
+            "Multi-process Redis evidence is documented",
         ),
         (
             "roadmap",

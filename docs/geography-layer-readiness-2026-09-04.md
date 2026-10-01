@@ -149,10 +149,13 @@ application boundary:
 - limiter execution after authentication and before spatial SQL;
 - no Redis dependency while the lookup feature flag is disabled.
 
-Both lookup and rate-limit feature flags remain false. Redis is not yet
-configured locally, and no lookup, Android, customer, or public exposure is
-authorized. Real Redis expiry, atomicity, multi-process shared-budget, and
-failure-recovery tests remain the next operational gate.
+Both lookup and rate-limit feature flags remain false, the application Redis
+URL remains unset, and no lookup, Android, customer, or public exposure is
+authorized. Commit `bd07091` validated real Redis expiry, atomicity, namespace
+isolation, differentiated tier quotas, and shared budgets across threads and
+four independent worker processes against a loopback-only system Redis service.
+Production secret/TLS configuration, monitoring, multi-replica failure testing,
+and separate lookup authorization remain the next operational gates.
 
 ### Scope of completion
 
