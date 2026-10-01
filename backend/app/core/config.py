@@ -34,6 +34,27 @@ class Settings(BaseSettings):
     NWDP_BOUNDARY_RUNTIME_LOOKUP_ENABLED: bool = False
     NWDP_BOUNDARY_RUNTIME_LOOKUP_STATEMENT_TIMEOUT_MS: int = 2000
 
+    # Distributed rate limiting remains independently disabled until
+    # Redis operations and multi-worker tests are complete.
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_RATE_LIMIT_ENABLED: bool = False
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_RATE_LIMIT_REDIS_URL: str | None = None
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_RATE_LIMIT_NAMESPACE: str = (
+        "agrios:nwdp-runtime-lookup:v1"
+    )
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_RATE_LIMIT_GLOBAL_REQUESTS: int = 600
+
+    # Server-side tenant tiers. The tier is read from tenants.config;
+    # it is never accepted from a request header.
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_FREE_ACTOR_REQUESTS: int = 10
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_FREE_TENANT_REQUESTS: int = 30
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_STANDARD_ACTOR_REQUESTS: int = 30
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_STANDARD_TENANT_REQUESTS: int = 120
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_PRO_ACTOR_REQUESTS: int = 120
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_PRO_TENANT_REQUESTS: int = 600
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_ENTERPRISE_ACTOR_REQUESTS: int = 600
+    NWDP_BOUNDARY_RUNTIME_LOOKUP_ENTERPRISE_TENANT_REQUESTS: int = 3000
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

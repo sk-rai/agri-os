@@ -18,13 +18,16 @@ from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 
 from fastapi.responses import StreamingResponse
-from fastapi import APIRouter, Depends, Header, Query, HTTPException
+from fastapi import (APIRouter, Depends, Header, Query, HTTPException, Response)
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from app.core.admin_auth import AdminPermission, require_admin_permission
+from app.core.admin_auth import (AdminPermission, AdminPrincipal, require_admin_permission)
 from app.core.config import settings
+from app.core.distributed_rate_limit import (
+    enforce_nwdp_runtime_lookup_rate_limit,
+)
 from app.core.database import get_db
 from scripts.report_project_boundary_readiness import (
     SOURCE_SYSTEM as PROJECT_BOUNDARY_SOURCE_SYSTEM,
@@ -2192,11 +2195,12 @@ def get_project_geography_readiness(
 
 @router.get("/nwdp-boundary-runtime/point-lookup")
 def get_nwdp_boundary_runtime_point_lookup(
+    response: Response,
     latitude: float = Query(..., ge=-90, le=90),
     longitude: float = Query(..., ge=-180, le=180),
     runtime_set_id: UUID = Query(...),
     db: Session = Depends(get_db),
-    _principal=Depends(
+    principal: AdminPrincipal = Depends(
         require_admin_permission(AdminPermission.VIEW)
     ),
 ) -> dict:
@@ -2211,6 +2215,16 @@ def get_nwdp_boundary_runtime_point_lookup(
                     "NWDP boundary runtime lookup is disabled",
             },
         )
+
+    # Authentication has already resolved the persisted actor and tenant.
+    # The lookup feature flag is checked first so a disabled endpoint has
+    # no Redis dependency. When enabled, rate limiting runs before spatial
+    # SQL and resolves the customer tier from persisted tenant config.
+    enforce_nwdp_runtime_lookup_rate_limit(
+        principal,
+        db,
+        response,
+    )
 
     db.execute(
         text("""
