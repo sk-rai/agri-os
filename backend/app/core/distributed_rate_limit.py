@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -84,6 +87,188 @@ class RateLimitDecision:
 
 _client: Redis | None = None
 _client_url: str | None = None
+
+logger = logging.getLogger(__name__)
+
+OBSERVABILITY_SCHEMA_VERSION = (
+    "nwdp_runtime_lookup_rate_limit_observability.v1"
+)
+LATENCY_BUCKETS_MS = (
+    1.0,
+    5.0,
+    10.0,
+    25.0,
+    50.0,
+    100.0,
+    250.0,
+    500.0,
+    1000.0,
+)
+_observability_lock = threading.Lock()
+_observability_counters: dict[tuple[str, str, str, str], int] = (
+    defaultdict(int)
+)
+_observability_latency_buckets: dict[float, int] = defaultdict(int)
+_observability_latency_count = 0
+_observability_latency_sum_ms = 0.0
+_observability_remaining_count = 0
+_observability_remaining_sum = 0
+_observability_remaining_min: int | None = None
+_observability_remaining_max: int | None = None
+
+
+def reset_rate_limit_observability() -> None:
+    """Reset process-local aggregate metrics, primarily for tests."""
+    global _observability_latency_count
+    global _observability_latency_sum_ms
+    global _observability_remaining_count
+    global _observability_remaining_sum
+    global _observability_remaining_min
+    global _observability_remaining_max
+
+    with _observability_lock:
+        _observability_counters.clear()
+        _observability_latency_buckets.clear()
+        _observability_latency_count = 0
+        _observability_latency_sum_ms = 0.0
+        _observability_remaining_count = 0
+        _observability_remaining_sum = 0
+        _observability_remaining_min = None
+        _observability_remaining_max = None
+
+
+def _record_rate_limit_observation(
+    *,
+    outcome: str,
+    tier: str,
+    dimension: str | None,
+    error_code: str | None,
+    elapsed_ms: float,
+    remaining: int | None,
+) -> None:
+    """Record bounded aggregate metrics and a privacy-safe log event."""
+    global _observability_latency_count
+    global _observability_latency_sum_ms
+    global _observability_remaining_count
+    global _observability_remaining_sum
+    global _observability_remaining_min
+    global _observability_remaining_max
+
+    safe_tier = (
+        tier if tier in SUPPORTED_TIERS else "UNKNOWN"
+    )
+    safe_dimension = (
+        dimension
+        if dimension in {"actor", "tenant", "global"}
+        else "none"
+    )
+    safe_error_code = error_code or "none"
+    counter_key = (
+        outcome,
+        safe_tier,
+        safe_dimension,
+        safe_error_code,
+    )
+
+    with _observability_lock:
+        _observability_counters[counter_key] += 1
+        _observability_latency_count += 1
+        _observability_latency_sum_ms += elapsed_ms
+        for bucket in LATENCY_BUCKETS_MS:
+            if elapsed_ms <= bucket:
+                _observability_latency_buckets[bucket] += 1
+
+        if remaining is not None:
+            _observability_remaining_count += 1
+            _observability_remaining_sum += remaining
+            if (
+                _observability_remaining_min is None
+                or remaining < _observability_remaining_min
+            ):
+                _observability_remaining_min = remaining
+            if (
+                _observability_remaining_max is None
+                or remaining > _observability_remaining_max
+            ):
+                _observability_remaining_max = remaining
+
+    log_method = (
+        logger.warning if outcome == "error" else logger.info
+    )
+    log_method(
+        "nwdp_runtime_lookup_rate_limit "
+        "outcome=%s tier=%s dimension=%s "
+        "error_code=%s elapsed_ms=%.3f",
+        outcome,
+        safe_tier,
+        safe_dimension,
+        safe_error_code,
+        elapsed_ms,
+    )
+
+
+def rate_limit_observability_snapshot() -> dict[str, Any]:
+    """Return a process-local, bounded-cardinality metrics snapshot."""
+    with _observability_lock:
+        counters = [
+            {
+                "outcome": key[0],
+                "tier": key[1],
+                "dimension": key[2],
+                "error_code": key[3],
+                "count": count,
+            }
+            for key, count in sorted(
+                _observability_counters.items()
+            )
+        ]
+        buckets = {
+            str(int(bucket)): (
+                _observability_latency_buckets.get(bucket, 0)
+            )
+            for bucket in LATENCY_BUCKETS_MS
+        }
+        latency_count = _observability_latency_count
+        latency_sum_ms = _observability_latency_sum_ms
+        remaining_count = _observability_remaining_count
+        remaining_sum = _observability_remaining_sum
+        remaining_min = _observability_remaining_min
+        remaining_max = _observability_remaining_max
+
+    return {
+        "schema_version": OBSERVABILITY_SCHEMA_VERSION,
+        "scope": "PROCESS_LOCAL",
+        "aggregation_guidance": (
+            "Aggregate structured logs across workers and replicas."
+        ),
+        "labels": [
+            "outcome",
+            "tier",
+            "dimension",
+            "error_code",
+        ],
+        "decision_counters": counters,
+        "latency_ms": {
+            "count": latency_count,
+            "sum": round(latency_sum_ms, 6),
+            "buckets": buckets,
+        },
+        "remaining_budget": {
+            "count": remaining_count,
+            "sum": remaining_sum,
+            "min": remaining_min,
+            "max": remaining_max,
+        },
+    }
+
+
+def _http_error_code(exc: HTTPException) -> str:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        code = detail.get("code")
+        if isinstance(code, str) and code:
+            return code
+    return "HTTP_EXCEPTION"
 
 
 def reset_rate_limit_client() -> None:
@@ -408,15 +593,43 @@ def enforce_nwdp_runtime_lookup_rate_limit(
     ):
         return None
 
-    tier = resolve_tenant_rate_limit_tier(
-        db,
-        principal.tenant_id,
-    )
-    policy = policy_for_tier(tier)
-    decision = evaluate_rate_limit(
-        _redis_client(),
-        policy,
-        principal,
+    started = time.perf_counter()
+    tier = "UNKNOWN"
+
+    try:
+        tier = resolve_tenant_rate_limit_tier(
+            db,
+            principal.tenant_id,
+        )
+        policy = policy_for_tier(tier)
+        decision = evaluate_rate_limit(
+            _redis_client(),
+            policy,
+            principal,
+        )
+    except HTTPException as exc:
+        _record_rate_limit_observation(
+            outcome="error",
+            tier=tier,
+            dimension=None,
+            error_code=_http_error_code(exc),
+            elapsed_ms=(
+                time.perf_counter() - started
+            ) * 1000,
+            remaining=None,
+        )
+        raise
+
+    outcome = "allowed" if decision.allowed else "rejected"
+    _record_rate_limit_observation(
+        outcome=outcome,
+        tier=decision.tier,
+        dimension=decision.dimension,
+        error_code=None,
+        elapsed_ms=(
+            time.perf_counter() - started
+        ) * 1000,
+        remaining=decision.remaining,
     )
 
     response.headers["RateLimit-Limit"] = str(
