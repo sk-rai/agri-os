@@ -152,6 +152,28 @@ The instrumentation is implemented and regression-tested, but it is not a
 public metrics endpoint and does not itself provide production log collection,
 dashboards, alert routing, or retention. Lookup remains disabled.
 
+## Multi-replica and failover gate — 2026-10-01
+
+Commit `76a9a88` completed the local multi-replica and isolated-failover gate:
+
+- four independently spawned worker processes shared one Redis budget;
+- exactly `40` of `80` requests were allowed and `40` were rejected;
+- every rejection was attributed to the exhausted actor dimension;
+- an isolated loopback-only temporary Redis outage returned the stable
+  fail-closed `503` code
+  `NWDP_RUNTIME_LOOKUP_RATE_LIMIT_UNAVAILABLE`;
+- the limiter recovered after that isolated Redis instance restarted;
+- temporary keys were removed;
+- the shared system Redis service was neither stopped, flushed, nor
+  reconfigured and remained healthy before and after the gate;
+- lookup remained disabled and no application configuration, database,
+  project, or Android state changed.
+
+The temporary Redis instance intentionally disabled persistence. Therefore this
+gate proves shared-budget behavior, connection failure handling, and client
+recovery; it does not prove production persistence, replication, sentinel or
+cluster failover, backup recovery, or zero-loss behavior.
+
 ## Deferred controls
 
 The distributed limiter is implemented and locally integration-tested but is

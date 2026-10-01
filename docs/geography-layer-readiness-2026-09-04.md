@@ -172,6 +172,20 @@ replicas. This milestone does not add a public metrics endpoint, enable lookup,
 or claim that production log collection, dashboards, alert routing, retention,
 multi-replica failover, or production Redis TLS are complete.
 
+### Multi-replica limiter and failover milestone — 2026-10-01
+
+Commit `76a9a88` validated one exact distributed budget across four spawned
+worker processes. An isolated temporary Redis outage failed closed with the
+stable `503` unavailable code, and the limiter recovered after restart.
+Temporary keys were cleaned, the system Redis service remained healthy, and
+lookup stayed disabled.
+
+Because the isolated Redis instance deliberately used no persistence, this
+milestone does not claim production replication, sentinel or cluster failover,
+backup restoration, durable budget continuity, or zero-loss recovery.
+Production Redis secrets/TLS, persistence/HA policy, external alert routing,
+and separate lookup authorization remain open.
+
 ### Scope of completion
 
 The following are complete:
