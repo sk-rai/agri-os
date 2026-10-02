@@ -48,3 +48,25 @@ Current Android exposure remains unauthorized because the loaded NWDP source has
     venv/bin/python backend/scripts/report_project_village_resolution_worklist.py --output-dir /tmp/project-village-resolution-worklist-v1
 
 Outputs include global/project CSV worklists, project summaries, an NWDP-without-effective-LGD research CSV and JSON audit. Generated worklists are review evidence and are not committed.
+
+## Disabled-apply implementation foundation
+
+Migration 062 adds geography_project_village_resolutions as a dedicated,
+project-scoped identity and evidence table. The migration completed locally
+with zero resolution rows and zero active rows.
+
+The foundation exposes:
+
+- a project-scoped, paginated, read-only worklist endpoint;
+- a PROJECT_EDIT-protected validation endpoint;
+- CANONICAL_ENRICHMENT and PROJECT_LOCAL_ADDITION validation modes;
+- canonical project-membership checks;
+- NWDP source eligibility checks;
+- PIN syntax and active postal-reference evidence checks;
+- an admin worklist and dry-run panel on Geography Layer Readiness.
+
+Only dry_run=true and confirm_apply=false are accepted. Any apply request fails
+closed with PROJECT_VILLAGE_RESOLUTION_APPLY_DISABLED and HTTP 503. A successful
+preview always reports would_write=false and would_be_android_visible=false.
+No API currently inserts, updates, activates, retires, or rolls back a project
+resolution row.

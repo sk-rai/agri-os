@@ -116,6 +116,35 @@ class GeographyVillage(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class GeographyProjectVillageResolution(Base, UUIDPrimaryKey, AuditMixin):
+    """Project-local village identity/evidence overlay; never canonical geography."""
+
+    __tablename__ = "geography_project_village_resolutions"
+    tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    resolution_mode = Column(String(40), nullable=False)
+    canonical_village_id = Column(UUID(as_uuid=True), ForeignKey("geography_villages.id"))
+    nwdp_source_feature_id = Column(UUID(as_uuid=True), ForeignKey("geography_boundary_source_features.id"))
+    project_village_code = Column(String(80), nullable=False)
+    display_name = Column(String(180), nullable=False)
+    hierarchy_labels = Column(JSONB, default=dict, nullable=False)
+    pin_codes = Column(ARRAY(String), default=list, nullable=False)
+    pin_evidence = Column(JSONB, default=dict, nullable=False)
+    resolution_status = Column(String(40), default="DRAFT", nullable=False)
+    evidence_basis = Column(String(120), nullable=False)
+    reviewer = Column(String(120))
+    review_notes = Column(Text)
+    rollback_token = Column(String(80), nullable=False)
+    metadata_ = Column("metadata", JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("resolution_mode in ('CANONICAL_ENRICHMENT','PROJECT_LOCAL_ADDITION')", name="ck_project_village_resolution_mode"),
+        CheckConstraint("resolution_status in ('DRAFT','APPROVED','ACTIVE','RETIRED','REJECTED')", name="ck_project_village_resolution_status"),
+        UniqueConstraint("tenant_id", "project_id", "project_village_code", name="uq_project_village_resolution_code"),
+        Index("idx_project_village_resolution_project", "tenant_id", "project_id", "resolution_status"),
+    )
+
+
 class GeographyImportBatch(Base, UUIDPrimaryKey, AuditMixin):
     """Source snapshot/import provenance for LGD, postal, and future Census geography feeds."""
 

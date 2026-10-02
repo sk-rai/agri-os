@@ -6,6 +6,7 @@ from app.modules.master_data.models.geography import (
     GeographyImportBatch,
     GeographyPostalReference,
     GeographyVillagePinLink,
+    GeographyProjectVillageResolution,
     GeographyClimateRegion,
     GeographyClimateRegionMapping,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "GeographyImportBatch",
     "GeographyPostalReference",
     "GeographyVillagePinLink",
+    "GeographyProjectVillageResolution",
     "GeographyClimateRegionMapping",
     "GeographyClimateRegion",
     "SoilType",
