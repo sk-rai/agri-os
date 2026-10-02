@@ -420,6 +420,43 @@ function readinessTone(row: MatrixRow) {
   return "bg-white";
 }
 
+type VillageResolutionStatus =
+  | "FULLY_RESOLVED"
+  | "PIN_ONLY"
+  | "NWDP_ONLY"
+  | "UNRESOLVED";
+
+type VillageResolutionResponse = {
+  schema_version: "lgd_pin_nwdp_village_resolution.v1";
+  read_only: boolean;
+  summary: {
+    total_villages: number;
+    fully_resolved: number;
+    pin_only: number;
+    nwdp_only: number;
+    unresolved: number;
+  };
+  pagination: {
+    limit: number;
+    offset: number;
+    filtered_total: number;
+    has_more: boolean;
+  };
+  items: Array<{
+    village_id: string;
+    village_lgd_code: string;
+    village_name: string;
+    block_name: string;
+    district_name: string;
+    pin_count: number;
+    pin_codes: string[];
+    has_candidate_mapping: boolean;
+    has_active_runtime: boolean;
+    has_effective_nwdp_mapping: boolean;
+    resolution_status: VillageResolutionStatus;
+  }>;
+};
+
 export default function GeographyLayerReadinessPage() {
   const [states, setStates] = useState<GeographyState[]>([]);
   const [districts, setDistricts] = useState<GeographyDistrict[]>([]);
@@ -432,6 +469,13 @@ export default function GeographyLayerReadinessPage() {
   const [data, setData] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [villageResolution, setVillageResolution] =
+    useState<VillageResolutionResponse | null>(null);
+  const [villageResolutionStatus, setVillageResolutionStatus] =
+    useState<VillageResolutionStatus | "">("");
+  const [villageResolutionOffset, setVillageResolutionOffset] = useState(0);
+  const [villageResolutionLoading, setVillageResolutionLoading] = useState(false);
+
 
   const selectedState = states.find((item) => item.id === stateId);
   const selectedDistrict = districts.find((item) => item.id === districtId);
@@ -468,6 +512,8 @@ export default function GeographyLayerReadinessPage() {
     setDistricts([]);
     setSnapshotCoverage(null);
     setData(null);
+    setVillageResolution(null);
+    setVillageResolutionOffset(0);
 
     if (!stateId) return;
 
@@ -529,6 +575,33 @@ export default function GeographyLayerReadinessPage() {
     }
   }, [selectedDistrict, selectedState, snapshotAvailable]);
 
+  const loadVillageResolution = useCallback(async (
+    offset = villageResolutionOffset,
+    status = villageResolutionStatus,
+  ) => {
+    if (!stateId) return;
+    setVillageResolutionLoading(true);
+    setError(null);
+    const params = new URLSearchParams({
+      state_id: stateId,
+      limit: "50",
+      offset: String(offset),
+    });
+    if (districtId) params.set("district_id", districtId);
+    if (status) params.set("resolution_status", status);
+    try {
+      const response = await api<VillageResolutionResponse>(
+        "/api/v1/master-data/geography/village-resolution?" + params.toString(),
+      );
+      setVillageResolution(response);
+      setVillageResolutionOffset(offset);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load village resolution");
+    } finally {
+      setVillageResolutionLoading(false);
+    }
+  }, [districtId, stateId, villageResolutionOffset, villageResolutionStatus]);
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void loadMatrix();
@@ -581,7 +654,7 @@ export default function GeographyLayerReadinessPage() {
       <form
         data-testid="geography-readiness-filters"
         onSubmit={onSubmit}
-        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3"
+        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4"
       >
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-600">State / UT</span>
@@ -642,6 +715,15 @@ export default function GeographyLayerReadinessPage() {
           className="self-end rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Load readiness
+        </button>
+
+        <button
+          type="button"
+          disabled={!stateId || villageResolutionLoading}
+          onClick={() => void loadVillageResolution(0)}
+          className="self-end rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {villageResolutionLoading ? "Loading villages…" : "View village resolution"}
         </button>
       </form>
 
@@ -713,6 +795,71 @@ export default function GeographyLayerReadinessPage() {
           lookup runs before both filters are selected.
         </div>
       ) : null}
+
+      {villageResolution && (
+        <section data-testid="village-resolution-panel" className="space-y-4 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Village resolution</h2>
+              <p className="text-sm text-slate-600">
+                Read-only LGD/PIN/NWDP status. Effective NWDP is candidate mapping or active runtime mapping.
+              </p>
+            </div>
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-slate-600">Resolution status</span>
+              <select
+                aria-label="Village resolution status"
+                value={villageResolutionStatus}
+                onChange={(event) => {
+                  const status = event.target.value as VillageResolutionStatus | "";
+                  setVillageResolutionStatus(status);
+                  void loadVillageResolution(0, status);
+                }}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">All statuses</option>
+                <option value="FULLY_RESOLVED">Fully resolved</option>
+                <option value="PIN_ONLY">PIN only</option>
+                <option value="NWDP_ONLY">NWDP only</option>
+                <option value="UNRESOLVED">Unresolved</option>
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard label="Villages" value={villageResolution.summary.total_villages} />
+            <StatCard label="Fully resolved" value={villageResolution.summary.fully_resolved} tone="emerald" />
+            <StatCard label="PIN only" value={villageResolution.summary.pin_only} tone="amber" />
+            <StatCard label="NWDP only" value={villageResolution.summary.nwdp_only} tone="blue" />
+            <StatCard label="Unresolved" value={villageResolution.summary.unresolved} tone="rose" />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
+                <tr><th className="px-3 py-2">Village</th><th className="px-3 py-2">Block</th><th className="px-3 py-2">PIN</th><th className="px-3 py-2">Candidate</th><th className="px-3 py-2">Runtime</th><th className="px-3 py-2">Status</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {villageResolution.items.map((row) => (
+                  <tr key={row.village_id}>
+                    <td className="px-3 py-2"><div className="font-medium text-slate-950">{row.village_name}</div><div className="text-xs text-slate-500">LGD {row.village_lgd_code}</div></td>
+                    <td className="px-3 py-2 text-slate-700">{row.block_name}</td>
+                    <td className="px-3 py-2 text-slate-700">{row.pin_codes.join(", ") || "—"}</td>
+                    <td className="px-3 py-2">{row.has_candidate_mapping ? "Yes" : "No"}</td>
+                    <td className="px-3 py-2">{row.has_active_runtime ? "Yes" : "No"}</td>
+                    <td className="px-3 py-2 font-medium">{row.resolution_status.replaceAll("_", " ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between text-sm text-slate-600">
+            <span>{formatNumber(villageResolution.pagination.filtered_total)} matching villages</span>
+            <div className="flex gap-2">
+              <button type="button" disabled={villageResolutionOffset === 0 || villageResolutionLoading} onClick={() => void loadVillageResolution(Math.max(0, villageResolutionOffset - 50))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Previous</button>
+              <button type="button" disabled={!villageResolution.pagination.has_more || villageResolutionLoading} onClick={() => void loadVillageResolution(villageResolutionOffset + 50)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Next</button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">

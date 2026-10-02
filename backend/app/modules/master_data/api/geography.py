@@ -6344,3 +6344,193 @@ def search_villages(
         )
         for r in results
     ]
+
+
+
+VILLAGE_RESOLUTION_STATUSES = {
+    "FULLY_RESOLVED",
+    "PIN_ONLY",
+    "NWDP_ONLY",
+    "UNRESOLVED",
+}
+
+
+@router.get("/village-resolution")
+def list_village_resolution(
+    state_id: UUID = Query(..., description="Canonical state UUID"),
+    district_id: Optional[UUID] = Query(None, description="Optional canonical district UUID"),
+    resolution_status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, min_length=2, max_length=120),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _principal=Depends(require_admin_permission(AdminPermission.VIEW)),
+) -> dict[str, Any]:
+    """Return a paginated, read-only LGD/PIN/NWDP village resolution view."""
+    normalized_status = resolution_status.upper() if resolution_status else None
+    if normalized_status and normalized_status not in VILLAGE_RESOLUTION_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_VILLAGE_RESOLUTION_STATUS",
+                "allowed": sorted(VILLAGE_RESOLUTION_STATUSES),
+            },
+        )
+
+    params = {
+        "state_id": str(state_id),
+        "district_id": str(district_id) if district_id else None,
+        "resolution_status": normalized_status,
+        "search": search.strip() if search else None,
+        "limit": limit,
+        "offset": offset,
+    }
+    rows = db.execute(text(r"""
+        with scoped_villages as (
+          select
+            v.id as village_id,
+            v.lgd_code::text as village_lgd_code,
+            v.canonical_name as village_name,
+            b.id as block_id,
+            b.lgd_code::text as block_lgd_code,
+            b.canonical_name as block_name,
+            d.id as district_id,
+            d.lgd_code::text as district_lgd_code,
+            d.canonical_name as district_name,
+            s.id as state_id,
+            s.lgd_code::text as state_lgd_code,
+            s.canonical_name as state_name
+          from geography_villages v
+          join geography_blocks b on b.id = v.block_id and b.is_active = true
+          join geography_districts d on d.id = v.district_id and d.is_active = true
+          join geography_states s on s.id = d.state_id and s.is_active = true
+          where v.is_active = true
+            and s.id = cast(:state_id as uuid)
+            and (:district_id is null or d.id = cast(:district_id as uuid))
+            and (
+              :search is null
+              or v.canonical_name ilike '%' || :search || '%'
+              or v.lgd_code::text = :search
+            )
+        ),
+        pin_status as (
+          select
+            link.geography_village_id as village_id,
+            count(distinct link.pin_code)::bigint as pin_count,
+            array_agg(distinct link.pin_code order by link.pin_code) as pin_codes
+          from geography_village_pin_links link
+          join scoped_villages scoped on scoped.village_id = link.geography_village_id
+          where link.is_active = true and link.match_status = 'MATCHED'
+          group by link.geography_village_id
+        ),
+        candidate_status as (
+          select distinct candidate.proposed_village_id as village_id
+          from geography_boundary_crosswalk_candidates candidate
+          join geography_boundary_import_batches batch on batch.id = candidate.import_batch_id
+          join scoped_villages scoped on scoped.village_id = candidate.proposed_village_id
+          where batch.source_system = 'NWDP_GSI_VILLAGE_BOUNDARY'
+            and candidate.proposed_village_id is not null
+        ),
+        runtime_status as (
+          select distinct crosswalk.village_id
+          from geography_boundary_runtime_crosswalks crosswalk
+          join geography_boundary_runtime_features feature
+            on feature.id = crosswalk.runtime_feature_id and feature.is_active = true
+          join scoped_villages scoped on scoped.village_id = crosswalk.village_id
+          where crosswalk.is_active = true
+        ),
+        classified as (
+          select
+            scoped.*,
+            coalesce(pin.pin_count, 0)::bigint as pin_count,
+            coalesce(pin.pin_codes, array[]::text[]) as pin_codes,
+            (candidate.village_id is not null) as has_candidate_mapping,
+            (runtime.village_id is not null) as has_active_runtime,
+            (candidate.village_id is not null or runtime.village_id is not null) as has_effective_nwdp_mapping,
+            case
+              when pin.village_id is not null and (candidate.village_id is not null or runtime.village_id is not null) then 'FULLY_RESOLVED'
+              when pin.village_id is not null then 'PIN_ONLY'
+              when candidate.village_id is not null or runtime.village_id is not null then 'NWDP_ONLY'
+              else 'UNRESOLVED'
+            end as resolution_status
+          from scoped_villages scoped
+          left join pin_status pin on pin.village_id = scoped.village_id
+          left join candidate_status candidate on candidate.village_id = scoped.village_id
+          left join runtime_status runtime on runtime.village_id = scoped.village_id
+        ),
+        summary as (
+          select
+            count(*)::bigint as total_villages,
+            count(*) filter (where resolution_status = 'FULLY_RESOLVED')::bigint as fully_resolved,
+            count(*) filter (where resolution_status = 'PIN_ONLY')::bigint as pin_only,
+            count(*) filter (where resolution_status = 'NWDP_ONLY')::bigint as nwdp_only,
+            count(*) filter (where resolution_status = 'UNRESOLVED')::bigint as unresolved
+          from classified
+        ),
+        filtered as (
+          select * from classified
+          where :resolution_status is null or resolution_status = :resolution_status
+        )
+        select
+          filtered.*,
+          count(*) over ()::bigint as filtered_total,
+          summary.total_villages,
+          summary.fully_resolved,
+          summary.pin_only,
+          summary.nwdp_only,
+          summary.unresolved
+        from filtered cross join summary
+        order by state_name, district_name, block_name, village_name, village_lgd_code
+        limit :limit offset :offset
+    """), params).mappings().all()
+
+    if rows:
+        first = rows[0]
+        summary = {
+            "total_villages": int(first["total_villages"]),
+            "fully_resolved": int(first["fully_resolved"]),
+            "pin_only": int(first["pin_only"]),
+            "nwdp_only": int(first["nwdp_only"]),
+            "unresolved": int(first["unresolved"]),
+        }
+        filtered_total = int(first["filtered_total"])
+    else:
+        summary_row = db.execute(text("""
+          select count(*)::bigint as total_villages
+          from geography_villages v
+          join geography_districts d on d.id = v.district_id and d.is_active = true
+          where v.is_active = true and d.state_id = cast(:state_id as uuid)
+            and (:district_id is null or d.id = cast(:district_id as uuid))
+        """), params).mappings().one()
+        summary = {"total_villages": int(summary_row["total_villages"]), "fully_resolved": 0, "pin_only": 0, "nwdp_only": 0, "unresolved": 0}
+        filtered_total = 0
+
+    item_keys = (
+        "village_id", "village_lgd_code", "village_name", "block_id",
+        "block_lgd_code", "block_name", "district_id", "district_lgd_code",
+        "district_name", "state_id", "state_lgd_code", "state_name",
+        "pin_count", "pin_codes", "has_candidate_mapping",
+        "has_active_runtime", "has_effective_nwdp_mapping", "resolution_status",
+    )
+    return {
+        "schema_version": "lgd_pin_nwdp_village_resolution.v1",
+        "read_only": True,
+        "definitions": {
+            "effective_nwdp_mapping": "candidate_mapping OR active_runtime_mapping",
+            "statuses": sorted(VILLAGE_RESOLUTION_STATUSES),
+        },
+        "filters": {
+            "state_id": str(state_id),
+            "district_id": str(district_id) if district_id else None,
+            "resolution_status": normalized_status,
+            "search": params["search"],
+        },
+        "summary": summary,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "filtered_total": filtered_total,
+            "has_more": offset + len(rows) < filtered_total,
+        },
+        "items": [{key: row[key] for key in item_keys} for row in rows],
+    }
