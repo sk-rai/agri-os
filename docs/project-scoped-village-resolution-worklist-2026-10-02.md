@@ -68,8 +68,9 @@ The foundation exposes:
 Only dry_run=true and confirm_apply=false are accepted. Any apply request fails
 closed with PROJECT_VILLAGE_RESOLUTION_APPLY_DISABLED and HTTP 503. A successful
 preview always reports would_write=false and would_be_android_visible=false.
-No API currently inserts, updates, activates, retires, or rolls back a project
-resolution row.
+At that foundation milestone, no API inserted, updated, activated, retired, or
+rolled back a project resolution row. The later guarded and two-session sections
+below supersede that implementation status.
 
 ## Read-only NWDP candidate search
 
@@ -86,3 +87,34 @@ When separately enabled, apply accepts only CANONICAL_ENRICHMENT. It requires pr
 A successful apply writes only the project resolution and its immutable audit event. It does not change canonical LGD, global PIN links, NWDP candidates, runtime boundaries, project matches, or Android visibility. Rollback requires the stored rollback token, retires the project resolution, and appends a ROLLED_BACK event without deleting history or deactivating runtime geography.
 
 The feature flag remains false after validation. No admin apply control or Android read path has been enabled.
+
+
+## Two-session proposal and approval workflow — 2026-10-03
+
+Migration 064 extends the immutable review history with PROPOSED and APPROVED
+events and prevents more than one non-retired DRAFT, APPROVED, or ACTIVE canonical resolution for
+the same tenant, project, and village.
+
+The admin workflow is deliberately split across authenticated sessions:
+
+1. a project editor validates the existing dry run and creates a DRAFT
+   CANONICAL_ENRICHMENT proposal;
+2. the proposing identity cannot approve that proposal;
+3. a different authenticated ENTERPRISE_ADMIN reviews the evidence and appends
+   the APPROVED event;
+4. the read-only review queue exposes the full proposal and event history;
+5. activation is offered only when the server reports
+   PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED=true.
+
+Proposal and approval do not require the activation flag because neither makes
+a resolution active or visible to Android. Repository defaults keep the flag
+false, so an approved proposal remains inert. When separately authorized,
+activation requires its own exact confirmation phrase and writes only the
+project-scoped resolution plus its APPLIED audit event. Immediate rollback
+remains available through the stored rollback token and appends ROLLED_BACK.
+
+PROJECT_LOCAL_ADDITION remains disabled. The workflow does not change canonical
+LGD villages, global PIN links, NWDP candidate mappings, runtime boundaries,
+project matches, or the unscoped Android geography API. The admin screen does
+not accept a pasted approver token: independent approval uses the identity of
+the separately authenticated browser session.
