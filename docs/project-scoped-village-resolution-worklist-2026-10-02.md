@@ -135,3 +135,28 @@ queue must report activation_enabled=false and the activation control must not
 be rendered. The smoke compares protected global geography counts, confirms
 Android visibility remains false, captures review evidence, and removes only
 its temporary proposal, events, and admin identities.
+
+
+## Proposal rejection and cancellation — 2026-10-03
+
+Migration 065 adds bounded REJECTED and CANCELLED audit actions. Both paths are
+terminal and leave the project resolution inactive with resolution_status set
+to REJECTED; the event action preserves whether the outcome was an independent
+review rejection or a proposer withdrawal.
+
+A DRAFT proposal can be cancelled only by the identity recorded in its original
+PROPOSED event, with an exact cancellation phrase and a mandatory reason. A
+different ENTERPRISE_ADMIN can reject either DRAFT or APPROVED proposals with
+an exact rejection phrase and mandatory reason. The proposer cannot use the
+independent rejection path on their own proposal.
+
+The review queue derives proposer identity from immutable event history:
+proposers see Cancel draft, while other authenticated administrators see the
+appropriate Approve and Reject controls. Approved proposals remain rejectable.
+Activation remains separately controlled by
+PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED, which defaults false.
+
+Cancellation and rejection update only the project resolution and append an
+audit event. They do not modify canonical LGD, global PIN links, NWDP mappings,
+runtime boundaries, project matches, or Android geography. PROJECT_LOCAL_ADDITION
+remains disabled.

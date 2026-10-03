@@ -173,3 +173,225 @@ def activate_approved_resolution(project_id:UUID,resolution_id:UUID,body:Project
  if not row:raise HTTPException(409,{'code':'APPROVED_PROJECT_RESOLUTION_NOT_FOUND'})
  event_id=uuid.uuid4();db.execute(text("insert into geography_project_village_resolution_events(id,tenant_id,project_id,resolution_id,action,actor_id,evidence) values(:id,:tenant,:project,:resolution,'APPLIED',:actor,cast(:evidence as jsonb))"),{'id':str(event_id),'tenant':x_tenant_id,'project':str(project_id),'resolution':str(resolution_id),'actor':str(principal.user_id),'evidence':json.dumps({'activation_notes':body.review_notes,'android_visible':False,'global_geography_changed':False})});db.commit()
  return {'schema_version':'project_village_resolution_activation.v1','status':'ACTIVE','resolution_id':str(resolution_id),'audit_event_id':str(event_id),'android_visible':False,'global_geography_changed':False,'rollback_available':True}
+
+
+@router.post('/projects/{project_id}/resolutions/{resolution_id}/reject')
+def reject_project_resolution(
+    project_id: UUID,
+    resolution_id: UUID,
+    body: ProjectVillageResolutionReview,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header('default', alias='X-Tenant-ID'),
+    principal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
+    ),
+):
+    project(db, project_id, x_tenant_id)
+    if principal.role != 'ENTERPRISE_ADMIN':
+        raise HTTPException(403, 'ENTERPRISE_ADMIN_REJECTION_REQUIRED')
+    if body.confirmation_phrase != 'REJECT PROJECT CANONICAL ENRICHMENT':
+        raise HTTPException(
+            400, {'code': 'PROJECT_VILLAGE_REJECTION_CONFIRMATION_REQUIRED'}
+        )
+    row = db.execute(
+        text(
+            """
+            select
+              r.id::text,
+              r.resolution_status,
+              (
+                select e.actor_id::text
+                from geography_project_village_resolution_events e
+                where e.resolution_id = r.id and e.action = 'PROPOSED'
+                order by e.created_at
+                limit 1
+              ) proposer_id
+            from geography_project_village_resolutions r
+            where r.id = :id
+              and r.tenant_id = :tenant
+              and r.project_id = :project
+              and r.resolution_status in ('DRAFT', 'APPROVED')
+            for update
+            """
+        ),
+        {
+            'id': str(resolution_id),
+            'tenant': x_tenant_id,
+            'project': str(project_id),
+        },
+    ).mappings().first()
+    if not row:
+        raise HTTPException(409, {'code': 'OPEN_PROJECT_RESOLUTION_NOT_FOUND'})
+    if row['proposer_id'] == str(principal.user_id):
+        raise HTTPException(409, 'SECOND_ADMIN_MUST_DIFFER_FROM_PROPOSER')
+    previous_status = row['resolution_status']
+    db.execute(
+        text(
+            """
+            update geography_project_village_resolutions
+            set resolution_status = 'REJECTED',
+                is_active = false,
+                updated_at = now(),
+                metadata = metadata || cast(:metadata as jsonb)
+            where id = :id
+            """
+        ),
+        {
+            'id': str(resolution_id),
+            'metadata': json.dumps(
+                {
+                    'rejected_by': str(principal.user_id),
+                    'rejection_reason': body.review_notes,
+                    'previous_status': previous_status,
+                }
+            ),
+        },
+    )
+    event_id = uuid.uuid4()
+    db.execute(
+        text(
+            """
+            insert into geography_project_village_resolution_events(
+              id, tenant_id, project_id, resolution_id, action,
+              actor_id, approver_id, evidence
+            )
+            values(
+              :id, :tenant, :project, :resolution, 'REJECTED',
+              :actor, :actor, cast(:evidence as jsonb)
+            )
+            """
+        ),
+        {
+            'id': str(event_id),
+            'tenant': x_tenant_id,
+            'project': str(project_id),
+            'resolution': str(resolution_id),
+            'actor': str(principal.user_id),
+            'evidence': json.dumps(
+                {
+                    'reason': body.review_notes,
+                    'previous_status': previous_status,
+                    'android_visible': False,
+                    'global_geography_changed': False,
+                }
+            ),
+        },
+    )
+    db.commit()
+    return {
+        'schema_version': 'project_village_resolution_rejection.v1',
+        'status': 'REJECTED',
+        'previous_status': previous_status,
+        'resolution_id': str(resolution_id),
+        'audit_event_id': str(event_id),
+        'android_visible': False,
+        'global_geography_changed': False,
+    }
+
+
+@router.post('/projects/{project_id}/resolutions/{resolution_id}/cancel')
+def cancel_project_resolution(
+    project_id: UUID,
+    resolution_id: UUID,
+    body: ProjectVillageResolutionReview,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header('default', alias='X-Tenant-ID'),
+    principal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
+    ),
+):
+    project(db, project_id, x_tenant_id)
+    if body.confirmation_phrase != 'CANCEL PROJECT CANONICAL ENRICHMENT':
+        raise HTTPException(
+            400, {'code': 'PROJECT_VILLAGE_CANCELLATION_CONFIRMATION_REQUIRED'}
+        )
+    row = db.execute(
+        text(
+            """
+            select
+              r.id::text,
+              (
+                select e.actor_id::text
+                from geography_project_village_resolution_events e
+                where e.resolution_id = r.id and e.action = 'PROPOSED'
+                order by e.created_at
+                limit 1
+              ) proposer_id
+            from geography_project_village_resolutions r
+            where r.id = :id
+              and r.tenant_id = :tenant
+              and r.project_id = :project
+              and r.resolution_status = 'DRAFT'
+            for update
+            """
+        ),
+        {
+            'id': str(resolution_id),
+            'tenant': x_tenant_id,
+            'project': str(project_id),
+        },
+    ).mappings().first()
+    if not row:
+        raise HTTPException(409, {'code': 'DRAFT_PROJECT_RESOLUTION_NOT_FOUND'})
+    if row['proposer_id'] != str(principal.user_id):
+        raise HTTPException(403, 'ONLY_PROPOSER_CAN_CANCEL_DRAFT')
+    db.execute(
+        text(
+            """
+            update geography_project_village_resolutions
+            set resolution_status = 'REJECTED',
+                is_active = false,
+                updated_at = now(),
+                metadata = metadata || cast(:metadata as jsonb)
+            where id = :id
+            """
+        ),
+        {
+            'id': str(resolution_id),
+            'metadata': json.dumps(
+                {
+                    'cancelled_by': str(principal.user_id),
+                    'cancellation_reason': body.review_notes,
+                }
+            ),
+        },
+    )
+    event_id = uuid.uuid4()
+    db.execute(
+        text(
+            """
+            insert into geography_project_village_resolution_events(
+              id, tenant_id, project_id, resolution_id, action,
+              actor_id, evidence
+            )
+            values(
+              :id, :tenant, :project, :resolution, 'CANCELLED',
+              :actor, cast(:evidence as jsonb)
+            )
+            """
+        ),
+        {
+            'id': str(event_id),
+            'tenant': x_tenant_id,
+            'project': str(project_id),
+            'resolution': str(resolution_id),
+            'actor': str(principal.user_id),
+            'evidence': json.dumps(
+                {
+                    'reason': body.review_notes,
+                    'android_visible': False,
+                    'global_geography_changed': False,
+                }
+            ),
+        },
+    )
+    db.commit()
+    return {
+        'schema_version': 'project_village_resolution_cancellation.v1',
+        'status': 'REJECTED',
+        'terminal_action': 'CANCELLED',
+        'resolution_id': str(resolution_id),
+        'audit_event_id': str(event_id),
+        'android_visible': False,
+        'global_geography_changed': False,
+    }
