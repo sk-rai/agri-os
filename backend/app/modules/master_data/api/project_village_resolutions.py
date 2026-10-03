@@ -1,13 +1,17 @@
 """Read-only project village worklist and disabled-apply resolution dry runs."""
-import json,re
+import json,re,uuid
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter,Depends,Header,HTTPException,Query
+from jose import JWTError,jwt
 from pydantic import BaseModel,Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.admin_auth import AdminPermission,require_admin_permission
 from app.core.database import get_db
+from app.core.config import settings
+from app.modules.auth.models import User
+from app.modules.auth.service import JWT_ALGORITHM,JWT_SECRET
 from app.modules.master_data.api.geography import _project_contains_village
 from scripts.report_project_boundary_readiness import build_scope_village_sql
 router=APIRouter(prefix='/geography/project-village-resolutions',tags=['geography'])
@@ -26,6 +30,12 @@ class ProjectVillageResolutionDryRun(BaseModel):
  dry_run:bool=True
  confirm_apply:bool=False
 
+class ProjectVillageResolutionApply(ProjectVillageResolutionDryRun):
+ approver_token:str=Field(min_length=20)
+ confirmation_phrase:str
+class ProjectVillageResolutionRollback(BaseModel):
+ rollback_token:str=Field(min_length=8,max_length=80)
+ reason:str=Field(min_length=8,max_length=500)
 def project(db,project_id,tenant_id):
  row=db.execute(text("select id::text project_id,tenant_id,name,status,geography_scope from projects where id=:id and tenant_id=:tenant and is_active"),{'id':str(project_id),'tenant':tenant_id}).mappings().first()
  if not row:raise HTTPException(404,'ACTIVE_TENANT_PROJECT_NOT_FOUND')
@@ -90,3 +100,35 @@ def dry_run(project_id:UUID,body:ProjectVillageResolutionDryRun,db:Session=Depen
   found=set(db.execute(text("select distinct pin_code from geography_postal_references where is_active and pin_code=any(:pins)"),{'pins':body.pin_codes}).scalars())
   if found!=set(body.pin_codes):raise HTTPException(409,{'code':'PIN_EVIDENCE_NOT_FOUND','missing':sorted(set(body.pin_codes)-found)})
  return {'schema_version':'project_village_resolution_dry_run.v1','mode':'DRY_RUN_APPLY_DISABLED','status':'VALID' if (canonical or source) else 'INVALID','project':{k:p[k] for k in ('project_id','tenant_id','name','status')},'preview':{'resolution_mode':body.resolution_mode,'canonical_village':dict(canonical) if canonical else None,'nwdp_source_feature':dict(source) if source else None,'display_name':body.display_name,'pin_codes':body.pin_codes,'hierarchy_labels':body.hierarchy_labels,'evidence_basis':body.evidence_basis,'rollback_token':body.rollback_token,'would_write':False,'would_be_android_visible':False},'guardrails':guardrails()}
+
+def second_admin(db:Session,token:str,tenant_id:str,actor_id:UUID):
+ try:claims=jwt.decode(token,JWT_SECRET,algorithms=[JWT_ALGORITHM]);approver_id=UUID(str(claims.get('sub')))
+ except (JWTError,TypeError,ValueError):raise HTTPException(403,'SECOND_ADMIN_AUTHENTICATION_INVALID')
+ row=db.query(User).filter(User.id==approver_id,User.is_active==True).first()
+ if not row or row.tenant_id!=tenant_id or str(row.role).upper()!='ENTERPRISE_ADMIN':raise HTTPException(403,'SECOND_ADMIN_ENTERPRISE_APPROVAL_REQUIRED')
+ if approver_id==actor_id:raise HTTPException(409,'SECOND_ADMIN_MUST_DIFFER_FROM_ACTOR')
+ return row
+
+@router.post('/projects/{project_id}/apply')
+def apply_canonical_resolution(project_id:UUID,body:ProjectVillageResolutionApply,db:Session=Depends(get_db),x_tenant_id:str=Header('default',alias='X-Tenant-ID'),principal=Depends(require_admin_permission(AdminPermission.PROJECT_EDIT,project_scoped=True))):
+ if not settings.PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED:raise HTTPException(503,{'code':'PROJECT_VILLAGE_RESOLUTION_APPLY_DISABLED','message':'Canonical project resolution apply is disabled.'})
+ if body.resolution_mode!='CANONICAL_ENRICHMENT':raise HTTPException(503,{'code':'PROJECT_LOCAL_ADDITION_APPLY_DISABLED'})
+ if body.dry_run or not body.confirm_apply or body.confirmation_phrase!='APPLY PROJECT CANONICAL ENRICHMENT':raise HTTPException(400,{'code':'PROJECT_VILLAGE_RESOLUTION_CONFIRMATION_REQUIRED'})
+ approver=second_admin(db,body.approver_token,x_tenant_id,principal.user_id)
+ preview=dry_run(project_id,body.copy(update={'dry_run':True,'confirm_apply':False}),db,x_tenant_id,principal)
+ canonical=preview['preview']['canonical_village'];existing=db.execute(text("select id::text from geography_project_village_resolutions where tenant_id=:tenant and project_id=:project and canonical_village_id=:village and is_active for update"),{'tenant':x_tenant_id,'project':str(project_id),'village':str(body.canonical_village_id)}).scalar()
+ if existing:raise HTTPException(409,{'code':'ACTIVE_PROJECT_CANONICAL_RESOLUTION_EXISTS','resolution_id':existing})
+ resolution_id=uuid.uuid4();event_id=uuid.uuid4();project_code='lgd:'+canonical['village_lgd_code']+':'+str(resolution_id)[:8]
+ evidence={'basis':body.evidence_basis,'review_notes':body.review_notes,'actor_id':str(principal.user_id),'approver_id':str(approver.id),'canonical_village_id':str(body.canonical_village_id),'nwdp_source_feature_id':str(body.nwdp_source_feature_id) if body.nwdp_source_feature_id else None,'pin_codes':body.pin_codes}
+ db.execute(text("""insert into geography_project_village_resolutions(id,tenant_id,project_id,resolution_mode,canonical_village_id,nwdp_source_feature_id,project_village_code,display_name,hierarchy_labels,pin_codes,pin_evidence,resolution_status,evidence_basis,reviewer,review_notes,rollback_token,metadata,version,is_active) values(:id,:tenant,:project,'CANONICAL_ENRICHMENT',:village,:source,:code,:name,cast(:hierarchy as jsonb),:pins,cast(:pin_evidence as jsonb),'ACTIVE',:basis,:reviewer,:notes,:rollback,cast(:metadata as jsonb),'v1.0',true)"""),{'id':str(resolution_id),'tenant':x_tenant_id,'project':str(project_id),'village':str(body.canonical_village_id),'source':str(body.nwdp_source_feature_id) if body.nwdp_source_feature_id else None,'code':project_code,'name':body.display_name,'hierarchy':json.dumps(body.hierarchy_labels),'pins':body.pin_codes,'pin_evidence':json.dumps({'verified_against_active_postal_reference':bool(body.pin_codes)}),'basis':body.evidence_basis,'reviewer':str(principal.user_id),'notes':body.review_notes,'rollback':body.rollback_token,'metadata':json.dumps({'android_visible':False,'global_geography_changed':False})})
+ db.execute(text("insert into geography_project_village_resolution_events(id,tenant_id,project_id,resolution_id,action,actor_id,approver_id,evidence) values(:id,:tenant,:project,:resolution,'APPLIED',:actor,:approver,cast(:evidence as jsonb))"),{'id':str(event_id),'tenant':x_tenant_id,'project':str(project_id),'resolution':str(resolution_id),'actor':str(principal.user_id),'approver':str(approver.id),'evidence':json.dumps(evidence)})
+ db.commit()
+ return {'schema_version':'project_village_resolution_apply.v1','status':'ACTIVE','resolution_id':str(resolution_id),'project_village_code':project_code,'audit_event_id':str(event_id),'android_visible':False,'global_geography_changed':False,'rollback_available':True}
+
+@router.post('/projects/{project_id}/resolutions/{resolution_id}/rollback')
+def rollback_canonical_resolution(project_id:UUID,resolution_id:UUID,body:ProjectVillageResolutionRollback,db:Session=Depends(get_db),x_tenant_id:str=Header('default',alias='X-Tenant-ID'),principal=Depends(require_admin_permission(AdminPermission.PROJECT_EDIT,project_scoped=True))):
+ if not settings.PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED:raise HTTPException(503,{'code':'PROJECT_VILLAGE_RESOLUTION_APPLY_DISABLED'})
+ row=db.execute(text("""update geography_project_village_resolutions set resolution_status='RETIRED',is_active=false,updated_at=now(),metadata=metadata||cast(:metadata as jsonb) where id=:id and tenant_id=:tenant and project_id=:project and rollback_token=:token and is_active returning id::text"""),{'id':str(resolution_id),'tenant':x_tenant_id,'project':str(project_id),'token':body.rollback_token,'metadata':json.dumps({'rollback_reason':body.reason,'rolled_back_by':str(principal.user_id)})}).scalar()
+ if not row:raise HTTPException(409,{'code':'ACTIVE_PROJECT_RESOLUTION_OR_ROLLBACK_TOKEN_NOT_FOUND'})
+ event_id=uuid.uuid4();db.execute(text("insert into geography_project_village_resolution_events(id,tenant_id,project_id,resolution_id,action,actor_id,evidence) values(:id,:tenant,:project,:resolution,'ROLLED_BACK',:actor,cast(:evidence as jsonb))"),{'id':str(event_id),'tenant':x_tenant_id,'project':str(project_id),'resolution':str(resolution_id),'actor':str(principal.user_id),'evidence':json.dumps({'reason':body.reason,'android_visible':False,'global_geography_changed':False})});db.commit()
+ return {'schema_version':'project_village_resolution_rollback.v1','status':'RETIRED','resolution_id':str(resolution_id),'audit_event_id':str(event_id),'android_visible':False,'global_geography_changed':False}

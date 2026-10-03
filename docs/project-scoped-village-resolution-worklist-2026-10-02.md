@@ -76,3 +76,13 @@ resolution row.
 The project-resolution panel now searches NWDP source features by village name or source code within the selected canonical village hierarchy. Results expose source identity, match basis, existing canonical/runtime linkage, and eligibility for a future project-local addition. Selecting a candidate only feeds the existing validation dry run.
 
 The search requires an active tenant project, an authenticated admin with project-scoped view permission, and a canonical village already within that project's effective scope. It remains read-only: apply is disabled, Android visibility is false, and canonical geography, PIN links, NWDP candidates, runtime boundaries, project matches, and project-resolution rows are unchanged.
+
+## Guarded canonical-enrichment apply gate — 2026-10-03
+
+Migration 063 adds append-only APPLIED and ROLLED_BACK audit events plus a partial unique index that prevents concurrent active canonical resolutions for the same tenant, project, and village. The server flag PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED defaults false.
+
+When separately enabled, apply accepts only CANONICAL_ENRICHMENT. It requires project-edit permission, an exact confirmation phrase, a valid token belonging to a different active enterprise administrator in the same tenant, verified project membership and evidence, and no conflicting NWDP-to-canonical mapping. PROJECT_LOCAL_ADDITION remains disabled.
+
+A successful apply writes only the project resolution and its immutable audit event. It does not change canonical LGD, global PIN links, NWDP candidates, runtime boundaries, project matches, or Android visibility. Rollback requires the stored rollback token, retires the project resolution, and appends a ROLLED_BACK event without deleting history or deactivating runtime geography.
+
+The feature flag remains false after validation. No admin apply control or Android read path has been enabled.

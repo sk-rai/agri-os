@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     NWDP_BOUNDARY_RUNTIME_LOOKUP_ENTERPRISE_ACTOR_REQUESTS: int = 600
     NWDP_BOUNDARY_RUNTIME_LOOKUP_ENTERPRISE_TENANT_REQUESTS: int = 3000
 
+    # Project village resolution applies remain separately gated.
+    PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED: bool = False
+
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
