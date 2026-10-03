@@ -15,7 +15,7 @@ try{
  const liveWorklistResponse=await context.request.get(apiBaseUrl+"/api/v1/master-data/geography/project-village-resolutions/projects/"+projectId+"/worklist?limit=50&offset=0",{headers:{Authorization:"Bearer "+token,"X-Tenant-ID":tenantId,"X-Actor-ID":admin.user_id},timeout:180000});
  const liveWorklist=await liveWorklistResponse.json();if(liveWorklistResponse.status()!==200)throw new Error("Live worklist HTTP "+liveWorklistResponse.status()+": "+JSON.stringify(liveWorklist));
  await page.route("**/api/v1/master-data/geography/project-village-resolutions/projects/"+projectId+"/worklist?*",async route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(liveWorklist)}));
- await page.route("**/api/v1/projects",async route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify([{id:projectId,name:"Android Dynamic Profile Test Project",tenant_id:tenantId,status:"ACTIVE",is_active:true}])}));
+ await page.route("**/api/v1/projects*",async route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify([{id:projectId,name:"Android Dynamic Profile Test Project",tenant_id:tenantId,status:"ACTIVE",is_active:true}])}));
  await page.goto(webBaseUrl+"/geography-layer-readiness",{waitUntil:"domcontentloaded",timeout:60000});
  const panel=page.getByTestId("project-village-resolution-panel");await panel.waitFor({timeout:60000});
  await page.waitForFunction(wanted=>Array.from(document.querySelectorAll('select[aria-label="Resolution project"] option')).some(row=>row.value===wanted),projectId,{timeout:60000});
@@ -25,7 +25,8 @@ try{
  if(worklist.schema_version!=="project_village_resolution_worklist_api.v1"||!worklist.items.length)throw new Error("Invalid or empty worklist");
  if(worklist.guardrails.apply_enabled!==false)throw new Error("Apply guardrail is not disabled");
  if(await panel.locator("tbody tr").count()!==worklist.items.length)throw new Error("Rendered row count mismatch");
- const first=worklist.items[0];await panel.getByLabel("Review "+first.village_name).check();
+ const first=worklist.items.find(item=>item.resolution_status==="FULLY_RESOLVED");if(!first)throw new Error("No resolved row is available for candidate search");await panel.getByLabel("Review "+first.village_name).check();
+ const candidateResponse=page.waitForResponse(response=>response.url().includes("/projects/"+projectId+"/nwdp-candidates?")&&response.status()===200,{timeout:60000});await panel.getByRole("button",{name:"Search NWDP"}).click();const candidatePayload=await(await candidateResponse).json();if(candidatePayload.schema_version!=="project_village_resolution_nwdp_candidates.v1"||!candidatePayload.items.length)throw new Error("Candidate search returned no matches");const eligibleCandidate=candidatePayload.items.find(item=>item.eligible_for_canonical_enrichment);if(!eligibleCandidate)throw new Error("Candidate search returned no eligible match");await panel.getByLabel("NWDP candidate",{exact:true}).selectOption(eligibleCandidate.source_feature_id);
  const dryRunResponse=page.waitForResponse(response=>response.url().includes("/projects/"+projectId+"/dry-run"),{timeout:60000});
  await panel.getByRole("button",{name:"Validate dry run"}).click();const dryRunHttp=await dryRunResponse;const dryRun=await dryRunHttp.json();if(dryRunHttp.status()!==200)throw new Error("Dry run HTTP "+dryRunHttp.status()+": "+JSON.stringify(dryRun));
  if(dryRun.status!=="VALID"||dryRun.preview.would_write!==false||dryRun.preview.would_be_android_visible!==false)throw new Error("Dry-run safety contract failed");
@@ -35,7 +36,7 @@ try{
  await fs.mkdir("smoke/screenshots",{recursive:true});await panel.screenshot({path:screenshot});
  if(browserErrors.length)throw new Error("Browser errors: "+browserErrors.join(" | "));
  const after=pythonJson(snapshotCode);if(JSON.stringify(before)!==JSON.stringify(after))throw new Error("Database state changed");
- console.log(JSON.stringify({schema_version:"project_village_resolution_web_smoke.v1",status:"PASSED",project_id:projectId,summary:worklist.summary,selected_status:first.resolution_status,dry_run:{would_write:false,android_visible:false},apply:{http_status:503,code:applyPayload.detail.code},database_unchanged:true,screenshot:"web/"+screenshot},null,2));
+ console.log(JSON.stringify({schema_version:"project_village_resolution_web_smoke.v1",status:"PASSED",project_id:projectId,summary:worklist.summary,selected_status:first.resolution_status,candidate_count:candidatePayload.count,dry_run:{would_write:false,android_visible:false},apply:{http_status:503,code:applyPayload.detail.code},database_unchanged:true,screenshot:"web/"+screenshot},null,2));
 }finally{
  await browser.close();
  const deleteCode=["import sys","from pathlib import Path","sys.path.insert(0,str(Path.cwd().parent/'backend'))","from app.core.database import SessionLocal","from scripts.admin_auth_test_utils import delete_test_admin","db=SessionLocal()","delete_test_admin(db,'"+admin.user_id+"')","db.close()"].join("\n");

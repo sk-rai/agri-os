@@ -70,3 +70,9 @@ closed with PROJECT_VILLAGE_RESOLUTION_APPLY_DISABLED and HTTP 503. A successful
 preview always reports would_write=false and would_be_android_visible=false.
 No API currently inserts, updates, activates, retires, or rolls back a project
 resolution row.
+
+## Read-only NWDP candidate search
+
+The project-resolution panel now searches NWDP source features by village name or source code within the selected canonical village hierarchy. Results expose source identity, match basis, existing canonical/runtime linkage, and eligibility for a future project-local addition. Selecting a candidate only feeds the existing validation dry run.
+
+The search requires an active tenant project, an authenticated admin with project-scoped view permission, and a canonical village already within that project's effective scope. It remains read-only: apply is disabled, Android visibility is false, and canonical geography, PIN links, NWDP candidates, runtime boundaries, project matches, and project-resolution rows are unchanged.
