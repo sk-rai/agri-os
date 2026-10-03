@@ -118,3 +118,20 @@ LGD villages, global PIN links, NWDP candidate mappings, runtime boundaries,
 project matches, or the unscoped Android geography API. The admin screen does
 not accept a pasted approver token: independent approval uses the identity of
 the separately authenticated browser session.
+
+
+## Two-session browser smoke gate — 2026-10-03
+
+The browser gate uses two independent Playwright browser contexts backed by two
+temporary ENTERPRISE_ADMIN identities in the same tenant. The proposer validates
+a canonical-enrichment dry run and creates a DRAFT through the admin screen.
+The backend must reject that identity's self-approval attempt with HTTP 409.
+The second authenticated browser loads the review queue and approves the same
+proposal through the admin screen.
+
+The expected event sequence is exactly PROPOSED then APPROVED. Because
+PROJECT_VILLAGE_RESOLUTION_CANONICAL_APPLY_ENABLED defaults false, the review
+queue must report activation_enabled=false and the activation control must not
+be rendered. The smoke compares protected global geography counts, confirms
+Android visibility remains false, captures review evidence, and removes only
+its temporary proposal, events, and admin identities.
