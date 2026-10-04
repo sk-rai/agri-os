@@ -29,10 +29,19 @@ checks=[
 ("Global geography remains unchanged",'"global_geography_changed": False',API),
 ("Android exposure is not claimed",'"android_visible": False',API),
 ("Project visibility is explicit",'"project_visible": True',API),
+("Project catalog route exists",'"/projects/{project_id}/available-villages"',API),
+("Project catalog schema is pinned","project_available_villages.v1",API),
+("Project catalog is tenant/project scoped","TENANT_PROJECT_ONLY",API),
+("Canonical identities remain explicit","CANONICAL_LGD",API),
+("Project-local identities remain explicit","PROJECT_LOCAL",API),
+("Retired overlays are excluded","resolution.resolution_status='ACTIVE'",API),
+("Manual-name submission is explicit","village_name_manual",API),
 ("Router is registered","project_local_villages_router",ROUTERS),
 ("Behavior verifies one admin",'event["approver_id"] is None',BEHAVIOR),
 ("Behavior verifies parent evidence",'any(result["parent_matches"].values())',BEHAVIOR),
 ("Behavior verifies cleanup","database_restored",BEHAVIOR),
+("Behavior verifies catalog visibility","catalog_visible_before_retirement",BEHAVIOR),
+("Behavior verifies retirement removal","catalog_hidden_after_retirement",BEHAVIOR),
 ("Single-admin panel is mounted","ProjectLocalVillageAuthorization",PANEL),
 ("Only eligible candidates show authorization","eligible_for_project_local_addition",UI),
 ("UI requires exact phrase","AUTHORIZE PROJECT LOCAL VILLAGE",UI),
@@ -41,6 +50,8 @@ checks=[
 ("Policy is documented","one authenticated project administrator",DOC),
 ("Clock-drift rationale is documented","administrative drift",DOC),
 ("Global two-session boundary remains","global canonical",DOC),
+("Android reader contract is documented","project_available_villages.v1",DOC),
+("Android repository boundary is explicit","Android source code is not present",DOC),
 ]
 for label,needle,source in checks:
  if needle not in source:raise AssertionError(f"{label}: missing {needle!r}")

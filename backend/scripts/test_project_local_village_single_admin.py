@@ -9,7 +9,8 @@ from app.core.admin_auth import AdminPrincipal
 from app.core.database import SessionLocal
 from app.modules.master_data.api.project_local_villages import (
  ProjectLocalVillageAuthorization,ProjectLocalVillageRetirement,
- authorize_project_local_village,retire_project_local_village)
+ authorize_project_local_village,list_project_available_villages,
+ retire_project_local_village)
 from app.modules.master_data.api.project_village_resolutions import nwdp_candidates,worklist
 from scripts.admin_auth_test_utils import create_test_admin,delete_test_admin
 PROJECT=UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000001")
@@ -61,6 +62,18 @@ with SessionLocal() as db:
    from geography_project_village_resolution_events where resolution_id=:id"""),
    {"id":str(resolution_id)}).mappings().one()
   assert event["action"]=="APPLIED" and event["actor_id"]==str(actor.id)
+  catalog=list_project_available_villages(
+   PROJECT,candidate["source_village_name"],100,0,db,TENANT,principal)
+  local_item=next(item for item in catalog["items"]
+   if item["project_village_resolution_id"]==str(resolution_id))
+  assert catalog["schema_version"]=="project_available_villages.v1"
+  assert catalog["scope"]=="TENANT_PROJECT_ONLY"
+  assert local_item["identity_type"]=="PROJECT_LOCAL"
+  assert local_item["village_id"] is None
+  assert local_item["submission"]=={
+   "village_id":None,
+   "village_name_manual":candidate["source_village_name"] or anchor["village_name"],
+   "project_village_resolution_id":str(resolution_id)}
   assert event["approver_id"] is None
   try:
    authorize_project_local_village(PROJECT,body,db,TENANT,principal)
@@ -72,6 +85,10 @@ with SessionLocal() as db:
     rollback_token=TOKEN,reason="Regression confirms immediate local retirement.",
     confirmation_phrase="RETIRE PROJECT LOCAL VILLAGE"),
    db,TENANT,principal)
+  retired_catalog=list_project_available_villages(
+   PROJECT,candidate["source_village_name"],100,0,db,TENANT,principal)
+  assert all(item["project_village_resolution_id"]!=str(resolution_id)
+   for item in retired_catalog["items"])
   assert retired["status"]=="RETIRED"
   actions=list(db.execute(text("""select action
    from geography_project_village_resolution_events where resolution_id=:id
@@ -81,6 +98,8 @@ with SessionLocal() as db:
   assert database_restored
   print({"schema_version":"project_local_village_single_admin_test.v1",
    "authorization_model":"SINGLE_PROJECT_ADMIN",
+   "catalog_visible_before_retirement":True,
+   "catalog_hidden_after_retirement":True,
    "parent_matches":result["parent_matches"],"audit_actions":actions,
    "database_restored":database_restored,"global_geography_changed":False,
    "android_visible":False})

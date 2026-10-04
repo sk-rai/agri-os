@@ -3,7 +3,7 @@ import json
 import uuid
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -280,6 +280,92 @@ def authorize_project_local_village(
         "android_visible": False,
         "global_geography_changed": False,
         "rollback_available": True,
+    }
+
+
+@router.get("/projects/{project_id}/available-villages")
+def list_project_available_villages(
+    project_id: UUID,
+    q: str | None = Query(None, max_length=120),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
+):
+    project_row = project(db, project_id, x_tenant_id)
+    scope = project_row.get("geography_scope") or {}
+    if isinstance(scope, str):
+        try:
+            scope = json.loads(scope)
+        except Exception:
+            scope = {}
+    project_sql, scope_params, _sources = project_village_sql(scope)
+    search = (q or "").strip()
+    rows = db.execute(
+        text("""with canonical_scope as (""" + project_sql + """),
+        available as (
+          select 'CANONICAL_LGD'::text identity_type,
+            village.id::text village_id, null::text project_village_resolution_id,
+            village.canonical_name display_name, village.lgd_code::text village_code,
+            state.canonical_name state_name, district.canonical_name district_name,
+            block.canonical_name block_name,
+            coalesce((select array_agg(distinct link.pin_code order by link.pin_code)
+              from geography_village_pin_links link
+              where link.geography_village_id=village.id and link.is_active),
+              array[]::text[]) pin_codes,
+            jsonb_build_object('village_id',village.id::text,
+              'village_name_manual',null) submission
+          from canonical_scope scoped
+          join geography_villages village
+            on village.id=cast(scoped.village_id as uuid) and village.is_active
+          join geography_blocks block on block.id=village.block_id
+          join geography_districts district on district.id=village.district_id
+          join geography_states state on state.id=district.state_id
+          union all
+          select 'PROJECT_LOCAL'::text identity_type, null::text village_id,
+            resolution.id::text project_village_resolution_id,
+            resolution.display_name, resolution.project_village_code village_code,
+            coalesce(resolution.hierarchy_labels->>'source_state_name',
+              resolution.hierarchy_labels->>'state') state_name,
+            coalesce(resolution.hierarchy_labels->>'source_district_name',
+              resolution.hierarchy_labels->>'district') district_name,
+            coalesce(resolution.hierarchy_labels->>'source_block_name',
+              resolution.hierarchy_labels->>'source_subdistrict_name',
+              resolution.hierarchy_labels->>'block') block_name,
+            resolution.pin_codes,
+            jsonb_build_object('village_id',null,
+              'village_name_manual',resolution.display_name,
+              'project_village_resolution_id',resolution.id::text) submission
+          from geography_project_village_resolutions resolution
+          where resolution.tenant_id=:tenant and resolution.project_id=:project
+            and resolution.resolution_mode='PROJECT_LOCAL_ADDITION'
+            and resolution.resolution_status='ACTIVE' and resolution.is_active
+        ), filtered as (
+          select * from available where :search='' or display_name ilike :contains
+            or village_code ilike :contains
+        )
+        select *,count(*) over() filtered_total from filtered
+        order by case identity_type when 'PROJECT_LOCAL' then 0 else 1 end,
+          state_name,district_name,block_name,display_name
+        limit :limit offset :offset"""),
+        {"project_id":str(project_id),"tenant":x_tenant_id,
+         "project":str(project_id),"search":search,"contains":"%"+search+"%",
+         "limit":limit,"offset":offset,**scope_params},
+    ).mappings().all()
+    total=int(rows[0]["filtered_total"]) if rows else 0
+    keys=("identity_type","village_id","project_village_resolution_id",
+      "display_name","village_code","state_name","district_name","block_name",
+      "pin_codes","submission")
+    return {
+      "schema_version":"project_available_villages.v1",
+      "scope":"TENANT_PROJECT_ONLY",
+      "project":{key:project_row[key] for key in
+        ("project_id","tenant_id","name","status")},
+      "pagination":{"limit":limit,"offset":offset,"filtered_total":total,
+        "has_more":offset+len(rows)<total},
+      "items":[{key:row[key] for key in keys} for row in rows],
+      "global_geography_changed":False,
     }
 
 

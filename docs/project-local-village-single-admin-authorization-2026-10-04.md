@@ -50,9 +50,41 @@ An active overlay is visible in the project's resolution list. It does not:
 - alter global point lookup;
 - claim Android visibility.
 
-Project-scoped Android delivery remains a separate reader integration. Until
-that reader is implemented and tested, responses explicitly report
-android_visible=false.
+## Project-aware village reader
+
+The reusable `GET
+/api/v1/master-data/geography/project-village-resolutions/projects/{project_id}/available-villages`
+reader returns the project's canonical LGD villages together with its active
+project-local additions. Its response schema is
+`project_available_villages.v1`, its declared scope is
+`TENANT_PROJECT_ONLY`, and it supports bounded search and pagination.
+
+Each item has an explicit identity type:
+
+- `CANONICAL_LGD` supplies `submission.village_id` and a null manual name;
+- `PROJECT_LOCAL` supplies `submission.village_name_manual`, a null global
+  village ID, and `project_village_resolution_id` for provenance.
+
+Retired or inactive overlays disappear from this reader immediately. They are
+never copied into the global LGD village catalog or global village/PIN links.
+
+## Android integration boundary
+
+Android changes are required for mobile users to consume this reader. The
+Android source code is not present in this repository, so this commit cannot
+implement or validate that client work. The Android project should:
+
+1. call the project-aware reader only after a project is selected;
+2. render both identity types while visually distinguishing project-local rows;
+3. submit a canonical `village_id` for `CANONICAL_LGD` and the supplied
+   `village_name_manual` for `PROJECT_LOCAL`;
+4. retain `project_village_resolution_id` as provenance where its local model
+   permits it;
+5. refresh the project catalog so retired overlays disappear; and
+6. never insert `PROJECT_LOCAL` rows into its global LGD cache.
+
+Until that separate Android integration is implemented and tested, mutation
+responses continue to report `android_visible=false`.
 
 ## Retirement
 
@@ -74,5 +106,6 @@ separately gated and may retain two-session approval.
 - backend/scripts/test_project_local_village_single_admin.py
 
 The behavior regression proves single-admin authorization, parent evidence,
-duplicate prevention, retirement, immutable audit history, cleanup, and
+duplicate prevention, retirement, immutable audit history, cleanup,
+project-catalog visibility before retirement, removal after retirement, and
 unchanged canonical, PIN, runtime, project-match, and Android state.
