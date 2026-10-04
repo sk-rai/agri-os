@@ -427,6 +427,18 @@ type VillageResolutionStatus =
   | "NWDP_ONLY"
   | "UNRESOLVED";
 
+type VillageLocalEvidenceStatus =
+  | "DETERMINISTIC_SINGLE_REVIEW"
+  | "HIGH_CONFIDENCE_SINGLE_REVIEW"
+  | "AMBIGUOUS_MULTIPLE_CANDIDATES"
+  | "NO_LOCAL_CANDIDATE";
+
+type VillageReviewEligibility =
+  | "TWO_SESSION_REVIEW_ELIGIBLE"
+  | "CONFLICT_REVIEW_REQUIRED"
+  | "AMBIGUOUS_REVIEW_REQUIRED"
+  | "AUTHORITATIVE_EVIDENCE_REQUIRED";
+
 type VillageResolutionResponse = {
   schema_version: "lgd_pin_nwdp_village_resolution.v1";
   read_only: boolean;
@@ -455,6 +467,15 @@ type VillageResolutionResponse = {
     has_active_runtime: boolean;
     has_effective_nwdp_mapping: boolean;
     resolution_status: VillageResolutionStatus;
+    local_evidence_status: VillageLocalEvidenceStatus | null;
+    local_candidate_count: number | null;
+    best_match_rank: number | null;
+    best_match_basis: string | null;
+    source_feature_id: string | null;
+    source_candidate_village_count: number | null;
+    source_collision: boolean | null;
+    review_eligibility: VillageReviewEligibility | null;
+    prior_candidate_evidence: string | null;
   }>;
 };
 
@@ -474,6 +495,12 @@ export default function GeographyLayerReadinessPage() {
     useState<VillageResolutionResponse | null>(null);
   const [villageResolutionStatus, setVillageResolutionStatus] =
     useState<VillageResolutionStatus | "">("");
+  const [villageLocalEvidenceStatus, setVillageLocalEvidenceStatus] =
+    useState<VillageLocalEvidenceStatus | "">("");
+  const [villageReviewEligibility, setVillageReviewEligibility] =
+    useState<VillageReviewEligibility | "">("");
+  const [villageSourceCollision, setVillageSourceCollision] =
+    useState<"" | "true" | "false">("");
   const [villageResolutionOffset, setVillageResolutionOffset] = useState(0);
   const [villageResolutionLoading, setVillageResolutionLoading] = useState(false);
 
@@ -590,6 +617,9 @@ export default function GeographyLayerReadinessPage() {
     });
     if (districtId) params.set("district_id", districtId);
     if (status) params.set("resolution_status", status);
+    if (villageLocalEvidenceStatus) params.set("local_evidence_status", villageLocalEvidenceStatus);
+    if (villageReviewEligibility) params.set("review_eligibility", villageReviewEligibility);
+    if (villageSourceCollision) params.set("source_collision", villageSourceCollision);
     try {
       const response = await api<VillageResolutionResponse>(
         "/api/v1/master-data/geography/village-resolution?" + params.toString(),
@@ -601,7 +631,7 @@ export default function GeographyLayerReadinessPage() {
     } finally {
       setVillageResolutionLoading(false);
     }
-  }, [districtId, stateId, villageResolutionOffset, villageResolutionStatus]);
+  }, [districtId, stateId, villageLocalEvidenceStatus, villageResolutionOffset, villageResolutionStatus, villageReviewEligibility, villageSourceCollision]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -827,6 +857,63 @@ export default function GeographyLayerReadinessPage() {
                 <option value="UNRESOLVED">Unresolved</option>
               </select>
             </label>
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-slate-600">Village local evidence status</span>
+              <select
+                aria-label="Village local evidence status"
+                value={villageLocalEvidenceStatus}
+                onChange={(event) =>
+                  setVillageLocalEvidenceStatus(event.target.value as VillageLocalEvidenceStatus | "")
+                }
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">All evidence statuses</option>
+                <option value="DETERMINISTIC_SINGLE_REVIEW">Deterministic single review</option>
+                <option value="HIGH_CONFIDENCE_SINGLE_REVIEW">High-confidence single review</option>
+                <option value="AMBIGUOUS_MULTIPLE_CANDIDATES">Ambiguous candidates</option>
+                <option value="NO_LOCAL_CANDIDATE">No local candidate</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-slate-600">Village review eligibility</span>
+              <select
+                aria-label="Village review eligibility"
+                value={villageReviewEligibility}
+                onChange={(event) =>
+                  setVillageReviewEligibility(event.target.value as VillageReviewEligibility | "")
+                }
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">All review classes</option>
+                <option value="TWO_SESSION_REVIEW_ELIGIBLE">Two-session review eligible</option>
+                <option value="CONFLICT_REVIEW_REQUIRED">Conflict review required</option>
+                <option value="AMBIGUOUS_REVIEW_REQUIRED">Ambiguous review required</option>
+                <option value="AUTHORITATIVE_EVIDENCE_REQUIRED">Authoritative evidence required</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-slate-600">Village source collision</span>
+              <select
+                aria-label="Village source collision"
+                value={villageSourceCollision}
+                onChange={(event) =>
+                  setVillageSourceCollision(event.target.value as "" | "true" | "false")
+                }
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">All source reuse states</option>
+                <option value="false">No source collision</option>
+                <option value="true">Source collision</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void loadVillageResolution(0)}
+              disabled={villageResolutionLoading}
+              className="self-end rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 disabled:opacity-40"
+            >
+              Apply evidence filters
+            </button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard label="Villages" value={villageResolution.summary.total_villages} />

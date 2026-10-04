@@ -6354,6 +6354,19 @@ VILLAGE_RESOLUTION_STATUSES = {
     "UNRESOLVED",
 }
 
+VILLAGE_LOCAL_EVIDENCE_STATUSES = {
+    "DETERMINISTIC_SINGLE_REVIEW",
+    "HIGH_CONFIDENCE_SINGLE_REVIEW",
+    "AMBIGUOUS_MULTIPLE_CANDIDATES",
+    "NO_LOCAL_CANDIDATE",
+}
+VILLAGE_LOCAL_REVIEW_ELIGIBILITIES = {
+    "TWO_SESSION_REVIEW_ELIGIBLE",
+    "CONFLICT_REVIEW_REQUIRED",
+    "AMBIGUOUS_REVIEW_REQUIRED",
+    "AUTHORITATIVE_EVIDENCE_REQUIRED",
+}
+
 
 @router.get("/village-resolution")
 def list_village_resolution(
@@ -6361,6 +6374,9 @@ def list_village_resolution(
     district_id: Optional[UUID] = Query(None, description="Optional canonical district UUID"),
     resolution_status: Optional[str] = Query(None),
     search: Optional[str] = Query(None, min_length=2, max_length=120),
+    local_evidence_status: Optional[str] = Query(None),
+    review_eligibility: Optional[str] = Query(None),
+    source_collision: Optional[bool] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -6376,11 +6392,32 @@ def list_village_resolution(
                 "allowed": sorted(VILLAGE_RESOLUTION_STATUSES),
             },
         )
+    normalized_evidence = local_evidence_status.upper() if local_evidence_status else None
+    if normalized_evidence and normalized_evidence not in VILLAGE_LOCAL_EVIDENCE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_VILLAGE_LOCAL_EVIDENCE_STATUS",
+                "allowed": sorted(VILLAGE_LOCAL_EVIDENCE_STATUSES),
+            },
+        )
+    normalized_eligibility = review_eligibility.upper() if review_eligibility else None
+    if normalized_eligibility and normalized_eligibility not in VILLAGE_LOCAL_REVIEW_ELIGIBILITIES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_VILLAGE_LOCAL_REVIEW_ELIGIBILITY",
+                "allowed": sorted(VILLAGE_LOCAL_REVIEW_ELIGIBILITIES),
+            },
+        )
 
     params = {
         "state_id": str(state_id),
         "district_id": str(district_id) if district_id else None,
         "resolution_status": normalized_status,
+        "local_evidence_status": normalized_evidence,
+        "review_eligibility": normalized_eligibility,
+        "source_collision": source_collision,
         "search": search.strip() if search else None,
         "limit": limit,
         "offset": offset,
@@ -6439,6 +6476,14 @@ def list_village_resolution(
           join scoped_villages scoped on scoped.village_id = crosswalk.village_id
           where crosswalk.is_active = true
         ),
+        active_local_evidence as (
+          select item.*
+          from geography_village_resolution_evidence_items item
+          join geography_village_resolution_evidence_snapshots snapshot
+            on snapshot.id = item.snapshot_id
+           and snapshot.is_active = true
+          join scoped_villages scoped on scoped.village_id = item.village_id
+        ),
         classified as (
           select
             scoped.*,
@@ -6447,6 +6492,15 @@ def list_village_resolution(
             (candidate.village_id is not null) as has_candidate_mapping,
             (runtime.village_id is not null) as has_active_runtime,
             (candidate.village_id is not null or runtime.village_id is not null) as has_effective_nwdp_mapping,
+            evidence.disposition as local_evidence_status,
+            evidence.candidate_count as local_candidate_count,
+            evidence.best_match_rank,
+            evidence.best_match_basis,
+            evidence.source_feature_id::text,
+            evidence.source_candidate_village_count,
+            evidence.source_collision,
+            evidence.review_eligibility,
+            evidence.prior_candidate_evidence,
             case
               when pin.village_id is not null and (candidate.village_id is not null or runtime.village_id is not null) then 'FULLY_RESOLVED'
               when pin.village_id is not null then 'PIN_ONLY'
@@ -6457,6 +6511,7 @@ def list_village_resolution(
           left join pin_status pin on pin.village_id = scoped.village_id
           left join candidate_status candidate on candidate.village_id = scoped.village_id
           left join runtime_status runtime on runtime.village_id = scoped.village_id
+          left join active_local_evidence evidence on evidence.village_id = scoped.village_id
         ),
         summary as (
           select
@@ -6469,7 +6524,10 @@ def list_village_resolution(
         ),
         filtered as (
           select * from classified
-          where :resolution_status is null or resolution_status = :resolution_status
+          where (:resolution_status is null or resolution_status = :resolution_status)
+          and (:local_evidence_status is null or local_evidence_status = :local_evidence_status)
+          and (:review_eligibility is null or review_eligibility = :review_eligibility)
+          and (:source_collision is null or source_collision = :source_collision)
         )
         select
           filtered.*,
@@ -6511,6 +6569,9 @@ def list_village_resolution(
         "district_name", "state_id", "state_lgd_code", "state_name",
         "pin_count", "pin_codes", "has_candidate_mapping",
         "has_active_runtime", "has_effective_nwdp_mapping", "resolution_status",
+        "local_evidence_status", "local_candidate_count", "best_match_rank",
+        "best_match_basis", "source_feature_id", "source_candidate_village_count",
+        "source_collision", "review_eligibility", "prior_candidate_evidence",
     )
     return {
         "schema_version": "lgd_pin_nwdp_village_resolution.v1",
@@ -6518,11 +6579,16 @@ def list_village_resolution(
         "definitions": {
             "effective_nwdp_mapping": "candidate_mapping OR active_runtime_mapping",
             "statuses": sorted(VILLAGE_RESOLUTION_STATUSES),
+            "local_evidence_statuses": sorted(VILLAGE_LOCAL_EVIDENCE_STATUSES),
+            "review_eligibilities": sorted(VILLAGE_LOCAL_REVIEW_ELIGIBILITIES),
         },
         "filters": {
             "state_id": str(state_id),
             "district_id": str(district_id) if district_id else None,
             "resolution_status": normalized_status,
+            "local_evidence_status": normalized_evidence,
+            "review_eligibility": normalized_eligibility,
+            "source_collision": source_collision,
             "search": params["search"],
         },
         "summary": summary,
