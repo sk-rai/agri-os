@@ -469,6 +469,7 @@ type VillageResolutionResponse = {
     has_effective_nwdp_mapping: boolean;
     resolution_status: VillageResolutionStatus;
     evidence_item_id: string | null;
+    evidence_snapshot_id: string | null;
     local_evidence_status: VillageLocalEvidenceStatus | null;
     local_candidate_count: number | null;
     best_match_rank: number | null;
@@ -478,6 +479,12 @@ type VillageResolutionResponse = {
     source_collision: boolean | null;
     review_eligibility: VillageReviewEligibility | null;
     prior_candidate_evidence: string | null;
+    source_vlcode: string | null;
+    source_village_name: string | null;
+    source_block_name: string | null;
+    source_subdistrict_name: string | null;
+    source_district_name: string | null;
+    source_state_name: string | null;
   }>;
 };
 
@@ -507,6 +514,16 @@ export default function GeographyLayerReadinessPage() {
     evidenceItemId: string;
     villageName: string;
     villageLgdCode: string;
+    snapshotId: string | null;
+    canonicalHierarchy: string;
+    sourceFeatureId: string | null;
+    sourceVillageName: string | null;
+    sourceHierarchy: string;
+    sourceCode: string | null;
+    matchRank: number | null;
+    matchBasis: string | null;
+    priorEvidence: string | null;
+    sourceReuseCount: number | null;
   } | null>(null);
   const [villageResolutionOffset, setVillageResolutionOffset] = useState(0);
   const [villageResolutionLoading, setVillageResolutionLoading] = useState(false);
@@ -951,6 +968,16 @@ export default function GeographyLayerReadinessPage() {
                           evidenceItemId: row.evidence_item_id,
                           villageName: row.village_name,
                           villageLgdCode: row.village_lgd_code,
+                          snapshotId: row.evidence_snapshot_id,
+                          canonicalHierarchy: [row.block_name, row.district_name].filter(Boolean).join(" › "),
+                          sourceFeatureId: row.source_feature_id,
+                          sourceVillageName: row.source_village_name,
+                          sourceHierarchy: [row.source_block_name || row.source_subdistrict_name, row.source_district_name, row.source_state_name].filter(Boolean).join(" › "),
+                          sourceCode: row.source_vlcode,
+                          matchRank: row.best_match_rank,
+                          matchBasis: row.best_match_basis,
+                          priorEvidence: row.prior_candidate_evidence,
+                          sourceReuseCount: row.source_candidate_village_count,
                         })}
                         className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
                       >Review evidence</button>

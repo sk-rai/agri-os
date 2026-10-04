@@ -92,3 +92,9 @@ runtime counts.
 - `backend/scripts/test_village_resolution_evidence_review_workflow.py`
 - `backend/scripts/test_village_resolution_evidence_review_ui_static.py`
 - `web/smoke/village_resolution_evidence_review_smoke.mjs`
+
+## Evidence comparison and bounded pilot
+
+The review selection now presents the canonical LGD hierarchy beside the NWDP source hierarchy, source village code, match rank and basis, prior candidate disposition, source-reuse count, snapshot identity, and source-feature identity. Reviewers therefore assess the evidence itself before recording either decision.
+
+The deterministic ten-row pilot is defined in `docs/village-resolution-evidence-review-pilot-2026-10-04.md` and produced by `backend/scripts/report_village_resolution_evidence_review_pilot.py`. It creates a local, read-only review manifest; it does not pre-populate decisions or authorize application.

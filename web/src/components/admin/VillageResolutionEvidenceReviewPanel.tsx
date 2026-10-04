@@ -7,6 +7,16 @@ type Selection = {
   evidenceItemId: string;
   villageName: string;
   villageLgdCode: string;
+  snapshotId: string | null;
+  canonicalHierarchy: string;
+  sourceFeatureId: string | null;
+  sourceVillageName: string | null;
+  sourceHierarchy: string;
+  sourceCode: string | null;
+  matchRank: number | null;
+  matchBasis: string | null;
+  priorEvidence: string | null;
+  sourceReuseCount: number | null;
 };
 
 type ReviewEvent = {
@@ -142,6 +152,26 @@ export default function VillageResolutionEvidenceReviewPanel({
           <div className="font-medium">
             {selection.villageName} · LGD {selection.villageLgdCode}
           </div>
+          <div data-testid="village-evidence-comparison" className="grid gap-3 text-sm md:grid-cols-2">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <div className="text-xs font-semibold uppercase text-slate-500">Canonical LGD village</div>
+              <div className="mt-1 font-medium">{selection.villageName}</div>
+              <div className="text-slate-600">{selection.canonicalHierarchy || "Hierarchy unavailable"}</div>
+              <div className="text-xs text-slate-500">LGD {selection.villageLgdCode}</div>
+            </div>
+            <div className="rounded-lg bg-blue-50 p-3">
+              <div className="text-xs font-semibold uppercase text-blue-700">NWDP source candidate</div>
+              <div className="mt-1 font-medium">{selection.sourceVillageName || "Source name unavailable"}</div>
+              <div className="text-slate-600">{selection.sourceHierarchy || "Hierarchy unavailable"}</div>
+              <div className="text-xs text-slate-500">Source village code {selection.sourceCode || "—"}</div>
+            </div>
+          </div>
+          <dl className="grid gap-x-4 gap-y-1 rounded-lg border border-violet-100 p-3 text-xs sm:grid-cols-2">
+            <div><dt className="font-medium text-slate-500">Match rank / basis</dt><dd>{selection.matchRank ?? "—"} / {selection.matchBasis || "—"}</dd></div>
+            <div><dt className="font-medium text-slate-500">Source reuse count</dt><dd>{selection.sourceReuseCount ?? "—"}</dd></div>
+            <div><dt className="font-medium text-slate-500">Prior candidate evidence</dt><dd>{selection.priorEvidence || "—"}</dd></div>
+            <div><dt className="font-medium text-slate-500">Evidence identity</dt><dd className="break-all">{selection.snapshotId || "—"} / {selection.sourceFeatureId || "—"}</dd></div>
+          </dl>
           <label className="block space-y-1">
             <span className="text-xs font-medium">Primary decision</span>
             <select aria-label="Primary evidence decision" value={primaryDecision} onChange={event => setPrimaryDecision(event.target.value)} className="w-full rounded-lg border px-3 py-2">

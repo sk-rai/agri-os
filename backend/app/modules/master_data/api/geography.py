@@ -6493,6 +6493,7 @@ def list_village_resolution(
             (runtime.village_id is not null) as has_active_runtime,
             (candidate.village_id is not null or runtime.village_id is not null) as has_effective_nwdp_mapping,
             evidence.id::text as evidence_item_id,
+            evidence.snapshot_id::text as evidence_snapshot_id,
             evidence.disposition as local_evidence_status,
             evidence.candidate_count as local_candidate_count,
             evidence.best_match_rank,
@@ -6502,6 +6503,12 @@ def list_village_resolution(
             evidence.source_collision,
             evidence.review_eligibility,
             evidence.prior_candidate_evidence,
+            source.source_vlcode,
+            source.source_village_name,
+            source.source_block_name,
+            source.source_subdistrict_name,
+            source.source_district_name,
+            source.source_state_name,
             case
               when pin.village_id is not null and (candidate.village_id is not null or runtime.village_id is not null) then 'FULLY_RESOLVED'
               when pin.village_id is not null then 'PIN_ONLY'
@@ -6513,6 +6520,7 @@ def list_village_resolution(
           left join candidate_status candidate on candidate.village_id = scoped.village_id
           left join runtime_status runtime on runtime.village_id = scoped.village_id
           left join active_local_evidence evidence on evidence.village_id = scoped.village_id
+          left join geography_boundary_source_features source on source.id = evidence.source_feature_id
         ),
         summary as (
           select
@@ -6570,9 +6578,9 @@ def list_village_resolution(
         "district_name", "state_id", "state_lgd_code", "state_name",
         "pin_count", "pin_codes", "has_candidate_mapping",
         "has_active_runtime", "has_effective_nwdp_mapping", "resolution_status",
-        "evidence_item_id", "local_evidence_status", "local_candidate_count", "best_match_rank",
+        "evidence_item_id", "evidence_snapshot_id", "local_evidence_status", "local_candidate_count", "best_match_rank",
         "best_match_basis", "source_feature_id", "source_candidate_village_count",
-        "source_collision", "review_eligibility", "prior_candidate_evidence",
+        "source_collision", "review_eligibility", "prior_candidate_evidence", "source_vlcode", "source_village_name", "source_block_name", "source_subdistrict_name", "source_district_name", "source_state_name",
     )
     return {
         "schema_version": "lgd_pin_nwdp_village_resolution.v1",
