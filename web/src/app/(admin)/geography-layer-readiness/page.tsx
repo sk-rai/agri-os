@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import CoreLayerProjectOverridePanel from "@/components/admin/CoreLayerProjectOverridePanel";
 import ProjectVillageResolutionPanel from "@/components/admin/ProjectVillageResolutionPanel";
+import VillageResolutionEvidenceReviewPanel from "@/components/admin/VillageResolutionEvidenceReviewPanel";
 
 const numberFormatter = new Intl.NumberFormat("en-IN");
 
@@ -467,6 +468,7 @@ type VillageResolutionResponse = {
     has_active_runtime: boolean;
     has_effective_nwdp_mapping: boolean;
     resolution_status: VillageResolutionStatus;
+    evidence_item_id: string | null;
     local_evidence_status: VillageLocalEvidenceStatus | null;
     local_candidate_count: number | null;
     best_match_rank: number | null;
@@ -501,6 +503,11 @@ export default function GeographyLayerReadinessPage() {
     useState<VillageReviewEligibility | "">("");
   const [villageSourceCollision, setVillageSourceCollision] =
     useState<"" | "true" | "false">("");
+  const [villageEvidenceSelection, setVillageEvidenceSelection] = useState<{
+    evidenceItemId: string;
+    villageName: string;
+    villageLgdCode: string;
+  } | null>(null);
   const [villageResolutionOffset, setVillageResolutionOffset] = useState(0);
   const [villageResolutionLoading, setVillageResolutionLoading] = useState(false);
 
@@ -925,7 +932,7 @@ export default function GeographyLayerReadinessPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
-                <tr><th className="px-3 py-2">Village</th><th className="px-3 py-2">Block</th><th className="px-3 py-2">PIN</th><th className="px-3 py-2">Candidate</th><th className="px-3 py-2">Runtime</th><th className="px-3 py-2">Status</th></tr>
+                <tr><th className="px-3 py-2">Village</th><th className="px-3 py-2">Block</th><th className="px-3 py-2">PIN</th><th className="px-3 py-2">Candidate</th><th className="px-3 py-2">Runtime</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Review</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {villageResolution.items.map((row) => (
@@ -936,6 +943,18 @@ export default function GeographyLayerReadinessPage() {
                     <td className="px-3 py-2">{row.has_candidate_mapping ? "Yes" : "No"}</td>
                     <td className="px-3 py-2">{row.has_active_runtime ? "Yes" : "No"}</td>
                     <td className="px-3 py-2 font-medium">{row.resolution_status.replaceAll("_", " ")}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        disabled={!row.evidence_item_id || row.review_eligibility !== "TWO_SESSION_REVIEW_ELIGIBLE" || row.source_collision === true}
+                        onClick={() => row.evidence_item_id && setVillageEvidenceSelection({
+                          evidenceItemId: row.evidence_item_id,
+                          villageName: row.village_name,
+                          villageLgdCode: row.village_lgd_code,
+                        })}
+                        className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+                      >Review evidence</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -948,6 +967,10 @@ export default function GeographyLayerReadinessPage() {
               <button type="button" disabled={!villageResolution.pagination.has_more || villageResolutionLoading} onClick={() => void loadVillageResolution(villageResolutionOffset + 50)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Next</button>
             </div>
           </div>
+          <VillageResolutionEvidenceReviewPanel
+            selection={villageEvidenceSelection}
+            onClearSelection={() => setVillageEvidenceSelection(null)}
+          />
         </section>
       )}
 

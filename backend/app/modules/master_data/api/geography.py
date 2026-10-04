@@ -6492,6 +6492,7 @@ def list_village_resolution(
             (candidate.village_id is not null) as has_candidate_mapping,
             (runtime.village_id is not null) as has_active_runtime,
             (candidate.village_id is not null or runtime.village_id is not null) as has_effective_nwdp_mapping,
+            evidence.id::text as evidence_item_id,
             evidence.disposition as local_evidence_status,
             evidence.candidate_count as local_candidate_count,
             evidence.best_match_rank,
@@ -6569,7 +6570,7 @@ def list_village_resolution(
         "district_name", "state_id", "state_lgd_code", "state_name",
         "pin_count", "pin_codes", "has_candidate_mapping",
         "has_active_runtime", "has_effective_nwdp_mapping", "resolution_status",
-        "local_evidence_status", "local_candidate_count", "best_match_rank",
+        "evidence_item_id", "local_evidence_status", "local_candidate_count", "best_match_rank",
         "best_match_basis", "source_feature_id", "source_candidate_village_count",
         "source_collision", "review_eligibility", "prior_candidate_evidence",
     )

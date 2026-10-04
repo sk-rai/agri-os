@@ -71,9 +71,24 @@ workflow:
 Any future apply operation requires a separate design, validation suite,
 authorization, rollback contract, and explicit gate.
 
+## Admin workflow
+
+The existing geography readiness page now exposes a review control only for
+active-snapshot rows that are two-session eligible and do not have a source
+collision. The primary admin records an accept, reject, or hold decision with
+notes. The queue then requires a different enterprise-admin session and the
+exact second-review confirmation phrase.
+
+The UI deliberately has no mapping-application control. Its two-browser smoke
+proves primary review, backend self-review rejection, independent approval,
+the exact immutable event sequence, cleanup, and unchanged canonical, PIN, and
+runtime counts.
+
 ## Validation
 
 - `backend/scripts/test_village_resolution_evidence_filter_web_smoke_static.py`
 - `web/smoke/village_resolution_evidence_filter_smoke.mjs`
 - `backend/scripts/test_village_resolution_evidence_review_workflow_static.py`
 - `backend/scripts/test_village_resolution_evidence_review_workflow.py`
+- `backend/scripts/test_village_resolution_evidence_review_ui_static.py`
+- `web/smoke/village_resolution_evidence_review_smoke.mjs`
