@@ -1,4 +1,5 @@
 from app.modules.master_data.api.project_village_resolutions import router as project_village_resolutions_router
+from app.modules.master_data.api.village_resolution_evidence_reviews import router as village_resolution_evidence_reviews_router
 from fastapi import APIRouter
 
 from app.modules.master_data.api.geography import router as geography_router
@@ -10,5 +11,6 @@ master_data_router = APIRouter(prefix="/api/v1/master-data")
 master_data_router.include_router(geography_router)
 master_data_router.include_router(core_layer_project_overrides_router)
 master_data_router.include_router(project_village_resolutions_router)
+master_data_router.include_router(village_resolution_evidence_reviews_router)
 master_data_router.include_router(crops_router)
 master_data_router.include_router(sync_router)
