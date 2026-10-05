@@ -68,3 +68,23 @@ belong in source control.
 
 - `backend/scripts/report_village_resolution_evidence_review_pilot.py`
 - `backend/scripts/test_village_resolution_evidence_review_pilot_static.py`
+
+## Playwright rehearsal and screenshots
+
+`web/smoke/village_resolution_evidence_review_pilot.mjs` executes the
+validated ten-row pilot as a reversible browser rehearsal. It creates two
+temporary enterprise-admin identities, performs all ten primary reviews and
+independent approvals through Playwright, and captures four screenshots under
+`web/smoke/screenshots/village-evidence-review-pilot/`.
+
+The rehearsal verifies an exact progress delta of ten reviewed, ten approved,
+and ten fewer unreviewed rows. Its `finally` cleanup removes the review rows,
+their cascading immutable events, and both temporary administrators, then
+requires the review/event and protected geography counts to equal their
+starting values.
+
+The screenshots are durable local UI evidence, but the decisions are not
+retained as operational human approvals. Canonical geography, PIN links,
+runtime mappings, projects, Android visibility, and application authorization
+remain unchanged. Persistent review must wait for genuine named administrators;
+regression identities must not be used for a durable audit trail.
