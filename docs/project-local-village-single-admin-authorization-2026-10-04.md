@@ -68,23 +68,12 @@ Each item has an explicit identity type:
 Retired or inactive overlays disappear from this reader immediately. They are
 never copied into the global LGD village catalog or global village/PIN links.
 
-## Android integration boundary
+## Android boundary
 
-Android changes are required for mobile users to consume this reader. The
-Android source code is not present in this repository, so this commit cannot
-implement or validate that client work. The Android project should:
-
-1. call the project-aware reader only after a project is selected;
-2. render both identity types while visually distinguishing project-local rows;
-3. submit a canonical `village_id` for `CANONICAL_LGD` and the supplied
-   `village_name_manual` for `PROJECT_LOCAL`;
-4. retain `project_village_resolution_id` as provenance where its local model
-   permits it;
-5. refresh the project catalog so retired overlays disappear; and
-6. never insert `PROJECT_LOCAL` rows into its global LGD cache.
-
-Until that separate Android integration is implemented and tested, mutation
-responses continue to report `android_visible=false`.
+This catalog and its authorization/retirement controls are backend web-admin
+functions. They remain outside the Android endpoint allowlist.
+No Android client or Maestro change is required, and mutation responses continue
+to report `android_visible=false`.
 
 ## Retirement
 
@@ -109,3 +98,17 @@ The behavior regression proves single-admin authorization, parent evidence,
 duplicate prevention, retirement, immutable audit history, cleanup,
 project-catalog visibility before retirement, removal after retirement, and
 unchanged canonical, PIN, runtime, project-match, and Android state.
+
+## Web-admin Playwright lifecycle
+
+The Playwright smoke uses one authenticated enterprise-admin browser session to
+authorize an eligible project-local village, observes it in the project-only
+catalog, proves cross-tenant denial, retires it through the catalog UI, and
+requires the exact `APPLIED` then `ROLLED_BACK` audit sequence. It compares
+canonical villages, PIN links, candidates, runtime crosswalks, and project
+matches before and after, then removes the test resolution and temporary admin.
+
+Validation entry points:
+
+- `backend/scripts/test_project_local_village_admin_web_smoke_static.py`
+- `web/smoke/project_local_village_admin_smoke.mjs`
