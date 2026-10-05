@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.modules.auth.schemas import (
     OTPRequestSchema,
@@ -35,16 +36,17 @@ def request_otp(
 ):
     """Request OTP for registration or phone change.
 
-    In development: OTP is returned in response headers (X-Dev-OTP).
-    In production: OTP is sent via Twilio SMS.
+    Development/test may expose the OTP only when explicitly configured.
+    Production configuration prohibits OTP exposure.
     """
     otp = service.request_otp(db, body.mobile_number)
 
     response = OTPRequestResponse()
-    # DEV ONLY: include OTP in response for testing
-    # TODO: Remove in production, send via Twilio instead
-    response.message = f"OTP sent to {body.mobile_number[-4:]}. Dev OTP: {otp}"
-    response.dev_otp = otp
+    if settings.AUTH_EXPOSE_DEV_OTP:
+        response.message = f"OTP generated for {body.mobile_number[-4:]} in development mode."
+        response.dev_otp = otp
+    else:
+        response.message = f"OTP delivery requested for {body.mobile_number[-4:]}."
     return response
 
 

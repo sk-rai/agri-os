@@ -20,8 +20,8 @@ def main():
     routes=sum(len(re.findall(r"@router\.(?:get|post|put|patch|delete)\(",p.read_text(errors="ignore"))) for p in backend)
     todo=[str(p.relative_to(ROOT)) for p in backend+web if re.search(r"TODO|FIXME|NotImplementedError",p.read_text(errors="ignore"))]
     findings=[
-      ("AUTH_PRODUCTION_HARDENING","CRITICAL","OPEN","Hard-coded JWT secret and API-returned OTP keep authentication in development mode."),
-      ("SECRETS_AND_ENVIRONMENT","HIGH","OPEN","Development database credentials are defaults and no environment template defines production requirements."),
+      ("AUTH_PRODUCTION_HARDENING","CRITICAL","FOUNDATION_IMPLEMENTED","Production rejects the development JWT secret and exposed OTP while local development remains explicit."),
+      ("SECRETS_AND_ENVIRONMENT","HIGH","FOUNDATION_IMPLEMENTED","Environment contract exists and production rejects development database/auth/CORS/docs defaults."),
       ("CI_AND_UNIFIED_TEST_GATE","HIGH","OPEN","No CI workflow or unified backend, migration, web-build and smoke-test gate exists."),
       ("TENANT_TRUST_BOUNDARY","HIGH","NEEDS_SECURITY_REVIEW","Browser-supplied tenant/actor headers need systematic token-binding and cross-tenant verification."),
       ("WEB_SESSION_STORAGE","MEDIUM","OPEN","Bearer tokens are stored in localStorage without a documented production session/CSP decision."),
@@ -50,13 +50,14 @@ def main():
     ]
     workrows=[{"id":i,"status":s,"source":p,"source_exists":(ROOT/p).exists()} for i,s,p in work]
     validations={
-      "auth_hardcoded_secret_detected":has("backend/app/modules/auth/service.py","agrios-dev-secret-change-in-production"),
-      "dev_otp_response_detected":has("backend/app/modules/auth/api.py","dev_otp = otp"),
+      "auth_secret_comes_from_settings":has("backend/app/modules/auth/service.py","JWT_SECRET = settings.JWT_SECRET"),
+      "production_configuration_fails_closed":has("backend/app/core/config.py","reject_development_security_in_production"),
+      "dev_otp_response_is_gated":has("backend/app/modules/auth/api.py","if settings.AUTH_EXPOSE_DEV_OTP"),
       "live_provider_execution_unimplemented":has("backend/app/modules/media/provider_http_client.py","NotImplementedError"),
       "perennial_policy_integrated":has("backend/app/modules/workflow/forms.py","current_stage_onboarding_policy"),
       "localization_admin_implemented":(ROOT/"web/src/app/(admin)/localization/page.tsx").exists(),
       "ci_workflow_absent":not any((ROOT/".github/workflows").glob("*")) if (ROOT/".github/workflows").exists() else True,
-      "environment_template_absent":not any(ROOT.glob("**/.env.example")),
+      "environment_template_present":(ROOT/".env.example").exists(),
       "planned_sources_exist":all(x["source_exists"] for x in workrows),
     }
     rows=[{"id":i,"severity":s,"status":st,"summary":m} for i,s,st,m in findings]

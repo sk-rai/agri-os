@@ -21,7 +21,7 @@ from app.modules.auth.models import User, UserDevice, OTPRecord
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT settings
-JWT_SECRET = "agrios-dev-secret-change-in-production"  # TODO: move to env
+JWT_SECRET = settings.JWT_SECRET
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 72  # 3 days for farmers (offline grace)
 

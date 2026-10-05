@@ -24,8 +24,9 @@ data = r.json()
 print(f"  Response: {data}")
 assert r.status_code == 200
 
-# Extract OTP from dev response
-otp = data["message"].split("Dev OTP: ")[-1]
+# Development/test mode explicitly returns the OTP in the dedicated field.
+otp = data.get("dev_otp")
+assert otp, "AUTH_EXPOSE_DEV_OTP must be enabled for this local auth regression"
 print(f"  {PASS} OTP received: {otp}")
 
 # Step 2: Verify OTP (get JWT + device_key)

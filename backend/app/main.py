@@ -35,8 +35,8 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Offline-first agricultural operations intelligence platform",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if settings.API_DOCS_ENABLED else None,
 )
 
 # --- Middleware ---
@@ -44,15 +44,10 @@ app = FastAPI(
 app.add_middleware(TenantMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Next.js dev
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",  # Swagger UI
-    ],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Dev-OTP"],
 )
 
 # --- Routers ---

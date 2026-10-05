@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -10,6 +12,7 @@ PROJECT_ENV_FILE = PROJECT_ROOT / ".env"
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Agri-OS"
     VERSION: str = "0.1.0"
+    APP_ENVIRONMENT: Literal["development", "test", "production"] = "development"
 
     # Database
     DB_USER: str = "agrios_user"
@@ -17,6 +20,13 @@ class Settings(BaseSettings):
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_NAME: str = "agrios_dev"
+    DB_SSLMODE: str | None = None
+
+    # Authentication and HTTP exposure
+    JWT_SECRET: str = "agrios-dev-secret-change-in-production"
+    AUTH_EXPOSE_DEV_OTP: bool = True
+    API_DOCS_ENABLED: bool = True
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
 
     # Soil enrichment providers
     SOILGRIDS_BASE_URL: str = "https://rest.isric.org/soilgrids/v2.0/properties/query"
@@ -60,11 +70,35 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL(self) -> str:
-        return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        url = f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        return f"{url}?sslmode={self.DB_SSLMODE}" if self.DB_SSLMODE else url
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        return [item.strip() for item in self.CORS_ALLOWED_ORIGINS.split(",") if item.strip()]
+
+    @model_validator(mode="after")
+    def reject_development_security_in_production(self):
+        if self.APP_ENVIRONMENT != "production":
+            return self
+        errors = []
+        if self.JWT_SECRET == "agrios-dev-secret-change-in-production" or len(self.JWT_SECRET) < 32:
+            errors.append("JWT_SECRET must be a non-default secret of at least 32 characters")
+        if self.DB_PASSWORD == "agrios_dev_2026":
+            errors.append("DB_PASSWORD must not use the development default")
+        if self.AUTH_EXPOSE_DEV_OTP:
+            errors.append("AUTH_EXPOSE_DEV_OTP must be false")
+        if self.API_DOCS_ENABLED:
+            errors.append("API_DOCS_ENABLED must be explicitly false unless separately reviewed")
+        if any("localhost" in origin or "127.0.0.1" in origin for origin in self.cors_allowed_origins):
+            errors.append("CORS_ALLOWED_ORIGINS must not contain local development origins")
+        if errors:
+            raise ValueError("Unsafe production configuration: " + "; ".join(errors))
+        return self
 
     class Config:
         env_file = str(PROJECT_ENV_FILE)
