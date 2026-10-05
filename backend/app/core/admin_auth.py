@@ -8,12 +8,10 @@ from typing import Optional
 import uuid
 
 from fastapi import Depends, Header, HTTPException
-from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.modules.auth.models import User
-from app.modules.auth.service import JWT_ALGORITHM, JWT_SECRET
+from app.core.human_auth import resolve_authenticated_identity
 
 
 class AdminPermission(str, Enum):
@@ -108,20 +106,37 @@ def optional_admin_viewer(
     if not authorization or not authorization.startswith("Bearer "):
         return None
     try:
-        claims = jwt.decode(authorization[7:].strip(), JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = uuid.UUID(str(claims.get("sub")))
-    except (JWTError, TypeError, ValueError):
+        identity = resolve_authenticated_identity(
+            authorization=authorization,
+            x_actor_id=None,
+            db=db,
+            unauthorized_handler=_unauthorized,
+            missing_bearer_message=(
+                "Bearer token is required for admin mutations."
+            ),
+        )
+    except HTTPException:
         return None
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-    if not user:
-        return None
-    tenant_id = x_tenant_id or str(claims.get("tenant_id") or "") or user.tenant_id
+
+    user = identity.user
+    claims = identity.claims
+    tenant_id = (
+        x_tenant_id
+        or str(claims.get("tenant_id") or "")
+        or user.tenant_id
+    )
     role = str(user.role or "").upper()
-    if not tenant_id or (user.tenant_id and user.tenant_id != tenant_id):
+    if not tenant_id or (
+        user.tenant_id and user.tenant_id != tenant_id
+    ):
         return None
     if AdminPermission.VIEW not in ROLE_PERMISSIONS.get(role, set()):
         return None
-    return AdminPrincipal(user_id=user.id, tenant_id=tenant_id, role=role)
+    return AdminPrincipal(
+        user_id=user.id,
+        tenant_id=tenant_id,
+        role=role,
+    )
 
 
 def require_admin_permission(permission: AdminPermission, *, project_scoped: bool = False):
@@ -136,28 +151,17 @@ def require_admin_permission(permission: AdminPermission, *, project_scoped: boo
     ) -> AdminPrincipal:
         from app.modules.farmer.models import Project, ProjectRole
 
-        if not authorization or not authorization.startswith("Bearer "):
-            raise _unauthorized("Bearer token is required for admin mutations.")
-        token = authorization[7:].strip()
-        if not token:
-            raise _unauthorized("Bearer token is required for admin mutations.")
-        try:
-            claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            user_id = uuid.UUID(str(claims.get("sub")))
-        except (JWTError, TypeError, ValueError):
-            raise _unauthorized("Bearer token is invalid or expired.")
-
-        user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-        if not user:
-            raise _unauthorized("Authenticated user no longer exists or is inactive.")
-        if x_actor_id and x_actor_id != str(user.id):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "ACTOR_ID_MISMATCH",
-                    "message": "X-Actor-ID must match the authenticated user.",
-                },
-            )
+        identity = resolve_authenticated_identity(
+            authorization=authorization,
+            x_actor_id=x_actor_id,
+            db=db,
+            unauthorized_handler=_unauthorized,
+            missing_bearer_message=(
+                "Bearer token is required for admin mutations."
+            ),
+        )
+        user = identity.user
+        claims = identity.claims
 
         token_tenant = str(claims.get("tenant_id") or "")
         tenant_id = x_tenant_id or token_tenant or user.tenant_id

@@ -40,3 +40,13 @@ Admin permissions remain governed by `require_admin_permission`. Worker and
 provider execution require a separate governed service-principal boundary.
 Public OTP/login and explicitly approved shared reference reads remain outside
 this human-mutation dependency.
+
+## Admin reuse checkpoint
+
+Admin authentication now reuses the shared JWT-subject, active-user, and actor
+verification resolver. Admin-specific tenant errors, role permissions, project
+membership, error codes, and response payloads remain governed by
+`require_admin_permission`.
+
+This refactor changes no route exposure and does not attach authenticated-human
+enforcement to Android or field-agent endpoints.

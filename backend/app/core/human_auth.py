@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Callable, Optional
 import uuid
 
 from fastapi import Depends, Header, HTTPException
@@ -44,6 +44,61 @@ def _forbidden(error: str, message: str) -> HTTPException:
     )
 
 
+@dataclass(frozen=True)
+class VerifiedHumanIdentity:
+    user: User
+    claims: dict[str, Any]
+
+
+def resolve_authenticated_identity(
+    *,
+    authorization: Optional[str],
+    x_actor_id: Optional[str],
+    db: Session,
+    unauthorized_handler: Callable[[str], HTTPException] = _unauthorized,
+    missing_bearer_message: str = "Bearer token is required.",
+) -> VerifiedHumanIdentity:
+    """Verify JWT subject, active persisted user and optional actor header."""
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise unauthorized_handler(missing_bearer_message)
+
+    token = authorization[7:].strip()
+    if not token:
+        raise unauthorized_handler(missing_bearer_message)
+
+    try:
+        claims = jwt.decode(
+            token,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+        )
+        user_id = uuid.UUID(str(claims.get("sub")))
+    except (JWTError, TypeError, ValueError):
+        raise unauthorized_handler("Bearer token is invalid or expired.")
+
+    user = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.is_active == True,
+        )
+        .first()
+    )
+    if not user:
+        raise unauthorized_handler(
+            "Authenticated user no longer exists or is inactive."
+        )
+
+    if x_actor_id and x_actor_id != str(user.id):
+        raise _forbidden(
+            "ACTOR_ID_MISMATCH",
+            "X-Actor-ID must match the authenticated user.",
+        )
+
+    return VerifiedHumanIdentity(user=user, claims=claims)
+
+
 def require_authenticated_human():
     """Authenticate a persisted active user without imposing an admin role.
 
@@ -57,41 +112,13 @@ def require_authenticated_human():
         x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
         db: Session = Depends(get_db),
     ) -> AuthenticatedPrincipal:
-        if not authorization or not authorization.startswith("Bearer "):
-            raise _unauthorized("Bearer token is required.")
-
-        token = authorization[7:].strip()
-        if not token:
-            raise _unauthorized("Bearer token is required.")
-
-        try:
-            claims = jwt.decode(
-                token,
-                JWT_SECRET,
-                algorithms=[JWT_ALGORITHM],
-            )
-            user_id = uuid.UUID(str(claims.get("sub")))
-        except (JWTError, TypeError, ValueError):
-            raise _unauthorized("Bearer token is invalid or expired.")
-
-        user = (
-            db.query(User)
-            .filter(
-                User.id == user_id,
-                User.is_active == True,
-            )
-            .first()
+        identity = resolve_authenticated_identity(
+            authorization=authorization,
+            x_actor_id=x_actor_id,
+            db=db,
         )
-        if not user:
-            raise _unauthorized(
-                "Authenticated user no longer exists or is inactive."
-            )
-
-        if x_actor_id and x_actor_id != str(user.id):
-            raise _forbidden(
-                "ACTOR_ID_MISMATCH",
-                "X-Actor-ID must match the authenticated user.",
-            )
+        user = identity.user
+        claims = identity.claims
 
         token_tenant = str(claims.get("tenant_id") or "")
         tenant_id = x_tenant_id or token_tenant or user.tenant_id or ""
