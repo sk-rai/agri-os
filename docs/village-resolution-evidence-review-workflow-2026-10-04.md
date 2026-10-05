@@ -98,3 +98,15 @@ runtime counts.
 The review selection now presents the canonical LGD hierarchy beside the NWDP source hierarchy, source village code, match rank and basis, prior candidate disposition, source-reuse count, snapshot identity, and source-feature identity. Reviewers therefore assess the evidence itself before recording either decision.
 
 The deterministic ten-row pilot is defined in `docs/village-resolution-evidence-review-pilot-2026-10-04.md` and produced by `backend/scripts/report_village_resolution_evidence_review_pilot.py`. It creates a local, read-only review manifest; it does not pre-populate decisions or authorize application.
+
+## Full-queue progress
+
+The existing review-list route also returns active-snapshot progress across all
+125 collision-free, two-session-eligible evidence rows. It reports unreviewed,
+pending-second-review, approved, rejected, and held totals independently of the
+selected queue-status filter. The web-admin panel can consume those totals
+without introducing a cohort-specific endpoint.
+
+Progress is operational review metadata only. A completed or approved count
+does not authorize application to canonical geography, PIN links, runtime
+crosswalks, projects, or Android.

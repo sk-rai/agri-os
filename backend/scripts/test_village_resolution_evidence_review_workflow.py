@@ -66,6 +66,17 @@ def main():
         primary_body = primary.json()
         assert primary_body["status"] == "PENDING_SECOND_REVIEW"
         review_id = primary_body["review_id"]
+        pending_queue = client.get(
+            "/api/v1/master-data/geography/village-resolution/reviews",
+            headers=first_headers,
+        )
+        assert pending_queue.status_code == 200, pending_queue.text
+        pending_progress = pending_queue.json()["progress"]
+        assert pending_progress["eligible_total"] == 125
+        assert pending_progress["reviewed_total"] == 1
+        assert pending_progress["pending_second_review"] == 1
+        assert pending_progress["unreviewed"] == 124
+        assert pending_progress["application_authorized"] is False
         self_review = client.post(
             f"/api/v1/master-data/geography/village-resolution/reviews/{review_id}/second-review",
             headers=first_headers,
@@ -99,6 +110,11 @@ def main():
         ]
         assert row["primary_reviewer_id"] == first_id
         assert row["second_reviewer_id"] == second_id
+        approved_progress = queue.json()["progress"]
+        assert approved_progress["eligible_total"] == 125
+        assert approved_progress["approved"] == 1
+        assert approved_progress["pending_second_review"] == 0
+        assert approved_progress["completed_total"] == 1
         db.execute(text(
             "delete from geography_village_resolution_evidence_reviews where id=:id"
         ), {"id": review_id})
@@ -121,6 +137,12 @@ def main():
             "runtime_changed": False,
             "android_changed": False,
             "application_authorized": False,
+            "progress_transition": {
+                "eligible_total": 125,
+                "unreviewed": [124, 124],
+                "pending_second_review": [1, 0],
+                "approved": [0, 1],
+            },
         }, indent=2))
         print("VILLAGE RESOLUTION EVIDENCE REVIEW WORKFLOW PASSED")
         return 0

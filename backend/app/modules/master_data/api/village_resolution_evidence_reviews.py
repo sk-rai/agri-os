@@ -69,6 +69,35 @@ def list_reviews(
     allowed = {"PENDING_SECOND_REVIEW", "APPROVED", "REJECTED", "HELD"}
     if normalized and normalized not in allowed:
         raise HTTPException(400, {"code": "INVALID_EVIDENCE_REVIEW_STATUS"})
+    progress = dict(db.execute(text("""
+      select snapshot.id::text snapshot_id,
+             count(item.id)::bigint eligible_total,
+             count(item.id) filter (where review.id is null)::bigint unreviewed,
+             count(item.id) filter (where review.status='PENDING_SECOND_REVIEW')::bigint pending_second_review,
+             count(item.id) filter (where review.status='APPROVED')::bigint approved,
+             count(item.id) filter (where review.status='REJECTED')::bigint rejected,
+             count(item.id) filter (where review.status='HELD')::bigint held
+      from geography_village_resolution_evidence_snapshots snapshot
+      join geography_village_resolution_evidence_items item
+        on item.snapshot_id=snapshot.id
+       and item.review_eligibility='TWO_SESSION_REVIEW_ELIGIBLE'
+       and item.source_collision=false
+      left join geography_village_resolution_evidence_reviews review
+        on review.snapshot_id=item.snapshot_id and review.evidence_item_id=item.id
+      where snapshot.is_active=true
+      group by snapshot.id
+    """)).mappings().first() or {
+        "snapshot_id": None, "eligible_total": 0, "unreviewed": 0,
+        "pending_second_review": 0, "approved": 0, "rejected": 0, "held": 0,
+    })
+    progress["reviewed_total"] = (
+        int(progress["pending_second_review"]) + int(progress["approved"])
+        + int(progress["rejected"]) + int(progress["held"])
+    )
+    progress["completed_total"] = (
+        int(progress["approved"]) + int(progress["rejected"]) + int(progress["held"])
+    )
+    progress["application_authorized"] = False
     rows = db.execute(text("""
       select review.id::text review_id, review.snapshot_id::text snapshot_id,
              review.evidence_item_id::text evidence_item_id,
@@ -112,6 +141,7 @@ def list_reviews(
             "has_more": offset + len(rows) < total,
         },
         "items": [dict(row) for row in rows],
+        "progress": progress,
         "guardrails": _guardrails(),
     }
 
