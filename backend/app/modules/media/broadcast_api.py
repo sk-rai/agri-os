@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
 from app.modules.farmer.models import Farmer, Parcel
 from app.modules.media.api import _iso
@@ -304,6 +305,7 @@ def create_broadcast_campaign(
     body: BroadcastCampaignCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     from datetime import datetime, timezone
     now_ts = datetime.now(timezone.utc)
@@ -370,6 +372,7 @@ def add_broadcast_content(
     body: BroadcastContentCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     from datetime import datetime, timezone
 
@@ -407,6 +410,7 @@ def add_broadcast_audience_rule(
     body: BroadcastAudienceRuleCreate,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     from datetime import datetime, timezone
 
@@ -770,6 +774,7 @@ def publish_broadcast_campaign(
     body: BroadcastPublishRequest | None = None,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     from datetime import datetime, timezone
 
@@ -861,6 +866,7 @@ def generate_broadcast_deliveries(
     campaign_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     from datetime import datetime, timezone
 
@@ -925,6 +931,7 @@ def retry_undelivered_broadcast_deliveries(
     campaign_id: uuid.UUID,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     from datetime import datetime, timezone
 
@@ -1002,6 +1009,7 @@ def expire_broadcast_campaign(
     body: BroadcastLifecycleRequest | None = None,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     return _transition_broadcast_status(
         db,
@@ -1020,6 +1028,7 @@ def cancel_broadcast_campaign(
     body: BroadcastLifecycleRequest | None = None,
     db: Session = Depends(get_db),
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
     return _transition_broadcast_status(
         db,

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import engine, SessionLocal
 from app.main import app
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Farmer, Project, Tenant
 from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment, WeatherSnapshot
 
@@ -42,7 +43,6 @@ def main():
     all_farmer_id = uuid.uuid4()
     crop_farmer_id = uuid.uuid4()
     crop_parcel_id = uuid.uuid4()
-    headers = {"X-Tenant-ID": tenant_id}
 
     BroadcastAuditEvent.__table__.create(bind=engine, checkfirst=True)
 
@@ -311,7 +311,44 @@ def main():
     finally:
         db.close()
 
+    db = SessionLocal()
+    try:
+        admin, headers = create_test_admin(db, tenant_id=tenant_id)
+        admin_id = admin.id
+    finally:
+        db.close()
+
     client = TestClient(app)
+    security_payload = {
+        "title": "Authorization boundary probe",
+        "category": "GENERAL",
+        "priority": "NORMAL",
+        "contents": [{"language_code": "en", "title": "Probe", "body_text": "Probe"}],
+        "audience_rules": [{"rule_type": "FARMER", "operator": "IN", "values": [str(farmer_id)]}],
+    }
+    missing_bearer = client.post(
+        "/api/v1/broadcasts",
+        headers={"X-Tenant-ID": tenant_id},
+        json=security_payload,
+    )
+    check(missing_bearer.status_code == 401, "Broadcast mutation rejects missing bearer")
+
+    actor_mismatch_headers = {**headers, "X-Actor-ID": str(uuid.uuid4())}
+    actor_mismatch = client.post(
+        "/api/v1/broadcasts",
+        headers=actor_mismatch_headers,
+        json=security_payload,
+    )
+    check(actor_mismatch.status_code == 403, "Broadcast mutation rejects actor mismatch")
+
+    tenant_mismatch_headers = {**headers, "X-Tenant-ID": f"{tenant_id}-other"}
+    tenant_mismatch = client.post(
+        "/api/v1/broadcasts",
+        headers=tenant_mismatch_headers,
+        json=security_payload,
+    )
+    check(tenant_mismatch.status_code == 403, "Broadcast mutation rejects token/header tenant mismatch")
+
     print("\n[1] Create draft campaign via API")
     created_id = uuid.uuid4()
     create = client.post("/api/v1/broadcasts", headers=headers, json={
@@ -683,6 +720,7 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        delete_test_admin(db, admin_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")
