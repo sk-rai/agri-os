@@ -24,6 +24,9 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.auth.models import User
+from app.modules.auth.service import create_jwt
+from app.modules.farmer.models import Farmer
 from app.modules.media.models import (
     BroadcastAuditEvent,
     BroadcastAudienceRule,
@@ -31,6 +34,7 @@ from app.modules.media.models import (
     BroadcastContent,
     BroadcastDelivery,
 )
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from scripts.prepare_android_fpo_multi_village_workflow import PROJECT_ID, TENANT_ID
 
 ACTOR_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000002099")
@@ -58,11 +62,48 @@ def check(condition: bool, label: str, detail=None) -> None:
         raise AssertionError(label)
 
 
-def request_json(client: TestClient, method: str, path: str, *, expected: int = 200, body: dict | None = None) -> dict:
-    response = client.request(method, path, headers={"X-Tenant-ID": TENANT_ID}, json=body)
+def request_json(
+    client: TestClient,
+    method: str,
+    path: str,
+    *,
+    expected: int = 200,
+    body: dict | None = None,
+    headers: dict | None = None,
+) -> dict:
+    response = client.request(
+        method,
+        path,
+        headers=headers or {"X-Tenant-ID": TENANT_ID},
+        json=body,
+    )
     check(response.status_code == expected, f"{method} {path} returns {expected}", response.text[:1200])
     return response.json()
 
+
+
+def authenticated_farmer_headers() -> dict:
+    db = SessionLocal()
+    try:
+        farmer = db.query(Farmer).filter(
+            Farmer.id == SELECTED_FARMER_ID,
+            Farmer.tenant_id == TENANT_ID,
+        ).one()
+        if not farmer.user_id:
+            raise AssertionError("Selected farmer has no linked user")
+        user = db.query(User).filter(
+            User.id == farmer.user_id,
+            User.tenant_id == TENANT_ID,
+            User.is_active == True,
+        ).one()
+        token, _ = create_jwt(user, "android-terminal-visibility")
+        return {
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-ID": TENANT_ID,
+            "X-Actor-ID": str(user.id),
+        }
+    finally:
+        db.close()
 
 def cleanup_state() -> dict:
     db = SessionLocal()
@@ -89,12 +130,13 @@ def select_campaign_items(feed: dict) -> list[dict]:
     return [row for row in feed.get("broadcasts", []) if row.get("campaign", {}).get("id") == str(CAMPAIGN_ID)]
 
 
-def create_visible_campaign(client: TestClient) -> dict:
+def create_visible_campaign(client: TestClient, admin_headers: dict) -> dict:
     created = request_json(
         client,
         "POST",
         "/api/v1/broadcasts",
         expected=201,
+        headers=admin_headers,
         body={
             "id": str(CAMPAIGN_ID),
             "project_id": str(PROJECT_ID),
@@ -133,9 +175,15 @@ def create_visible_campaign(client: TestClient) -> dict:
         client,
         "POST",
         f"/api/v1/broadcasts/{CAMPAIGN_ID}/publish",
+        headers=admin_headers,
         body={"approved_by": str(ACTOR_ID), "reason": "Android terminal visibility smoke publish"},
     )
-    generated = request_json(client, "POST", f"/api/v1/broadcasts/{CAMPAIGN_ID}/generate-deliveries")
+    generated = request_json(
+        client,
+        "POST",
+        f"/api/v1/broadcasts/{CAMPAIGN_ID}/generate-deliveries",
+        headers=admin_headers,
+    )
     check(published["status"] == "PUBLISHED", "Campaign is PUBLISHED before Android observes it", published)
     check(generated["delivery_summary"]["total"] == 1, "Single selected farmer delivery generated", generated.get("delivery_summary"))
     return {"created": created, "published": published, "generated": generated}
@@ -154,25 +202,32 @@ def verify_visible_state(client: TestClient) -> dict:
     return {"detail": detail, "feed": feed, "item": item}
 
 
-def mark_read_ack(client: TestClient, delivery_id: str) -> dict:
-    read = request_json(client, "POST", f"/api/v1/broadcasts/deliveries/{delivery_id}/read")
-    ack = request_json(client, "POST", f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge")
+def mark_read_ack(client: TestClient, delivery_id: str, farmer_headers: dict) -> dict:
+    read = request_json(client, "POST", f"/api/v1/broadcasts/deliveries/{delivery_id}/read", headers=farmer_headers)
+    ack = request_json(client, "POST", f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge", headers=farmer_headers)
     check(read["read_at"] is not None, "Optional pre-terminal read_at is set", read)
     check(ack["delivery_status"] == "ACKNOWLEDGED" and ack["acknowledged_at"] is not None, "Optional pre-terminal ACK is preserved", ack)
     return {"read": read, "ack": ack}
 
 
-def transition_terminal(client: TestClient, action: str, ack_before_transition: bool) -> dict:
+def transition_terminal(
+    client: TestClient,
+    action: str,
+    ack_before_transition: bool,
+    admin_headers: dict,
+    farmer_headers: dict,
+) -> dict:
     config = TERMINAL_ACTIONS[action]
     before = verify_visible_state(client)
     ack = {}
     if ack_before_transition:
-        ack = mark_read_ack(client, before["item"]["delivery"]["id"])
+        ack = mark_read_ack(client, before["item"]["delivery"]["id"], farmer_headers)
 
     transitioned = request_json(
         client,
         "POST",
         f"/api/v1/broadcasts/{CAMPAIGN_ID}/{config['endpoint']}",
+        headers=admin_headers,
         body={"actor_id": str(ACTOR_ID), "reason": f"Android terminal visibility smoke: {config['status']}"},
     )
     check(transitioned["status"] == config["status"], f"Campaign transitioned to {config['status']}", transitioned)
@@ -223,10 +278,39 @@ def main() -> int:
         }, indent=2, sort_keys=True, default=str))
         return 0
 
-    client = TestClient(app)
-    created = create_visible_campaign(client) if args.apply else {}
-    visible = verify_visible_state(client) if args.apply or not args.transition else {}
-    terminal = transition_terminal(client, args.transition, args.ack_before_transition) if args.transition else {}
+    db = SessionLocal()
+    try:
+        admin_user, admin_headers = create_test_admin(
+            db,
+            role="ENTERPRISE_ADMIN",
+            tenant_id=TENANT_ID,
+        )
+        admin_user_id = admin_user.id
+    finally:
+        db.close()
+
+    try:
+        farmer_headers = authenticated_farmer_headers()
+        client = TestClient(app)
+        created = create_visible_campaign(client, admin_headers) if args.apply else {}
+        visible = verify_visible_state(client) if args.apply or not args.transition else {}
+        terminal = (
+            transition_terminal(
+                client,
+                args.transition,
+                args.ack_before_transition,
+                admin_headers,
+                farmer_headers,
+            )
+            if args.transition
+            else {}
+        )
+    finally:
+        cleanup_db = SessionLocal()
+        try:
+            delete_test_admin(cleanup_db, admin_user_id)
+        finally:
+            cleanup_db.close()
 
     result = {
         "schema_version": "android_broadcast_terminal_visibility_prepare.v1",

@@ -11,6 +11,8 @@ CHECKS=[
  (AUDIT,"MUTATION_WITHOUT_ACTOR_MARKER","Actor gaps are classified"),
  (AUDIT,"NON_REFERENCE_READ_WITHOUT_AUTH_MARKER","Read gaps are classified"),
  (AUDIT,"headers_are_not_authorization","Header boundary is explicit"),
+ (AUDIT,"AuthenticatedPrincipal","Shared human principal is recognized"),
+ (AUDIT,"require_authenticated_human","Shared human dependency is recognized"),
  (AUDIT,'automatic_enforcement_authorized":False',"Automatic enforcement is prohibited"),
  (DOC,"Compatibility-first remediation","Compatibility boundary is documented"),
  (DOC,"Mutation routes first","Mutation priority is documented"),

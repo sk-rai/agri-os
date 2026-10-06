@@ -37,7 +37,14 @@ def scan(path):
         if not route:continue
         method,suffix=route;body=ast.unparse(node);full=f"{prefix}{suffix}"
         admin="require_admin_permission" in body
-        bearer=any(x in body for x in ("Authorization","authorization","jwt.decode","AdminPrincipal"))
+        bearer=any(x in body for x in (
+            "Authorization",
+            "authorization",
+            "jwt.decode",
+            "AdminPrincipal",
+            "AuthenticatedPrincipal",
+            "require_authenticated_human",
+        ))
         tenant=any(x in body for x in ("X-Tenant-ID","x_tenant_id","principal.tenant_id"))
         actor=any(x in body for x in ("X-Actor-ID","x_actor_id","principal.user_id","claims.get('sub')","claims.get(\"sub\")"))
         public=any(full.startswith(p) for p in PUBLIC_PREFIXES)

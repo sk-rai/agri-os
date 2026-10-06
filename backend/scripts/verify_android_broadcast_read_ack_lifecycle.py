@@ -12,6 +12,9 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.auth.models import User
+from app.modules.auth.service import create_jwt
+from app.modules.farmer.models import Farmer
 from app.modules.media.models import BroadcastAuditEvent, BroadcastDelivery
 from scripts.prepare_android_fpo_project_closure_migration_notice import CAMPAIGN_ID, SELECTED_FARMER_ID, SELECTED_MOBILE
 from scripts.prepare_android_fpo_multi_village_workflow import PROJECT_ID, TENANT_ID
@@ -25,8 +28,32 @@ def check(condition: bool, label: str, detail=None) -> None:
         raise AssertionError(label)
 
 
+def authenticated_farmer_headers() -> dict:
+    db = SessionLocal()
+    try:
+        farmer = db.query(Farmer).filter(
+            Farmer.id == SELECTED_FARMER_ID,
+            Farmer.tenant_id == TENANT_ID,
+        ).one()
+        if not farmer.user_id:
+            raise AssertionError("Selected farmer has no linked user")
+        user = db.query(User).filter(
+            User.id == farmer.user_id,
+            User.tenant_id == TENANT_ID,
+            User.is_active == True,
+        ).one()
+        token, _ = create_jwt(user, "android-broadcast-read-ack-verifier")
+        return {
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-ID": TENANT_ID,
+            "X-Actor-ID": str(user.id),
+        }
+    finally:
+        db.close()
+
+
 def request_json(client: TestClient, method: str, path: str, body: dict | None = None, expected: int = 200) -> dict:
-    response = client.request(method, path, headers={"X-Tenant-ID": TENANT_ID}, json=body)
+    response = client.request(method, path, headers=authenticated_farmer_headers(), json=body)
     check(response.status_code == expected, f"{method} {path} returns {expected}", response.text[:1000])
     return response.json()
 

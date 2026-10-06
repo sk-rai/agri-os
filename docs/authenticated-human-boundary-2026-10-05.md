@@ -50,3 +50,24 @@ membership, error codes, and response payloads remain governed by
 
 This refactor changes no route exposure and does not attach authenticated-human
 enforcement to Android or field-agent endpoints.
+
+## Broadcast delivery consumption checkpoint
+
+The existing Android broadcast delivery read and acknowledge routes now require
+the shared authenticated-human dependency. Their paths and response schemas are
+unchanged.
+
+Access is allowed only when the authenticated user is:
+
+- the delivery's explicit user;
+- the user linked to the delivery's farmer; or
+- an actively assigned project user for that farmer.
+
+Tenant identity is derived from the verified principal. Unrelated authenticated
+users fail closed. Audit events identify the authenticated user and role rather
+than treating the farmer record itself as the actor.
+
+Backend Android fixtures now use a farmer bearer for delivery consumption.
+Campaign creation, publication, generation, and terminal lifecycle operations
+continue to use enterprise-admin authorization. This is a backend contract
+hardening change and requires no Android UI or API-path modification.

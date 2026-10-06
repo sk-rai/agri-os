@@ -50,7 +50,7 @@ The audit is read-only and does not automatically enforce policy.
 
 The first bounded remediation protects the eight broadcast-admin mutations with the shared admin dependency. Draft/content/audience edits require `EDIT`; publish, delivery generation/retry, expiry, and cancellation require `PUBLISH`. Behavior coverage verifies valid credentials as well as missing bearer, actor mismatch, and token/header tenant mismatch.
 
-Farmer delivery read/ack mutations remain outside this admin slice. They need the Android human-auth contract and must not be made admin-only merely to satisfy the audit marker. Broadcast tenant-sensitive reads also remain a subsequent `VIEW`-permission tranche.
+The existing farmer delivery read/ack mutations now use the shared authenticated-human dependency rather than admin authorization. Delivery ownership accepts the explicit delivery user, linked farmer user, or an active project assignment; unrelated identities fail closed. The audit classifier recognizes this shared principal as an authentication marker. Broadcast tenant-sensitive reads remain a subsequent authorization tranche.
 
 Static source markers are triage evidence, not a security proof. Each flagged family needs behavior tests.
 

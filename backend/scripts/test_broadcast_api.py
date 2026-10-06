@@ -315,6 +315,24 @@ def main():
     try:
         admin, headers = create_test_admin(db, tenant_id=tenant_id)
         admin_id = admin.id
+
+        farmer_user, farmer_headers = create_test_admin(
+            db,
+            role="FARMER",
+            tenant_id=tenant_id,
+        )
+        farmer_user_id = farmer_user.id
+
+        unrelated_user, unrelated_headers = create_test_admin(
+            db,
+            role="FARMER",
+            tenant_id=tenant_id,
+        )
+        unrelated_user_id = unrelated_user.id
+
+        farmer = db.query(Farmer).filter(Farmer.id == farmer_id).one()
+        farmer.user_id = farmer_user_id
+        db.commit()
     finally:
         db.close()
 
@@ -608,14 +626,40 @@ def main():
     check(str(expired_id) not in visibility_ids, "Expired broadcast is hidden from farmer feed")
 
     print("\n[1e] Read and acknowledge delivery")
-    read = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/read", headers=headers)
+    missing_delivery_bearer = client.post(
+        f"/api/v1/broadcasts/deliveries/{delivery_id}/read",
+        headers={"X-Tenant-ID": tenant_id},
+    )
+    check(
+        missing_delivery_bearer.status_code == 401,
+        "Delivery read rejects missing bearer",
+        missing_delivery_bearer.text,
+    )
+
+    unrelated_read = client.post(
+        f"/api/v1/broadcasts/deliveries/{delivery_id}/read",
+        headers=unrelated_headers,
+    )
+    check(
+        unrelated_read.status_code == 403,
+        "Unrelated authenticated farmer cannot read delivery",
+        unrelated_read.text,
+    )
+
+    read = client.post(
+        f"/api/v1/broadcasts/deliveries/{delivery_id}/read",
+        headers=farmer_headers,
+    )
     check(read.status_code == 200, "Mark delivery read returns 200", read.text)
     read_body = read.json()
     check(read_body["read_at"] is not None, "Read endpoint sets read_at")
     check(read_body["delivered_at"] is not None, "Read endpoint sets delivered_at")
     check(read_body["delivery_status"] == "DELIVERED", "Read endpoint marks delivery delivered")
 
-    ack = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge", headers=headers)
+    ack = client.post(
+        f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge",
+        headers=farmer_headers,
+    )
     check(ack.status_code == 200, "Acknowledge delivery returns 200", ack.text)
     ack_body = ack.json()
     check(ack_body["acknowledged_at"] is not None, "Acknowledge endpoint sets acknowledged_at")
@@ -632,12 +676,29 @@ def main():
     check("GENERATE_DELIVERIES" in actions, "Broadcast audit includes delivery generation")
     check("MARK_DELIVERY_READ" in actions, "Broadcast audit includes read")
     check("ACKNOWLEDGE_DELIVERY" in actions, "Broadcast audit includes acknowledgement")
+    delivery_actor_ids = {
+        row["actor_id"]
+        for row in audit_body["events"]
+        if row["action"] in {"MARK_DELIVERY_READ", "ACKNOWLEDGE_DELIVERY"}
+    }
+    check(
+        delivery_actor_ids == {str(farmer_user_id)},
+        "Delivery audit records authenticated farmer user",
+        delivery_actor_ids,
+    )
     filtered_audit = client.get(f"/api/v1/broadcasts/{created_id}/audit?action=PUBLISH_CAMPAIGN", headers=headers)
     check(filtered_audit.status_code == 200, "Broadcast audit action filter returns 200", filtered_audit.text)
     check(filtered_audit.json()["count"] == 1, "Broadcast audit action filter narrows results")
 
-    isolated_ack = client.post(f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge", headers={"X-Tenant-ID": "default"})
-    check(isolated_ack.status_code == 404, "Delivery acknowledgement is tenant isolated", isolated_ack.text)
+    isolated_ack = client.post(
+        f"/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge",
+        headers={**farmer_headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        isolated_ack.status_code == 403,
+        "Delivery acknowledgement rejects token/header tenant mismatch",
+        isolated_ack.text,
+    )
     republish = client.post(f"/api/v1/broadcasts/{created_id}/publish", headers=headers, json={})
     check(republish.status_code == 409, "Published broadcast cannot be republished", republish.text)
 
@@ -721,6 +782,8 @@ def main():
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         delete_test_admin(db, admin_id)
+        delete_test_admin(db, farmer_user_id)
+        delete_test_admin(db, unrelated_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

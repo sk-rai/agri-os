@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, require_admin_permission
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, Parcel
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel
 from app.modules.media.api import _iso
 from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment, WeatherSnapshot
 
@@ -1175,17 +1176,72 @@ def get_broadcast_campaign(
 
 
 
+def _require_broadcast_delivery_access(
+    db: Session,
+    delivery: BroadcastDelivery,
+    principal: AuthenticatedPrincipal,
+) -> None:
+    """Require the authenticated human to own or be assigned the delivery."""
+
+    if delivery.user_id and delivery.user_id == principal.user_id:
+        return
+
+    farmer = None
+    if delivery.farmer_id:
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == delivery.farmer_id,
+                Farmer.tenant_id == principal.tenant_id,
+            )
+            .first()
+        )
+
+    if farmer and farmer.user_id == principal.user_id:
+        return
+
+    if farmer:
+        actor_text = str(principal.user_id)
+        enrollments = (
+            db.query(FarmerProjectEnrollment)
+            .filter(
+                FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+                FarmerProjectEnrollment.farmer_id == farmer.id,
+                FarmerProjectEnrollment.status == "ACTIVE",
+            )
+            .all()
+        )
+        if any(
+            actor_text in {str(value) for value in (row.assigned_user_ids or [])}
+            for row in enrollments
+        ):
+            return
+
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "BROADCAST_DELIVERY_ACCESS_DENIED",
+            "message": "Authenticated user cannot consume this broadcast delivery.",
+            "delivery_id": str(delivery.id),
+        },
+    )
+
+
 @router.post("/deliveries/{delivery_id}/read")
 def mark_broadcast_delivery_read(
     delivery_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
     from datetime import datetime, timezone
 
-    delivery = db.query(BroadcastDelivery).filter(BroadcastDelivery.id == delivery_id, BroadcastDelivery.tenant_id == x_tenant_id).first()
+    delivery = db.query(BroadcastDelivery).filter(
+        BroadcastDelivery.id == delivery_id,
+        BroadcastDelivery.tenant_id == principal.tenant_id,
+    ).first()
     if not delivery:
         raise HTTPException(404, "Broadcast delivery not found")
+    _require_broadcast_delivery_access(db, delivery, principal)
 
     now_ts = datetime.now(timezone.utc)
     if delivery.delivered_at is None:
@@ -1195,7 +1251,7 @@ def mark_broadcast_delivery_read(
     if delivery.delivery_status == "PENDING":
         delivery.delivery_status = "DELIVERED"
     delivery.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=delivery.campaign_id, delivery_id=delivery.id, action="MARK_DELIVERY_READ", actor_type="FARMER", actor_id=delivery.farmer_id, before={"delivery_status": "PENDING"}, after={"delivery_status": delivery.delivery_status})
+    _record_broadcast_audit(db, tenant_id=principal.tenant_id, campaign_id=delivery.campaign_id, delivery_id=delivery.id, action="MARK_DELIVERY_READ", actor_type=principal.role, actor_id=principal.user_id, before={"delivery_status": "PENDING"}, after={"delivery_status": delivery.delivery_status})
     db.commit()
     db.refresh(delivery)
     return _delivery_payload(delivery)
@@ -1204,14 +1260,18 @@ def mark_broadcast_delivery_read(
 @router.post("/deliveries/{delivery_id}/acknowledge")
 def acknowledge_broadcast_delivery(
     delivery_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
     from datetime import datetime, timezone
 
-    delivery = db.query(BroadcastDelivery).filter(BroadcastDelivery.id == delivery_id, BroadcastDelivery.tenant_id == x_tenant_id).first()
+    delivery = db.query(BroadcastDelivery).filter(
+        BroadcastDelivery.id == delivery_id,
+        BroadcastDelivery.tenant_id == principal.tenant_id,
+    ).first()
     if not delivery:
         raise HTTPException(404, "Broadcast delivery not found")
+    _require_broadcast_delivery_access(db, delivery, principal)
 
     now_ts = datetime.now(timezone.utc)
     if delivery.delivered_at is None:
@@ -1222,7 +1282,7 @@ def acknowledge_broadcast_delivery(
         delivery.acknowledged_at = now_ts
     delivery.delivery_status = "ACKNOWLEDGED"
     delivery.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=delivery.campaign_id, delivery_id=delivery.id, action="ACKNOWLEDGE_DELIVERY", actor_type="FARMER", actor_id=delivery.farmer_id, before={"delivery_status": "DELIVERED"}, after={"delivery_status": delivery.delivery_status})
+    _record_broadcast_audit(db, tenant_id=principal.tenant_id, campaign_id=delivery.campaign_id, delivery_id=delivery.id, action="ACKNOWLEDGE_DELIVERY", actor_type=principal.role, actor_id=principal.user_id, before={"delivery_status": "DELIVERED"}, after={"delivery_status": delivery.delivery_status})
     db.commit()
     db.refresh(delivery)
     return _delivery_payload(delivery)

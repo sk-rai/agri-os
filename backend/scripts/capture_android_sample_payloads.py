@@ -115,6 +115,11 @@ def main() -> int:
         sample_user = User(id=user_id, mobile_number=f'+9198{uuid.uuid4().int % 100000000:08d}', role='FARMER', tenant_id=tenant_id, display_name='Android Sample User', language_preference='hi', created_at=now_ts, updated_at=now_ts)
         db.add(sample_user)
         db.commit()
+        farmer_headers = {
+            'Authorization': bearer(sample_user),
+            'X-Tenant-ID': tenant_id,
+            'X-Actor-ID': str(sample_user.id),
+        }
 
         mode_bootstrap = assert_ok('mode bootstrap', client.get('/api/v1/auth/mode-bootstrap', headers={'Authorization': bearer(sample_user), 'X-Tenant-ID': tenant_id}))
         write_json('01-mode-bootstrap.json', redact(mode_bootstrap))
@@ -317,10 +322,10 @@ def main() -> int:
         broadcast_detail = assert_ok('broadcast detail', client.get(f'/api/v1/broadcasts/{campaign_id}', headers=headers))
         write_json('17-broadcast-detail.json', redact(broadcast_detail))
 
-        broadcast_read = assert_ok('broadcast read', client.post(f'/api/v1/broadcasts/deliveries/{delivery_id}/read', headers=headers))
+        broadcast_read = assert_ok('broadcast read', client.post(f'/api/v1/broadcasts/deliveries/{delivery_id}/read', headers=farmer_headers))
         write_json('18-broadcast-read-response.json', redact(broadcast_read))
 
-        broadcast_ack = assert_ok('broadcast acknowledge', client.post(f'/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge', headers=headers))
+        broadcast_ack = assert_ok('broadcast acknowledge', client.post(f'/api/v1/broadcasts/deliveries/{delivery_id}/acknowledge', headers=farmer_headers))
         write_json('19-broadcast-ack-response.json', redact(broadcast_ack))
 
         crop_template = assert_ok('rice crop template', client.get('/api/v1/crop-cycles/templates/RICE', headers=headers))
