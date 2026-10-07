@@ -76,3 +76,18 @@ agronomist-as-admin access fail closed.
 This checkpoint does not include media attachment creation or field-event
 creation/status changes. Those remain independently reviewable mutation
 families.
+
+## Generic media attachment checkpoint
+
+`POST /api/v1/media/attachments` now uses verified human identity and no longer
+trusts a tenant header as authorization.
+
+The route verifies both asset and target scope, rejects cross-farmer and
+cross-project linkage, keeps advisory publication web-admin-only, and fails
+closed for generic target types without an explicit ownership mapping. Direct
+behavior coverage includes farmer, parcel, assigned-agent field-event,
+unassigned-agent, cross-farmer, cross-project, unsupported-target, missing
+bearer, and tenant-mismatch cases.
+
+`GET /api/v1/media/attachments`, inline attachments created by field-event and
+query APIs, and sync/worker materialisation remain separate review tranches.

@@ -13,7 +13,13 @@ from app.core.database import get_db
 from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
 from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
-from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
+from app.modules.media.models import (
+    BroadcastCampaign,
+    BroadcastContent,
+    FieldEventReport,
+    MediaAsset,
+    MediaAttachment,
+)
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
 field_events_router = APIRouter(prefix="/api/v1/field-events", tags=["field-events"])
@@ -380,6 +386,141 @@ def _require_media_creation_scope(
     )
 
 
+def _attachment_target_unsupported(entity_type: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "MEDIA_ATTACHMENT_TARGET_UNSUPPORTED",
+            "message": (
+                f"Generic attachment creation is not authorised for "
+                f"{entity_type} targets."
+            ),
+        },
+    )
+
+
+def _require_media_attachment_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    asset: MediaAsset,
+    entity_type: str,
+    entity_id: uuid.UUID,
+) -> None:
+    """Authorise both sides of a generic media attachment relationship."""
+
+    _require_media_creation_scope(
+        db,
+        principal=principal,
+        project_id=asset.project_id,
+        farmer_id=asset.farmer_id,
+    )
+
+    target_project_id = None
+    target_farmer_id = None
+
+    if entity_type == "FARMER":
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == entity_id,
+                Farmer.tenant_id == principal.tenant_id,
+                Farmer.status != "ARCHIVED",
+                Farmer.is_active == True,
+            )
+            .first()
+        )
+        if not farmer:
+            raise HTTPException(404, "Farmer not found")
+        target_project_id = farmer.project_id
+        target_farmer_id = farmer.id
+
+    elif entity_type == "PARCEL":
+        parcel = (
+            db.query(Parcel)
+            .filter(
+                Parcel.id == entity_id,
+                Parcel.tenant_id == principal.tenant_id,
+                Parcel.is_active == True,
+            )
+            .first()
+        )
+        if not parcel:
+            raise HTTPException(404, "Parcel not found")
+        target_project_id = parcel.project_id
+        target_farmer_id = parcel.farmer_id
+
+    elif entity_type == "FIELD_EVENT":
+        event = (
+            db.query(FieldEventReport)
+            .filter(
+                FieldEventReport.id == entity_id,
+                FieldEventReport.tenant_id == principal.tenant_id,
+                FieldEventReport.is_active == True,
+            )
+            .first()
+        )
+        if not event:
+            raise HTTPException(404, "Field event not found")
+        target_project_id = event.project_id
+        target_farmer_id = event.farmer_id
+
+    elif entity_type == "ADVISORY":
+        if not _media_admin_can_edit(principal):
+            raise _media_scope_forbidden(
+                "Advisory attachments require an authorised web administrator."
+            )
+
+        advisory_row = (
+            db.query(BroadcastContent, BroadcastCampaign)
+            .join(
+                BroadcastCampaign,
+                BroadcastCampaign.id == BroadcastContent.campaign_id,
+            )
+            .filter(
+                BroadcastContent.id == entity_id,
+                BroadcastContent.tenant_id == principal.tenant_id,
+                BroadcastCampaign.tenant_id == principal.tenant_id,
+                BroadcastCampaign.is_active == True,
+            )
+            .first()
+        )
+        if not advisory_row:
+            raise HTTPException(404, "Advisory content not found")
+
+        _, campaign = advisory_row
+        target_project_id = campaign.project_id
+
+    else:
+        raise _attachment_target_unsupported(entity_type)
+
+    if (
+        asset.farmer_id
+        and target_farmer_id
+        and asset.farmer_id != target_farmer_id
+    ):
+        raise _media_scope_forbidden(
+            "Media asset farmer does not match the attachment target."
+        )
+
+    if (
+        asset.project_id
+        and target_project_id
+        and asset.project_id != target_project_id
+    ):
+        raise _media_scope_forbidden(
+            "Media asset project does not match the attachment target."
+        )
+
+    if entity_type != "ADVISORY":
+        _require_media_creation_scope(
+            db,
+            principal=principal,
+            project_id=target_project_id,
+            farmer_id=target_farmer_id,
+        )
+
+
 @router.post("/assets", status_code=201)
 def create_media_asset(
     body: MediaAssetCreate,
@@ -490,14 +631,30 @@ def get_media_asset(
 def create_media_attachment(
     body: MediaAttachmentCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    asset = db.query(MediaAsset).filter(MediaAsset.id == body.media_asset_id, MediaAsset.tenant_id == x_tenant_id).first()
+    asset = (
+        db.query(MediaAsset)
+        .filter(
+            MediaAsset.id == body.media_asset_id,
+            MediaAsset.tenant_id == principal.tenant_id,
+        )
+        .first()
+    )
     if not asset:
         raise HTTPException(404, "Media asset not found")
+
+    _require_media_attachment_scope(
+        db,
+        principal=principal,
+        asset=asset,
+        entity_type=body.entity_type,
+        entity_id=body.entity_id,
+    )
+
     attachment = MediaAttachment(
         id=body.id or uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=principal.tenant_id,
         media_asset_id=asset.id,
         entity_type=body.entity_type,
         entity_id=body.entity_id,
@@ -505,7 +662,10 @@ def create_media_attachment(
         caption=body.caption,
         display_order=body.display_order,
         is_primary=body.is_primary,
-        metadata_=body.metadata or {},
+        metadata_={
+            **(body.metadata or {}),
+            "created_by_user_id": str(principal.user_id),
+        },
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )

@@ -89,3 +89,18 @@ The next bounded change will apply this resolver to media and field-event
 mutations. It must preserve endpoint paths and response schemas, update Android
 fixtures to use bearer authentication, derive audit actors from the verified
 principal, and retain web-admin-only configuration boundaries.
+
+## Media attachment integration checkpoint
+
+The strict persona resolver now governs generic media attachment creation for
+farmer, parcel, and field-event targets. A personal farmer can attach their
+media to their own records, while an organisation agent requires an active
+profile, active project role, and explicit active farmer assignment.
+
+Possession of an authorised asset does not grant authority over another target.
+The target is resolved independently, and asset/target farmer and project
+identities must remain compatible.
+
+Advisory attachments remain a web-admin publication capability. Field agents
+and agronomists cannot use the advisory path merely because they have an
+operational persona.

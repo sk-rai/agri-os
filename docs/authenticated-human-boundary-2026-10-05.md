@@ -100,3 +100,31 @@ tranches and are not claimed as secured here.
 Existing deterministic Android/backend fixtures now send real bearer identities
 when they create or complete media assets. Endpoint paths and response schemas
 remain unchanged.
+
+## Generic media attachment mutation checkpoint
+
+Generic media attachment creation now requires the shared authenticated-human
+boundary. Tenant identity is derived from the verified principal, and access is
+checked independently for both the media asset and its target.
+
+The generic route currently authorises these persisted targets:
+
+- `FARMER`, through personal-farmer or explicit assigned-agent scope;
+- `PARCEL`, through its farmer and project;
+- `FIELD_EVENT`, through its farmer and project;
+- `ADVISORY`, meaning persisted broadcast content belonging to an active
+  campaign, restricted to explicit web-admin roles.
+
+Where both sides provide farmer or project context, the asset and target must
+match. Cross-farmer and cross-project attachment attempts fail closed. The
+attachment metadata records the verified actor as `created_by_user_id`; any
+caller-supplied value for that key is overwritten by the server.
+
+Other declared attachment entity types remain available to their owning APIs or
+governed sync materialisers, but the generic endpoint rejects them with
+`MEDIA_ATTACHMENT_TARGET_UNSUPPORTED` until an explicit ownership mapping is
+implemented.
+
+This checkpoint changes only `POST /api/v1/media/attachments`. Attachment
+listing, inline field-event attachment creation, and worker/sync materialisation
+remain separate authorization tranches.
