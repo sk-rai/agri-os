@@ -105,5 +105,7 @@ coverage verifies missing bearer, tenant mismatch, initial status, reporter
 attribution, transition history, and the deterministic farmer-to-admin advisory
 loop.
 
-The field-event list and detail reads remain explicitly visible as deferred
-non-reference-read findings.
+The field-event list and detail reads now require verified human identity and
+apply tenant-bounded persona visibility. They no longer appear as unprotected
+non-reference-read findings. Direct behavior coverage proves farmer,
+assigned-agent, unassigned-agent, and web-admin visibility boundaries.

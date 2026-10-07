@@ -158,4 +158,8 @@ for media upload and event creation, then a distinct enterprise-admin bearer
 for review, advisory publication, delivery generation, and the final
 `ADVISORY_SENT` transition. Endpoint paths and response schemas remain stable.
 
-Field-event list and detail reads remain a separate authorization tranche.
+Field-event list and detail reads now use the same verified human identity.
+Web administrators may read tenant events. Operational users are restricted to
+events belonging to their linked personal farmers or explicitly assigned
+farmers. Inaccessible detail records return `404` to avoid disclosing their
+existence.

@@ -21,9 +21,16 @@ def main():
     create_end = API.index('@field_events_router.get("")', create_start)
     create = API[create_start:create_end]
 
+    list_start = API.index('@field_events_router.get("")')
+    detail_start = API.index(
+        '@field_events_router.get("/{event_id}")',
+        list_start,
+    )
     status_start = API.index(
         '@field_events_router.patch("/{event_id}/status")'
     )
+    list_route = API[list_start:detail_start]
+    detail_route = API[detail_start:status_start]
     status = API[status_start:]
 
     require(
@@ -33,6 +40,43 @@ def main():
     require(
         "Depends(require_authenticated_human())" in status,
         "Field-event status requires an authenticated human",
+    )
+    require(
+        "Depends(require_authenticated_human())" in list_route,
+        "Field-event list requires an authenticated human",
+    )
+    require(
+        "Depends(require_authenticated_human())" in detail_route,
+        "Field-event detail requires an authenticated human",
+    )
+    require(
+        "principal.tenant_id" in list_route
+        and "x_tenant_id" not in list_route,
+        "List derives tenant from verified identity",
+    )
+    require(
+        "principal.tenant_id" in detail_route
+        and "x_tenant_id" not in detail_route,
+        "Detail derives tenant from verified identity",
+    )
+    require(
+        "_field_event_readable_farmer_ids" in list_route,
+        "List applies persona-scoped farmer visibility",
+    )
+    require(
+        "FieldEventReport.farmer_id.in_(readable_farmer_ids)"
+        in list_route,
+        "List filters inaccessible farmers",
+    )
+    require(
+        "event.farmer_id not in readable_farmer_ids"
+        in detail_route,
+        "Detail rejects inaccessible farmer events",
+    )
+    require(
+        'raise HTTPException(404, "Field event not found")'
+        in detail_route,
+        "Detail fails closed without disclosing event existence",
     )
     require(
         "principal.tenant_id" in create and "x_tenant_id" not in create,

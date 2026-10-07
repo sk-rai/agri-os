@@ -426,6 +426,124 @@ def main():
             assisted.text,
         )
 
+        missing_list = client.get(
+            "/api/v1/field-events",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_list.status_code == 401,
+            "Field-event list rejects missing bearer",
+            missing_list.text,
+        )
+
+        farmer_list = client.get(
+            "/api/v1/field-events",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_list.status_code == 200,
+            "Farmer lists visible field events",
+            farmer_list.text,
+        )
+        farmer_rows = farmer_list.json()["events"]
+        require(
+            {row["farmer_id"] for row in farmer_rows}
+                == {str(ids["personal_farmer"])},
+            "Farmer list is restricted to personal farmer",
+            farmer_list.text,
+        )
+
+        farmer_detail = client.get(
+            f"/api/v1/field-events/{personal_body['id']}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_detail.status_code == 200,
+            "Farmer reads personal field-event detail",
+            farmer_detail.text,
+        )
+
+        farmer_assisted_detail = client.get(
+            f"/api/v1/field-events/{assisted_event_id}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_assisted_detail.status_code == 404,
+            "Farmer cannot discover assisted-farmer event",
+            farmer_assisted_detail.text,
+        )
+
+        agent_list = client.get(
+            "/api/v1/field-events",
+            headers=agent_headers,
+        )
+        require(
+            agent_list.status_code == 200,
+            "Assigned agent lists visible field events",
+            agent_list.text,
+        )
+        agent_rows = agent_list.json()["events"]
+        require(
+            agent_rows
+            and {
+                row["farmer_id"] for row in agent_rows
+            } == {str(ids["assisted_farmer"])},
+            "Agent list is restricted to assigned farmer",
+            agent_list.text,
+        )
+
+        agent_detail = client.get(
+            f"/api/v1/field-events/{assisted_event_id}",
+            headers=agent_headers,
+        )
+        require(
+            agent_detail.status_code == 200,
+            "Assigned agent reads assisted-farmer detail",
+            agent_detail.text,
+        )
+
+        unassigned_list = client.get(
+            "/api/v1/field-events",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_list.status_code == 200
+            and unassigned_list.json()["count"] == 0,
+            "Unassigned agent receives an empty event list",
+            unassigned_list.text,
+        )
+
+        unassigned_detail = client.get(
+            f"/api/v1/field-events/{assisted_event_id}",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_detail.status_code == 404,
+            "Unassigned agent cannot discover event detail",
+            unassigned_detail.text,
+        )
+
+        admin_list = client.get(
+            "/api/v1/field-events",
+            headers=admin_headers,
+        )
+        require(
+            admin_list.status_code == 200,
+            "Web administrator lists tenant field events",
+            admin_list.text,
+        )
+        require(
+            {
+                str(ids["personal_farmer"]),
+                str(ids["assisted_farmer"]),
+            }.issubset({
+                row["farmer_id"]
+                for row in admin_list.json()["events"]
+            }),
+            "Web administrator sees both operational farmer scopes",
+            admin_list.text,
+        )
+
         unrelated = create_event(
             client,
             farmer_headers,
@@ -550,6 +668,10 @@ def main():
             "schema_version": "field_event_persona_behavior.v1",
             "farmer_report": True,
             "assigned_agent_report": True,
+            "farmer_read_scope": True,
+            "assigned_agent_read_scope": True,
+            "unassigned_read_denied": True,
+            "admin_tenant_read": True,
             "unassigned_denied": True,
             "farmer_review_denied": True,
             "assigned_agent_review": True,

@@ -122,3 +122,9 @@ relationships.
 Farmers cannot perform review-state transitions. Assigned agents may perform
 permitted operational transitions, but `ADVISORY_SENT` remains a web-admin
 boundary because it represents publication rather than field capture.
+
+Field-event list and detail reads use the same persona resolution. Farmer lists
+contain only personal-farmer events; assigned-agent lists contain explicitly
+assigned farmers; users without a readable farmer scope receive an empty list.
+Inaccessible details fail closed with `404`. Explicit web administrators retain
+tenant-wide operational review visibility.

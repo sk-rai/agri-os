@@ -230,8 +230,15 @@ def main():
     print("\n[7] Validation and isolation")
     invalid_response = client.post("/api/v1/field-events", headers=headers, json={"farmer_id": str(farmer_id), "event_type": "METEOR", "severity": "HIGH"})
     check(invalid_response.status_code == 422, "Invalid field event type rejected", invalid_response.text[:200])
-    other_tenant_detail = client.get(f"/api/v1/field-events/{event_id}", headers={"X-Tenant-ID": "default"})
-    check(other_tenant_detail.status_code == 404, "Field event is tenant isolated", other_tenant_detail.text)
+    other_tenant_detail = client.get(
+        f"/api/v1/field-events/{event_id}",
+        headers={**headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        other_tenant_detail.status_code == 403,
+        "Field-event detail rejects token/header tenant mismatch",
+        other_tenant_detail.text,
+    )
 
     print("\n[8] Cleanup")
     db = SessionLocal()

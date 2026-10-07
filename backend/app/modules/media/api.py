@@ -960,6 +960,19 @@ def create_field_event_report(
     return payload
 
 
+def _field_event_readable_farmer_ids(
+    db: Session,
+    principal: AuthenticatedPrincipal,
+) -> frozenset[uuid.UUID] | None:
+    if _media_admin_can_edit(principal):
+        return None
+
+    scope = resolve_human_persona_scope(db, principal)
+    return frozenset(
+        set(scope.own_farmer_ids) | set(scope.assigned_farmer_ids)
+    )
+
+
 @field_events_router.get("")
 def list_field_event_reports(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -970,9 +983,19 @@ def list_field_event_reports(
     status: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    query = db.query(FieldEventReport).filter(FieldEventReport.tenant_id == x_tenant_id, FieldEventReport.is_active == True)
+    query = db.query(FieldEventReport).filter(
+        FieldEventReport.tenant_id == principal.tenant_id,
+        FieldEventReport.is_active == True,
+    )
+
+    readable_farmer_ids = _field_event_readable_farmer_ids(db, principal)
+    if readable_farmer_ids is not None:
+        query = query.filter(
+            FieldEventReport.farmer_id.in_(readable_farmer_ids)
+        )
+
     if project_id:
         query = query.filter(FieldEventReport.project_id == project_id)
     if farmer_id:
@@ -983,21 +1006,35 @@ def list_field_event_reports(
         normalized_event_type = event_type.upper()
         if normalized_event_type not in FIELD_EVENT_TYPES:
             raise HTTPException(400, "Invalid event_type")
-        query = query.filter(FieldEventReport.event_type == normalized_event_type)
+        query = query.filter(
+            FieldEventReport.event_type == normalized_event_type
+        )
     if severity:
         normalized_severity = severity.upper()
         if normalized_severity not in FIELD_EVENT_SEVERITIES:
             raise HTTPException(400, "Invalid severity")
-        query = query.filter(FieldEventReport.severity == normalized_severity)
+        query = query.filter(
+            FieldEventReport.severity == normalized_severity
+        )
     if status:
         normalized_status = status.upper()
         if normalized_status not in FIELD_EVENT_STATUSES:
             raise HTTPException(400, "Invalid status")
-        query = query.filter(FieldEventReport.status == normalized_status)
-    rows = query.order_by(FieldEventReport.reported_at.desc(), FieldEventReport.created_at.desc()).limit(limit).all()
+        query = query.filter(
+            FieldEventReport.status == normalized_status
+        )
+
+    rows = (
+        query.order_by(
+            FieldEventReport.reported_at.desc(),
+            FieldEventReport.created_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
     return {
         "schema_version": "field_event_reports.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": principal.tenant_id,
         "filters": {
             "project_id": str(project_id) if project_id else None,
             "farmer_id": str(farmer_id) if farmer_id else None,
@@ -1008,7 +1045,19 @@ def list_field_event_reports(
             "limit": limit,
         },
         "count": len(rows),
-        "events": [_field_event_payload(row, db.query(MediaAttachment).filter(MediaAttachment.tenant_id == x_tenant_id, MediaAttachment.entity_type == "FIELD_EVENT", MediaAttachment.entity_id == row.id).count()) for row in rows],
+        "events": [
+            _field_event_payload(
+                row,
+                db.query(MediaAttachment)
+                .filter(
+                    MediaAttachment.tenant_id == principal.tenant_id,
+                    MediaAttachment.entity_type == "FIELD_EVENT",
+                    MediaAttachment.entity_id == row.id,
+                )
+                .count(),
+            )
+            for row in rows
+        ],
     }
 
 
@@ -1016,21 +1065,58 @@ def list_field_event_reports(
 def get_field_event_report(
     event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    event = db.query(FieldEventReport).filter(FieldEventReport.id == event_id, FieldEventReport.tenant_id == x_tenant_id, FieldEventReport.is_active == True).first()
+    event = (
+        db.query(FieldEventReport)
+        .filter(
+            FieldEventReport.id == event_id,
+            FieldEventReport.tenant_id == principal.tenant_id,
+            FieldEventReport.is_active == True,
+        )
+        .first()
+    )
     if not event:
         raise HTTPException(404, "Field event not found")
-    attachment_count = db.query(MediaAttachment).filter(MediaAttachment.tenant_id == x_tenant_id, MediaAttachment.entity_type == "FIELD_EVENT", MediaAttachment.entity_id == event.id).count()
+
+    readable_farmer_ids = _field_event_readable_farmer_ids(db, principal)
+    if (
+        readable_farmer_ids is not None
+        and event.farmer_id not in readable_farmer_ids
+    ):
+        raise HTTPException(404, "Field event not found")
+
+    attachment_count = (
+        db.query(MediaAttachment)
+        .filter(
+            MediaAttachment.tenant_id == principal.tenant_id,
+            MediaAttachment.entity_type == "FIELD_EVENT",
+            MediaAttachment.entity_id == event.id,
+        )
+        .count()
+    )
     payload = _field_event_payload(event, attachment_count)
     attachments = (
         db.query(MediaAttachment, MediaAsset)
-        .join(MediaAsset, MediaAsset.id == MediaAttachment.media_asset_id)
-        .filter(MediaAttachment.tenant_id == x_tenant_id, MediaAttachment.entity_type == "FIELD_EVENT", MediaAttachment.entity_id == event.id)
-        .order_by(MediaAttachment.display_order.asc(), MediaAttachment.created_at.desc())
+        .join(
+            MediaAsset,
+            MediaAsset.id == MediaAttachment.media_asset_id,
+        )
+        .filter(
+            MediaAttachment.tenant_id == principal.tenant_id,
+            MediaAttachment.entity_type == "FIELD_EVENT",
+            MediaAttachment.entity_id == event.id,
+        )
+        .order_by(
+            MediaAttachment.display_order.asc(),
+            MediaAttachment.created_at.desc(),
+        )
         .all()
     )
-    payload["media_attachments"] = [_attachment_payload(attachment, asset) for attachment, asset in attachments]
+    payload["media_attachments"] = [
+        _attachment_payload(attachment, asset)
+        for attachment, asset in attachments
+    ]
     return payload
 
 

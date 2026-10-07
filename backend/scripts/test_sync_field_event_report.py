@@ -14,6 +14,7 @@ from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
 from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessedEvent
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def check(condition, label, detail=None):
@@ -34,21 +35,29 @@ def main():
     print("=" * 72)
 
     tenant_id = f"sync-field-event-{uuid.uuid4().hex[:8]}"
-    actor_id = str(uuid.uuid4())
+    actor_id = None
+    sync_user_id = None
     farmer_id = uuid.uuid4()
     project_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     report_id = uuid.uuid4()
     media_asset_id = uuid.uuid4()
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
+    headers = None
 
     db = SessionLocal()
     try:
         db.add(Tenant(id=tenant_id, name="Sync Field Event Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
-        db.flush()
+        db.commit()
+        sync_user, headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="FARMER",
+        )
+        sync_user_id = sync_user.id
+        actor_id = str(sync_user.id)
         db.add(Project(id=project_id, tenant_id=tenant_id, name="Sync Field Event Project", start_date=date(2026, 7, 1), end_date=date(2026, 12, 31), status="PLANNED", crop_scope=["RICE"], geography_scope={}, created_at=now(), updated_at=now()))
         db.flush()
-        db.add(Farmer(id=farmer_id, tenant_id=tenant_id, mobile_number=f"+9198{uuid.uuid4().int % 100000000:08d}", display_name="Field Event Farmer", village_name_manual="Event Village", status="ACTIVE", created_at=now(), updated_at=now()))
+        db.add(Farmer(id=farmer_id, tenant_id=tenant_id, project_id=project_id, user_id=sync_user_id, mobile_number=f"+9198{uuid.uuid4().int % 100000000:08d}", display_name="Field Event Farmer", village_name_manual="Event Village", status="ACTIVE", created_at=now(), updated_at=now()))
         db.flush()
         db.add(Parcel(id=parcel_id, tenant_id=tenant_id, farmer_id=farmer_id, village_name_manual="Event Village", reported_area=5, reported_area_unit="ACRE", ownership_type="OWNED", status="ACTIVE", created_at=now(), updated_at=now()))
         db.flush()
@@ -164,10 +173,16 @@ def main():
     finally:
         db.close()
 
-    list_response = client.get(f"/api/v1/field-events?farmer_id={farmer_id}", headers={"X-Tenant-ID": tenant_id})
+    list_response = client.get(
+        f"/api/v1/field-events?farmer_id={farmer_id}",
+        headers=headers,
+    )
     check(list_response.status_code == 200, "Field events API lists synced report", list_response.text[:300])
     check(list_response.json()["events"][0]["id"] == str(report_id), "List response preserves report id")
-    detail_response = client.get(f"/api/v1/field-events/{report_id}", headers={"X-Tenant-ID": tenant_id})
+    detail_response = client.get(
+        f"/api/v1/field-events/{report_id}",
+        headers=headers,
+    )
     check(detail_response.status_code == 200, "Field event detail returns synced attachment", detail_response.text[:300])
     detail = detail_response.json()
     check(detail["media_attachment_count"] == 1, "Detail counts synced media attachment")
@@ -184,6 +199,8 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        if sync_user_id:
+            delete_test_admin(db, sync_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")
