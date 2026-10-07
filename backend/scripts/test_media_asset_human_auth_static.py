@@ -147,7 +147,7 @@ def main() -> int:
         )
     require(
         "def reporting_farmer_headers()" in FIELD_LOOP
-        and "Farmer.user_id" in FIELD_LOOP,
+        and "farmer.user_id" in FIELD_LOOP,
         "Field-event advisory fixture resolves linked farmer identity",
     )
     require(
