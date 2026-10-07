@@ -83,12 +83,18 @@ role as a mutually exclusive persona.
 The existing mode-bootstrap regression remains green and continues to return
 `MODE_CHOOSER` for a user with both farmer and agent capabilities.
 
-## Next integration checkpoint
+`test_field_event_persona_behavior.py` additionally proves personal-farmer
+reporting, assigned-agent reporting and review, unassigned-agent denial,
+farmer review denial, verified actor history, admin-only `ADVISORY_SENT`, and
+invalid backwards-transition rejection.
 
-The next bounded change will apply this resolver to media and field-event
-mutations. It must preserve endpoint paths and response schemas, update Android
-fixtures to use bearer authentication, derive audit actors from the verified
-principal, and retain web-admin-only configuration boundaries.
+## Media and field-event integration
+
+The resolver now governs media asset mutations, generic attachment creation,
+and field-event creation/status mutations. Endpoint paths and response schemas
+remain stable. Android-oriented fixtures use verified farmer identities for
+operational capture, while organisation administration and advisory
+publication remain bounded web-admin capabilities.
 
 ## Media attachment integration checkpoint
 
@@ -104,3 +110,15 @@ identities must remain compatible.
 Advisory attachments remain a web-admin publication capability. Field agents
 and agronomists cannot use the advisory path merely because they have an
 operational persona.
+
+## Field-event persona integration checkpoint
+
+A personal farmer may report an event for their own linked farmer profile. An
+organisation agent may report for an assisted farmer only with an active agent
+profile, active project role, and explicit active enrollment assignment. The
+server derives `FARMER_ANDROID` or `FIELD_AGENT_ANDROID` from these persisted
+relationships.
+
+Farmers cannot perform review-state transitions. Assigned agents may perform
+permitted operational transitions, but `ADVISORY_SENT` remains a web-admin
+boundary because it represents publication rather than field capture.

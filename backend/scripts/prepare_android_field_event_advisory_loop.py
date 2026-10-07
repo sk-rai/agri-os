@@ -24,6 +24,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.auth.models import User
 from app.modules.auth.service import create_jwt
+from app.modules.farmer.models import Farmer
 from app.modules.media.models import (
     BroadcastAuditEvent,
     BroadcastAudienceRule,
@@ -36,7 +37,7 @@ from app.modules.media.models import (
 )
 from scripts.prepare_android_fpo_multi_village_workflow import PROJECT_ID, TENANT_ID, farmer_id, parcel_id, cycle_id
 
-ACTOR_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000002099")
+ADMIN_ACTOR_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000002099")
 FIELD_EVENT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000002994")
 MEDIA_ASSET_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000002995")
 CAMPAIGN_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000002996")
@@ -66,13 +67,17 @@ def check(condition: bool, label: str, detail=None) -> None:
         raise AssertionError(label)
 
 
-def authenticated_headers() -> dict[str, str]:
+def authenticated_headers(
+    user_id: uuid.UUID = ADMIN_ACTOR_ID,
+    *,
+    device_id: str = "backend-deterministic-media-admin",
+) -> dict[str, str]:
     db = SessionLocal()
     try:
         user = (
             db.query(User)
             .filter(
-                User.id == ACTOR_ID,
+                User.id == user_id,
                 User.tenant_id == TENANT_ID,
                 User.is_active == True,
             )
@@ -80,10 +85,10 @@ def authenticated_headers() -> dict[str, str]:
         )
         check(
             user is not None,
-            "Deterministic fixture actor exists and is active",
-            {"actor_id": str(ACTOR_ID), "tenant_id": TENANT_ID},
+            "Deterministic fixture identity exists and is active",
+            {"user_id": str(user_id), "tenant_id": TENANT_ID},
         )
-        token, _ = create_jwt(user, "backend-deterministic-media-fixture")
+        token, _ = create_jwt(user, device_id)
         return {
             "Authorization": f"Bearer {token}",
             "X-Tenant-ID": TENANT_ID,
@@ -93,11 +98,50 @@ def authenticated_headers() -> dict[str, str]:
         db.close()
 
 
-def request_json(client: TestClient, method: str, path: str, *, expected: int = 200, body: dict | None = None) -> dict:
+def reporting_farmer_headers() -> dict[str, str]:
+    db = SessionLocal()
+    try:
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == REPORTING_FARMER_ID,
+                Farmer.tenant_id == TENANT_ID,
+                Farmer.status != "ARCHIVED",
+                Farmer.is_active == True,
+            )
+            .first()
+        )
+        check(
+            farmer is not None and farmer.user_id is not None,
+            "Reporting farmer has a linked login identity",
+            {
+                "farmer_id": str(REPORTING_FARMER_ID),
+                "tenant_id": TENANT_ID,
+            },
+        )
+        reporter_user_id = farmer.user_id
+    finally:
+        db.close()
+
+    return authenticated_headers(
+        reporter_user_id,
+        device_id="backend-deterministic-field-event-farmer",
+    )
+
+
+def request_json(
+    client: TestClient,
+    method: str,
+    path: str,
+    *,
+    expected: int = 200,
+    body: dict | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict:
     response = client.request(
         method,
         path,
-        headers=authenticated_headers(),
+        headers=headers or authenticated_headers(),
         json=body,
     )
     check(response.status_code == expected, f"{method} {path} returns {expected}", response.text[:1400])
@@ -165,6 +209,9 @@ def link_event_metadata() -> None:
 
 
 def create_loop(client: TestClient) -> dict:
+    reporter_headers = reporting_farmer_headers()
+    reporter_user_id = reporter_headers["X-Actor-ID"]
+
     asset = request_json(
         client,
         "POST",
@@ -174,7 +221,7 @@ def create_loop(client: TestClient) -> dict:
             "id": str(MEDIA_ASSET_ID),
             "project_id": str(PROJECT_ID),
             "farmer_id": str(REPORTING_FARMER_ID),
-            "uploaded_by": str(ACTOR_ID),
+            "uploaded_by": reporter_user_id,
             "media_type": "PHOTO",
             "mime_type": "image/jpeg",
             "storage_url": STORAGE_URL,
@@ -194,8 +241,14 @@ def create_loop(client: TestClient) -> dict:
                 "reuse_in_advisory": True,
             },
         },
+        headers=reporter_headers,
     )
     check(asset["upload_status"] == "UPLOADED", "Field event source media asset is uploaded", asset)
+    check(
+        asset["uploaded_by"] == reporter_user_id,
+        "Field-event media records authenticated farmer uploader",
+        asset,
+    )
 
     event = request_json(
         client,
@@ -217,7 +270,7 @@ def create_loop(client: TestClient) -> dict:
             "description": FIELD_EVENT_DESCRIPTION,
             "estimated_area_affected": "0.40",
             "estimated_loss_percent": "12",
-            "source": "FIELD_AGENT_ANDROID",
+            "source": "FARMER_ANDROID",
             "status": "REPORTED",
             "metadata": {
                 "android_contract": "field_event_advisory_loop.v1",
@@ -235,8 +288,19 @@ def create_loop(client: TestClient) -> dict:
                 }
             ],
         },
+        headers=reporter_headers,
     )
     check(event["media_attachment_count"] == 1 and event["status"] == "REPORTED", "Field event created with one media attachment", event)
+    check(
+        event["source"] == "FARMER_ANDROID",
+        "Field-event source is derived from reporting farmer persona",
+        event,
+    )
+    check(
+        (event.get("metadata") or {}).get("reported_by_user_id") == reporter_user_id,
+        "Field event records authenticated farmer reporter",
+        event.get("metadata"),
+    )
 
     under_review = request_json(client, "PATCH", f"/api/v1/field-events/{FIELD_EVENT_ID}/status", body={"status": "UNDER_REVIEW", "reason": "FPO reviewing pest photo for advisory"})
     check(under_review["status"] == "UNDER_REVIEW", "Field event enters UNDER_REVIEW", under_review)
@@ -252,7 +316,7 @@ def create_loop(client: TestClient) -> dict:
             "title": "Field event pest advisory broadcast",
             "category": "ADVISORY",
             "priority": "HIGH",
-            "created_by": str(ACTOR_ID),
+            "created_by": str(ADMIN_ACTOR_ID),
             "metadata": {
                 "android_contract": "field_event_advisory_loop.v1",
                 "event_type": "FIELD_EVENT_ADVISORY_CREATED",
@@ -300,7 +364,7 @@ def create_loop(client: TestClient) -> dict:
     )
     check(advisory_attachment["media_asset_id"] == str(MEDIA_ASSET_ID), "Advisory reuses field event media asset", advisory_attachment)
 
-    published = request_json(client, "POST", f"/api/v1/broadcasts/{CAMPAIGN_ID}/publish", body={"approved_by": str(ACTOR_ID), "reason": "FPO sends advisory from field event pest photo"})
+    published = request_json(client, "POST", f"/api/v1/broadcasts/{CAMPAIGN_ID}/publish", body={"approved_by": str(ADMIN_ACTOR_ID), "reason": "FPO sends advisory from field event pest photo"})
     generated = request_json(client, "POST", f"/api/v1/broadcasts/{CAMPAIGN_ID}/generate-deliveries")
     check(published["status"] == "PUBLISHED", "Advisory broadcast is PUBLISHED", published)
     check((generated.get("delivery_summary") or {}).get("total") == 2, "Maize advisory targets two active Maize farmers", generated.get("delivery_summary"))
@@ -393,6 +457,10 @@ def main() -> int:
         "media_asset_id": str(MEDIA_ASSET_ID),
         "reporting_farmer_id": str(REPORTING_FARMER_ID),
         "reporting_farmer_mobile": REPORTING_FARMER_MOBILE,
+        "reporting_user_id": (
+            verified["event_detail"].get("metadata") or {}
+        ).get("reported_by_user_id"),
+        "admin_actor_id": str(ADMIN_ACTOR_ID),
         "included_farmer_id": str(INCLUDED_MAIZE_FARMER_ID),
         "excluded_farmer_id": str(EXCLUDED_RICE_FARMER_ID),
         "reset": reset_counts,

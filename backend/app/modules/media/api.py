@@ -713,31 +713,195 @@ def list_media_attachments(
     }
 
 
+FIELD_EVENT_TRANSITIONS = {
+    "REPORTED": {"UNDER_REVIEW", "RESOLVED", "DISMISSED"},
+    "UNDER_REVIEW": {"ADVISORY_SENT", "RESOLVED", "DISMISSED"},
+    "ADVISORY_SENT": {"RESOLVED"},
+    "RESOLVED": set(),
+    "DISMISSED": set(),
+}
+
+
+def _field_event_scope_forbidden(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "FIELD_EVENT_SCOPE_DENIED",
+            "message": message,
+        },
+    )
+
+
+def _field_event_creation_source(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    farmer_id: uuid.UUID,
+) -> str:
+    if _media_admin_can_edit(principal):
+        return "ADMIN_WEB"
+
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.owns_farmer(farmer_id):
+        return "FARMER_ANDROID"
+    if (
+        scope.has_agent_persona
+        and scope.is_assigned_to_farmer(farmer_id)
+    ):
+        return "FIELD_AGENT_ANDROID"
+
+    raise _field_event_scope_forbidden(
+        "Authenticated user cannot report an event for this farmer."
+    )
+
+
+def _require_field_event_status_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    event: FieldEventReport,
+    target_status: str,
+) -> None:
+    allowed = FIELD_EVENT_TRANSITIONS.get(event.status, set())
+    if target_status not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "FIELD_EVENT_TRANSITION_INVALID",
+                "message": (
+                    f"Field event cannot transition from "
+                    f"{event.status} to {target_status}."
+                ),
+            },
+        )
+
+    if _media_admin_can_edit(principal):
+        return
+
+    scope = resolve_human_persona_scope(db, principal)
+    if not (
+        scope.has_agent_persona
+        and scope.is_assigned_to_farmer(event.farmer_id)
+    ):
+        raise _field_event_scope_forbidden(
+            "Field-event status changes require an assigned agent "
+            "or authorised web administrator."
+        )
+
+    if target_status == "ADVISORY_SENT":
+        raise _field_event_scope_forbidden(
+            "Only an authorised web administrator can mark an "
+            "advisory as sent."
+        )
+
+
 @field_events_router.post("", status_code=201)
 def create_field_event_report(
     body: FieldEventCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    farmer = db.query(Farmer).filter(Farmer.id == body.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if body.status != "REPORTED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "FIELD_EVENT_INITIAL_STATUS_INVALID",
+                "message": "New field events must start in REPORTED status.",
+            },
+        )
+
+    farmer = (
+        db.query(Farmer)
+        .filter(
+            Farmer.id == body.farmer_id,
+            Farmer.tenant_id == principal.tenant_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .first()
+    )
     if not farmer:
         raise HTTPException(404, "Farmer not found")
-    if body.project_id and not db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id).first():
-        raise HTTPException(404, "Project not found")
-    if body.parcel_id and not db.query(Parcel).filter(Parcel.id == body.parcel_id, Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == body.farmer_id).first():
-        raise HTTPException(404, "Parcel not found")
+
+    _require_media_creation_scope(
+        db,
+        principal=principal,
+        project_id=body.project_id,
+        farmer_id=body.farmer_id,
+    )
+    source = _field_event_creation_source(
+        db,
+        principal=principal,
+        farmer_id=body.farmer_id,
+    )
+
+    if body.parcel_id:
+        parcel = (
+            db.query(Parcel)
+            .filter(
+                Parcel.id == body.parcel_id,
+                Parcel.tenant_id == principal.tenant_id,
+                Parcel.farmer_id == body.farmer_id,
+                Parcel.is_active == True,
+            )
+            .first()
+        )
+        if not parcel:
+            raise HTTPException(404, "Parcel not found")
+        if (
+            body.project_id
+            and parcel.project_id
+            and parcel.project_id != body.project_id
+        ):
+            raise _field_event_scope_forbidden(
+                "Parcel project does not match the field event project."
+            )
 
     attachment_assets = []
     for attachment in body.media_attachments:
-        asset = db.query(MediaAsset).filter(MediaAsset.id == attachment.media_asset_id, MediaAsset.tenant_id == x_tenant_id).first()
+        asset = (
+            db.query(MediaAsset)
+            .filter(
+                MediaAsset.id == attachment.media_asset_id,
+                MediaAsset.tenant_id == principal.tenant_id,
+            )
+            .first()
+        )
         if not asset:
-            raise HTTPException(404, f"Media asset {attachment.media_asset_id} not found")
+            raise HTTPException(
+                404,
+                f"Media asset {attachment.media_asset_id} not found",
+            )
+
+        _require_media_creation_scope(
+            db,
+            principal=principal,
+            project_id=asset.project_id,
+            farmer_id=asset.farmer_id,
+        )
+        if asset.farmer_id and asset.farmer_id != body.farmer_id:
+            raise _field_event_scope_forbidden(
+                "Inline media asset farmer does not match the field event."
+            )
+        if (
+            asset.project_id
+            and body.project_id
+            and asset.project_id != body.project_id
+        ):
+            raise _field_event_scope_forbidden(
+                "Inline media asset project does not match the field event."
+            )
         attachment_assets.append((attachment, asset))
 
     timestamp = datetime.now(timezone.utc)
+    event_metadata = {
+        **(body.metadata or {}),
+        "reported_by_user_id": str(principal.user_id),
+        "reported_by_role": principal.role,
+    }
     event = FieldEventReport(
         id=body.id or uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=principal.tenant_id,
         project_id=body.project_id,
         farmer_id=body.farmer_id,
         parcel_id=body.parcel_id,
@@ -753,11 +917,11 @@ def create_field_event_report(
         description=body.description,
         estimated_area_affected=body.estimated_area_affected,
         estimated_loss_percent=body.estimated_loss_percent,
-        source=body.source,
-        external_source=body.external_source,
-        external_event_id=body.external_event_id,
-        status=body.status,
-        metadata_=body.metadata or {},
+        source=source,
+        external_source=None,
+        external_event_id=None,
+        status="REPORTED",
+        metadata_=event_metadata,
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -767,7 +931,7 @@ def create_field_event_report(
     created_attachments = []
     for attachment_body, asset in attachment_assets:
         attachment = MediaAttachment(
-            tenant_id=x_tenant_id,
+            tenant_id=principal.tenant_id,
             media_asset_id=asset.id,
             entity_type="FIELD_EVENT",
             entity_id=event.id,
@@ -775,7 +939,10 @@ def create_field_event_report(
             caption=attachment_body.caption,
             display_order=attachment_body.display_order,
             is_primary=attachment_body.is_primary,
-            metadata_=attachment_body.metadata or {},
+            metadata_={
+                **(attachment_body.metadata or {}),
+                "created_by_user_id": str(principal.user_id),
+            },
             created_at=timestamp,
             updated_at=timestamp,
         )
@@ -786,7 +953,10 @@ def create_field_event_report(
     db.refresh(event)
     payload = _field_event_payload(event, len(created_attachments))
     if created_attachments:
-        payload["media_attachments"] = [_attachment_payload(attachment, asset) for attachment, asset in created_attachments]
+        payload["media_attachments"] = [
+            _attachment_payload(attachment, asset)
+            for attachment, asset in created_attachments
+        ]
     return payload
 
 
@@ -869,19 +1039,52 @@ def update_field_event_status(
     event_id: uuid.UUID,
     body: FieldEventStatusPatch,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    event = db.query(FieldEventReport).filter(FieldEventReport.id == event_id, FieldEventReport.tenant_id == x_tenant_id, FieldEventReport.is_active == True).first()
+    event = (
+        db.query(FieldEventReport)
+        .filter(
+            FieldEventReport.id == event_id,
+            FieldEventReport.tenant_id == principal.tenant_id,
+            FieldEventReport.is_active == True,
+        )
+        .first()
+    )
     if not event:
         raise HTTPException(404, "Field event not found")
-    metadata = event.metadata_ or {}
-    history = metadata.get("status_history") or []
-    history.append({"from_status": event.status, "to_status": body.status, "reason": body.reason, "at": datetime.now(timezone.utc).isoformat()})
+
+    _require_field_event_status_scope(
+        db,
+        principal=principal,
+        event=event,
+        target_status=body.status,
+    )
+
+    changed_at = datetime.now(timezone.utc)
+    metadata = dict(event.metadata_ or {})
+    history = list(metadata.get("status_history") or [])
+    history.append({
+        "from_status": event.status,
+        "to_status": body.status,
+        "reason": body.reason,
+        "at": changed_at.isoformat(),
+        "actor_user_id": str(principal.user_id),
+        "actor_role": principal.role,
+    })
     metadata["status_history"] = history
     event.status = body.status
     event.metadata_ = metadata
-    event.updated_at = datetime.now(timezone.utc)
+    event.updated_at = changed_at
     db.add(event)
     db.commit()
     db.refresh(event)
-    return _field_event_payload(event, db.query(MediaAttachment).filter(MediaAttachment.tenant_id == x_tenant_id, MediaAttachment.entity_type == "FIELD_EVENT", MediaAttachment.entity_id == event.id).count())
+    return _field_event_payload(
+        event,
+        db.query(MediaAttachment)
+        .filter(
+            MediaAttachment.tenant_id == principal.tenant_id,
+            MediaAttachment.entity_type == "FIELD_EVENT",
+            MediaAttachment.entity_id == event.id,
+        )
+        .count(),
+    )

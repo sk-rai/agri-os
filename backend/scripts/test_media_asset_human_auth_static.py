@@ -113,13 +113,28 @@ def main() -> int:
         "x_tenant_id" not in create and "x_tenant_id" not in complete,
         "Asset mutations do not trust tenant headers directly",
     )
-    for source, label in (
-        (FIELD_LOOP, "Field-event advisory fixture"),
-        (LANGUAGE_FIXTURE, "Language fallback fixture"),
-        (MEDIA_FIXTURE, "Broadcast media fixture"),
+    for source, label, resolver_marker, actor_marker in (
+        (
+            FIELD_LOOP,
+            "Field-event advisory fixture",
+            "def authenticated_headers(",
+            "User.id == user_id",
+        ),
+        (
+            LANGUAGE_FIXTURE,
+            "Language fallback fixture",
+            "def authenticated_headers()",
+            "User.id == ACTOR_ID",
+        ),
+        (
+            MEDIA_FIXTURE,
+            "Broadcast media fixture",
+            "def authenticated_headers()",
+            "User.id == ACTOR_ID",
+        ),
     ):
         require(
-            "def authenticated_headers()" in source,
+            resolver_marker in source,
             f"{label} resolves a persisted identity",
         )
         require(
@@ -127,9 +142,19 @@ def main() -> int:
             f"{label} sends a bearer token",
         )
         require(
-            "User.id == ACTOR_ID" in source,
+            actor_marker in source,
             f"{label} binds its deterministic actor",
         )
+    require(
+        "def reporting_farmer_headers()" in FIELD_LOOP
+        and "Farmer.user_id" in FIELD_LOOP,
+        "Field-event advisory fixture resolves linked farmer identity",
+    )
+    require(
+        "ADMIN_ACTOR_ID" in FIELD_LOOP
+        and "headers=reporter_headers" in FIELD_LOOP,
+        "Field-event advisory fixture separates farmer and admin actors",
+    )
     require(
         "create_test_admin" in FIELD_EVENT_TEST
         and "delete_test_admin" in FIELD_EVENT_TEST,

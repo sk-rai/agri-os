@@ -73,9 +73,8 @@ web-admin cases have direct behavior coverage. Unassigned users, inactive
 assignments, inactive project roles, uploader impersonation, and generic
 agronomist-as-admin access fail closed.
 
-This checkpoint does not include media attachment creation or field-event
-creation/status changes. Those remain independently reviewable mutation
-families.
+Media attachment creation and field-event creation/status changes are
+governed by their later, independently tested checkpoints.
 
 ## Generic media attachment checkpoint
 
@@ -91,3 +90,20 @@ bearer, and tenant-mismatch cases.
 
 `GET /api/v1/media/attachments`, inline attachments created by field-event and
 query APIs, and sync/worker materialisation remain separate review tranches.
+
+## Field-event mutation checkpoint
+
+The audit scanner now retains the router identity from each decorator and
+resolves the corresponding router prefix. This fixes classification for modules
+that expose more than one `APIRouter`; field-event routes are now reported under
+`/api/v1/field-events` rather than the media-router prefix.
+
+Field-event creation and status mutations use verified human identity, derive
+tenant and actor from the principal, enforce operational persona scope, and no
+longer appear as unauthenticated mutation findings. Static and behavior
+coverage verifies missing bearer, tenant mismatch, initial status, reporter
+attribution, transition history, and the deterministic farmer-to-admin advisory
+loop.
+
+The field-event list and detail reads remain explicitly visible as deferred
+non-reference-read findings.

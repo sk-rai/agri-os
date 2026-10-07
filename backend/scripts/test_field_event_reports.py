@@ -59,7 +59,54 @@ def main():
 
     client = TestClient(app)
 
-    print("\n[1] Create field event")
+    print("\n[1] Authenticated field-event creation boundary")
+    missing_bearer = client.post(
+        "/api/v1/field-events",
+        headers={"X-Tenant-ID": tenant_id},
+        json={
+            "farmer_id": str(farmer_id),
+            "event_type": "PEST",
+            "severity": "HIGH",
+        },
+    )
+    check(
+        missing_bearer.status_code == 401,
+        "Field-event creation rejects missing bearer",
+        missing_bearer.text,
+    )
+
+    tenant_mismatch = client.post(
+        "/api/v1/field-events",
+        headers={**headers, "X-Tenant-ID": f"{tenant_id}-other"},
+        json={
+            "farmer_id": str(farmer_id),
+            "event_type": "PEST",
+            "severity": "HIGH",
+        },
+    )
+    check(
+        tenant_mismatch.status_code == 403,
+        "Field-event creation rejects token/header tenant mismatch",
+        tenant_mismatch.text,
+    )
+
+    invalid_initial_status = client.post(
+        "/api/v1/field-events",
+        headers=headers,
+        json={
+            "farmer_id": str(farmer_id),
+            "event_type": "PEST",
+            "severity": "HIGH",
+            "status": "UNDER_REVIEW",
+        },
+    )
+    check(
+        invalid_initial_status.status_code == 409,
+        "New field event must start REPORTED",
+        invalid_initial_status.text,
+    )
+
+    print("\n[2] Create field event as web administrator")
     create_response = client.post("/api/v1/field-events", headers=headers, json={
         "project_id": str(project_id),
         "farmer_id": str(farmer_id),
@@ -82,8 +129,16 @@ def main():
     check(event["event_type"] == "PEST", "Event type normalized")
     check(event["severity"] == "HIGH", "Severity normalized")
     check(event["status"] == "REPORTED", "Event starts reported")
+    check(
+        event["source"] == "ADMIN_WEB",
+        "Field-event source is derived from authenticated web-admin persona",
+    )
+    check(
+        event["metadata"]["reported_by_user_id"] == str(admin_id),
+        "Field event records authenticated reporter",
+    )
 
-    print("\n[2] Create field event with inline media attachment")
+    print("\n[3] Create field event with inline media attachment")
     inline_asset_response = client.post("/api/v1/media/assets", headers=headers, json={
         "project_id": str(project_id),
         "farmer_id": str(farmer_id),
@@ -113,14 +168,14 @@ def main():
     check(inline_event["media_attachment_count"] == 1, "Inline create counts attached media")
     check(inline_event["media_attachments"][0]["asset"]["media_type"] == "AUDIO", "Inline create embeds attached audio")
 
-    print("\n[3] List filters")
+    print("\n[4] List filters")
     list_response = client.get(f"/api/v1/field-events?project_id={project_id}&event_type=PEST&severity=HIGH", headers=headers)
     check(list_response.status_code == 200, "List field events returns 200", list_response.text)
     listed = list_response.json()
     check(listed["count"] == 1, "Filtered list returns one event")
     check(listed["events"][0]["id"] == event_id, "Filtered list returns created event")
 
-    print("\n[4] Attach media to field event")
+    print("\n[5] Attach media to field event")
     asset_response = client.post("/api/v1/media/assets", headers=headers, json={
         "project_id": str(project_id),
         "farmer_id": str(farmer_id),
@@ -146,19 +201,39 @@ def main():
     check(detail["media_attachment_count"] == 1, "Field event detail counts media")
     check(detail["media_attachments"][0]["asset"]["media_type"] == "PHOTO", "Field event detail embeds media")
 
-    print("\n[5] Status transition")
+    print("\n[6] Status transition")
     status_response = client.patch(f"/api/v1/field-events/{event_id}/status", headers=headers, json={"status": "UNDER_REVIEW", "reason": "Assigned to agronomist"})
     check(status_response.status_code == 200, "Field event status patch returns 200", status_response.text)
     patched = status_response.json()
     check(patched["status"] == "UNDER_REVIEW", "Field event status updated")
+    status_history = patched["metadata"]["status_history"]
+    check(
+        status_history[-1]["actor_user_id"] == str(admin_id),
+        "Status history records authenticated actor",
+    )
+    check(
+        status_history[-1]["actor_role"] == "ENTERPRISE_ADMIN",
+        "Status history records authenticated actor role",
+    )
 
-    print("\n[6] Validation and isolation")
+    repeated_transition = client.patch(
+        f"/api/v1/field-events/{event_id}/status",
+        headers=headers,
+        json={"status": "UNDER_REVIEW", "reason": "Invalid repeated transition"},
+    )
+    check(
+        repeated_transition.status_code == 409,
+        "Invalid repeated status transition is rejected",
+        repeated_transition.text,
+    )
+
+    print("\n[7] Validation and isolation")
     invalid_response = client.post("/api/v1/field-events", headers=headers, json={"farmer_id": str(farmer_id), "event_type": "METEOR", "severity": "HIGH"})
     check(invalid_response.status_code == 422, "Invalid field event type rejected", invalid_response.text[:200])
     other_tenant_detail = client.get(f"/api/v1/field-events/{event_id}", headers={"X-Tenant-ID": "default"})
     check(other_tenant_detail.status_code == 404, "Field event is tenant isolated", other_tenant_detail.text)
 
-    print("\n[7] Cleanup")
+    print("\n[8] Cleanup")
     db = SessionLocal()
     try:
         db.query(MediaAttachment).filter(MediaAttachment.tenant_id == tenant_id).delete(synchronize_session=False)

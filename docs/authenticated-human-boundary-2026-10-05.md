@@ -94,8 +94,8 @@ second phone number, but each operation is checked against the selected
 farmer/project context.
 
 This checkpoint covers only media asset creation and upload completion.
-Attachment creation and field-event mutations remain separate remediation
-tranches and are not claimed as secured here.
+Attachment creation and field-event mutations are governed by their later,
+separately tested checkpoints.
 
 Existing deterministic Android/backend fixtures now send real bearer identities
 when they create or complete media assets. Endpoint paths and response schemas
@@ -128,3 +128,34 @@ implemented.
 This checkpoint changes only `POST /api/v1/media/attachments`. Attachment
 listing, inline field-event attachment creation, and worker/sync materialisation
 remain separate authorization tranches.
+
+## Field-event mutation checkpoint
+
+`POST /api/v1/field-events` and
+`PATCH /api/v1/field-events/{event_id}/status` now require the shared
+authenticated-human boundary. Tenant and actor identity come from the verified
+principal.
+
+New events must start in `REPORTED`. The server derives the source from the
+authenticated operational persona:
+
+- a linked personal farmer becomes `FARMER_ANDROID`;
+- an active, assigned organisation agent becomes `FIELD_AGENT_ANDROID`;
+- an explicitly administrative web identity becomes `ADMIN_WEB`.
+
+The human route clears external-provider identity fields rather than accepting
+caller claims. Inline evidence assets must remain compatible with the event's
+farmer and project. Reporter identity and later status actors are recorded from
+the verified principal.
+
+Status changes follow an explicit transition matrix. Operational status changes
+require an active agent persona and explicit active farmer assignment, while
+web administrators retain the bounded review capability. Only an authorised
+web administrator may mark an event `ADVISORY_SENT`.
+
+The deterministic advisory-loop fixture now uses the reporting farmer's bearer
+for media upload and event creation, then a distinct enterprise-admin bearer
+for review, advisory publication, delivery generation, and the final
+`ADVISORY_SENT` transition. Endpoint paths and response schemas remain stable.
+
+Field-event list and detail reads remain a separate authorization tranche.

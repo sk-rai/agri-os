@@ -13,29 +13,35 @@ REFERENCE_PREFIXES=("/api/v1/master-data/states","/api/v1/master-data/districts"
 def literal(node):
     try:return ast.literal_eval(node)
     except Exception:return None
-def router_prefix(tree):
+def router_prefixes(tree):
+    prefixes={}
     for node in ast.walk(tree):
-        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="router" for t in node.targets):
-            if isinstance(node.value,ast.Call):
-                for kw in node.value.keywords:
-                    if kw.arg=="prefix":
-                        value=literal(kw.value)
-                        return value if isinstance(value,str) else ""
-    return ""
+        if not isinstance(node,ast.Assign) or not isinstance(node.value,ast.Call):continue
+        targets=[t.id for t in node.targets if isinstance(t,ast.Name)]
+        if not targets:continue
+        for kw in node.value.keywords:
+            if kw.arg!="prefix":continue
+            value=literal(kw.value)
+            if isinstance(value,str):
+                for target in targets:prefixes[target]=value
+    return prefixes
 def route_decorator(node):
     for decorator in node.decorator_list:
         if not isinstance(decorator,ast.Call) or not isinstance(decorator.func,ast.Attribute):continue
         if decorator.func.attr not in METHODS:continue
         path=literal(decorator.args[0]) if decorator.args else ""
-        if isinstance(path,str):return decorator.func.attr.upper(),path
+        owner=decorator.func.value
+        router_name=owner.id if isinstance(owner,ast.Name) else None
+        if isinstance(path,str):return router_name,decorator.func.attr.upper(),path
     return None
 def scan(path):
-    tree=ast.parse(path.read_text(encoding="utf-8-sig"));prefix=router_prefix(tree);rows=[]
+    tree=ast.parse(path.read_text(encoding="utf-8-sig"));prefixes=router_prefixes(tree);rows=[]
     for node in ast.walk(tree):
         if not isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):continue
         route=route_decorator(node)
         if not route:continue
-        method,suffix=route;body=ast.unparse(node);full=f"{prefix}{suffix}"
+        router_name,method,suffix=route;body=ast.unparse(node)
+        full=f"{prefixes.get(router_name,'')}{suffix}"
         admin="require_admin_permission" in body
         bearer=any(x in body for x in (
             "Authorization",
