@@ -45,6 +45,7 @@ The resolver excludes:
 - archived or inactive farmer profiles;
 - inactive agent profiles;
 - inactive project roles or projects;
+- assignments whose agent no longer has active access to that project;
 - inactive project enrollments;
 - farmers that are not explicitly assigned;
 - cross-tenant projects, farmers, and assignments.
@@ -56,7 +57,10 @@ not reused because it permits missing and synthetic actors for older fixtures.
 
 Organisation administration remains a web-admin capability. Project setup,
 crop configuration, enrollment administration, and advisory publication remain
-under admin permissions.
+under admin permissions. An `AGRONOMIST` or `FIELD_AGENT` login is not treated
+as a web administrator merely because an older generic permission map contains
+an edit capability; operational authorization must still follow persona and
+assignment scope.
 
 Farmers and organisation agents consume operational functionality through the
 Android application. Route authorization must evaluate the authenticated

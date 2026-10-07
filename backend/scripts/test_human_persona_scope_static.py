@@ -28,6 +28,10 @@ def main() -> int:
     require('FarmerProjectEnrollment.status == "ACTIVE"' in SOURCE, "Inactive enrollments are excluded")
     require("enrollment.assigned_user_ids" in SOURCE, "Explicit farmer assignment is required")
     require("ProjectRole.user_id == principal.user_id" in SOURCE, "Project roles use authenticated user")
+    require(
+        "enrollment.project_id not in accessible_project_ids" in SOURCE,
+        "Assigned farmer requires active project access",
+    )
     require("Project.tenant_id == principal.tenant_id" in SOURCE, "Project access is tenant bounded")
     require("Farmer.tenant_id == principal.tenant_id" in SOURCE, "Farmer access is tenant bounded")
     require("_actor_can_manage_farmer" not in SOURCE, "Compatibility-permissive helper is not reused")

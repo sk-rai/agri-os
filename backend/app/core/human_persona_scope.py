@@ -103,6 +103,10 @@ def resolve_human_persona_scope(
         (project_id, str(role or "").upper())
         for project_id, role in project_role_rows
     )
+    accessible_project_ids = {
+        project_id
+        for project_id, _ in project_roles
+    }
 
     assigned_farmer_ids: set[uuid.UUID] = set()
     if agent_profile:
@@ -124,6 +128,8 @@ def resolve_human_persona_scope(
             .all()
         )
         for enrollment in enrollments:
+            if enrollment.project_id not in accessible_project_ids:
+                continue
             assignment_ids = {
                 str(value)
                 for value in (enrollment.assigned_user_ids or [])

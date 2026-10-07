@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def now():
@@ -38,11 +39,15 @@ def main():
     parcel_id = uuid.uuid4()
     actor_id = uuid.uuid4()
     headers = {"X-Tenant-ID": tenant_id}
+    admin_id = None
 
     db = SessionLocal()
     try:
         db.add(Tenant(id=tenant_id, name="Field Event Test Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
         db.commit()
+        admin, headers = create_test_admin(db, tenant_id=tenant_id)
+        admin_id = admin.id
+        actor_id = admin.id
         db.add(Project(id=project_id, tenant_id=tenant_id, name="Field Event Test Project", start_date=date(2026, 7, 1), end_date=date(2026, 12, 31), status="PLANNED", crop_scope=["RICE"], geography_scope={}, created_at=now(), updated_at=now()))
         db.commit()
         db.add(Farmer(id=farmer_id, tenant_id=tenant_id, project_id=project_id, mobile_number=f"+9196{uuid.uuid4().int % 100000000:08d}", display_name="Event Farmer", village_name_manual="Event Village", status="ACTIVE", created_at=now(), updated_at=now()))
@@ -162,6 +167,8 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        if admin_id:
+            delete_test_admin(db, admin_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

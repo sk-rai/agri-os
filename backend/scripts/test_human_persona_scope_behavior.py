@@ -206,26 +206,25 @@ def main():
         )
         db.add_all([agent_profile, dual_profile])
 
-        db.add_all([
-            ProjectRole(
-                id=uuid.uuid4(),
-                project_id=project.id,
-                user_id=agent_user.id,
-                role="AGRONOMIST",
-                territory_scope={"village_names": ["Persona Scope Village"]},
-                created_at=now(),
-                updated_at=now(),
-            ),
-            ProjectRole(
-                id=uuid.uuid4(),
-                project_id=project.id,
-                user_id=dual_user.id,
-                role="FIELD_AGENT",
-                territory_scope={"village_names": ["Persona Scope Village"]},
-                created_at=now(),
-                updated_at=now(),
-            ),
-        ])
+        agent_project_role = ProjectRole(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            user_id=agent_user.id,
+            role="AGRONOMIST",
+            territory_scope={"village_names": ["Persona Scope Village"]},
+            created_at=now(),
+            updated_at=now(),
+        )
+        dual_project_role = ProjectRole(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            user_id=dual_user.id,
+            role="FIELD_AGENT",
+            territory_scope={"village_names": ["Persona Scope Village"]},
+            created_at=now(),
+            updated_at=now(),
+        )
+        db.add_all([agent_project_role, dual_project_role])
 
         assigned_enrollment = FarmerProjectEnrollment(
             id=uuid.uuid4(),
@@ -344,6 +343,20 @@ def main():
         assigned_enrollment.status = "ACTIVE"
         db.flush()
 
+        agent_project_role.is_active = False
+        db.flush()
+        inactive_project_role_scope = resolve_human_persona_scope(
+            db,
+            principal(agent_user, tenant_id),
+        )
+        require(
+            assisted_farmer.id
+            not in inactive_project_role_scope.assigned_farmer_ids,
+            "Inactive project role grants no assigned farmers",
+        )
+        agent_project_role.is_active = True
+        db.flush()
+
         agent_profile.status = "INACTIVE"
         db.flush()
         inactive_agent_scope = resolve_human_persona_scope(
@@ -366,6 +379,7 @@ def main():
             "dual_persona": True,
             "unassigned_denied": True,
             "inactive_assignment_excluded": True,
+            "inactive_project_role_excluded": True,
             "inactive_agent_excluded": True,
             "cross_tenant_excluded": True,
         })

@@ -21,6 +21,8 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
+from app.modules.auth.models import User
+from app.modules.auth.service import create_jwt
 from app.modules.media.models import (
     BroadcastAuditEvent,
     BroadcastAudienceRule,
@@ -59,8 +61,40 @@ def check(condition: bool, label: str, detail=None) -> None:
         raise AssertionError(label)
 
 
+def authenticated_headers() -> dict[str, str]:
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .filter(
+                User.id == ACTOR_ID,
+                User.tenant_id == TENANT_ID,
+                User.is_active == True,
+            )
+            .first()
+        )
+        check(
+            user is not None,
+            "Deterministic fixture actor exists and is active",
+            {"actor_id": str(ACTOR_ID), "tenant_id": TENANT_ID},
+        )
+        token, _ = create_jwt(user, "backend-deterministic-media-fixture")
+        return {
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-ID": TENANT_ID,
+            "X-Actor-ID": str(user.id),
+        }
+    finally:
+        db.close()
+
+
 def request_json(client: TestClient, method: str, path: str, *, expected: int = 200, body: dict | None = None) -> dict:
-    response = client.request(method, path, headers={"X-Tenant-ID": TENANT_ID}, json=body)
+    response = client.request(
+        method,
+        path,
+        headers=authenticated_headers(),
+        json=body,
+    )
     check(response.status_code == expected, f"{method} {path} returns {expected}", response.text[:1200])
     return response.json()
 

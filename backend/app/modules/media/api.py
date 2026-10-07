@@ -8,8 +8,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
+from app.core.admin_auth import AdminPermission, ROLE_PERMISSIONS
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, Parcel, Project
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
 from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
@@ -23,6 +26,13 @@ FIELD_EVENT_TYPES = {"RAIN", "PEST", "DISEASE", "HAILSTORM", "LOCUST", "FLOOD", 
 FIELD_EVENT_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
 FIELD_EVENT_SOURCES = {"FARMER_ANDROID", "FIELD_AGENT_ANDROID", "ADMIN_WEB", "EXTERNAL_API", "IOT_DEVICE"}
 FIELD_EVENT_STATUSES = {"REPORTED", "UNDER_REVIEW", "ADVISORY_SENT", "RESOLVED", "DISMISSED"}
+
+MEDIA_WEB_ADMIN_ROLES = {
+    "ENTERPRISE_ADMIN",
+    "MANAGER",
+    "ADMIN_EDITOR",
+    "ADMIN_PUBLISHER",
+}
 
 
 def _iso(value):
@@ -276,18 +286,124 @@ class MediaAttachmentCreate(BaseModel):
         return normalized
 
 
+def _media_admin_can_edit(principal: AuthenticatedPrincipal) -> bool:
+    role = str(principal.role or "").upper()
+    return (
+        role in MEDIA_WEB_ADMIN_ROLES
+        and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
+    )
+
+
+def _media_scope_forbidden(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "MEDIA_SCOPE_DENIED",
+            "message": message,
+        },
+    )
+
+
+def _require_media_creation_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    project_id: Optional[uuid.UUID],
+    farmer_id: Optional[uuid.UUID],
+) -> None:
+    project = None
+    if project_id:
+        project = (
+            db.query(Project)
+            .filter(
+                Project.id == project_id,
+                Project.tenant_id == principal.tenant_id,
+                Project.is_active == True,
+            )
+            .first()
+        )
+        if not project:
+            raise HTTPException(404, "Project not found")
+
+    farmer = None
+    if farmer_id:
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == farmer_id,
+                Farmer.tenant_id == principal.tenant_id,
+                Farmer.status != "ARCHIVED",
+                Farmer.is_active == True,
+            )
+            .first()
+        )
+        if not farmer:
+            raise HTTPException(404, "Farmer not found")
+
+    if farmer and project:
+        legacy_project_match = farmer.project_id == project.id
+        enrollment_match = (
+            db.query(FarmerProjectEnrollment.id)
+            .filter(
+                FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+                FarmerProjectEnrollment.farmer_id == farmer.id,
+                FarmerProjectEnrollment.project_id == project.id,
+                FarmerProjectEnrollment.status == "ACTIVE",
+                FarmerProjectEnrollment.is_active == True,
+            )
+            .first()
+            is not None
+        )
+        if not legacy_project_match and not enrollment_match:
+            raise _media_scope_forbidden(
+                "Farmer is not enrolled in the requested project."
+            )
+
+    if _media_admin_can_edit(principal):
+        return
+
+    scope = resolve_human_persona_scope(db, principal)
+    if farmer and scope.can_operate_farmer(farmer.id):
+        return
+
+    if farmer:
+        raise _media_scope_forbidden(
+            "Authenticated user cannot upload media for this farmer."
+        )
+    if project:
+        raise _media_scope_forbidden(
+            "Project-only media requires an authorised web administrator."
+        )
+    raise _media_scope_forbidden(
+        "Media must be scoped to an authorised farmer or created by an "
+        "authorised web administrator."
+    )
+
+
 @router.post("/assets", status_code=201)
 def create_media_asset(
     body: MediaAssetCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    asset = MediaAsset(
-        id=body.id or uuid.uuid4(),
-        tenant_id=x_tenant_id,
+    if body.uploaded_by and body.uploaded_by != principal.user_id:
+        raise _media_scope_forbidden(
+            "uploaded_by must match the authenticated user."
+        )
+
+    _require_media_creation_scope(
+        db,
+        principal=principal,
         project_id=body.project_id,
         farmer_id=body.farmer_id,
-        uploaded_by=body.uploaded_by,
+    )
+
+    asset = MediaAsset(
+        id=body.id or uuid.uuid4(),
+        tenant_id=principal.tenant_id,
+        project_id=body.project_id,
+        farmer_id=body.farmer_id,
+        uploaded_by=principal.user_id,
         media_type=body.media_type,
         mime_type=body.mime_type,
         storage_url=body.storage_url,
@@ -318,11 +434,26 @@ def complete_media_asset(
     asset_id: uuid.UUID,
     body: MediaAssetComplete,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id, MediaAsset.tenant_id == x_tenant_id).first()
+    asset = (
+        db.query(MediaAsset)
+        .filter(
+            MediaAsset.id == asset_id,
+            MediaAsset.tenant_id == principal.tenant_id,
+        )
+        .first()
+    )
     if not asset:
         raise HTTPException(404, "Media asset not found")
+
+    if asset.uploaded_by != principal.user_id:
+        _require_media_creation_scope(
+            db,
+            principal=principal,
+            project_id=asset.project_id,
+            farmer_id=asset.farmer_id,
+        )
     if body.storage_url is not None:
         asset.storage_url = body.storage_url
     if body.storage_key is not None:

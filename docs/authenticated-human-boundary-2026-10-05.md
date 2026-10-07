@@ -71,3 +71,32 @@ Backend Android fixtures now use a farmer bearer for delivery consumption.
 Campaign creation, publication, generation, and terminal lifecycle operations
 continue to use enterprise-admin authorization. This is a backend contract
 hardening change and requires no Android UI or API-path modification.
+
+## Media asset mutation checkpoint
+
+Media asset creation and upload completion now require the shared authenticated
+human boundary.
+
+The server derives the tenant and uploader identity from the verified bearer
+principal. A caller cannot impersonate another uploader. Operational access is
+limited to:
+
+- a farmer acting on their own linked farmer profile;
+- an active agent or agronomist with an active agent profile, active project
+  role, and explicit active farmer-project assignment;
+- the original uploader completing their own asset;
+- an explicitly administrative web role performing project administration.
+
+An `AGRONOMIST` or `FIELD_AGENT` identity is not treated as a web administrator
+merely because a generic permission map includes edit-like capabilities. The
+same authenticated user can act through farmer and agent personas without a
+second phone number, but each operation is checked against the selected
+farmer/project context.
+
+This checkpoint covers only media asset creation and upload completion.
+Attachment creation and field-event mutations remain separate remediation
+tranches and are not claimed as secured here.
+
+Existing deterministic Android/backend fixtures now send real bearer identities
+when they create or complete media assets. Endpoint paths and response schemas
+remain unchanged.

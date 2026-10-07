@@ -47,6 +47,7 @@ def main():
         db.commit()
         admin, headers = create_test_admin(db, tenant_id=tenant_id)
         admin_id = admin.id
+        actor_id = admin.id
         db.add(Project(id=project_id, tenant_id=tenant_id, name="Media Test Project", start_date=date(2026, 7, 1), end_date=date(2026, 12, 31), status="PLANNED", crop_scope=["RICE"], geography_scope={}, created_at=now(), updated_at=now()))
         db.commit()
         db.add(Farmer(id=farmer_id, tenant_id=tenant_id, project_id=project_id, mobile_number=f"+9197{uuid.uuid4().int % 100000000:08d}", display_name="Media Farmer", village_name_manual="Media Village", status="ACTIVE", created_at=now(), updated_at=now()))
@@ -57,6 +58,60 @@ def main():
         db.close()
 
     client = TestClient(app)
+
+    print("\n[0] Authenticated media mutation boundary")
+    missing_bearer = client.post(
+        "/api/v1/media/assets",
+        headers={"X-Tenant-ID": tenant_id},
+        json={
+            "project_id": str(project_id),
+            "farmer_id": str(farmer_id),
+            "media_type": "PHOTO",
+            "mime_type": "image/jpeg",
+        },
+    )
+    check(
+        missing_bearer.status_code == 401,
+        "Asset creation rejects missing bearer",
+        missing_bearer.text,
+    )
+
+    impersonation = client.post(
+        "/api/v1/media/assets",
+        headers=headers,
+        json={
+            "project_id": str(project_id),
+            "farmer_id": str(farmer_id),
+            "uploaded_by": str(uuid.uuid4()),
+            "media_type": "PHOTO",
+            "mime_type": "image/jpeg",
+        },
+    )
+    check(
+        impersonation.status_code == 403,
+        "Asset creation rejects uploader impersonation",
+        impersonation.text,
+    )
+
+    mismatched_tenant_headers = {
+        **headers,
+        "X-Tenant-ID": "default",
+    }
+    tenant_mismatch = client.post(
+        "/api/v1/media/assets",
+        headers=mismatched_tenant_headers,
+        json={
+            "project_id": str(project_id),
+            "farmer_id": str(farmer_id),
+            "media_type": "PHOTO",
+            "mime_type": "image/jpeg",
+        },
+    )
+    check(
+        tenant_mismatch.status_code == 403,
+        "Asset creation rejects token/header tenant mismatch",
+        tenant_mismatch.text,
+    )
 
     print("\n[1] Create pending photo asset")
     asset_response = client.post("/api/v1/media/assets", headers=headers, json={
@@ -79,6 +134,10 @@ def main():
     asset_id = asset["id"]
     check(asset["media_type"] == "PHOTO", "Media type normalized")
     check(asset["upload_status"] == "PENDING", "Asset starts pending")
+    check(
+        asset["uploaded_by"] == str(admin_id),
+        "Asset uploader is derived from authenticated admin",
+    )
     check(asset["metadata"]["offline_temp_id"] == "local-photo-1", "Asset keeps offline metadata")
 
     print("\n[2] Complete upload metadata")
@@ -91,7 +150,22 @@ def main():
     check(complete_response.status_code == 200, "Complete asset returns 200", complete_response.text)
     completed = complete_response.json()
     check(completed["upload_status"] == "UPLOADED", "Asset marked uploaded")
+    check(
+        completed["uploaded_by"] == str(admin_id),
+        "Completion preserves authenticated uploader",
+    )
     check(completed["metadata"]["offline_temp_id"] == "local-photo-1" and completed["metadata"]["storage_provider"] == "test", "Completion merges metadata")
+
+    completion_tenant_mismatch = client.post(
+        f"/api/v1/media/assets/{asset_id}/complete",
+        headers=mismatched_tenant_headers,
+        json={"upload_status": "UPLOADED"},
+    )
+    check(
+        completion_tenant_mismatch.status_code == 403,
+        "Asset completion rejects token/header tenant mismatch",
+        completion_tenant_mismatch.text,
+    )
 
     print("\n[3] Attach photo to parcel")
     attachment_response = client.post("/api/v1/media/attachments", headers=headers, json={

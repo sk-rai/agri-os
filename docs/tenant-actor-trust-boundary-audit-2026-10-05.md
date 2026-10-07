@@ -61,3 +61,18 @@ cd backend
 ../venv/bin/python scripts/test_tenant_actor_trust_boundary_audit_static.py
 ../venv/bin/python scripts/audit_tenant_actor_trust_boundary.py > /tmp/tenant-actor-trust-boundary-audit.json
 ```
+
+## Media asset mutation checkpoint
+
+The media asset creation and completion mutations now use the shared
+authenticated-human dependency and explicit persona scope.
+
+Tenant and uploader identity come from the verified principal. Personal-farmer,
+explicitly assigned-agent, dual-persona, original-uploader, and bounded
+web-admin cases have direct behavior coverage. Unassigned users, inactive
+assignments, inactive project roles, uploader impersonation, and generic
+agronomist-as-admin access fail closed.
+
+This checkpoint does not include media attachment creation or field-event
+creation/status changes. Those remain independently reviewable mutation
+families.
