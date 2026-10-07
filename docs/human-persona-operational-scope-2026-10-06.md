@@ -131,3 +131,20 @@ contain only personal-farmer events; assigned-agent lists contain explicitly
 assigned farmers; users without a readable farmer scope receive an empty list.
 Inaccessible details fail closed with `404`. Explicit web administrators retain
 tenant-wide operational review visibility.
+
+## Query-thread persona integration checkpoint
+
+The strict persona resolver now governs direct query creation, message
+creation, and workflow status changes. A personal farmer may create and
+continue a query for their own farmer profile. An organisation agent may
+operate an assisted-farmer query only with an active profile, active project
+role, and explicit active enrollment assignment.
+
+The server derives query message sender identity from the authenticated user
+and the resolved farmer or agent persona. Inline media must belong to the same
+farmer and project as the thread. Farmer personas cannot perform workflow
+transitions, and only explicit web administrators may change thread
+assignment.
+
+Query list/detail visibility and sync-event authorization remain separate
+checkpoints.

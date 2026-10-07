@@ -9,8 +9,17 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.farmer.models import Farmer, Parcel, Project
-from app.modules.media.api import PURPOSES, _asset_payload, _attachment_payload, _iso
+from app.modules.media.api import (
+    PURPOSES,
+    _asset_payload,
+    _attachment_payload,
+    _iso,
+    _media_admin_can_edit,
+    _require_media_creation_scope,
+)
 from app.modules.media.models import MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
 
 router = APIRouter(prefix="/api/v1/query-threads", tags=["query-threads"])
@@ -196,7 +205,51 @@ class QueryThreadStatusPatch(BaseModel):
         return normalized
 
 
-def _create_message(db: Session, *, tenant_id: str, thread: QueryThread, body: QueryMessageCreate, timestamp: datetime):
+def _query_scope_forbidden(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={"error": "QUERY_SCOPE_DENIED", "message": message},
+    )
+
+
+def _query_actor_type(db: Session, *, principal: AuthenticatedPrincipal, farmer_id: uuid.UUID) -> str:
+    if _media_admin_can_edit(principal):
+        return "ADMIN"
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.owns_farmer(farmer_id):
+        return "FARMER"
+    if scope.is_assigned_to_farmer(farmer_id):
+        return "AGRONOMIST" if scope.agent_role_type == "AGRONOMIST" else "FIELD_AGENT"
+    raise _query_scope_forbidden("Authenticated user cannot operate this farmer query.")
+
+
+def _require_query_scope(db: Session, *, principal: AuthenticatedPrincipal, farmer_id: uuid.UUID, project_id: Optional[uuid.UUID]) -> str:
+    _require_media_creation_scope(
+        db,
+        principal=principal,
+        farmer_id=farmer_id,
+        project_id=project_id,
+    )
+    return _query_actor_type(db, principal=principal, farmer_id=farmer_id)
+
+
+def _authenticated_message_body(body: QueryMessageCreate, *, principal: AuthenticatedPrincipal, actor_type: str) -> QueryMessageCreate:
+    if "sender_type" in body.model_fields_set and body.sender_type != actor_type:
+        raise _query_scope_forbidden("sender_type must match the authenticated operational persona.")
+    if body.sender_id is not None and body.sender_id != principal.user_id:
+        raise _query_scope_forbidden("sender_id must match the authenticated user.")
+    return body.model_copy(update={"sender_type": actor_type, "sender_id": principal.user_id})
+
+
+def _create_message(
+    db: Session,
+    *,
+    tenant_id: str,
+    thread: QueryThread,
+    body: QueryMessageCreate,
+    timestamp: datetime,
+    update_thread_status: bool = True,
+):
     message = QueryMessage(
         id=body.id or uuid.uuid4(),
         tenant_id=tenant_id,
@@ -213,9 +266,16 @@ def _create_message(db: Session, *, tenant_id: str, thread: QueryThread, body: Q
     db.flush()
     attachments = []
     for attachment_body in body.media_attachments:
-        asset = db.query(MediaAsset).filter(MediaAsset.id == attachment_body.media_asset_id, MediaAsset.tenant_id == tenant_id).first()
+        asset = db.query(MediaAsset).filter(
+            MediaAsset.id == attachment_body.media_asset_id,
+            MediaAsset.tenant_id == tenant_id,
+        ).first()
         if not asset:
             raise HTTPException(404, f"Media asset {attachment_body.media_asset_id} not found")
+        if asset.farmer_id != thread.farmer_id:
+            raise _query_scope_forbidden("Query attachment asset must belong to the thread farmer.")
+        if thread.project_id and asset.project_id and asset.project_id != thread.project_id:
+            raise _query_scope_forbidden("Query attachment asset must belong to the thread project.")
         attachment = MediaAttachment(
             tenant_id=tenant_id,
             media_asset_id=asset.id,
@@ -233,61 +293,60 @@ def _create_message(db: Session, *, tenant_id: str, thread: QueryThread, body: Q
         attachments.append((attachment, asset))
     thread.last_message_at = timestamp
     thread.updated_at = timestamp
-    if body.sender_type in {"AGRONOMIST", "ADMIN", "FIELD_AGENT", "SYSTEM"} and thread.status == "OPEN":
+    if (
+        update_thread_status
+        and body.sender_type in {"AGRONOMIST", "ADMIN", "FIELD_AGENT", "SYSTEM"}
+        and thread.status == "OPEN"
+    ):
         thread.status = "ANSWERED"
     return message, attachments
 @router.post("", status_code=201)
 def create_query_thread(
     body: QueryThreadCreate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    farmer = db.query(Farmer).filter(Farmer.id == body.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    actor_type = _require_query_scope(db, principal=principal, farmer_id=body.farmer_id, project_id=body.project_id)
+    if body.assigned_to is not None and not _media_admin_can_edit(principal):
+        raise _query_scope_forbidden("Only a web administrator may assign a query thread.")
+    farmer = db.query(Farmer).filter(Farmer.id == body.farmer_id, Farmer.tenant_id == tenant_id, Farmer.is_active == True).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
-    if body.project_id and not db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id).first():
+    if body.project_id and not db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == tenant_id, Project.is_active == True).first():
         raise HTTPException(404, "Project not found")
-    if body.parcel_id and not db.query(Parcel).filter(Parcel.id == body.parcel_id, Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == body.farmer_id).first():
+    if body.parcel_id and not db.query(Parcel).filter(Parcel.id == body.parcel_id, Parcel.tenant_id == tenant_id, Parcel.farmer_id == body.farmer_id, Parcel.is_active == True).first():
         raise HTTPException(404, "Parcel not found")
 
     timestamp = datetime.now(timezone.utc)
     thread = QueryThread(
-        id=body.id or uuid.uuid4(),
-        tenant_id=x_tenant_id,
-        project_id=body.project_id,
-        farmer_id=body.farmer_id,
-        parcel_id=body.parcel_id,
-        crop_cycle_id=body.crop_cycle_id,
-        stage_code=body.stage_code,
-        subject=body.subject,
-        category=body.category,
-        priority=body.priority,
-        status="ASSIGNED" if body.assigned_to else "OPEN",
-        assigned_to=body.assigned_to,
-        metadata_=body.metadata or {},
-        created_at=timestamp,
-        updated_at=timestamp,
+        id=body.id or uuid.uuid4(), tenant_id=tenant_id, project_id=body.project_id,
+        farmer_id=body.farmer_id, parcel_id=body.parcel_id, crop_cycle_id=body.crop_cycle_id,
+        stage_code=body.stage_code, subject=body.subject, category=body.category,
+        priority=body.priority, status="ASSIGNED" if body.assigned_to else "OPEN",
+        assigned_to=body.assigned_to, metadata_=body.metadata or {},
+        created_at=timestamp, updated_at=timestamp,
     )
     db.add(thread)
     db.flush()
-
     message = None
     attachments = []
     if body.initial_message:
-        message, attachments = _create_message(db, tenant_id=x_tenant_id, thread=thread, body=body.initial_message, timestamp=timestamp)
-
+        authenticated_message = _authenticated_message_body(body.initial_message, principal=principal, actor_type=actor_type)
+        message, attachments = _create_message(
+            db,
+            tenant_id=tenant_id,
+            thread=thread,
+            body=authenticated_message,
+            timestamp=timestamp,
+            update_thread_status=False,
+        )
     _record_audit(
-        db,
-        tenant_id=x_tenant_id,
-        thread_id=thread.id,
-        action="CREATE_THREAD",
-        actor_type=body.initial_message.sender_type if body.initial_message else "SYSTEM",
-        actor_id=body.initial_message.sender_id if body.initial_message else None,
+        db, tenant_id=tenant_id, thread_id=thread.id, action="CREATE_THREAD",
+        actor_type=actor_type, actor_id=principal.user_id,
         after={"status": thread.status, "subject": thread.subject, "category": thread.category, "priority": thread.priority},
-        metadata={"has_initial_message": bool(body.initial_message)},
-        timestamp=timestamp,
+        metadata={"has_initial_message": bool(body.initial_message)}, timestamp=timestamp,
     )
-
     db.commit()
     db.refresh(thread)
     payload = _thread_payload(thread, 1 if message else 0, len(attachments))
@@ -387,24 +446,22 @@ def get_query_thread(
 def create_query_message(
     thread_id: uuid.UUID,
     body: QueryMessageCreate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == x_tenant_id, QueryThread.is_active == True).first()
+    tenant_id = principal.tenant_id
+    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == tenant_id, QueryThread.is_active == True).first()
     if not thread:
         raise HTTPException(404, "Query thread not found")
+    actor_type = _require_query_scope(db, principal=principal, farmer_id=thread.farmer_id, project_id=thread.project_id)
+    authenticated_message = _authenticated_message_body(body, principal=principal, actor_type=actor_type)
     timestamp = datetime.now(timezone.utc)
-    message, attachments = _create_message(db, tenant_id=x_tenant_id, thread=thread, body=body, timestamp=timestamp)
+    message, attachments = _create_message(db, tenant_id=tenant_id, thread=thread, body=authenticated_message, timestamp=timestamp)
     _record_audit(
-        db,
-        tenant_id=x_tenant_id,
-        thread_id=thread.id,
-        action="ADD_MESSAGE",
-        actor_type=body.sender_type,
-        actor_id=body.sender_id,
+        db, tenant_id=tenant_id, thread_id=thread.id, action="ADD_MESSAGE",
+        actor_type=actor_type, actor_id=principal.user_id,
         after={"message_id": str(message.id), "message_type": message.message_type, "status": thread.status},
-        metadata={"media_attachment_count": len(attachments)},
-        timestamp=timestamp,
+        metadata={"media_attachment_count": len(attachments)}, timestamp=timestamp,
     )
     db.commit()
     db.refresh(message)
@@ -418,17 +475,26 @@ def create_query_message(
 def update_query_thread_status(
     thread_id: uuid.UUID,
     body: QueryThreadStatusPatch,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == x_tenant_id, QueryThread.is_active == True).first()
+    tenant_id = principal.tenant_id
+    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == tenant_id, QueryThread.is_active == True).first()
     if not thread:
         raise HTTPException(404, "Query thread not found")
+    actor_type = _require_query_scope(db, principal=principal, farmer_id=thread.farmer_id, project_id=thread.project_id)
+    if actor_type == "FARMER":
+        raise _query_scope_forbidden("Farmer persona cannot perform query workflow transitions.")
+    if body.assigned_to is not None and not _media_admin_can_edit(principal):
+        raise _query_scope_forbidden("Only a web administrator may assign a query thread.")
     before = {"status": thread.status, "assigned_to": str(thread.assigned_to) if thread.assigned_to else None}
     timestamp = datetime.now(timezone.utc)
-    metadata = thread.metadata_ or {}
-    history = metadata.get("status_history") or []
-    history.append({"from_status": thread.status, "to_status": body.status, "reason": body.reason, "at": timestamp.isoformat()})
+    metadata = dict(thread.metadata_ or {})
+    history = list(metadata.get("status_history") or [])
+    history.append({
+        "from_status": thread.status, "to_status": body.status, "reason": body.reason,
+        "actor_type": actor_type, "actor_user_id": str(principal.user_id), "at": timestamp.isoformat(),
+    })
     metadata["status_history"] = history
     thread.status = body.status
     if body.assigned_to is not None:
@@ -436,25 +502,16 @@ def update_query_thread_status(
     thread.metadata_ = metadata
     thread.updated_at = timestamp
     _record_audit(
-        db,
-        tenant_id=x_tenant_id,
-        thread_id=thread.id,
-        action="UPDATE_STATUS",
-        actor_type="ADMIN",
-        actor_id=body.assigned_to,
-        before=before,
+        db, tenant_id=tenant_id, thread_id=thread.id, action="UPDATE_STATUS",
+        actor_type=actor_type, actor_id=principal.user_id, before=before,
         after={"status": thread.status, "assigned_to": str(thread.assigned_to) if thread.assigned_to else None},
-        reason=body.reason,
-        timestamp=timestamp,
+        reason=body.reason, timestamp=timestamp,
     )
     db.add(thread)
     db.commit()
     db.refresh(thread)
-    messages = db.query(QueryMessage).filter(QueryMessage.tenant_id == x_tenant_id, QueryMessage.thread_id == thread.id, QueryMessage.is_active == True).order_by(QueryMessage.created_at.asc()).all()
+    messages = db.query(QueryMessage).filter(QueryMessage.tenant_id == tenant_id, QueryMessage.thread_id == thread.id, QueryMessage.is_active == True).order_by(QueryMessage.created_at.asc()).all()
     payload = _thread_payload(thread, len(messages), 0)
-    audit_events = db.query(QueryThreadAudit).filter(
-        QueryThreadAudit.tenant_id == x_tenant_id,
-        QueryThreadAudit.thread_id == thread.id,
-    ).order_by(QueryThreadAudit.created_at.asc()).all()
+    audit_events = db.query(QueryThreadAudit).filter(QueryThreadAudit.tenant_id == tenant_id, QueryThreadAudit.thread_id == thread.id).order_by(QueryThreadAudit.created_at.asc()).all()
     payload["audit_events"] = [_audit_payload(event) for event in audit_events]
     return payload

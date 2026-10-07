@@ -118,3 +118,21 @@ The field-event list and detail reads now require verified human identity and
 apply tenant-bounded persona visibility. They no longer appear as unprotected
 non-reference-read findings. Direct behavior coverage proves farmer,
 assigned-agent, unassigned-agent, and web-admin visibility boundaries.
+
+## Query-thread mutation checkpoint
+
+The three direct query mutation routes now use verified human identity and no
+longer trust tenant or actor headers as authorization. Thread creation,
+message creation, workflow audit events, and status history derive their actor
+from the authenticated principal.
+
+Personal-farmer and explicitly assigned-agent capabilities are resolved from
+persisted tenant-bounded relationships. Sender impersonation, unassigned-agent
+access, cross-farmer inline assets, farmer workflow transitions, and
+operational assignment changes fail closed. Direct behavior coverage verifies
+farmer, assigned-agent, unassigned-agent, web-admin, actor-attribution,
+attachment ownership, status-history, missing-bearer, and tenant-mismatch
+cases.
+
+`GET /api/v1/query-threads`, query detail, and query sync materialisation
+remain separate review tranches.

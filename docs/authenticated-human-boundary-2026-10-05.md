@@ -169,3 +169,26 @@ Web administrators may read tenant events. Operational users are restricted to
 events belonging to their linked personal farmers or explicitly assigned
 farmers. Inaccessible detail records return `404` to avoid disclosing their
 existence.
+
+## Query-thread mutation checkpoint
+
+`POST /api/v1/query-threads`,
+`POST /api/v1/query-threads/{thread_id}/messages`, and
+`PATCH /api/v1/query-threads/{thread_id}/status` now require the shared
+authenticated-human boundary. Tenant and actor identity are derived from the
+verified principal.
+
+Personal farmers may create and message queries for their linked farmer
+profile. Organisation agents require an active agent profile, active project
+role, and explicit active farmer assignment. Unassigned agents fail closed.
+Message sender type and user ID are server-derived, and caller attempts to
+impersonate another sender are rejected.
+
+Inline message assets must match the query thread's farmer and project.
+Farmers cannot perform workflow transitions. Assigned agents may update query
+workflow status, while assignment changes remain restricted to explicit
+web-admin roles. Audit events and status history record the verified user and
+resolved operational persona.
+
+Query-thread list/detail reads and sync materialisation remain separate
+authorization tranches.
