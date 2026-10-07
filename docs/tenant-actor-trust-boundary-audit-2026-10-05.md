@@ -88,8 +88,17 @@ behavior coverage includes farmer, parcel, assigned-agent field-event,
 unassigned-agent, cross-farmer, cross-project, unsupported-target, missing
 bearer, and tenant-mismatch cases.
 
-`GET /api/v1/media/attachments`, inline attachments created by field-event and
-query APIs, and sync/worker materialisation remain separate review tranches.
+`GET /api/v1/media/attachments` now requires verified human identity. Personal
+farmers and assigned agents must specify an exact supported target and pass the
+same persisted persona-scope authorization used for attachment creation.
+Unassigned operational users fail closed, advisory reads and broad tenant
+inventory remain web-admin-only, and the joined asset is independently
+tenant-bounded. Direct behavior coverage includes farmer, parcel, assigned
+field-event, unassigned-agent, advisory, missing-bearer, broad-operational-read,
+admin-inventory, and tenant-mismatch cases.
+
+Inline attachments created by query APIs and sync/worker materialisation remain
+separate review tranches.
 
 ## Field-event mutation checkpoint
 

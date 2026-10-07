@@ -18,6 +18,12 @@ def main():
     attachment_end = API.index('@router.get("/attachments")', attachment_start)
     route = API[attachment_start:attachment_end]
 
+    read_start = API.index(
+        "def _require_media_attachment_read_target_scope("
+    )
+    read_end = API.index("FIELD_EVENT_TRANSITIONS", read_start)
+    read_route = API[read_start:read_end]
+
     helper_start = API.index("def _require_media_attachment_scope(")
     helper_end = API.index('@router.post("/assets", status_code=201)', helper_start)
     helper = API[helper_start:helper_end]
@@ -91,8 +97,36 @@ def main():
         "Operational targets use persona-scoped authorization",
     )
     require(
-        '@router.get("/attachments")' in API,
-        "Attachment read route remains a separate tranche",
+        "Depends(require_authenticated_human())" in read_route,
+        "Attachment listing requires an authenticated human",
+    )
+    require(
+        "principal.tenant_id" in read_route
+        and "x_tenant_id" not in read_route,
+        "Attachment listing derives tenant from verified identity",
+    )
+    require(
+        "_media_attachment_read_scope_required" in read_route,
+        "Operational listing requires an exact target scope",
+    )
+    require(
+        "_require_media_attachment_read_target_scope(" in read_route,
+        "Attachment listing authorises its target",
+    )
+    require(
+        'entity_type == "FARMER"' in read_route
+        and 'entity_type == "PARCEL"' in read_route
+        and 'entity_type == "FIELD_EVENT"' in read_route,
+        "Operational read targets are explicit",
+    )
+    require(
+        'entity_type == "ADVISORY"' in read_route
+        and "_media_admin_can_edit(principal)" in read_route,
+        "Advisory attachment listing remains web-admin controlled",
+    )
+    require(
+        "MediaAsset.tenant_id == principal.tenant_id" in read_route,
+        "Attachment listing tenant-bounds joined assets",
     )
 
     print("MEDIA ATTACHMENT HUMAN AUTH STATIC CONTRACT PASSED")

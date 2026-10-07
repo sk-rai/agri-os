@@ -131,10 +131,14 @@ def main():
         unassigned_user, unassigned_headers = create_test_admin(
             db, tenant_id=tenant_id, role="FIELD_AGENT"
         )
+        admin_user, admin_headers = create_test_admin(
+            db, tenant_id=tenant_id, role="ENTERPRISE_ADMIN"
+        )
         created_user_ids.extend([
             farmer_user.id,
             agent_user.id,
             unassigned_user.id,
+            admin_user.id,
         ])
 
         project = Project(
@@ -403,6 +407,150 @@ def main():
             field_event_target.text,
         )
 
+        missing_read = client.get(
+            "/api/v1/media/attachments",
+            headers={"X-Tenant-ID": tenant_id},
+            params={
+                "entity_type": "FARMER",
+                "entity_id": str(ids["personal_farmer"]),
+            },
+        )
+        require(
+            missing_read.status_code == 401,
+            "Attachment listing rejects missing bearer",
+            missing_read.text,
+        )
+
+        broad_farmer_read = client.get(
+            "/api/v1/media/attachments",
+            headers=farmer_headers,
+        )
+        require(
+            broad_farmer_read.status_code == 403
+            and broad_farmer_read.json()["detail"]["error"]
+                == "MEDIA_ATTACHMENT_READ_SCOPE_REQUIRED",
+            "Operational attachment listing requires an exact target",
+            broad_farmer_read.text,
+        )
+
+        farmer_read = client.get(
+            "/api/v1/media/attachments",
+            headers=farmer_headers,
+            params={
+                "entity_type": "FARMER",
+                "entity_id": str(ids["personal_farmer"]),
+            },
+        )
+        require(
+            farmer_read.status_code == 200
+            and farmer_read.json()["count"] == 1
+            and farmer_read.json()["attachments"][0]["id"]
+                == farmer_target.json()["id"],
+            "Farmer lists attachments for personal farmer profile",
+            farmer_read.text,
+        )
+
+        parcel_read = client.get(
+            "/api/v1/media/attachments",
+            headers=farmer_headers,
+            params={
+                "entity_type": "PARCEL",
+                "entity_id": str(ids["personal_parcel"]),
+            },
+        )
+        require(
+            parcel_read.status_code == 200
+            and parcel_read.json()["count"] == 1
+            and parcel_read.json()["attachments"][0]["id"]
+                == parcel_target.json()["id"],
+            "Farmer lists attachments for personal parcel",
+            parcel_read.text,
+        )
+
+        farmer_assisted_read = client.get(
+            "/api/v1/media/attachments",
+            headers=farmer_headers,
+            params={
+                "entity_type": "FIELD_EVENT",
+                "entity_id": str(ids["event"]),
+            },
+        )
+        require(
+            farmer_assisted_read.status_code == 403,
+            "Farmer cannot list assisted-farmer field-event attachments",
+            farmer_assisted_read.text,
+        )
+
+        agent_read = client.get(
+            "/api/v1/media/attachments",
+            headers=agent_headers,
+            params={
+                "entity_type": "FIELD_EVENT",
+                "entity_id": str(ids["event"]),
+            },
+        )
+        require(
+            agent_read.status_code == 200
+            and agent_read.json()["count"] == 1
+            and agent_read.json()["attachments"][0]["id"]
+                == field_event_target.json()["id"],
+            "Assigned agent lists assisted-farmer field-event attachments",
+            agent_read.text,
+        )
+
+        unassigned_read = client.get(
+            "/api/v1/media/attachments",
+            headers=unassigned_headers,
+            params={
+                "entity_type": "FIELD_EVENT",
+                "entity_id": str(ids["event"]),
+            },
+        )
+        require(
+            unassigned_read.status_code == 403,
+            "Unassigned agent cannot list assisted-farmer attachments",
+            unassigned_read.text,
+        )
+
+        advisory_read = client.get(
+            "/api/v1/media/attachments",
+            headers=agent_headers,
+            params={
+                "entity_type": "ADVISORY",
+                "entity_id": str(uuid.uuid4()),
+            },
+        )
+        require(
+            advisory_read.status_code == 403,
+            "Operational persona cannot list advisory attachments",
+            advisory_read.text,
+        )
+
+        admin_read = client.get(
+            "/api/v1/media/attachments",
+            headers=admin_headers,
+        )
+        require(
+            admin_read.status_code == 200
+            and admin_read.json()["count"] == 3,
+            "Web administrator lists tenant attachment inventory",
+            admin_read.text,
+        )
+
+        read_tenant_mismatch = client.get(
+            "/api/v1/media/attachments",
+            headers={**farmer_headers, "X-Tenant-ID": "default"},
+            params={
+                "entity_type": "FARMER",
+                "entity_id": str(ids["personal_farmer"]),
+            },
+        )
+        require(
+            read_tenant_mismatch.status_code == 403,
+            "Attachment listing rejects token/header tenant mismatch",
+            read_tenant_mismatch.text,
+        )
+
         unrelated_target = attach(
             client,
             farmer_headers,
@@ -493,6 +641,10 @@ def main():
             "farmer_target": True,
             "parcel_target": True,
             "assigned_field_event_target": True,
+            "farmer_read_scope": True,
+            "assigned_agent_read_scope": True,
+            "unassigned_read_denied": True,
+            "admin_tenant_read": True,
             "unrelated_denied": True,
             "cross_farmer_denied": True,
             "cross_project_denied": True,

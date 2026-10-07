@@ -675,6 +675,95 @@ def create_media_attachment(
     return _attachment_payload(attachment, asset)
 
 
+def _media_attachment_read_scope_required() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "MEDIA_ATTACHMENT_READ_SCOPE_REQUIRED",
+            "message": (
+                "Operational attachment reads require both entity_type "
+                "and entity_id."
+            ),
+        },
+    )
+
+
+def _require_media_attachment_read_target_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    entity_type: str,
+    entity_id: uuid.UUID,
+) -> None:
+    if _media_admin_can_edit(principal):
+        return
+
+    target_project_id = None
+    target_farmer_id = None
+
+    if entity_type == "FARMER":
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == entity_id,
+                Farmer.tenant_id == principal.tenant_id,
+                Farmer.status != "ARCHIVED",
+                Farmer.is_active == True,
+            )
+            .first()
+        )
+        if not farmer:
+            raise HTTPException(404, "Attachment target not found")
+        target_project_id = farmer.project_id
+        target_farmer_id = farmer.id
+
+    elif entity_type == "PARCEL":
+        parcel = (
+            db.query(Parcel)
+            .filter(
+                Parcel.id == entity_id,
+                Parcel.tenant_id == principal.tenant_id,
+                Parcel.is_active == True,
+            )
+            .first()
+        )
+        if not parcel:
+            raise HTTPException(404, "Attachment target not found")
+        target_project_id = parcel.project_id
+        target_farmer_id = parcel.farmer_id
+
+    elif entity_type == "FIELD_EVENT":
+        event = (
+            db.query(FieldEventReport)
+            .filter(
+                FieldEventReport.id == entity_id,
+                FieldEventReport.tenant_id == principal.tenant_id,
+                FieldEventReport.is_active == True,
+            )
+            .first()
+        )
+        if not event:
+            raise HTTPException(404, "Attachment target not found")
+        target_project_id = event.project_id
+        target_farmer_id = event.farmer_id
+
+    elif entity_type == "ADVISORY":
+        raise _media_scope_forbidden(
+            "Advisory attachment reads require an authorised "
+            "web administrator."
+        )
+
+    else:
+        raise _attachment_target_unsupported(entity_type)
+
+    _require_media_creation_scope(
+        db,
+        principal=principal,
+        project_id=target_project_id,
+        farmer_id=target_farmer_id,
+    )
+
+
 @router.get("/attachments")
 def list_media_attachments(
     entity_type: Optional[str] = Query(None),
@@ -682,34 +771,74 @@ def list_media_attachments(
     purpose: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
 ):
-    query = db.query(MediaAttachment, MediaAsset).join(MediaAsset, MediaAsset.id == MediaAttachment.media_asset_id).filter(MediaAttachment.tenant_id == x_tenant_id)
+    normalized_entity_type = None
     if entity_type:
         normalized_entity_type = entity_type.upper()
         if normalized_entity_type not in ENTITY_TYPES:
             raise HTTPException(400, "Invalid entity_type")
-        query = query.filter(MediaAttachment.entity_type == normalized_entity_type)
-    if entity_id:
-        query = query.filter(MediaAttachment.entity_id == entity_id)
+
+    normalized_purpose = None
     if purpose:
         normalized_purpose = purpose.upper()
         if normalized_purpose not in PURPOSES:
             raise HTTPException(400, "Invalid purpose")
-        query = query.filter(MediaAttachment.purpose == normalized_purpose)
 
-    rows = query.order_by(MediaAttachment.display_order.asc(), MediaAttachment.created_at.desc()).limit(limit).all()
+    if not _media_admin_can_edit(principal):
+        if not normalized_entity_type or not entity_id:
+            raise _media_attachment_read_scope_required()
+        _require_media_attachment_read_target_scope(
+            db,
+            principal=principal,
+            entity_type=normalized_entity_type,
+            entity_id=entity_id,
+        )
+
+    query = (
+        db.query(MediaAttachment, MediaAsset)
+        .join(
+            MediaAsset,
+            MediaAsset.id == MediaAttachment.media_asset_id,
+        )
+        .filter(
+            MediaAttachment.tenant_id == principal.tenant_id,
+            MediaAsset.tenant_id == principal.tenant_id,
+        )
+    )
+    if normalized_entity_type:
+        query = query.filter(
+            MediaAttachment.entity_type == normalized_entity_type
+        )
+    if entity_id:
+        query = query.filter(MediaAttachment.entity_id == entity_id)
+    if normalized_purpose:
+        query = query.filter(
+            MediaAttachment.purpose == normalized_purpose
+        )
+
+    rows = (
+        query.order_by(
+            MediaAttachment.display_order.asc(),
+            MediaAttachment.created_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
     return {
         "schema_version": "media_attachments.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": principal.tenant_id,
         "filters": {
-            "entity_type": entity_type.upper() if entity_type else None,
+            "entity_type": normalized_entity_type,
             "entity_id": str(entity_id) if entity_id else None,
-            "purpose": purpose.upper() if purpose else None,
+            "purpose": normalized_purpose,
             "limit": limit,
         },
         "count": len(rows),
-        "attachments": [_attachment_payload(attachment, asset) for attachment, asset in rows],
+        "attachments": [
+            _attachment_payload(attachment, asset)
+            for attachment, asset in rows
+        ],
     }
 
 

@@ -98,17 +98,20 @@ publication remain bounded web-admin capabilities.
 
 ## Media attachment integration checkpoint
 
-The strict persona resolver now governs generic media attachment creation for
-farmer, parcel, and field-event targets. A personal farmer can attach their
-media to their own records, while an organisation agent requires an active
-profile, active project role, and explicit active farmer assignment.
+The strict persona resolver now governs generic media attachment creation and
+listing for farmer, parcel, and field-event targets. A personal farmer can
+attach and list media for their own records, while an organisation agent
+requires an active profile, active project role, and explicit active farmer
+assignment.
 
 Possession of an authorised asset does not grant authority over another target.
 The target is resolved independently, and asset/target farmer and project
 identities must remain compatible.
 
-Advisory attachments remain a web-admin publication capability. Field agents
-and agronomists cannot use the advisory path merely because they have an
+Operational attachment reads require an exact target type and ID; broad
+tenant attachment inventory remains a web-admin capability. Advisory attachment
+creation and listing also remain web-admin publication capabilities. Field
+agents and agronomists cannot use those paths merely because they have an
 operational persona.
 
 ## Field-event persona integration checkpoint

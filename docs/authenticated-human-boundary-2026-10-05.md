@@ -125,9 +125,15 @@ governed sync materialisers, but the generic endpoint rejects them with
 `MEDIA_ATTACHMENT_TARGET_UNSUPPORTED` until an explicit ownership mapping is
 implemented.
 
-This checkpoint changes only `POST /api/v1/media/attachments`. Attachment
-listing, inline field-event attachment creation, and worker/sync materialisation
-remain separate authorization tranches.
+`GET /api/v1/media/attachments` now uses the same authenticated-human
+boundary. Operational callers must provide an exact supported entity type and
+entity ID; the target is authorised through personal-farmer or assigned-agent
+scope before any attachments are returned. Broad tenant inventory and advisory
+attachment listing remain restricted to explicit web-admin roles. Both the
+attachment and joined asset are tenant-bounded by the verified principal.
+
+Inline field-event attachment creation and worker/sync materialisation remain
+separate authorization tranches.
 
 ## Field-event mutation checkpoint
 
