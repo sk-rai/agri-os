@@ -191,3 +191,14 @@ The field-agent worklist additionally requires an active agent persona and
 derives its actor from the verified principal. Its results are restricted to
 the resolver's assigned farmer IDs regardless of the compatibility
 `assigned_only` flag. Caller-supplied actor impersonation is rejected.
+
+## Farmer enrollment and launch-context persona integration checkpoint
+
+Farmer project-enrollment and Android launch-context reads now use strict
+persona visibility. Personal farmers can read their own membership and launch
+decision; assigned agents can read the corresponding assisted-farmer context;
+unassigned and unrelated operational identities fail closed with `404`.
+
+Explicit web administrators retain tenant-wide access. Tenant selection comes
+from the authenticated principal, and joined project data is independently
+tenant-bounded. Enrollment creation remains a separate mutation tranche.

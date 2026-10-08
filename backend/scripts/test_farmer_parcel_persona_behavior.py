@@ -419,6 +419,166 @@ def main():
             mismatch_readiness.text,
         )
 
+        missing_enrollments = client.get(
+            f"/api/v1/farmers/{personal.id}/project-enrollments",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_enrollments.status_code == 401,
+            "Farmer project-enrollment read rejects missing bearer",
+            missing_enrollments.text,
+        )
+
+        missing_launch = client.get(
+            f"/api/v1/farmers/{personal.id}/launch-context",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_launch.status_code == 401,
+            "Farmer launch-context read rejects missing bearer",
+            missing_launch.text,
+        )
+
+        farmer_enrollments = client.get(
+            f"/api/v1/farmers/{personal.id}/project-enrollments",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_enrollments.status_code == 200
+            and len(farmer_enrollments.json()) == 1,
+            "Farmer reads personal project enrollment",
+            farmer_enrollments.text,
+        )
+
+        farmer_launch = client.get(
+            f"/api/v1/farmers/{personal.id}/launch-context",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_launch.status_code == 200
+            and farmer_launch.json()["farmer"]["id"] == str(personal.id),
+            "Farmer reads personal launch context",
+            farmer_launch.text,
+        )
+
+        farmer_cross_enrollments = client.get(
+            f"/api/v1/farmers/{assisted.id}/project-enrollments",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_cross_enrollments.status_code == 404,
+            "Farmer cannot discover assisted-farmer enrollments",
+            farmer_cross_enrollments.text,
+        )
+
+        farmer_cross_launch = client.get(
+            f"/api/v1/farmers/{assisted.id}/launch-context",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_cross_launch.status_code == 404,
+            "Farmer cannot discover assisted-farmer launch context",
+            farmer_cross_launch.text,
+        )
+
+        agent_enrollments = client.get(
+            f"/api/v1/farmers/{assisted.id}/project-enrollments",
+            headers=agent_headers,
+        )
+        require(
+            agent_enrollments.status_code == 200
+            and len(agent_enrollments.json()) == 1,
+            "Assigned agent reads assisted-farmer enrollment",
+            agent_enrollments.text,
+        )
+
+        agent_launch = client.get(
+            f"/api/v1/farmers/{assisted.id}/launch-context",
+            headers=agent_headers,
+        )
+        require(
+            agent_launch.status_code == 200
+            and agent_launch.json()["farmer"]["id"] == str(assisted.id),
+            "Assigned agent reads assisted-farmer launch context",
+            agent_launch.text,
+        )
+
+        agent_cross_enrollments = client.get(
+            f"/api/v1/farmers/{unrelated.id}/project-enrollments",
+            headers=agent_headers,
+        )
+        require(
+            agent_cross_enrollments.status_code == 404,
+            "Assigned agent cannot discover unrelated enrollments",
+            agent_cross_enrollments.text,
+        )
+
+        agent_cross_launch = client.get(
+            f"/api/v1/farmers/{unrelated.id}/launch-context",
+            headers=agent_headers,
+        )
+        require(
+            agent_cross_launch.status_code == 404,
+            "Assigned agent cannot discover unrelated launch context",
+            agent_cross_launch.text,
+        )
+
+        unassigned_enrollments = client.get(
+            f"/api/v1/farmers/{assisted.id}/project-enrollments",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_enrollments.status_code == 404,
+            "Unassigned agent cannot discover farmer enrollments",
+            unassigned_enrollments.text,
+        )
+
+        unassigned_launch = client.get(
+            f"/api/v1/farmers/{assisted.id}/launch-context",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_launch.status_code == 404,
+            "Unassigned agent cannot discover farmer launch context",
+            unassigned_launch.text,
+        )
+
+        admin_enrollments = client.get(
+            f"/api/v1/farmers/{unrelated.id}/project-enrollments",
+            headers=admin_headers,
+        )
+        require(
+            admin_enrollments.status_code == 200
+            and len(admin_enrollments.json()) == 1,
+            "Web administrator reads tenant farmer enrollment",
+            admin_enrollments.text,
+        )
+
+        admin_launch = client.get(
+            f"/api/v1/farmers/{unrelated.id}/launch-context",
+            headers=admin_headers,
+        )
+        require(
+            admin_launch.status_code == 200
+            and admin_launch.json()["farmer"]["id"] == str(unrelated.id),
+            "Web administrator reads tenant farmer launch context",
+            admin_launch.text,
+        )
+
+        mismatch_context_headers = {
+            **farmer_headers,
+            "X-Tenant-ID": "default",
+        }
+        mismatch_context = client.get(
+            f"/api/v1/farmers/{personal.id}/launch-context",
+            headers=mismatch_context_headers,
+        )
+        require(
+            mismatch_context.status_code == 403,
+            "Farmer launch context rejects token/header tenant mismatch",
+            mismatch_context.text,
+        )
+
         farmer_list = client.get(
             "/api/v1/farmers",
             headers=farmer_headers,
@@ -848,6 +1008,8 @@ def main():
                 "parcel_read_scope": True,
                 "profile_readiness_scope": True,
                 "field_agent_worklist_scope": True,
+                "farmer_enrollment_read_scope": True,
+                "farmer_launch_context_scope": True,
                 "assigned_agent_read_scope": True,
                 "unassigned_read_empty": True,
                 "admin_tenant_read": True,

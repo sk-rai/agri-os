@@ -253,3 +253,19 @@ always restricted to explicitly assigned farmers, including when the legacy
 match the authenticated user. Missing bearer, actor impersonation, tenant
 mismatch, unrelated-farmer discovery, and unassigned-farmer discovery fail
 closed.
+
+## Farmer enrollment and launch-context read checkpoint
+
+`GET /api/v1/farmers/{farmer_id}/project-enrollments` and
+`GET /api/v1/farmers/{farmer_id}/launch-context` now require the shared
+authenticated-human boundary. Tenant scope is derived from the verified bearer
+principal rather than a trusted request header.
+
+Personal farmers may read only their linked farmer context. Organisation agents
+may read only explicitly assigned farmers with active project access.
+Unassigned agents and unrelated farmers receive `404` so the target farmer's
+existence is not disclosed. Explicit web administrators retain tenant-wide
+visibility. Enrollment payload project joins are independently tenant-bounded.
+
+The enrollment-creation POST remains a separate mutation authorization
+checkpoint.

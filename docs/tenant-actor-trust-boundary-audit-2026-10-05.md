@@ -188,3 +188,18 @@ matches the authenticated user. Static and behavior coverage verifies missing
 bearer, tenant mismatch, actor impersonation, farmer, assigned-agent,
 unassigned-agent, and web-admin boundaries. These routes no longer appear as
 unprotected non-reference-read findings.
+
+## Farmer enrollment and launch-context read checkpoint
+
+The farmer project-enrollment list and launch-context routes now require
+verified human identity and derive tenant scope from the bearer principal.
+Both apply personal-farmer or explicitly assigned-agent visibility and return
+`404` for inaccessible farmers to avoid existence disclosure.
+
+Explicit web administrators retain tenant-wide visibility, and joined project
+records are independently tenant-bounded. Static and behavior coverage verifies
+missing bearer, tenant mismatch, personal farmer, assigned agent, unassigned
+agent, unrelated farmer, web administrator, and post-completion launch
+behavior. These GET routes no longer appear as unprotected non-reference-read
+findings. The POST route sharing the project-enrollment path remains a separate
+mutation finding.

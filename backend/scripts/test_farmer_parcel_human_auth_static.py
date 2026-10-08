@@ -20,6 +20,8 @@ def main():
     farmer_read = block("list_farmers", "list_farmer_profile_readiness")
     readiness_read = block("list_farmer_profile_readiness", "get_field_agent_worklist")
     worklist_read = block("get_field_agent_worklist", "update_farmer_profile")
+    enrollment_read = block("list_farmer_project_enrollments", "list_project_farmer_enrollments")
+    launch_read = block("get_farmer_launch_context", "create_parcel")
     farmer_update = block("update_farmer_profile", "download_project_enrollment_csv_template")
     parcel_create = block("create_parcel", "list_parcels")
     parcel_read = block("list_parcels", "update_parcel_profile")
@@ -118,6 +120,35 @@ def main():
         and "x_actor_id" not in worklist_read,
         "Field-agent worklist does not trust identity headers directly",
     )
+    for label, route in [
+        ("Farmer project-enrollment read", enrollment_read),
+        ("Farmer launch-context read", launch_read),
+    ]:
+        require(
+            "Depends(require_authenticated_human())" in route,
+            f"{label} requires an authenticated human",
+        )
+        require(
+            "principal.tenant_id" in route,
+            f"{label} derives tenant from verified identity",
+        )
+        require(
+            "_readable_farmer_ids" in route,
+            f"{label} applies persona-scoped farmer visibility",
+        )
+        require(
+            'raise HTTPException(404, "Farmer not found")' in route,
+            f"{label} fails closed without farmer disclosure",
+        )
+        require(
+            "Project.tenant_id == tenant_id" in route,
+            f"{label} tenant-bounds joined projects",
+        )
+        require(
+            "X-Tenant-ID" not in route
+            and "x_tenant_id" not in route,
+            f"{label} does not trust tenant headers directly",
+        )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 
 

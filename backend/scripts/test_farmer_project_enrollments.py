@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def check(condition, label, detail=None):
@@ -48,7 +49,9 @@ def main():
     project_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     mobile = f"+9198{uuid.uuid4().int % 100000000:08d}"
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
+    admin_user = None
+    admin_user_id = None
+    headers = None
 
     db = SessionLocal()
     try:
@@ -60,6 +63,12 @@ def main():
             updated_at=now(),
         ))
         db.flush()
+        admin_user, headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+        )
+        admin_user_id = admin_user.id
+        actor_id = str(admin_user_id)
         db.add(Project(
             id=project_id,
             tenant_id=tenant_id,
@@ -223,6 +232,9 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.commit()
+        if admin_user_id:
+            delete_test_admin(db, admin_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

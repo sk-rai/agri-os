@@ -6728,24 +6728,57 @@ def apply_project_enrollment_lifecycle(
 def list_farmer_project_enrollments(
     farmer_id: uuid.UUID,
     status: Optional[str] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """List project memberships for a farmer."""
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    """List project memberships visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    farmer = db.query(Farmer).filter(
+        Farmer.id == farmer_id,
+        Farmer.tenant_id == tenant_id,
+    ).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
 
+    readable_farmer_ids = _readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    if (
+        readable_farmer_ids is not None
+        and farmer.id not in readable_farmer_ids
+    ):
+        raise HTTPException(404, "Farmer not found")
+
     query = db.query(FarmerProjectEnrollment).filter(
-        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.tenant_id == tenant_id,
         FarmerProjectEnrollment.farmer_id == farmer_id,
     )
     if status:
         query = query.filter(FarmerProjectEnrollment.status == status)
-    enrollments = query.order_by(FarmerProjectEnrollment.updated_at.desc(), FarmerProjectEnrollment.created_at.desc()).all()
+    enrollments = query.order_by(
+        FarmerProjectEnrollment.updated_at.desc(),
+        FarmerProjectEnrollment.created_at.desc(),
+    ).all()
     project_ids = [enrollment.project_id for enrollment in enrollments]
-    projects = {project.id: project for project in db.query(Project).filter(Project.id.in_(project_ids)).all()} if project_ids else {}
-    return [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in enrollments]
+    projects = (
+        {
+            project.id: project
+            for project in db.query(Project).filter(
+                Project.tenant_id == tenant_id,
+                Project.id.in_(project_ids),
+            ).all()
+        }
+        if project_ids
+        else {}
+    )
+    return [
+        _enrollment_payload(
+            enrollment,
+            projects.get(enrollment.project_id),
+        )
+        for enrollment in enrollments
+    ]
 
 
 @router.get("/projects/{project_id}/farmer-enrollments", response_model=list[FarmerProjectEnrollmentResponse])
@@ -6773,18 +6806,32 @@ def list_project_farmer_enrollments(
 @router.get("/farmers/{farmer_id}/launch-context")
 def get_farmer_launch_context(
     farmer_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """Return Android post-login launch decision context for a farmer."""
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    """Return Android post-login launch context visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    farmer = db.query(Farmer).filter(
+        Farmer.id == farmer_id,
+        Farmer.tenant_id == tenant_id,
+    ).first()
     if not farmer:
+        raise HTTPException(404, "Farmer not found")
+
+    readable_farmer_ids = _readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    if (
+        readable_farmer_ids is not None
+        and farmer.id not in readable_farmer_ids
+    ):
         raise HTTPException(404, "Farmer not found")
 
     enrollments = (
         db.query(FarmerProjectEnrollment)
         .filter(
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
             FarmerProjectEnrollment.farmer_id == farmer_id,
             FarmerProjectEnrollment.status != "ARCHIVED",
         )
@@ -6792,21 +6839,31 @@ def get_farmer_launch_context(
         .all()
     )
     project_ids = [enrollment.project_id for enrollment in enrollments]
-    projects = {project.id: project for project in db.query(Project).filter(Project.id.in_(project_ids)).all()} if project_ids else {}
+    projects = (
+        {
+            project.id: project
+            for project in db.query(Project).filter(
+                Project.tenant_id == tenant_id,
+                Project.id.in_(project_ids),
+            ).all()
+        }
+        if project_ids
+        else {}
+    )
     active_enrollments = [enrollment for enrollment in enrollments if enrollment.status == "ACTIVE"]
     farmer_context = _farmer_context_payload(enrollments, projects)
     active_project_candidate = farmer_context["active_project_candidate"]
 
-    parcels = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer_id, Parcel.status != "ARCHIVED").all()
+    parcels = db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == farmer_id, Parcel.status != "ARCHIVED").all()
     try:
         from app.modules.farmer.soil_profile import SoilProfile
-        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer_id).all()
+        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id, SoilProfile.farmer_id == farmer_id).all()
     except Exception:
         soil_profiles = []
 
     weather_snapshot_count = _matching_weather_snapshot_count(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         farmer=farmer,
         parcels=parcels,
         project_enrollments=enrollments,
@@ -6830,7 +6887,7 @@ def get_farmer_launch_context(
     return {
         "schema_version": "farmer_launch_context.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "farmer": _farmer_payload(farmer),
         "project_enrollments": [_enrollment_payload(enrollment, projects.get(enrollment.project_id)) for enrollment in enrollments],
         "farmer_context": farmer_context,
