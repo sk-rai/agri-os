@@ -142,3 +142,27 @@ are independently tenant-bounded. These routes no longer appear as unprotected
 non-reference-read findings.
 
 Query sync materialisation remains a separate review tranche.
+
+## Farmer and parcel mutation checkpoint
+
+The five core farmer and parcel mutations now use verified human identity and
+derive tenant and actor from the authenticated principal. They no longer appear
+as unauthenticated, tenant-unbound, or actor-unbound mutation findings:
+
+- farmer enrollment;
+- farmer update;
+- parcel creation;
+- parcel update;
+- parcel geometry update.
+
+Authorization resolves persisted personal-farmer and assigned-agent
+capabilities, with an explicit bounded web-admin bypass. Self-enrollment
+requires the authenticated user's persisted mobile identity; assisted
+enrollment does not impersonate the farmer. Geometry capture and enrollment
+metadata record the verified actor.
+
+Static and direct behavior coverage includes missing bearer, token/header
+tenant mismatch, personal farmer operations, explicit assignment, unassigned
+and unrelated denial, admin access, self-enrollment linkage, assisted
+enrollment attribution, Android payload compatibility, DigiPin behavior, and
+regression cleanup.

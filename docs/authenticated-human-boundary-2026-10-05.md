@@ -198,3 +198,30 @@ web administrators retain tenant-wide visibility. Joined attachment assets are
 independently tenant-bounded.
 
 Query sync materialisation remains a separate authorization tranche.
+
+## Farmer and parcel mutation checkpoint
+
+Core farmer and parcel mutations now require the shared authenticated-human
+boundary:
+
+- `POST /api/v1/farmers`;
+- `PATCH /api/v1/farmers/{farmer_id}`;
+- `POST /api/v1/parcels`;
+- `PATCH /api/v1/parcels/{parcel_id}`;
+- `PATCH /api/v1/parcels/{parcel_id}/geometry`.
+
+Tenant and actor identity are derived from the verified bearer principal rather
+than trusted request headers. Personal farmers may manage their linked farmer
+profile and parcels. Organisation agents require an active agent profile,
+active project access, and explicit active farmer assignment. Explicit
+web-administrator roles retain tenant-bounded administration capability.
+
+Farmer self-enrollment binds the new farmer profile to the authenticated user
+only when the submitted mobile identity matches the persisted user. An
+authorised project agent may enroll an assisted farmer without binding that
+farmer to the agent's user identity. Enrollment metadata and geometry capture
+record the authenticated actor.
+
+Missing bearer, sender or actor impersonation, unrelated-farmer access,
+unassigned-agent access, and token/header tenant mismatch fail closed. Existing
+endpoint paths and response schemas remain stable.

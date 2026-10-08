@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def now():
@@ -114,12 +115,11 @@ def main():
             updated_at=now(),
         ))
         db.commit()
+        admin_user, headers = create_test_admin(db, tenant_id=tenant_id)
     finally:
         db.close()
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": str(actor_id)}
-
     farmer_update = client.patch(f"/api/v1/farmers/{farmer_id}", headers=headers, json={
         "display_name": "Updated Farmer",
         "village_name_manual": "Updated Village",
@@ -182,10 +182,11 @@ def main():
     soil_bad = client.patch(f"/api/v1/soil-profiles/{soil_profile_id}", headers=headers, json={"soil_texture": "CLAY"})
     check(soil_bad.status_code == 400, "Soil profile update rejects invalid texture", soil_bad.text)
 
-    isolated_farmer = client.patch(f"/api/v1/farmers/{farmer_id}", headers={"X-Tenant-ID": "default", "X-Actor-ID": str(actor_id)}, json={"display_name": "Wrong Tenant"})
-    check(isolated_farmer.status_code == 404, "Farmer update is tenant isolated", isolated_farmer.text)
-    isolated_parcel = client.patch(f"/api/v1/parcels/{parcel_id}", headers={"X-Tenant-ID": "default", "X-Actor-ID": str(actor_id)}, json={"local_name": "Wrong Tenant"})
-    check(isolated_parcel.status_code == 404, "Parcel update is tenant isolated", isolated_parcel.text)
+    mismatch_headers = {**headers, "X-Tenant-ID": "default"}
+    isolated_farmer = client.patch(f"/api/v1/farmers/{farmer_id}", headers=mismatch_headers, json={"display_name": "Wrong Tenant"})
+    check(isolated_farmer.status_code == 403, "Farmer update rejects tenant mismatch", isolated_farmer.text)
+    isolated_parcel = client.patch(f"/api/v1/parcels/{parcel_id}", headers=mismatch_headers, json={"local_name": "Wrong Tenant"})
+    check(isolated_parcel.status_code == 403, "Parcel update rejects tenant mismatch", isolated_parcel.text)
     isolated_soil = client.patch(f"/api/v1/soil-profiles/{soil_profile_id}", headers={"X-Tenant-ID": "default", "X-Actor-ID": str(actor_id)}, json={"ph": 8})
     check(isolated_soil.status_code == 404, "Soil profile update is tenant isolated", isolated_soil.text)
 
@@ -195,6 +196,7 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        delete_test_admin(db, admin_user.id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

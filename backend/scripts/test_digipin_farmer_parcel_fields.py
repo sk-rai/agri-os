@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Tenant
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.master_data.digipin import validate_digipin
 
 
@@ -38,9 +39,6 @@ def main():
     print("=" * 72)
 
     tenant_id = f"digipin-runtime-{uuid.uuid4().hex[:8]}"
-    actor_id = str(uuid.uuid4())
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
-
     db = SessionLocal()
     try:
         db.add(Tenant(
@@ -51,6 +49,12 @@ def main():
             updated_at=datetime.now(timezone.utc),
         ))
         db.commit()
+        # create_test_admin returns Authorization, X-Tenant-ID, and X-Actor-ID.
+        admin_user, headers = create_test_admin(
+            db,
+            role="ENTERPRISE_ADMIN",
+            tenant_id=tenant_id,
+        )
     finally:
         db.close()
 
@@ -138,6 +142,7 @@ def main():
         try:
             db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
             db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
+            delete_test_admin(db, admin_user.id)
             db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
             db.commit()
         finally:

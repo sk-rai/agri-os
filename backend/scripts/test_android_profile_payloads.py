@@ -50,6 +50,7 @@ def main():
         ))
         db.commit()
         admin, admin_headers = create_test_admin(db, tenant_id=tenant_id)
+        headers = admin_headers
         check(True, "Temporary rows cleaned up")
     finally:
         db.close()

@@ -153,3 +153,22 @@ empty list. Inaccessible details fail closed with `404`, while explicit web
 administrators retain tenant-wide visibility.
 
 Sync-event authorization remains a separate checkpoint.
+
+## Farmer and parcel mutation integration checkpoint
+
+The strict persona resolver now governs direct farmer enrollment and update,
+parcel creation and update, and parcel geometry capture. A personal farmer may
+manage only their linked farmer profile and its parcels. An organisation agent
+may manage an assisted farmer only through an active profile, active project
+role, and explicit active enrollment assignment.
+
+Self-enrollment verifies the authenticated user's persisted mobile identity and
+links the new farmer profile to that user. Agent-assisted enrollment records the
+agent as the actor without assigning the farmer profile to the agent's user
+identity. Explicit web administrators retain tenant-wide administrative scope.
+
+Geometry attribution, enrollment attribution, tenant selection, and actor
+selection come from the authenticated principal. Direct behavior coverage
+proves personal-farmer, assigned-agent, unassigned-agent, unrelated-farmer,
+web-admin, self-enrollment, assisted-enrollment, tenant-mismatch, and verified
+actor cases.

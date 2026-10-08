@@ -26,13 +26,63 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
+from app.core.admin_auth import AdminPermission, AdminPrincipal, ROLE_PERMISSIONS, require_admin_permission
 from app.core.database import get_db
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
 from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
+
+FARMER_WEB_ADMIN_ROLES = {"ENTERPRISE_ADMIN", "MANAGER", "ADMIN_EDITOR", "ADMIN_PUBLISHER"}
+
+
+def _farmer_admin_can_edit(principal: AuthenticatedPrincipal) -> bool:
+    role = str(principal.role or "").upper()
+    return role in FARMER_WEB_ADMIN_ROLES and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
+
+
+def _farmer_scope_forbidden(message: str) -> HTTPException:
+    return HTTPException(status_code=403, detail={"error": "FARMER_SCOPE_DENIED", "message": message})
+
+
+def _require_principal_can_manage_farmer(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    actor_id: uuid.UUID,
+    farmer_id: uuid.UUID,
+) -> None:
+    if actor_id != principal.user_id:
+        raise _farmer_scope_forbidden("Mutation actor must match the authenticated user.")
+    if _farmer_admin_can_edit(principal):
+        return
+    if not resolve_human_persona_scope(db, principal).can_operate_farmer(farmer_id):
+        raise _farmer_scope_forbidden("Authenticated user cannot manage this farmer.")
+
+
+def _require_farmer_enrollment_scope(
+    db: Session, *, principal: AuthenticatedPrincipal, body: "FarmerCreate", normalized_mobile: str
+) -> bool:
+    """Authorize enrollment and return whether it creates the caller's profile."""
+    if _farmer_admin_can_edit(principal):
+        return False
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.has_agent_persona and body.project_id and scope.has_project_access(body.project_id):
+        return False
+    if str(principal.role or "").upper() == "FARMER":
+        user_mobile = db.query(User.mobile_number).filter(
+            User.id == principal.user_id,
+            User.tenant_id == principal.tenant_id,
+            User.is_active == True,
+        ).scalar()
+        if normalize_mobile_number(user_mobile or "") == normalized_mobile:
+            return True
+    raise _farmer_scope_forbidden(
+        "Farmer enrollment requires the caller's own mobile identity or an active agent project role."
+    )
 
 
 def _parse_optional_actor_id(value: Optional[str]) -> Optional[uuid.UUID]:
@@ -5557,31 +5607,34 @@ def assign_role(
 @router.post("/farmers", response_model=FarmerResponse, status_code=201)
 def enroll_farmer(
     body: FarmerCreate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Enroll a farmer (progressive — only mobile + village required)."""
     # Validate: at least one of village_id or village_name_manual must be provided
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
 
+    tenant_id = principal.tenant_id
+    normalized_mobile = normalize_mobile_number(body.mobile_number)
+    self_enrollment = _require_farmer_enrollment_scope(
+        db, principal=principal, body=body, normalized_mobile=normalized_mobile
+    )
     project = None
     if body.project_id:
-        project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id, Project.is_active == True).first()
+        project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == tenant_id, Project.is_active == True).first()
         if not project:
             raise HTTPException(404, "Project not found")
 
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=body.project_id, option_set="land_units", value=body.total_land_unit, path="total_land_unit")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=body.project_id, option_set="languages", value=body.language_preference, path="language_preference")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=body.project_id, option_set="land_units", value=body.total_land_unit, path="total_land_unit")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=body.project_id, option_set="languages", value=body.language_preference, path="language_preference")
     if body.assistance_mode:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=body.project_id, option_set="assistance_modes", value=body.assistance_mode, path="assistance_mode")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=body.project_id, option_set="assistance_modes", value=body.assistance_mode, path="assistance_mode")
 
-    normalized_mobile = normalize_mobile_number(body.mobile_number)
     existing_farmer = (
         db.query(Farmer)
         .filter(
-            Farmer.tenant_id == x_tenant_id,
+            Farmer.tenant_id == tenant_id,
             Farmer.mobile_number == normalized_mobile,
             Farmer.status != "INACTIVE",
         )
@@ -5600,7 +5653,8 @@ def enroll_farmer(
 
     farmer = Farmer(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
+        user_id=principal.user_id if self_enrollment else None,
         project_id=body.project_id,
         mobile_number=normalized_mobile,
         village_id=body.village_id,  # Can be None if manual village
@@ -5617,7 +5671,7 @@ def enroll_farmer(
         total_land_unit=body.total_land_unit,
         language_preference=body.language_preference,
         enrollment_method=_normalize_assistance_mode(body.assistance_mode),
-        enrolled_by=uuid.UUID(x_actor_id),
+        enrolled_by=principal.user_id,
         enrollment_gps_lat=body.enrollment_gps_lat,
         enrollment_gps_lng=body.enrollment_gps_lng,
         created_at=datetime.now(timezone.utc),
@@ -5628,12 +5682,12 @@ def enroll_farmer(
     if project:
         db.add(FarmerProjectEnrollment(
             id=uuid.uuid4(),
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             farmer_id=farmer.id,
             project_id=project.id,
             enrollment_method=_normalize_assistance_mode(body.assistance_mode),
             enrollment_source="ANDROID_PROFILE_CREATE",
-            enrolled_by=uuid.UUID(x_actor_id),
+            enrolled_by=principal.user_id,
             status="ACTIVE",
             parcel_ids=[],
             assigned_user_ids=[],
@@ -6043,28 +6097,27 @@ def get_field_agent_worklist(
 def update_farmer_profile(
     farmer_id: uuid.UUID,
     body: FarmerUpdate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Safely update mutable farmer profile fields for self-service or agent-mode maintenance."""
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
-    actor_id = _parse_optional_actor_id(x_actor_id)
-    _require_actor_can_manage_farmer(db, x_tenant_id, farmer, actor_id)
+    _require_principal_can_manage_farmer(db, principal=principal, actor_id=principal.user_id, farmer_id=farmer.id)
 
     values = _model_patch_values(body)
     if not values:
         raise HTTPException(400, "At least one farmer profile field must be provided")
 
-    inferred_project_id = _infer_farmer_project_id_for_profile_validation(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
+    inferred_project_id = _infer_farmer_project_id_for_profile_validation(db, tenant_id=tenant_id, farmer_id=farmer.id)
     if "total_land_unit" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=values.get("total_land_unit"), path="total_land_unit")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="land_units", value=values.get("total_land_unit"), path="total_land_unit")
     if "language_preference" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="languages", value=values.get("language_preference"), path="language_preference")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="languages", value=values.get("language_preference"), path="language_preference")
     if "assistance_mode" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="assistance_modes", value=values.get("assistance_mode"), path="assistance_mode")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="assistance_modes", value=values.get("assistance_mode"), path="assistance_mode")
 
     for field in ["village_id", "village_name_manual", "pin_code", "primary_crop_code", "crops_by_season", "display_name", "father_name", "age", "gender", "aadhaar_number", "total_land_area", "total_land_unit", "language_preference", "enrollment_gps_lat", "enrollment_gps_lng"]:
         if field in values:
@@ -6798,26 +6851,28 @@ def get_farmer_launch_context(
 @router.post("/parcels", response_model=ParcelResponse, status_code=201)
 def create_parcel(
     body: ParcelCreate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Register a parcel. GPS is optional — reported area is sufficient."""
-    farmer = db.query(Farmer).filter(Farmer.id == body.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    farmer = db.query(Farmer).filter(Farmer.id == body.farmer_id, Farmer.tenant_id == tenant_id).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
+    _require_principal_can_manage_farmer(db, principal=principal, actor_id=principal.user_id, farmer_id=farmer.id)
     _validate_parcel_location_scope(body, farmer)
 
     # Validate: at least one of village_id or village_name_manual
     if not body.village_id and not body.village_name_manual:
         raise HTTPException(400, "Either village_id or village_name_manual is required")
 
-    inferred_project_id = _infer_farmer_project_id_for_profile_validation(db, tenant_id=x_tenant_id, farmer_id=body.farmer_id)
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=body.reported_area_unit, path="reported_area_unit")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
+    inferred_project_id = _infer_farmer_project_id_for_profile_validation(db, tenant_id=tenant_id, farmer_id=body.farmer_id)
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="land_units", value=body.reported_area_unit, path="reported_area_unit")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=body.ownership_type, path="ownership_type")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=body.irrigation_source, path="irrigation_source")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
     _validate_crop_catalog_value(db, value=body.current_crop_code, path="current_crop_code")
-    _validate_crops_by_season(db, tenant_id=x_tenant_id, project_id=inferred_project_id, value=body.crops_by_season, path="crops_by_season")
+    _validate_crops_by_season(db, tenant_id=tenant_id, project_id=inferred_project_id, value=body.crops_by_season, path="crops_by_season")
 
     # Determine geometry source from provided data
     geometry_source = "NONE"
@@ -6826,7 +6881,7 @@ def create_parcel(
 
     parcel = Parcel(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         farmer_id=body.farmer_id,
         project_id=inferred_project_id,
         village_id=body.village_id,  # Can be None for manual villages
@@ -6884,39 +6939,38 @@ def list_parcels(
 def update_parcel_profile(
     parcel_id: uuid.UUID,
     body: ParcelUpdate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Update parcel metadata; geometry remains handled by /parcels/{parcel_id}/geometry."""
-    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
     if not parcel:
         raise HTTPException(404, "Parcel not found")
 
-    farmer = db.query(Farmer).filter(Farmer.id == parcel.farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    farmer = db.query(Farmer).filter(Farmer.id == parcel.farmer_id, Farmer.tenant_id == tenant_id).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
-    actor_id = _parse_optional_actor_id(x_actor_id)
-    _require_actor_can_manage_farmer(db, x_tenant_id, farmer, actor_id)
+    _require_principal_can_manage_farmer(db, principal=principal, actor_id=principal.user_id, farmer_id=farmer.id)
     _validate_parcel_location_scope(body, farmer)
 
     values = _model_patch_values(body)
     if not values:
         raise HTTPException(400, "At least one parcel field must be provided")
 
-    inferred_project_id = parcel.project_id or _infer_farmer_project_id_for_profile_validation(db, tenant_id=x_tenant_id, farmer_id=parcel.farmer_id)
+    inferred_project_id = parcel.project_id or _infer_farmer_project_id_for_profile_validation(db, tenant_id=tenant_id, farmer_id=parcel.farmer_id)
     if "reported_area_unit" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="land_units", value=values.get("reported_area_unit"), path="reported_area_unit")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="land_units", value=values.get("reported_area_unit"), path="reported_area_unit")
     if "ownership_type" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=values.get("ownership_type"), path="ownership_type")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="ownership_types", value=values.get("ownership_type"), path="ownership_type")
     if "irrigation_source" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=values.get("irrigation_source"), path="irrigation_source")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="irrigation_sources", value=values.get("irrigation_source"), path="irrigation_source")
     if "soil_type_code" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
     if "current_crop_code" in values:
         _validate_crop_catalog_value(db, value=values.get("current_crop_code"), path="current_crop_code")
     if "crops_by_season" in values:
-        _validate_crops_by_season(db, tenant_id=x_tenant_id, project_id=inferred_project_id, value=values.get("crops_by_season"), path="crops_by_season")
+        _validate_crops_by_season(db, tenant_id=tenant_id, project_id=inferred_project_id, value=values.get("crops_by_season"), path="crops_by_season")
 
     for field in ["village_id", "village_name_manual", "pin_code", "location_scope", "reported_area", "reported_area_unit", "current_crop_code", "soil_type_code", "local_name", "survey_number", "ownership_type", "annual_rent", "annual_rent_currency", "share_percentage", "sharecrop_percentage", "irrigation_source", "crops_by_season", "status"]:
         if field in values:
@@ -6931,20 +6985,21 @@ def update_parcel_profile(
 def update_parcel_geometry(
     parcel_id: uuid.UUID,
     body: GeometryUpdate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Progressively add GPS data to a parcel.
 
     Called when farmer/dealer does a GPS walk or pin drop.
     Does NOT replace reported_area — adds computed_area alongside it.
     """
+    tenant_id = principal.tenant_id
     parcel = db.query(Parcel).filter(
-        Parcel.id == parcel_id, Parcel.tenant_id == x_tenant_id
+        Parcel.id == parcel_id, Parcel.tenant_id == tenant_id
     ).first()
     if not parcel:
         raise HTTPException(404, "Parcel not found")
+    _require_principal_can_manage_farmer(db, principal=principal, actor_id=principal.user_id, farmer_id=parcel.farmer_id)
 
     normalized_geojson, point_lat, point_lng = normalize_geojson_for_parcel(
         body.geojson, body.geometry_source
@@ -6958,7 +7013,7 @@ def update_parcel_geometry(
     parcel.geometry_source = body.geometry_source
     parcel.geometry_accuracy_meters = body.accuracy_meters
     parcel.geometry_captured_at = datetime.now(timezone.utc)
-    parcel.geometry_captured_by = uuid.UUID(x_actor_id)
+    parcel.geometry_captured_by = principal.user_id
 
     if point_lat is not None and point_lng is not None:
         parcel.centroid_lat = point_lat
@@ -6985,7 +7040,7 @@ def update_parcel_geometry(
             {
                 "geojson": json.dumps(normalized_geojson),
                 "parcel_id": str(parcel_id),
-                "tenant_id": x_tenant_id,
+                "tenant_id": tenant_id,
             },
         )
     elif body.geometry_source in ("NONE", "PIN_DROP"):
@@ -6999,7 +7054,7 @@ def update_parcel_geometry(
                 WHERE id = :parcel_id AND tenant_id = :tenant_id
                 """
             ),
-            {"parcel_id": str(parcel_id), "tenant_id": x_tenant_id},
+            {"parcel_id": str(parcel_id), "tenant_id": tenant_id},
         )
 
     _apply_parcel_centroid_digipin(parcel)
