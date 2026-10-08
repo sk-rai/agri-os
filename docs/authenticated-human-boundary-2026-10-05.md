@@ -190,5 +190,11 @@ workflow status, while assignment changes remain restricted to explicit
 web-admin roles. Audit events and status history record the verified user and
 resolved operational persona.
 
-Query-thread list/detail reads and sync materialisation remain separate
-authorization tranches.
+Query-thread list and detail reads now use the same authenticated-human
+boundary. Personal farmers see only their linked farmer threads; assigned
+agents see only explicitly assigned farmers; unassigned operational users
+receive an empty list. Inaccessible detail records return `404`, while explicit
+web administrators retain tenant-wide visibility. Joined attachment assets are
+independently tenant-bounded.
+
+Query sync materialisation remains a separate authorization tranche.

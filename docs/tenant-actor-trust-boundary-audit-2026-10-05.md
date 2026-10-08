@@ -134,5 +134,11 @@ farmer, assigned-agent, unassigned-agent, web-admin, actor-attribution,
 attachment ownership, status-history, missing-bearer, and tenant-mismatch
 cases.
 
-`GET /api/v1/query-threads`, query detail, and query sync materialisation
-remain separate review tranches.
+The query list and detail routes now require verified human identity and
+apply tenant-bounded personal-farmer or assigned-agent visibility. Inaccessible
+details fail closed with `404`, unassigned agents receive an empty list, and
+explicit web administrators retain tenant-wide visibility. Joined media assets
+are independently tenant-bounded. These routes no longer appear as unprotected
+non-reference-read findings.
+
+Query sync materialisation remains a separate review tranche.

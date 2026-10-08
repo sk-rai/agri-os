@@ -146,5 +146,10 @@ farmer and project as the thread. Farmer personas cannot perform workflow
 transitions, and only explicit web administrators may change thread
 assignment.
 
-Query list/detail visibility and sync-event authorization remain separate
-checkpoints.
+Query list and detail visibility use the same persona resolution. Farmer
+lists contain only personal-farmer threads; assigned-agent lists contain
+explicitly assigned farmers; users without readable farmer scope receive an
+empty list. Inaccessible details fail closed with `404`, while explicit web
+administrators retain tenant-wide visibility.
+
+Sync-event authorization remains a separate checkpoint.

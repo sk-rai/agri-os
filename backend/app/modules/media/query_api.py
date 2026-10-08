@@ -358,6 +358,16 @@ def create_query_thread(
     return payload
 
 
+def _query_visible_farmer_ids(
+    db: Session,
+    principal: AuthenticatedPrincipal,
+) -> Optional[frozenset[uuid.UUID]]:
+    if _media_admin_can_edit(principal):
+        return None
+    scope = resolve_human_persona_scope(db, principal)
+    return scope.own_farmer_ids | scope.assigned_farmer_ids
+
+
 @router.get("")
 def list_query_threads(
     project_id: Optional[uuid.UUID] = Query(None),
@@ -366,10 +376,17 @@ def list_query_threads(
     status: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    query = db.query(QueryThread).filter(QueryThread.tenant_id == x_tenant_id, QueryThread.is_active == True)
+    tenant_id = principal.tenant_id
+    visible_farmer_ids = _query_visible_farmer_ids(db, principal)
+    query = db.query(QueryThread).filter(
+        QueryThread.tenant_id == tenant_id,
+        QueryThread.is_active == True,
+    )
+    if visible_farmer_ids is not None:
+        query = query.filter(QueryThread.farmer_id.in_(visible_farmer_ids))
     if project_id:
         query = query.filter(QueryThread.project_id == project_id)
     if farmer_id:
@@ -386,10 +403,13 @@ def list_query_threads(
         if normalized_category not in QUERY_CATEGORIES:
             raise HTTPException(400, "Invalid category")
         query = query.filter(QueryThread.category == normalized_category)
-    rows = query.order_by(QueryThread.last_message_at.desc().nullslast(), QueryThread.created_at.desc()).limit(limit).all()
+    rows = query.order_by(
+        QueryThread.last_message_at.desc().nullslast(),
+        QueryThread.created_at.desc(),
+    ).limit(limit).all()
     return {
         "schema_version": "query_threads.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {
             "project_id": str(project_id) if project_id else None,
             "farmer_id": str(farmer_id) if farmer_id else None,
@@ -402,8 +422,16 @@ def list_query_threads(
         "threads": [
             _thread_payload(
                 row,
-                db.query(QueryMessage).filter(QueryMessage.tenant_id == x_tenant_id, QueryMessage.thread_id == row.id, QueryMessage.is_active == True).count(),
-                db.query(MediaAttachment).filter(MediaAttachment.tenant_id == x_tenant_id, MediaAttachment.entity_type == "QUERY_THREAD", MediaAttachment.entity_id == row.id).count(),
+                db.query(QueryMessage).filter(
+                    QueryMessage.tenant_id == tenant_id,
+                    QueryMessage.thread_id == row.id,
+                    QueryMessage.is_active == True,
+                ).count(),
+                db.query(MediaAttachment).filter(
+                    MediaAttachment.tenant_id == tenant_id,
+                    MediaAttachment.entity_type == "QUERY_THREAD",
+                    MediaAttachment.entity_id == row.id,
+                ).count(),
             )
             for row in rows
         ],
@@ -413,29 +441,54 @@ def list_query_threads(
 @router.get("/{thread_id}")
 def get_query_thread(
     thread_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    thread = db.query(QueryThread).filter(QueryThread.id == thread_id, QueryThread.tenant_id == x_tenant_id, QueryThread.is_active == True).first()
+    tenant_id = principal.tenant_id
+    thread = db.query(QueryThread).filter(
+        QueryThread.id == thread_id,
+        QueryThread.tenant_id == tenant_id,
+        QueryThread.is_active == True,
+    ).first()
     if not thread:
         raise HTTPException(404, "Query thread not found")
-    messages = db.query(QueryMessage).filter(QueryMessage.tenant_id == x_tenant_id, QueryMessage.thread_id == thread.id, QueryMessage.is_active == True).order_by(QueryMessage.created_at.asc()).all()
+    visible_farmer_ids = _query_visible_farmer_ids(db, principal)
+    if visible_farmer_ids is not None and thread.farmer_id not in visible_farmer_ids:
+        raise HTTPException(404, "Query thread not found")
+    messages = db.query(QueryMessage).filter(
+        QueryMessage.tenant_id == tenant_id,
+        QueryMessage.thread_id == thread.id,
+        QueryMessage.is_active == True,
+    ).order_by(QueryMessage.created_at.asc()).all()
     payload = _thread_payload(thread, len(messages), 0)
     payload["messages"] = []
     for message in messages:
         attachments = (
             db.query(MediaAttachment, MediaAsset)
             .join(MediaAsset, MediaAsset.id == MediaAttachment.media_asset_id)
-            .filter(MediaAttachment.tenant_id == x_tenant_id, MediaAttachment.entity_type == "QUERY_MESSAGE", MediaAttachment.entity_id == message.id)
-            .order_by(MediaAttachment.display_order.asc(), MediaAttachment.created_at.desc())
+            .filter(
+                MediaAttachment.tenant_id == tenant_id,
+                MediaAsset.tenant_id == tenant_id,
+                MediaAttachment.entity_type == "QUERY_MESSAGE",
+                MediaAttachment.entity_id == message.id,
+            )
+            .order_by(
+                MediaAttachment.display_order.asc(),
+                MediaAttachment.created_at.desc(),
+            )
             .all()
         )
         message_payload = _message_payload(message, len(attachments))
-        message_payload["media_attachments"] = [_attachment_payload(attachment, asset) for attachment, asset in attachments]
+        message_payload["media_attachments"] = [
+            _attachment_payload(attachment, asset)
+            for attachment, asset in attachments
+        ]
         payload["messages"].append(message_payload)
-    payload["media_attachment_count"] = sum(message["media_attachment_count"] for message in payload["messages"])
+    payload["media_attachment_count"] = sum(
+        message["media_attachment_count"] for message in payload["messages"]
+    )
     audit_events = db.query(QueryThreadAudit).filter(
-        QueryThreadAudit.tenant_id == x_tenant_id,
+        QueryThreadAudit.tenant_id == tenant_id,
         QueryThreadAudit.thread_id == thread.id,
     ).order_by(QueryThreadAudit.created_at.asc()).all()
     payload["audit_events"] = [_audit_payload(event) for event in audit_events]

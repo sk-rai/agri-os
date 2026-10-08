@@ -139,8 +139,15 @@ def main():
     check(status_audit[-1]["reason"] == "Resolved by agronomist", "Status audit stores reason")
     invalid = client.post("/api/v1/query-threads", headers=headers, json={"farmer_id": str(farmer_id), "subject": "Bad", "category": "ALIEN"})
     check(invalid.status_code == 422, "Invalid category rejected", invalid.text[:200])
-    isolated = client.get(f"/api/v1/query-threads/{thread_id}", headers={"X-Tenant-ID": "default"})
-    check(isolated.status_code == 404, "Thread is tenant isolated", isolated.text)
+    isolated = client.get(
+        f"/api/v1/query-threads/{thread_id}",
+        headers={**headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        isolated.status_code == 403,
+        "Query detail rejects token/header tenant mismatch",
+        isolated.text,
+    )
 
     print("\n[6] Cleanup")
     db = SessionLocal()

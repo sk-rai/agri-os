@@ -166,6 +166,72 @@ def main():
         require(agent_create.json()["messages"][0]["sender_id"] == str(agent_user.id), "Agent message records authenticated user")
         require(agent_create.json()["messages"][0]["sender_type"] == "FIELD_AGENT", "Agent message records resolved persona")
 
+        missing_list = client.get(
+            "/api/v1/query-threads",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(missing_list.status_code == 401, "Query list rejects missing bearer", missing_list.text)
+
+        farmer_list = client.get("/api/v1/query-threads", headers=farmer_headers)
+        require(farmer_list.status_code == 200, "Farmer lists visible query threads", farmer_list.text)
+        require(
+            {row["id"] for row in farmer_list.json()["threads"]} == {farmer_thread_id},
+            "Farmer list is restricted to personal farmer",
+            farmer_list.text,
+        )
+        farmer_detail = client.get(f"/api/v1/query-threads/{farmer_thread_id}", headers=farmer_headers)
+        require(farmer_detail.status_code == 200, "Farmer reads personal query detail", farmer_detail.text)
+        require(len(farmer_detail.json()["messages"]) == 1, "Farmer detail includes personal messages")
+        farmer_assisted_list = client.get(
+            "/api/v1/query-threads",
+            headers=farmer_headers,
+            params={"farmer_id": str(assisted.id)},
+        )
+        require(
+            farmer_assisted_list.status_code == 200 and farmer_assisted_list.json()["count"] == 0,
+            "Farmer cannot discover assisted-farmer queries in list",
+            farmer_assisted_list.text,
+        )
+        farmer_assisted_detail = client.get(f"/api/v1/query-threads/{agent_thread_id}", headers=farmer_headers)
+        require(farmer_assisted_detail.status_code == 404, "Farmer cannot discover assisted-farmer query detail", farmer_assisted_detail.text)
+
+        agent_list = client.get("/api/v1/query-threads", headers=agent_headers)
+        require(agent_list.status_code == 200, "Assigned agent lists visible query threads", agent_list.text)
+        require(
+            {row["id"] for row in agent_list.json()["threads"]} == {agent_thread_id},
+            "Agent list is restricted to assigned farmer",
+            agent_list.text,
+        )
+        agent_detail = client.get(f"/api/v1/query-threads/{agent_thread_id}", headers=agent_headers)
+        require(agent_detail.status_code == 200, "Assigned agent reads assisted-farmer query detail", agent_detail.text)
+        agent_personal_detail = client.get(f"/api/v1/query-threads/{farmer_thread_id}", headers=agent_headers)
+        require(agent_personal_detail.status_code == 404, "Assigned agent cannot discover unrelated farmer query", agent_personal_detail.text)
+
+        unassigned_list = client.get("/api/v1/query-threads", headers=unassigned_headers)
+        require(
+            unassigned_list.status_code == 200 and unassigned_list.json()["count"] == 0,
+            "Unassigned agent receives an empty query list",
+            unassigned_list.text,
+        )
+        unassigned_detail = client.get(f"/api/v1/query-threads/{agent_thread_id}", headers=unassigned_headers)
+        require(unassigned_detail.status_code == 404, "Unassigned agent cannot discover query detail", unassigned_detail.text)
+
+        admin_list = client.get("/api/v1/query-threads", headers=admin_headers)
+        require(admin_list.status_code == 200, "Web administrator lists tenant query threads", admin_list.text)
+        require(
+            {row["id"] for row in admin_list.json()["threads"]} == {farmer_thread_id, agent_thread_id},
+            "Web administrator sees both operational farmer scopes",
+            admin_list.text,
+        )
+        admin_detail = client.get(f"/api/v1/query-threads/{agent_thread_id}", headers=admin_headers)
+        require(admin_detail.status_code == 200, "Web administrator reads tenant query detail", admin_detail.text)
+
+        read_tenant_mismatch = client.get(
+            "/api/v1/query-threads",
+            headers={**farmer_headers, "X-Tenant-ID": "default"},
+        )
+        require(read_tenant_mismatch.status_code == 403, "Query list rejects token/header tenant mismatch", read_tenant_mismatch.text)
+
         impersonation = client.post("/api/v1/query-threads", headers=farmer_headers, json=create_body(project_id, personal.id, personal_parcel.id, personal_asset.id, "FARMER", agent_user.id, "Impersonated question"))
         require(impersonation.status_code == 403, "Farmer cannot impersonate another sender", impersonation.text)
 
@@ -206,6 +272,8 @@ def main():
         print({
             "schema_version": "query_thread_persona_behavior.v1",
             "farmer_create": True, "assigned_agent_create": True,
+            "farmer_read_scope": True, "assigned_agent_read_scope": True,
+            "unassigned_read_denied": True, "admin_tenant_read": True,
             "sender_impersonation_denied": True, "unassigned_denied": True,
             "cross_farmer_asset_denied": True, "farmer_reply": True,
             "assigned_agent_reply": True, "farmer_status_denied": True,
