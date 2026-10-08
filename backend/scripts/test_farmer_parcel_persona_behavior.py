@@ -272,6 +272,192 @@ def main():
 
         client = TestClient(app)
 
+        missing_farmer_list = client.get(
+            "/api/v1/farmers",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_farmer_list.status_code == 401,
+            "Farmer listing rejects missing bearer",
+            missing_farmer_list.text,
+        )
+
+        missing_parcel_list = client.get(
+            "/api/v1/parcels",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_parcel_list.status_code == 401,
+            "Parcel listing rejects missing bearer",
+            missing_parcel_list.text,
+        )
+
+        farmer_list = client.get(
+            "/api/v1/farmers",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_list.status_code == 200,
+            "Farmer lists visible farmer profiles",
+            farmer_list.text,
+        )
+        require(
+            {row["id"] for row in farmer_list.json()} == {str(personal.id)},
+            "Farmer list is restricted to personal farmer",
+            farmer_list.text,
+        )
+
+        farmer_parcels = client.get(
+            "/api/v1/parcels",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_parcels.status_code == 200,
+            "Farmer lists visible parcels",
+            farmer_parcels.text,
+        )
+        require(
+            {row["id"] for row in farmer_parcels.json()}
+            == {str(personal_parcel.id)},
+            "Farmer parcel list is restricted to personal farmer",
+            farmer_parcels.text,
+        )
+
+        farmer_cross_parcels = client.get(
+            f"/api/v1/parcels?farmer_id={assisted.id}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_cross_parcels.status_code == 200
+            and farmer_cross_parcels.json() == [],
+            "Farmer cannot discover assisted-farmer parcels",
+            farmer_cross_parcels.text,
+        )
+
+        agent_list = client.get(
+            "/api/v1/farmers",
+            headers=agent_headers,
+        )
+        require(
+            agent_list.status_code == 200,
+            "Assigned agent lists visible farmers",
+            agent_list.text,
+        )
+        require(
+            {row["id"] for row in agent_list.json()} == {str(assisted.id)},
+            "Agent farmer list is restricted to assignment",
+            agent_list.text,
+        )
+
+        agent_parcels = client.get(
+            "/api/v1/parcels",
+            headers=agent_headers,
+        )
+        require(
+            agent_parcels.status_code == 200,
+            "Assigned agent lists assisted-farmer parcels",
+            agent_parcels.text,
+        )
+        require(
+            {row["id"] for row in agent_parcels.json()}
+            == {str(assisted_parcel.id)},
+            "Agent parcel list is restricted to assignment",
+            agent_parcels.text,
+        )
+
+        agent_cross_parcels = client.get(
+            f"/api/v1/parcels?farmer_id={unrelated.id}",
+            headers=agent_headers,
+        )
+        require(
+            agent_cross_parcels.status_code == 200
+            and agent_cross_parcels.json() == [],
+            "Assigned agent cannot discover unrelated parcels",
+            agent_cross_parcels.text,
+        )
+
+        unassigned_list = client.get(
+            "/api/v1/farmers",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_list.status_code == 200
+            and unassigned_list.json() == [],
+            "Unassigned agent receives an empty farmer list",
+            unassigned_list.text,
+        )
+
+        unassigned_parcels_read = client.get(
+            "/api/v1/parcels",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_parcels_read.status_code == 200
+            and unassigned_parcels_read.json() == [],
+            "Unassigned agent receives an empty parcel list",
+            unassigned_parcels_read.text,
+        )
+
+        admin_list = client.get(
+            "/api/v1/farmers",
+            headers=admin_headers,
+        )
+        require(
+            admin_list.status_code == 200,
+            "Web administrator lists tenant farmers",
+            admin_list.text,
+        )
+        require(
+            {row["id"] for row in admin_list.json()}
+            == {str(personal.id), str(assisted.id), str(unrelated.id)},
+            "Web administrator sees all tenant farmers",
+            admin_list.text,
+        )
+
+        admin_parcels = client.get(
+            "/api/v1/parcels",
+            headers=admin_headers,
+        )
+        require(
+            admin_parcels.status_code == 200,
+            "Web administrator lists tenant parcels",
+            admin_parcels.text,
+        )
+        require(
+            {row["id"] for row in admin_parcels.json()}
+            == {
+                str(personal_parcel.id),
+                str(assisted_parcel.id),
+                str(unrelated_parcel.id),
+            },
+            "Web administrator sees all tenant parcels",
+            admin_parcels.text,
+        )
+
+        mismatch_read_headers = {
+            **farmer_headers,
+            "X-Tenant-ID": "default",
+        }
+        mismatch_farmer_list = client.get(
+            "/api/v1/farmers",
+            headers=mismatch_read_headers,
+        )
+        require(
+            mismatch_farmer_list.status_code == 403,
+            "Farmer listing rejects token/header tenant mismatch",
+            mismatch_farmer_list.text,
+        )
+
+        mismatch_parcel_list = client.get(
+            "/api/v1/parcels",
+            headers=mismatch_read_headers,
+        )
+        require(
+            mismatch_parcel_list.status_code == 403,
+            "Parcel listing rejects token/header tenant mismatch",
+            mismatch_parcel_list.text,
+        )
+
         missing = client.patch(
             f"/api/v1/farmers/{personal.id}",
             headers={"X-Tenant-ID": tenant_id},
@@ -531,6 +717,11 @@ def main():
             {
                 "schema_version": "farmer_parcel_persona_behavior.v1",
                 "farmer_self_enrollment": True,
+                "farmer_read_scope": True,
+                "parcel_read_scope": True,
+                "assigned_agent_read_scope": True,
+                "unassigned_read_empty": True,
+                "admin_tenant_read": True,
                 "farmer_personal_update": True,
                 "farmer_personal_parcel_create": True,
                 "assigned_agent_farmer_update": True,

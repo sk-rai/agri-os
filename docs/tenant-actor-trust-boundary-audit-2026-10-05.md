@@ -166,3 +166,10 @@ tenant mismatch, personal farmer operations, explicit assignment, unassigned
 and unrelated denial, admin access, self-enrollment linkage, assisted
 enrollment attribution, Android payload compatibility, DigiPin behavior, and
 regression cleanup.
+
+The core farmer and parcel list routes now require verified human identity,
+derive tenant scope from the bearer principal, and filter operational results
+through the union of personal and explicitly assigned farmer IDs. Unassigned
+operational users receive empty collections and explicit web administrators
+retain tenant-wide visibility. These two routes no longer appear as
+unprotected non-reference-read findings.

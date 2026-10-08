@@ -16,9 +16,11 @@ def block(name, next_name):
 
 
 def main():
-    enroll = block("enroll_farmer", "list_farmers")
+    enroll = block("enroll_farmer", "_readable_farmer_ids")
+    farmer_read = block("list_farmers", "list_farmer_profile_readiness")
     farmer_update = block("update_farmer_profile", "download_project_enrollment_csv_template")
     parcel_create = block("create_parcel", "list_parcels")
+    parcel_read = block("list_parcels", "update_parcel_profile")
     parcel_update = block("update_parcel_profile", "update_parcel_geometry")
     geometry = block("update_parcel_geometry", "get_form_field_config")
     for label, route in [
@@ -38,6 +40,34 @@ def main():
     require("user_id=principal.user_id if self_enrollment else None" in enroll, "Self enrollment binds farmer profile to authenticated user")
     require("principal.user_id" in geometry, "Geometry capture records authenticated actor")
     require("FARMER_SCOPE_DENIED" in SOURCE, "Denied persona scope has a stable error")
+    for label, route in [
+        ("Farmer listing", farmer_read),
+        ("Parcel listing", parcel_read),
+    ]:
+        require(
+            "Depends(require_authenticated_human())" in route,
+            f"{label} requires an authenticated human",
+        )
+        require(
+            "principal.tenant_id" in route,
+            f"{label} derives tenant from verified identity",
+        )
+        require(
+            "_readable_farmer_ids" in route,
+            f"{label} applies persona-scoped farmer visibility",
+        )
+        require(
+            "X-Tenant-ID" not in route and "x_tenant_id" not in route,
+            f"{label} does not trust tenant headers directly",
+        )
+    require(
+        "scope.own_farmer_ids | scope.assigned_farmer_ids" in SOURCE,
+        "Read visibility combines personal and assigned farmers",
+    )
+    require(
+        "if _farmer_admin_can_edit(principal):" in SOURCE,
+        "Read visibility keeps an explicit web-admin boundary",
+    )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 
 

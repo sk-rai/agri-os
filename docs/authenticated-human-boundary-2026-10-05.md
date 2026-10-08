@@ -225,3 +225,11 @@ record the authenticated actor.
 Missing bearer, sender or actor impersonation, unrelated-farmer access,
 unassigned-agent access, and token/header tenant mismatch fail closed. Existing
 endpoint paths and response schemas remain stable.
+
+`GET /api/v1/farmers` and `GET /api/v1/parcels` now use the same
+authenticated-human and persona boundary. Personal farmers see only their
+linked farmer profile and parcels. Assigned organisation agents see only
+explicitly assigned farmers and their parcels. Unassigned operational users
+receive empty lists, while explicit web administrators retain tenant-wide
+visibility. Optional farmer, village, PIN-code, status, and pagination filters
+operate only within that authorised scope.

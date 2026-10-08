@@ -172,3 +172,9 @@ selection come from the authenticated principal. Direct behavior coverage
 proves personal-farmer, assigned-agent, unassigned-agent, unrelated-farmer,
 web-admin, self-enrollment, assisted-enrollment, tenant-mismatch, and verified
 actor cases.
+
+Farmer and parcel collection reads now use the same persona union. A user's
+readable farmer set is the union of linked personal farmers and explicitly
+assigned farmers. Parcel visibility is constrained by that same farmer set.
+Operational users without either capability receive empty collections, while
+explicit web administrators retain tenant-wide read scope.

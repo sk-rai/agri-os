@@ -5703,17 +5703,38 @@ def enroll_farmer(
     return farmer
 
 
+def _readable_farmer_ids(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+) -> Optional[frozenset[uuid.UUID]]:
+    """Return operational farmer visibility, or None for tenant-wide admins."""
+    if _farmer_admin_can_edit(principal):
+        return None
+    scope = resolve_human_persona_scope(db, principal)
+    return scope.own_farmer_ids | scope.assigned_farmer_ids
+
+
 @router.get("/farmers", response_model=list[FarmerResponse])
 def list_farmers(
     village_id: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query("ACTIVE"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """List farmers for a tenant, optionally filtered by village."""
-    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    """List farmers visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    readable_farmer_ids = _readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    query = db.query(Farmer).filter(Farmer.tenant_id == tenant_id)
+    if readable_farmer_ids is not None:
+        query = query.filter(
+            Farmer.id.in_(tuple(readable_farmer_ids))
+        )
     if village_id:
         query = query.filter(Farmer.village_id == village_id)
     if status:
@@ -6921,11 +6942,20 @@ def list_parcels(
     pin_code: Optional[str] = Query(None, pattern=r"^\d{6}$"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """List parcels for a tenant."""
-    query = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id)
+    """List parcels belonging to farmers visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    readable_farmer_ids = _readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    query = db.query(Parcel).filter(Parcel.tenant_id == tenant_id)
+    if readable_farmer_ids is not None:
+        query = query.filter(
+            Parcel.farmer_id.in_(tuple(readable_farmer_ids))
+        )
     if farmer_id:
         query = query.filter(Parcel.farmer_id == farmer_id)
     if village_id:
