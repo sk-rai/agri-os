@@ -178,3 +178,16 @@ readable farmer set is the union of linked personal farmers and explicitly
 assigned farmers. Parcel visibility is constrained by that same farmer set.
 Operational users without either capability receive empty collections, while
 explicit web administrators retain tenant-wide read scope.
+
+## Farmer readiness and worklist persona integration checkpoint
+
+Farmer profile-readiness summaries now apply the strict persona resolver.
+Personal farmers see only their linked profile, assigned agents see only
+explicitly assigned farmers with active project access, and unassigned agents
+receive an empty collection. Explicit web administrators retain tenant-wide
+readiness visibility.
+
+The field-agent worklist additionally requires an active agent persona and
+derives its actor from the verified principal. Its results are restricted to
+the resolver's assigned farmer IDs regardless of the compatibility
+`assigned_only` flag. Caller-supplied actor impersonation is rejected.

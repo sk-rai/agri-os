@@ -233,3 +233,23 @@ explicitly assigned farmers and their parcels. Unassigned operational users
 receive empty lists, while explicit web administrators retain tenant-wide
 visibility. Optional farmer, village, PIN-code, status, and pagination filters
 operate only within that authorised scope.
+
+## Farmer readiness and field-agent worklist checkpoint
+
+`GET /api/v1/farmers/profile-readiness` and
+`GET /api/v1/field-agent/worklist` now require the shared
+authenticated-human boundary. Tenant and actor context are derived from the
+verified bearer principal rather than trusted request headers or query
+parameters.
+
+Profile-readiness results use the same personal-farmer and explicitly assigned
+farmer visibility as the core farmer and parcel reads. Unassigned operational
+users receive an empty readiness collection, while explicit web administrators
+retain tenant-wide visibility.
+
+The field-agent worklist requires an active persisted agent persona and is
+always restricted to explicitly assigned farmers, including when the legacy
+`assigned_only` parameter is false. A supplied compatibility `actor_id` must
+match the authenticated user. Missing bearer, actor impersonation, tenant
+mismatch, unrelated-farmer discovery, and unassigned-farmer discovery fail
+closed.

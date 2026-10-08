@@ -18,6 +18,8 @@ def block(name, next_name):
 def main():
     enroll = block("enroll_farmer", "_readable_farmer_ids")
     farmer_read = block("list_farmers", "list_farmer_profile_readiness")
+    readiness_read = block("list_farmer_profile_readiness", "get_field_agent_worklist")
+    worklist_read = block("get_field_agent_worklist", "update_farmer_profile")
     farmer_update = block("update_farmer_profile", "download_project_enrollment_csv_template")
     parcel_create = block("create_parcel", "list_parcels")
     parcel_read = block("list_parcels", "update_parcel_profile")
@@ -67,6 +69,54 @@ def main():
     require(
         "if _farmer_admin_can_edit(principal):" in SOURCE,
         "Read visibility keeps an explicit web-admin boundary",
+    )
+    require(
+        "Depends(require_authenticated_human())" in readiness_read,
+        "Profile readiness requires an authenticated human",
+    )
+    require(
+        "principal.tenant_id" in readiness_read,
+        "Profile readiness derives tenant from verified identity",
+    )
+    require(
+        "_readable_farmer_ids" in readiness_read,
+        "Profile readiness applies persona-scoped farmer visibility",
+    )
+    require(
+        "X-Tenant-ID" not in readiness_read
+        and "x_tenant_id" not in readiness_read,
+        "Profile readiness does not trust tenant headers directly",
+    )
+    require(
+        "Depends(require_authenticated_human())" in worklist_read,
+        "Field-agent worklist requires an authenticated human",
+    )
+    require(
+        "principal.tenant_id" in worklist_read,
+        "Field-agent worklist derives tenant from verified identity",
+    )
+    require(
+        "resolve_human_persona_scope(db, principal)" in worklist_read,
+        "Field-agent worklist resolves persisted persona scope",
+    )
+    require(
+        "scope.assigned_farmer_ids" in worklist_read,
+        "Field-agent worklist is restricted to assigned farmers",
+    )
+    require(
+        "actor_id != principal.user_id" in worklist_read,
+        "Field-agent worklist rejects actor impersonation",
+    )
+    require(
+        "actor_uuid = principal.user_id" in worklist_read,
+        "Field-agent worklist derives actor from verified identity",
+    )
+    require(
+        "X-Tenant-ID" not in worklist_read
+        and "x_tenant_id" not in worklist_read
+        and "X-Actor-ID" not in worklist_read
+        and "x_actor_id" not in worklist_read,
+        "Field-agent worklist does not trust identity headers directly",
     )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 

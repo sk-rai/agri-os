@@ -173,3 +173,18 @@ through the union of personal and explicitly assigned farmer IDs. Unassigned
 operational users receive empty collections and explicit web administrators
 retain tenant-wide visibility. These two routes no longer appear as
 unprotected non-reference-read findings.
+
+## Farmer readiness and field-agent worklist read checkpoint
+
+The profile-readiness and field-agent worklist routes now use verified human
+identity and derive tenant scope from the bearer principal. Profile readiness
+filters through personal and explicitly assigned farmer IDs, with a bounded
+web-admin tenant-wide capability.
+
+The field-agent worklist requires an active persisted agent persona, derives
+the actor from the authenticated user, and always filters through explicit
+farmer assignments. Its legacy actor query parameter is accepted only when it
+matches the authenticated user. Static and behavior coverage verifies missing
+bearer, tenant mismatch, actor impersonation, farmer, assigned-agent,
+unassigned-agent, and web-admin boundaries. These routes no longer appear as
+unprotected non-reference-read findings.

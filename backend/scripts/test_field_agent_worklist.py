@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.auth.models import AgentProfile, User
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
+from app.modules.auth.service import create_jwt
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, ProjectRole, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
 from app.modules.master_data.models.crop import Crop, CropCategory, CropLifecycleTemplate
 from app.modules.workflow.models import CropCycle, CropStageInstance
@@ -173,6 +174,16 @@ def main():
         ))
         db.flush()
 
+        db.add(ProjectRole(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            user_id=actor_id,
+            role="AGRONOMIST",
+            territory_scope={"village_names": ["Agent Village"]},
+            is_active=True,
+            created_at=now(),
+            updated_at=now(),
+        ))
         db.add(AgentProfile(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
@@ -218,11 +229,17 @@ def main():
             updated_at=now(),
         ))
         db.commit()
+        actor_user = db.query(User).filter(User.id == actor_id).one()
+        token, _ = create_jwt(actor_user, "field-agent-worklist-regression")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-ID": tenant_id,
+            "X-Actor-ID": str(actor_id),
+        }
     finally:
         db.close()
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": str(actor_id)}
 
     assigned = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true", headers=headers)
     check(assigned.status_code == 200, "Assigned worklist returns 200", assigned.text)
@@ -268,19 +285,27 @@ def main():
     all_rows = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}", headers=headers)
     check(all_rows.status_code == 200, "Project worklist returns 200", all_rows.text)
     all_body = all_rows.json()
-    check(all_body["summary"]["farmer_count"] == 2, "Project worklist includes assigned and unassigned farmers")
-    check(any(item["farmer"]["id"] == str(unassigned_farmer_id) for item in all_body["farmers"]), "Project worklist includes unassigned farmer when assigned_only=false")
+    check(all_body["summary"]["farmer_count"] == 1, "Project worklist remains restricted to assigned farmers")
+    check(
+        all(item["farmer"]["id"] != str(unassigned_farmer_id) for item in all_body["farmers"]),
+        "Project worklist excludes unassigned farmer even when assigned_only=false",
+    )
 
     missing_parcel = client.get(f"/api/v1/farmers/profile-readiness?project_id={project_id}&action_code=ADD_PARCEL", headers=headers)
     check(missing_parcel.status_code == 200, "Profile readiness action filter returns 200", missing_parcel.text)
     missing_parcel_body = missing_parcel.json()
     check(missing_parcel_body["filters"]["action_code"] == "ADD_PARCEL", "Profile readiness echoes action_code filter")
-    check(missing_parcel_body["summary"]["farmer_count"] == 1, "Profile readiness action filter finds farmer needing parcel")
-    check(missing_parcel_body["farmers"][0]["farmer"]["id"] == str(unassigned_farmer_id), "Profile readiness action filter preserves expected farmer")
+    check(missing_parcel_body["summary"]["farmer_count"] == 0, "Profile readiness excludes unassigned farmer needing parcel")
+    check(missing_parcel_body["farmers"] == [], "Profile readiness returns no inaccessible farmer rows")
 
     land_partial = client.get(f"/api/v1/farmers/profile-readiness?project_id={project_id}&section=land&section_status=PARTIAL", headers=headers)
     check(land_partial.status_code == 200, "Profile readiness section filter returns 200", land_partial.text)
-    check(land_partial.json()["summary"]["farmer_count"] == 1, "Profile readiness section filter finds partial land profile")
+    check(land_partial.json()["summary"]["farmer_count"] == 1, "Profile readiness section filter keeps assigned partial land profile")
+    check(
+        land_partial.json()["farmers"][0]["farmer"]["id"] == str(assigned_farmer_id),
+        "Profile readiness section filter excludes inaccessible partial land profile",
+        land_partial.text,
+    )
 
     assign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=headers, json={
         "project_id": str(project_id),
@@ -311,8 +336,39 @@ def main():
     check(assigned_after_unassign.status_code == 200, "Assigned worklist returns 200 after unassignment", assigned_after_unassign.text)
     check(assigned_after_unassign.json()["summary"]["farmer_count"] == 1, "Assigned worklist removes unassigned farmer")
 
-    missing_actor = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true", headers={"X-Tenant-ID": tenant_id})
-    check(missing_actor.status_code == 400, "Assigned-only worklist requires actor context", missing_actor.text)
+    missing_actor = client.get(
+        f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true",
+        headers={"X-Tenant-ID": tenant_id},
+    )
+    check(
+        missing_actor.status_code == 401,
+        "Field-agent worklist requires bearer identity",
+        missing_actor.text,
+    )
+
+    impersonated_actor = client.get(
+        f"/api/v1/field-agent/worklist?project_id={project_id}&actor_id={uuid.uuid4()}",
+        headers=headers,
+    )
+    check(
+        impersonated_actor.status_code == 403,
+        "Field-agent worklist rejects actor impersonation",
+        impersonated_actor.text,
+    )
+
+    mismatch_headers = {
+        **headers,
+        "X-Tenant-ID": "default",
+    }
+    mismatch = client.get(
+        f"/api/v1/field-agent/worklist?project_id={project_id}",
+        headers=mismatch_headers,
+    )
+    check(
+        mismatch.status_code == 403,
+        "Field-agent worklist rejects token/header tenant mismatch",
+        mismatch.text,
+    )
 
     db = SessionLocal()
     try:
@@ -324,6 +380,7 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(User).filter(User.id == actor_id).delete(synchronize_session=False)
+        db.query(ProjectRole).filter(ProjectRole.project_id == project_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()

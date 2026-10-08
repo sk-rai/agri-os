@@ -5752,25 +5752,34 @@ def list_farmer_profile_readiness(
     section_status: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Return backend-owned farmer/land/soil profile readiness for admin and agent summary screens."""
     from app.modules.farmer.soil_profile import SoilProfile
 
+    tenant_id = principal.tenant_id
+    readable_farmer_ids = _readable_farmer_ids(
+        db,
+        principal=principal,
+    )
     agent_profile_context = None
-    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    query = db.query(Farmer).filter(Farmer.tenant_id == tenant_id)
+    if readable_farmer_ids is not None:
+        query = query.filter(
+            Farmer.id.in_(tuple(readable_farmer_ids))
+        )
     if status:
         query = query.filter(Farmer.status == status)
     if project_id:
-        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
         if not project:
             raise HTTPException(404, "Project not found")
         enrolled_farmer_ids = [
             row[0]
             for row in db.query(FarmerProjectEnrollment.farmer_id)
             .filter(
-                FarmerProjectEnrollment.tenant_id == x_tenant_id,
+                FarmerProjectEnrollment.tenant_id == tenant_id,
                 FarmerProjectEnrollment.project_id == project_id,
                 FarmerProjectEnrollment.status != "ARCHIVED",
             )
@@ -5779,14 +5788,14 @@ def list_farmer_profile_readiness(
         project_farmer_ids = [
             row[0]
             for row in db.query(Farmer.id)
-            .filter(Farmer.tenant_id == x_tenant_id, Farmer.project_id == project_id)
+            .filter(Farmer.tenant_id == tenant_id, Farmer.project_id == project_id)
             .all()
         ]
         farmer_ids = sorted(set(enrolled_farmer_ids + project_farmer_ids))
         if not farmer_ids:
             return {
                 "schema_version": "farmer_profile_readiness.v1",
-                "tenant_id": x_tenant_id,
+                "tenant_id": tenant_id,
                 "filters": {"project_id": str(project_id), "status": status, "action_code": action_code.upper() if action_code else None, "missing_field": missing_field, "section": section, "section_status": section_status.upper() if section_status else None, "offset": offset, "limit": limit},
                 "summary": {
                     "farmer_count": 0,
@@ -5832,21 +5841,21 @@ def list_farmer_profile_readiness(
     }
 
     for farmer in farmers:
-        parcels = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id, Parcel.status != "ARCHIVED").all()
-        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer.id).all()
+        parcels = db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == farmer.id, Parcel.status != "ARCHIVED").all()
+        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id, SoilProfile.farmer_id == farmer.id).all()
         enrollments = db.query(FarmerProjectEnrollment).filter(
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
             FarmerProjectEnrollment.farmer_id == farmer.id,
             FarmerProjectEnrollment.status != "ARCHIVED",
         ).all()
         weather_snapshot_count = _matching_weather_snapshot_count(
             db,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             farmer=farmer,
             parcels=parcels,
             project_enrollments=enrollments,
         )
-        soil_enrichment_counts = _soil_enrichment_snapshot_counts(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
+        soil_enrichment_counts = _soil_enrichment_snapshot_counts(db, tenant_id=tenant_id, farmer_id=farmer.id)
         completion = _farmer_profile_completion(
             farmer,
             len(parcels),
@@ -5904,7 +5913,7 @@ def list_farmer_profile_readiness(
 
     return {
         "schema_version": "farmer_profile_readiness.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {"project_id": str(project_id) if project_id else None, "status": status, "action_code": action_code.upper() if action_code else None, "missing_field": missing_field, "section": section, "section_status": section_status.upper() if section_status else None, "offset": offset, "limit": limit},
         "agent_profile": agent_profile_context,
         "mode_switch": {
@@ -5929,84 +5938,61 @@ def get_field_agent_worklist(
     section_status: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Return a backend-owned field-agent worklist for assisted farmer/land/soil capture."""
     from app.modules.farmer.soil_profile import SoilProfile
 
-    actor_uuid = actor_id or _parse_optional_uuid(x_actor_id)
-    agent_profile_context = _agent_profile_context_for_worklist(db, tenant_id=x_tenant_id, actor_id=actor_uuid)
-    if assigned_only and not actor_uuid:
-        raise HTTPException(400, "actor_id query parameter or X-Actor-ID header is required when assigned_only=true")
+    tenant_id = principal.tenant_id
+    if actor_id is not None and actor_id != principal.user_id:
+        raise _farmer_scope_forbidden(
+            "actor_id must match the authenticated user."
+        )
+
+    scope = resolve_human_persona_scope(db, principal)
+    if not scope.has_agent_persona:
+        raise _farmer_scope_forbidden(
+            "An active agent persona is required for the field-agent worklist."
+        )
+
+    actor_uuid = principal.user_id
+    agent_profile_context = _agent_profile_context_for_worklist(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_uuid,
+    )
 
     if project_id:
-        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+        project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
         if not project:
             raise HTTPException(404, "Project not found")
 
-    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id)
+    query = db.query(Farmer).filter(Farmer.tenant_id == tenant_id)
     if status:
         query = query.filter(Farmer.status == status)
 
-    candidate_farmer_ids: Optional[set[uuid.UUID]] = None
     enrollment_query = db.query(FarmerProjectEnrollment).filter(
-        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.tenant_id == tenant_id,
         FarmerProjectEnrollment.status != "ARCHIVED",
     )
     if project_id:
-        enrollment_query = enrollment_query.filter(FarmerProjectEnrollment.project_id == project_id)
+        enrollment_query = enrollment_query.filter(
+            FarmerProjectEnrollment.project_id == project_id
+        )
     enrollments = enrollment_query.all()
 
-    if project_id or assigned_only:
-        candidate_farmer_ids = {enrollment.farmer_id for enrollment in enrollments}
-        if project_id:
-            candidate_farmer_ids.update(
-                row[0]
-                for row in db.query(Farmer.id).filter(Farmer.tenant_id == x_tenant_id, Farmer.project_id == project_id).all()
-            )
-        if assigned_only and actor_uuid:
-            assigned_ids = {
-                enrollment.farmer_id
-                for enrollment in enrollments
-                if str(actor_uuid) in {str(value) for value in (enrollment.assigned_user_ids or [])}
-            }
-            candidate_farmer_ids = candidate_farmer_ids.intersection(assigned_ids) if project_id else assigned_ids
-        if not candidate_farmer_ids:
-            return {
-                "schema_version": "field_agent_worklist.v1",
-                "tenant_id": x_tenant_id,
-                "filters": {
-                    "project_id": str(project_id) if project_id else None,
-                    "actor_id": str(actor_uuid) if actor_uuid else None,
-                    "assigned_only": assigned_only,
-                    "status": status,
-                    "action_code": action_code.upper() if action_code else None,
-                    "missing_field": missing_field,
-                    "section": section,
-                    "section_status": section_status.upper() if section_status else None,
-                    "offset": offset,
-                    "limit": limit,
-                },
-                "agent_profile": agent_profile_context,
-                "mode_switch": {
-                    "assigned_agent_mode": agent_profile_context is not None,
-                    "personal_farmer_mode_available": bool(agent_profile_context and agent_profile_context.get("can_also_act_as_farmer")),
-                    "personal_farmer_id": agent_profile_context.get("farmer_id") if agent_profile_context else None,
-                },
-                "summary": {
-                    "farmer_count": 0,
-                    "home_ready_count": 0,
-                    "missing_required_count": 0,
-                    "capture_action_count": 0,
-                    "weather_advisory_ready_count": 0,
-                    "soil_moisture_enrichment_ready_count": 0,
-                    "satellite_enrichment_ready_count": 0,
-                },
-                "farmers": [],
-            }
-        query = query.filter(Farmer.id.in_(candidate_farmer_ids))
+    assigned_farmer_ids = set(scope.assigned_farmer_ids)
+    if project_id:
+        project_farmer_ids = {
+            enrollment.farmer_id
+            for enrollment in enrollments
+        }
+        assigned_farmer_ids.intersection_update(project_farmer_ids)
+
+    query = query.filter(
+        Farmer.id.in_(tuple(assigned_farmer_ids))
+    )
 
     farmers = query.order_by(Farmer.updated_at.desc(), Farmer.created_at.desc()).offset(offset).limit(limit).all()
     rows = []
@@ -6021,17 +6007,17 @@ def get_field_agent_worklist(
     }
 
     for farmer in farmers:
-        parcels = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id, Parcel.status != "ARCHIVED").all()
-        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id, SoilProfile.farmer_id == farmer.id).all()
-        farmer_enrollments = _farmer_project_enrollments_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id, project_id=project_id)
+        parcels = db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == farmer.id, Parcel.status != "ARCHIVED").all()
+        soil_profiles = db.query(SoilProfile).filter(SoilProfile.tenant_id == tenant_id, SoilProfile.farmer_id == farmer.id).all()
+        farmer_enrollments = _farmer_project_enrollments_for_worklist(db, tenant_id=tenant_id, farmer_id=farmer.id, project_id=project_id)
         project_ids = {enrollment.project_id for enrollment in farmer_enrollments}
         projects = {
             project.id: project
-            for project in db.query(Project).filter(Project.tenant_id == x_tenant_id, Project.id.in_(project_ids)).all()
+            for project in db.query(Project).filter(Project.tenant_id == tenant_id, Project.id.in_(project_ids)).all()
         } if project_ids else {}
         weather_snapshot_count = _matching_weather_snapshot_count(
             db,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             farmer=farmer,
             parcels=parcels,
             project_enrollments=farmer_enrollments,
@@ -6047,8 +6033,8 @@ def get_field_agent_worklist(
         )
         if not _profile_completion_matches_filters(completion, action_code=action_code, missing_field=missing_field, section=section, section_status=section_status):
             continue
-        active_crop_summaries = _active_crop_summaries_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id, project_id=project_id)
-        active_cycle_count, active_stage_count = _active_crop_counts_for_worklist(db, tenant_id=x_tenant_id, farmer_id=farmer.id)
+        active_crop_summaries = _active_crop_summaries_for_worklist(db, tenant_id=tenant_id, farmer_id=farmer.id, project_id=project_id)
+        active_cycle_count, active_stage_count = _active_crop_counts_for_worklist(db, tenant_id=tenant_id, farmer_id=farmer.id)
         capture_actions = _field_agent_capture_actions(
             completion,
             active_crop_cycle_count=active_cycle_count,
@@ -6090,7 +6076,7 @@ def get_field_agent_worklist(
 
     return {
         "schema_version": "field_agent_worklist.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {
             "project_id": str(project_id) if project_id else None,
             "actor_id": str(actor_uuid) if actor_uuid else None,
@@ -6159,10 +6145,10 @@ def update_farmer_profile(
 def download_project_enrollment_csv_template(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
 ):
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
     return _csv_response([
@@ -6189,10 +6175,10 @@ async def validate_project_enrollment_csv(
     project_id: uuid.UUID,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
 ):
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
     text = await _read_enrollment_csv_upload(file)
@@ -6209,7 +6195,7 @@ async def validate_project_enrollment_csv(
 
     existing_by_mobile = {
         row.mobile_number: row
-        for row in db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id).all()
+        for row in db.query(Farmer).filter(Farmer.tenant_id == tenant_id).all()
     }
     rows = [_normalize_enrollment_csv_row(raw, index, existing_by_mobile) for index, raw in enumerate(raw_rows, start=2)]
     seen_mobile: set[str] = set()
@@ -6224,7 +6210,7 @@ async def validate_project_enrollment_csv(
     now = datetime.now(timezone.utc)
     batch = FarmerProjectEnrollmentImportBatch(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         actor_id=principal.user_id,
         file_name=(file.filename or "project-enrollments.csv")[:255],
@@ -6246,11 +6232,11 @@ def list_project_enrollment_imports(
     status: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
 ):
     query = db.query(FarmerProjectEnrollmentImportBatch).filter(
-        FarmerProjectEnrollmentImportBatch.tenant_id == x_tenant_id,
+        FarmerProjectEnrollmentImportBatch.tenant_id == tenant_id,
         FarmerProjectEnrollmentImportBatch.project_id == project_id,
         FarmerProjectEnrollmentImportBatch.is_active == True,
     )
@@ -6259,7 +6245,7 @@ def list_project_enrollment_imports(
     rows = query.order_by(FarmerProjectEnrollmentImportBatch.created_at.desc()).limit(limit).all()
     return {
         "schema_version": "project_enrollment_imports.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "project_id": str(project_id),
         "status": status.upper() if status else None,
         "count": len(rows),
@@ -6273,15 +6259,15 @@ def apply_project_enrollment_import(
     batch_id: uuid.UUID,
     body: FarmerProjectEnrollmentImportApplyRequest,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT, project_scoped=True)),
 ):
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
     batch = db.query(FarmerProjectEnrollmentImportBatch).filter(
         FarmerProjectEnrollmentImportBatch.id == batch_id,
-        FarmerProjectEnrollmentImportBatch.tenant_id == x_tenant_id,
+        FarmerProjectEnrollmentImportBatch.tenant_id == tenant_id,
         FarmerProjectEnrollmentImportBatch.project_id == project_id,
         FarmerProjectEnrollmentImportBatch.is_active == True,
     ).first()
@@ -6300,14 +6286,14 @@ def apply_project_enrollment_import(
     for row in batch.normalized_rows or []:
         farmer = None
         if row.get("farmer_id"):
-            farmer = db.query(Farmer).filter(Farmer.id == uuid.UUID(row["farmer_id"]), Farmer.tenant_id == x_tenant_id).first()
+            farmer = db.query(Farmer).filter(Farmer.id == uuid.UUID(row["farmer_id"]), Farmer.tenant_id == tenant_id).first()
             if not farmer:
                 batch.status = "STALE"
                 batch.updated_at = now
                 db.commit()
                 raise HTTPException(409, f"Farmer no longer exists: {row['farmer_id']}")
         if not farmer:
-            farmer = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.mobile_number == row["mobile_number"]).first()
+            farmer = db.query(Farmer).filter(Farmer.tenant_id == tenant_id, Farmer.mobile_number == row["mobile_number"]).first()
         if farmer:
             applied["farmers_updated"] += 1
             if row.get("display_name"):
@@ -6321,7 +6307,7 @@ def apply_project_enrollment_import(
         else:
             farmer = Farmer(
                 id=uuid.uuid4(),
-                tenant_id=x_tenant_id,
+                tenant_id=tenant_id,
                 project_id=project_id,
                 mobile_number=row["mobile_number"],
                 display_name=row.get("display_name"),
@@ -6341,7 +6327,7 @@ def apply_project_enrollment_import(
         farmer.updated_at = now
 
         enrollment = db.query(FarmerProjectEnrollment).filter(
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
             FarmerProjectEnrollment.farmer_id == farmer.id,
             FarmerProjectEnrollment.project_id == project_id,
         ).first()
@@ -6350,7 +6336,7 @@ def apply_project_enrollment_import(
         else:
             enrollment = FarmerProjectEnrollment(
                 id=uuid.uuid4(),
-                tenant_id=x_tenant_id,
+                tenant_id=tenant_id,
                 farmer_id=farmer.id,
                 project_id=project_id,
                 created_at=now,

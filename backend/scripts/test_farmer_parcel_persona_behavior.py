@@ -292,6 +292,133 @@ def main():
             missing_parcel_list.text,
         )
 
+        missing_readiness = client.get(
+            "/api/v1/farmers/profile-readiness",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_readiness.status_code == 401,
+            "Profile readiness rejects missing bearer",
+            missing_readiness.text,
+        )
+
+        farmer_readiness = client.get(
+            f"/api/v1/farmers/profile-readiness?project_id={project_id}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_readiness.status_code == 200,
+            "Farmer reads personal profile readiness",
+            farmer_readiness.text,
+        )
+        require(
+            {
+                row["farmer"]["id"]
+                for row in farmer_readiness.json()["farmers"]
+            }
+            == {str(personal.id)},
+            "Farmer readiness is restricted to personal farmer",
+            farmer_readiness.text,
+        )
+
+        agent_readiness = client.get(
+            f"/api/v1/farmers/profile-readiness?project_id={project_id}",
+            headers=agent_headers,
+        )
+        require(
+            agent_readiness.status_code == 200,
+            "Assigned agent reads assisted-farmer readiness",
+            agent_readiness.text,
+        )
+        require(
+            {
+                row["farmer"]["id"]
+                for row in agent_readiness.json()["farmers"]
+            }
+            == {str(assisted.id)},
+            "Agent readiness is restricted to assigned farmer",
+            agent_readiness.text,
+        )
+
+        unassigned_readiness = client.get(
+            f"/api/v1/farmers/profile-readiness?project_id={project_id}",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_readiness.status_code == 200,
+            "Unassigned agent reads an empty readiness collection",
+            unassigned_readiness.text,
+        )
+        require(
+            unassigned_readiness.json()["farmers"] == []
+            and unassigned_readiness.json()["summary"]["farmer_count"] == 0,
+            "Unassigned agent cannot discover farmer readiness",
+            unassigned_readiness.text,
+        )
+
+        admin_readiness = client.get(
+            f"/api/v1/farmers/profile-readiness?project_id={project_id}",
+            headers=admin_headers,
+        )
+        require(
+            admin_readiness.status_code == 200,
+            "Web administrator reads tenant profile readiness",
+            admin_readiness.text,
+        )
+        require(
+            {
+                row["farmer"]["id"]
+                for row in admin_readiness.json()["farmers"]
+            }
+            == {
+                str(personal.id),
+                str(assisted.id),
+                str(unrelated.id),
+            },
+            "Web administrator sees tenant farmer readiness",
+            admin_readiness.text,
+        )
+
+        farmer_worklist = client.get(
+            f"/api/v1/field-agent/worklist?project_id={project_id}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_worklist.status_code == 403,
+            "Farmer persona cannot use field-agent worklist",
+            farmer_worklist.text,
+        )
+
+        unassigned_worklist = client.get(
+            f"/api/v1/field-agent/worklist?project_id={project_id}",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_worklist.status_code == 200,
+            "Unassigned active agent reads an empty worklist",
+            unassigned_worklist.text,
+        )
+        require(
+            unassigned_worklist.json()["farmers"] == []
+            and unassigned_worklist.json()["summary"]["farmer_count"] == 0,
+            "Unassigned active agent cannot discover worklist farmers",
+            unassigned_worklist.text,
+        )
+
+        mismatch_readiness_headers = {
+            **farmer_headers,
+            "X-Tenant-ID": "default",
+        }
+        mismatch_readiness = client.get(
+            "/api/v1/farmers/profile-readiness",
+            headers=mismatch_readiness_headers,
+        )
+        require(
+            mismatch_readiness.status_code == 403,
+            "Profile readiness rejects token/header tenant mismatch",
+            mismatch_readiness.text,
+        )
+
         farmer_list = client.get(
             "/api/v1/farmers",
             headers=farmer_headers,
@@ -719,6 +846,8 @@ def main():
                 "farmer_self_enrollment": True,
                 "farmer_read_scope": True,
                 "parcel_read_scope": True,
+                "profile_readiness_scope": True,
+                "field_agent_worklist_scope": True,
                 "assigned_agent_read_scope": True,
                 "unassigned_read_empty": True,
                 "admin_tenant_read": True,
