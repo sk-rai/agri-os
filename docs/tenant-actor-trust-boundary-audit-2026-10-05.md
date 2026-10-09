@@ -240,3 +240,16 @@ trusted tenant or actor headers.
 Behavior coverage verifies missing bearer, farmer-role denial, authorised
 inventory, authorised archival, and verified actor attribution. Neither route
 remains in the unauthenticated read or mutation findings.
+
+## Farmer project-enrollment creation checkpoint
+
+The farmer project-enrollment creation route now requires a verified
+administrator with project-edit permission and the explicit web-admin
+capability. Tenant context and enrollment actor attribution are derived from
+the authenticated principal.
+
+Farmer, project, and parcel lookups are tenant-bounded. Static and behavior
+coverage verifies missing bearer rejection, actor-impersonation rejection,
+verified administrator attribution, idempotent enrollment updates, and
+regression cleanup. This POST route no longer appears as an unauthenticated
+mutation finding.

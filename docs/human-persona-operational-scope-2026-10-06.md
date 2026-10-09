@@ -237,3 +237,14 @@ The server derives tenant and archive actor from the authenticated admin
 principal. Possession of a personal or assigned farmer relationship does not
 grant duplicate-cleanup authority because the operation can affect identity
 resolution and historical profile continuity.
+
+## Farmer project-enrollment creation authorization checkpoint
+
+Direct project-membership attachment is an explicit web-admin capability.
+The project-enrollment creation route requires verified project-edit
+permission plus the established web-admin boundary. It does not grant field
+agents a second path around the assisted farmer-enrollment workflow.
+
+Tenant scope and `enrolled_by` attribution are derived from the authenticated
+administrator. Farmer, project, and parcel references remain tenant-bounded,
+and caller-supplied tenant or actor identity is not trusted.

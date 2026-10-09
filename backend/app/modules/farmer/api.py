@@ -6436,20 +6436,30 @@ def apply_project_enrollment_import(
 def create_farmer_project_enrollment(
     farmer_id: uuid.UUID,
     body: FarmerProjectEnrollmentCreate,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Attach a farmer profile to a project without duplicating the farmer.
 
     Existing farmers.project_id is preserved as a legacy compatibility pointer.
     If it is empty, this endpoint backfills it with the first project enrollment.
     """
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    if not _farmer_admin_can_edit(principal):
+        raise _farmer_scope_forbidden(
+            "Project enrollment creation requires an explicit web administrator."
+        )
+
+    tenant_id = principal.tenant_id
+    farmer = db.query(Farmer).filter(
+        Farmer.id == farmer_id,
+        Farmer.tenant_id == tenant_id,
+    ).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
 
-    project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id).first()
+    project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
 
@@ -6458,7 +6468,7 @@ def create_farmer_project_enrollment(
         parcel_count = (
             db.query(Parcel)
             .filter(
-                Parcel.tenant_id == x_tenant_id,
+                Parcel.tenant_id == tenant_id,
                 Parcel.farmer_id == farmer_id,
                 Parcel.id.in_([uuid.UUID(value) for value in parcel_ids]),
             )
@@ -6470,7 +6480,7 @@ def create_farmer_project_enrollment(
     enrollment = (
         db.query(FarmerProjectEnrollment)
         .filter(
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
             FarmerProjectEnrollment.farmer_id == farmer_id,
             FarmerProjectEnrollment.project_id == body.project_id,
         )
@@ -6479,7 +6489,7 @@ def create_farmer_project_enrollment(
     if not enrollment:
         enrollment = FarmerProjectEnrollment(
             id=uuid.uuid4(),
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             farmer_id=farmer_id,
             project_id=body.project_id,
             created_at=datetime.now(timezone.utc),
@@ -6489,7 +6499,7 @@ def create_farmer_project_enrollment(
     enrollment.enrollment_method = body.enrollment_method
     enrollment.enrollment_source = body.enrollment_source
     enrollment.enrollment_batch_id = body.enrollment_batch_id
-    enrollment.enrolled_by = uuid.UUID(x_actor_id) if x_actor_id else None
+    enrollment.enrolled_by = principal.user_id
     enrollment.status = body.status
     enrollment.parcel_ids = parcel_ids
     enrollment.assigned_user_ids = [str(value) for value in body.assigned_user_ids]

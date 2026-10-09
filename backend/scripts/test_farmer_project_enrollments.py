@@ -114,19 +114,43 @@ def main():
     client = TestClient(app)
 
     print("\n[1] Create project enrollment")
+    enrollment_request = {
+        "project_id": str(project_id),
+        "enrollment_method": "PROJECT_INVITE",
+        "enrollment_source": "regression",
+        "status": "ACTIVE",
+        "parcel_ids": [str(parcel_id)],
+        "assigned_user_ids": [actor_id],
+        "metadata": {"channel": "test"},
+        "notes": "initial enrollment",
+    }
+
+    missing_bearer = client.post(
+        f"/api/v1/farmers/{farmer_id}/project-enrollments",
+        headers={"X-Tenant-ID": tenant_id},
+        json=enrollment_request,
+    )
+    check(
+        missing_bearer.status_code == 401,
+        "Create enrollment rejects missing bearer",
+        missing_bearer.text,
+    )
+
+    actor_mismatch = client.post(
+        f"/api/v1/farmers/{farmer_id}/project-enrollments",
+        headers={**headers, "X-Actor-ID": str(uuid.uuid4())},
+        json=enrollment_request,
+    )
+    check(
+        actor_mismatch.status_code == 403,
+        "Create enrollment rejects actor impersonation",
+        actor_mismatch.text,
+    )
+
     response = client.post(
         f"/api/v1/farmers/{farmer_id}/project-enrollments",
         headers=headers,
-        json={
-            "project_id": str(project_id),
-            "enrollment_method": "PROJECT_INVITE",
-            "enrollment_source": "regression",
-            "status": "ACTIVE",
-            "parcel_ids": [str(parcel_id)],
-            "assigned_user_ids": [actor_id],
-            "metadata": {"channel": "test"},
-            "notes": "initial enrollment",
-        },
+        json=enrollment_request,
     )
     check(response.status_code == 201, "Create enrollment returns 201", response.text)
     payload = response.json()
@@ -135,6 +159,7 @@ def main():
     check(payload["project_name"] == "Membership Test Project", "Enrollment includes project name")
     check(payload["parcel_ids"] == [str(parcel_id)], "Enrollment preserves parcel links")
     check(payload["assigned_user_ids"] == [actor_id], "Enrollment preserves assigned users")
+    check(payload["enrolled_by"] == actor_id, "Enrollment records authenticated administrator")
 
     db = SessionLocal()
     try:

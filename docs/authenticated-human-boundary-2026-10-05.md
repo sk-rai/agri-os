@@ -307,3 +307,15 @@ Tenant and archival actor identity are derived from the verified admin
 principal. Farmer personas cannot enumerate duplicate mobile identities or
 archive profiles, and missing bearer, insufficient role, actor mismatch, and
 tenant mismatch fail closed.
+
+## Farmer project-enrollment creation checkpoint
+
+`POST /api/v1/farmers/{farmer_id}/project-enrollments` now requires a
+verified administrator with project-edit permission and an explicit web-admin
+role. Tenant selection and enrollment attribution come from the authenticated
+principal rather than request identity headers.
+
+The target farmer, project, and attached parcels are independently
+tenant-bounded. Missing bearer credentials and actor impersonation fail closed.
+Operational agents continue to use the assisted farmer-enrollment workflow;
+direct project-membership attachment remains an administrative operation.

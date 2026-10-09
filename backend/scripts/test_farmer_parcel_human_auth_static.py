@@ -22,6 +22,10 @@ def main():
     worklist_read = block("get_field_agent_worklist", "update_farmer_profile")
     enrollment_read = block("list_farmer_project_enrollments", "list_project_farmer_enrollments")
     launch_read = block("get_farmer_launch_context", "create_parcel")
+    enrollment_create = block(
+        "create_farmer_project_enrollment",
+        "update_farmer_project_agent_assignment",
+    )
     self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
     duplicate_read = block("list_duplicate_farmers", "archive_duplicate_farmers")
     duplicate_archive = block("archive_duplicate_farmers", "get_farmer_profile_by_mobile")
@@ -259,6 +263,42 @@ def main():
     require(
         "principal.tenant_id" in self_hydration_read,
         "Farmer self hydration derives tenant from verified identity",
+    )
+    require(
+        "require_admin_permission(AdminPermission.PROJECT_EDIT)"
+        in enrollment_create,
+        "Farmer project enrollment creation requires project-edit permission",
+    )
+    require(
+        "_farmer_admin_can_edit(principal)" in enrollment_create,
+        "Farmer project enrollment creation keeps an explicit web-admin boundary",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in enrollment_create,
+        "Farmer project enrollment creation derives tenant from verified admin",
+    )
+    require(
+        "Farmer.tenant_id == tenant_id" in enrollment_create,
+        "Farmer project enrollment creation tenant-bounds farmer",
+    )
+    require(
+        "Project.tenant_id == tenant_id" in enrollment_create,
+        "Farmer project enrollment creation tenant-bounds project",
+    )
+    require(
+        "Parcel.tenant_id == tenant_id" in enrollment_create,
+        "Farmer project enrollment creation tenant-bounds parcels",
+    )
+    require(
+        "enrollment.enrolled_by = principal.user_id" in enrollment_create,
+        "Farmer project enrollment creation records verified administrator",
+    )
+    require(
+        "X-Tenant-ID" not in enrollment_create
+        and "x_tenant_id" not in enrollment_create
+        and "X-Actor-ID" not in enrollment_create
+        and "x_actor_id" not in enrollment_create,
+        "Farmer project enrollment creation does not trust identity headers directly",
     )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 
