@@ -26,6 +26,10 @@ def main():
         "create_farmer_project_enrollment",
         "update_farmer_project_agent_assignment",
     )
+    agent_assignment = block(
+        "update_farmer_project_agent_assignment",
+        "_update_enrollment_lifecycle_status",
+    )
     self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
     duplicate_read = block("list_duplicate_farmers", "archive_duplicate_farmers")
     duplicate_archive = block("archive_duplicate_farmers", "get_farmer_profile_by_mobile")
@@ -299,6 +303,53 @@ def main():
         and "X-Actor-ID" not in enrollment_create
         and "x_actor_id" not in enrollment_create,
         "Farmer project enrollment creation does not trust identity headers directly",
+    )
+    require(
+        "require_admin_permission(AdminPermission.PROJECT_EDIT)"
+        in agent_assignment,
+        "Project agent assignment requires project-edit permission",
+    )
+    require(
+        "_farmer_admin_can_edit(principal)" in agent_assignment,
+        "Project agent assignment keeps an explicit web-admin boundary",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in agent_assignment,
+        "Project agent assignment derives tenant from verified admin",
+    )
+    require(
+        "Farmer.tenant_id == tenant_id" in agent_assignment,
+        "Project agent assignment tenant-bounds farmer",
+    )
+    require(
+        "Project.tenant_id == tenant_id" in agent_assignment,
+        "Project agent assignment tenant-bounds project",
+    )
+    require(
+        "User.tenant_id == tenant_id" in agent_assignment,
+        "Project agent assignment tenant-bounds target user",
+    )
+    require(
+        "AgentProfile.tenant_id == tenant_id" in agent_assignment
+        and 'AgentProfile.status == "ACTIVE"' in agent_assignment,
+        "Project agent assignment requires an active agent profile",
+    )
+    require(
+        "ProjectRole.project_id == body.project_id" in agent_assignment
+        and "ProjectRole.user_id == body.agent_user_id" in agent_assignment
+        and "ProjectRole.is_active == True" in agent_assignment,
+        "Project agent assignment requires an active project role",
+    )
+    require(
+        '"actor_id": str(principal.user_id)' in agent_assignment,
+        "Project agent assignment records verified administrator",
+    )
+    require(
+        "X-Tenant-ID" not in agent_assignment
+        and "x_tenant_id" not in agent_assignment
+        and "X-Actor-ID" not in agent_assignment
+        and "x_actor_id" not in agent_assignment,
+        "Project agent assignment does not trust identity headers directly",
     )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 

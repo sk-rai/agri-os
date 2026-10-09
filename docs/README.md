@@ -50,6 +50,7 @@ Current landing/demo planning docs:
 - `agrifabric-static-demo-editor-handoff.md` — human-editor checklist for producing the first static demo clips safely.
 
 - `agrifabric-future-engineering-roadmap.md` — deferred product extensions, existing-capability boundaries, geography positioning, and anti-dilution guardrails.
+- `freelance-agricultural-services-roadmap.md` — prerequisite-driven roadmap for farmer-consented freelance field-agent and agronomist services, with monetisation deferred.
 
 The current web draft is implemented at `/agrifabric`, smoke-tested by `web/smoke/agrifabric_landing_smoke.mjs`, static-demo checked by `web/smoke/agrifabric_static_demo_readiness_check.mjs`, and screenshot-assisted by `web/smoke/agrifabric_landing_capture_helper.mjs`.
 

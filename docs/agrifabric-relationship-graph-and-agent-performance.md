@@ -365,3 +365,13 @@ Not yet implemented:
 - NDVI/satellite scoring;
 - supervisor review workflow for agent anomalies.
 
+## Deferred freelance specialist relationship
+
+A future freelance specialist engagement is distinct from company employment
+and project assignment. It requires mutual acceptance, farmer-controlled and
+revocable data access, service-purpose scope, lifecycle history, and immutable
+audit evidence.
+
+Freelance reputation must remain separate from employee performance scoring.
+The prerequisite and phased delivery model is documented in
+`docs/freelance-agricultural-services-roadmap.md`.

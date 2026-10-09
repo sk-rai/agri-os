@@ -319,3 +319,18 @@ The target farmer, project, and attached parcels are independently
 tenant-bounded. Missing bearer credentials and actor impersonation fail closed.
 Operational agents continue to use the assisted farmer-enrollment workflow;
 direct project-membership attachment remains an administrative operation.
+
+## Project agent-assignment checkpoint
+
+`POST /api/v1/farmers/{farmer_id}/project-agent-assignment` now requires a
+verified administrator with project-edit permission and the explicit web-admin
+capability. Tenant and assignment-event actor identity come from the verified
+principal rather than request identity headers.
+
+The target farmer, project, user, active agent profile, and active project role
+are independently validated. An agent or agronomist cannot self-assign an
+otherwise inaccessible project farmer.
+
+This route remains project staffing administration. It does not implement the
+future farmer-consented freelance specialist workflow documented in
+`docs/freelance-agricultural-services-roadmap.md`.

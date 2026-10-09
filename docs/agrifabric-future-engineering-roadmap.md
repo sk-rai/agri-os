@@ -372,3 +372,16 @@ Any future implementation must preserve:
 - immutable auditability
 - deterministic synchronization
 - the distinction between staged data and runtime-enabled behavior
+
+## Deferred freelance agricultural services
+
+A focused agricultural-services network is a valid future extension without
+turning AgriFabric into a broad marketplace. Independently enrolled farmers may
+eventually discover and engage verified freelance field agents or agronomists
+by crop, geography, language, and service category.
+
+This work is prerequisite-driven. Free, consent-based engagements should be
+validated before pricing or payments are introduced. Project-agent assignment
+must remain separate from freelance engagement, and geography/crop matching
+must never grant farmer-data access. See
+`docs/freelance-agricultural-services-roadmap.md`.

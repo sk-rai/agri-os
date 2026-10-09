@@ -17,6 +17,7 @@ from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, P
 from app.modules.farmer.soil_profile import SoilProfile
 from app.modules.master_data.models.crop import Crop, CropCategory, CropLifecycleTemplate
 from app.modules.workflow.models import CropCycle, CropStageInstance
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def now():
@@ -51,6 +52,8 @@ def main():
     crop_cycle_id = uuid.uuid4()
     crop_stage_id = uuid.uuid4()
     test_crop_code = "WORKLIST_RICE"
+    admin_user_id = None
+    admin_headers = None
 
     db = SessionLocal()
     try:
@@ -90,6 +93,11 @@ def main():
             updated_at=now(),
         ))
         db.flush()
+        admin_user, admin_headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+        )
+        admin_user_id = admin_user.id
 
         db.add(User(
             id=actor_id,
@@ -307,22 +315,66 @@ def main():
         land_partial.text,
     )
 
-    assign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=headers, json={
+    assignment_request = {
         "project_id": str(project_id),
         "agent_user_id": str(actor_id),
         "action": "ASSIGN",
         "reason": "Regression assign agent",
-    })
+    }
+
+    missing_assignment_bearer = client.post(
+        f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment",
+        headers={"X-Tenant-ID": tenant_id},
+        json=assignment_request,
+    )
+    check(
+        missing_assignment_bearer.status_code == 401,
+        "Agent assignment rejects missing bearer",
+        missing_assignment_bearer.text,
+    )
+
+    agent_self_assign = client.post(
+        f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment",
+        headers=headers,
+        json=assignment_request,
+    )
+    check(
+        agent_self_assign.status_code == 403,
+        "Agent cannot self-assign an unassigned project farmer",
+        agent_self_assign.text,
+    )
+
+    impersonated_assignment = client.post(
+        f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment",
+        headers={**admin_headers, "X-Actor-ID": str(uuid.uuid4())},
+        json=assignment_request,
+    )
+    check(
+        impersonated_assignment.status_code == 403,
+        "Agent assignment rejects administrator impersonation",
+        impersonated_assignment.text,
+    )
+
+    assign = client.post(
+        f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment",
+        headers=admin_headers,
+        json=assignment_request,
+    )
     check(assign.status_code == 200, "Assign agent to farmer project enrollment returns 200", assign.text)
     assign_body = assign.json()
     check(str(actor_id) in assign_body["assigned_user_ids"], "Assignment endpoint adds agent user id")
     check(assign_body["metadata"]["last_assignment_action"] == "ASSIGN", "Assignment endpoint records assignment metadata")
+    check(
+        assign_body["metadata"]["assignment_events"][-1]["actor_id"]
+        == str(admin_user_id),
+        "Assignment endpoint records authenticated administrator",
+    )
 
     assigned_after_assign = client.get(f"/api/v1/field-agent/worklist?project_id={project_id}&assigned_only=true", headers=headers)
     check(assigned_after_assign.status_code == 200, "Assigned worklist returns 200 after assignment", assigned_after_assign.text)
     check(assigned_after_assign.json()["summary"]["farmer_count"] == 2, "Assigned worklist includes newly assigned farmer")
 
-    unassign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=headers, json={
+    unassign = client.post(f"/api/v1/farmers/{unassigned_farmer_id}/project-agent-assignment", headers=admin_headers, json={
         "project_id": str(project_id),
         "agent_user_id": str(actor_id),
         "action": "UNASSIGN",
@@ -382,6 +434,9 @@ def main():
         db.query(User).filter(User.id == actor_id).delete(synchronize_session=False)
         db.query(ProjectRole).filter(ProjectRole.project_id == project_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.commit()
+        if admin_user_id:
+            delete_test_admin(db, admin_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

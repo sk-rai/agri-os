@@ -6520,9 +6520,10 @@ def create_farmer_project_enrollment(
 def update_farmer_project_agent_assignment(
     farmer_id: uuid.UUID,
     body: FarmerProjectAgentAssignmentRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
 ):
     """Assign or unassign one agent/user from a farmer's project enrollment.
 
@@ -6530,30 +6531,65 @@ def update_farmer_project_agent_assignment(
     assignment changes narrow and auditable in enrollment metadata while preserving
     the existing project enrollment contract.
     """
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id, Farmer.status != "ARCHIVED").first()
+    if not _farmer_admin_can_edit(principal):
+        raise _farmer_scope_forbidden(
+            "Project agent assignment requires an explicit web administrator."
+        )
+
+    tenant_id = principal.tenant_id
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id, Farmer.status != "ARCHIVED").first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
-    project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == x_tenant_id, Project.is_active == True).first()
+    project = db.query(Project).filter(Project.id == body.project_id, Project.tenant_id == tenant_id, Project.is_active == True).first()
     if not project:
         raise HTTPException(404, "Project not found")
     from app.modules.auth.models import User
 
-    agent_user = db.query(User).filter(User.id == body.agent_user_id, User.tenant_id == x_tenant_id, User.is_active == True).first()
+    agent_user = db.query(User).filter(User.id == body.agent_user_id, User.tenant_id == tenant_id, User.is_active == True).first()
     if not agent_user:
         raise HTTPException(404, "Agent user not found")
+
+    from app.modules.auth.models import AgentProfile
+
+    agent_profile = (
+        db.query(AgentProfile)
+        .filter(
+            AgentProfile.tenant_id == tenant_id,
+            AgentProfile.user_id == body.agent_user_id,
+            AgentProfile.status == "ACTIVE",
+            AgentProfile.is_active == True,
+        )
+        .first()
+    )
+    if not agent_profile:
+        raise HTTPException(404, "Active agent profile not found")
+
+    project_role = (
+        db.query(ProjectRole)
+        .filter(
+            ProjectRole.project_id == body.project_id,
+            ProjectRole.user_id == body.agent_user_id,
+            ProjectRole.is_active == True,
+        )
+        .first()
+    )
+    if not project_role:
+        raise HTTPException(404, "Active agent project role not found")
+
     enrollment = db.query(FarmerProjectEnrollment).filter(
-        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.tenant_id == tenant_id,
         FarmerProjectEnrollment.farmer_id == farmer_id,
         FarmerProjectEnrollment.project_id == body.project_id,
     ).first()
     if not enrollment:
         enrollment = FarmerProjectEnrollment(
             id=uuid.uuid4(),
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             farmer_id=farmer_id,
             project_id=body.project_id,
             enrollment_method="ASSISTED",
             enrollment_source="PROJECT_AGENT_ASSIGNMENT",
+            enrolled_by=principal.user_id,
             status="ACTIVE",
             parcel_ids=[],
             assigned_user_ids=[],
@@ -6577,7 +6613,7 @@ def update_farmer_project_agent_assignment(
     history.append({
         "action": body.action,
         "agent_user_id": agent_id,
-        "actor_id": x_actor_id,
+        "actor_id": str(principal.user_id),
         "reason": body.reason,
         "changed": changed,
         "at": datetime.now(timezone.utc).isoformat(),

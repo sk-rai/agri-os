@@ -253,3 +253,18 @@ coverage verifies missing bearer rejection, actor-impersonation rejection,
 verified administrator attribution, idempotent enrollment updates, and
 regression cleanup. This POST route no longer appears as an unauthenticated
 mutation finding.
+
+## Project agent-assignment checkpoint
+
+The project-agent assignment mutation now requires verified project-edit
+permission plus the explicit web-admin boundary. Tenant context and assignment
+actor attribution derive from the authenticated administrator.
+
+Farmer, project, target user, active agent profile, and active project role are
+validated before assignment. Static and behavior coverage verifies missing
+bearer rejection, agent self-assignment denial, administrator impersonation
+denial, verified actor attribution, worklist visibility after assignment, and
+cleanup.
+
+Future freelance specialist services for independent farmers remain a separate
+farmer-consented relationship and are not represented by this route.

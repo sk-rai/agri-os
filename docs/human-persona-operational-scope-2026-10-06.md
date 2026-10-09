@@ -248,3 +248,16 @@ agents a second path around the assisted farmer-enrollment workflow.
 Tenant scope and `enrolled_by` attribution are derived from the authenticated
 administrator. Farmer, project, and parcel references remain tenant-bounded,
 and caller-supplied tenant or actor identity is not trusted.
+
+## Project staffing and future freelance services
+
+Project-agent assignment is an administrative relationship controlled by a
+verified web administrator. Assignment requires an active tenant user, active
+agent profile, and active role in the selected project. Assignment history
+records the authenticated administrator.
+
+This boundary does not prevent a future agricultural-services network for
+independent farmers. Freelance field-agent or agronomist access will require a
+separate mutual-consent engagement and revocable data grant rather than a
+synthetic project assignment. That deferred model is defined in
+`docs/freelance-agricultural-services-roadmap.md`.
