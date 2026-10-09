@@ -7258,13 +7258,19 @@ def get_form_field_config(
 @router.get("/farmers/duplicates")
 def list_duplicate_farmers(
     mobile_number: Optional[str] = Query(None),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
     """List tenant/mobile duplicate farmer profiles for admin cleanup."""
     from app.modules.workflow.models import CropCycle
 
-    query = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.status != "ARCHIVED")
+    tenant_id = principal.tenant_id
+    query = db.query(Farmer).filter(
+        Farmer.tenant_id == tenant_id,
+        Farmer.status != "ARCHIVED",
+    )
     if mobile_number:
         query = query.filter(Farmer.mobile_number == normalize_mobile_number(mobile_number))
 
@@ -7277,7 +7283,7 @@ def list_duplicate_farmers(
     for mobile, group in groups.items():
         if len(group) < 2:
             continue
-        selected, duplicates = _select_hydration_farmer(db, x_tenant_id, mobile)
+        selected, duplicates = _select_hydration_farmer(db, tenant_id, mobile)
         response.append({
             "mobile_number": mobile,
             "recommended_primary_farmer_id": str(selected.id) if selected else None,
@@ -7286,8 +7292,8 @@ def list_duplicate_farmers(
                     "id": str(farmer.id),
                     "display_name": farmer.display_name,
                     "status": farmer.status,
-                    "parcel_count": db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == farmer.id).count(),
-                    "crop_cycle_count": db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.farmer_id == farmer.id).count(),
+                    "parcel_count": db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == farmer.id).count(),
+                    "crop_cycle_count": db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id, CropCycle.farmer_id == farmer.id).count(),
                     "is_recommended_primary": bool(selected and farmer.id == selected.id),
                     "created_at": _iso_date(farmer.created_at),
                     "updated_at": _iso_date(farmer.updated_at),
@@ -7298,7 +7304,7 @@ def list_duplicate_farmers(
         })
     return {
         "schema_version": "farmer_duplicates.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "groups": response,
         "group_count": len(response),
     }
@@ -7308,14 +7314,19 @@ def list_duplicate_farmers(
 def archive_duplicate_farmers(
     primary_farmer_id: uuid.UUID,
     body: DuplicateFarmerArchiveRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Safely archive duplicate farmer rows for the same mobile number."""
     from app.modules.workflow.models import CropCycle
 
-    primary = db.query(Farmer).filter(Farmer.id == primary_farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    primary = db.query(Farmer).filter(
+        Farmer.id == primary_farmer_id,
+        Farmer.tenant_id == tenant_id,
+    ).first()
     if not primary:
         raise HTTPException(404, "Primary farmer not found")
 
@@ -7323,7 +7334,7 @@ def archive_duplicate_farmers(
     blocked = []
     now = datetime.now(timezone.utc)
     for duplicate_id in body.duplicate_farmer_ids:
-        duplicate = db.query(Farmer).filter(Farmer.id == duplicate_id, Farmer.tenant_id == x_tenant_id).first()
+        duplicate = db.query(Farmer).filter(Farmer.id == duplicate_id, Farmer.tenant_id == tenant_id).first()
         if not duplicate:
             blocked.append({"id": str(duplicate_id), "reason": "not_found"})
             continue
@@ -7334,8 +7345,8 @@ def archive_duplicate_farmers(
             blocked.append({"id": str(duplicate.id), "reason": "mobile_number_mismatch"})
             continue
 
-        parcel_count = db.query(Parcel).filter(Parcel.tenant_id == x_tenant_id, Parcel.farmer_id == duplicate.id).count()
-        crop_cycle_count = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id, CropCycle.farmer_id == duplicate.id).count()
+        parcel_count = db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.farmer_id == duplicate.id).count()
+        crop_cycle_count = db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id, CropCycle.farmer_id == duplicate.id).count()
         if not body.force and (parcel_count or crop_cycle_count):
             blocked.append({
                 "id": str(duplicate.id),
@@ -7365,7 +7376,7 @@ def archive_duplicate_farmers(
         "archived": archived,
         "blocked": blocked,
         "reason": body.reason,
-        "actor_id": x_actor_id,
+        "actor_id": str(principal.user_id),
     }
 
 

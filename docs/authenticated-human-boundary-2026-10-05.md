@@ -295,3 +295,15 @@ tenant-wide lookup. A persisted-user mobile fallback supports legacy unlinked
 farmer profiles only while the authenticated user has no explicit farmer
 linkage. Missing bearer, unrelated or unassigned access, and tenant mismatch
 fail closed without disclosing whether the requested mobile exists.
+
+## Duplicate farmer administration checkpoint
+
+`GET /api/v1/farmers/duplicates` now requires explicit admin `VIEW`
+permission, and `POST /api/v1/farmers/{primary_farmer_id}/duplicates/archive`
+requires admin `EDIT` permission. These are administrative data-quality
+operations rather than farmer or field-agent capabilities.
+
+Tenant and archival actor identity are derived from the verified admin
+principal. Farmer personas cannot enumerate duplicate mobile identities or
+archive profiles, and missing bearer, insufficient role, actor mismatch, and
+tenant mismatch fail closed.

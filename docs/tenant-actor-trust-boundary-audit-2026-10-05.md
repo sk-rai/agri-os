@@ -229,3 +229,14 @@ assigned agent, unassigned agent, unrelated farmer, web administrator,
 persisted-mobile compatibility, tenant mismatch, and non-disclosing `404`
 responses. The route no longer appears as an unprotected non-reference-read
 finding.
+
+## Duplicate farmer administration checkpoint
+
+The duplicate-farmer inventory and archive routes now use verified admin
+authorization. Listing requires `VIEW`; archival requires `EDIT`. Tenant scope
+and archive attribution come from the authenticated principal rather than
+trusted tenant or actor headers.
+
+Behavior coverage verifies missing bearer, farmer-role denial, authorised
+inventory, authorised archival, and verified actor attribution. Neither route
+remains in the unauthenticated read or mutation findings.

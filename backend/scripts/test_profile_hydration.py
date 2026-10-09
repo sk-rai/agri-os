@@ -306,15 +306,52 @@ r = client.post(
 test("Duplicate enrollment rejected", r.status_code == 409, f"Status: {r.status_code}")
 
 print("\n[4] Duplicate farmer cleanup endpoints")
-r = client.get(f"/api/v1/farmers/duplicates?mobile_number={mobile_10}", headers={"X-Tenant-ID": tenant_id})
+missing_duplicate_list = client.get(
+    f"/api/v1/farmers/duplicates?mobile_number={mobile_10}",
+    headers={"X-Tenant-ID": tenant_id},
+)
+test(
+    "Duplicate list rejects missing bearer",
+    missing_duplicate_list.status_code == 401,
+    missing_duplicate_list.text,
+)
+
+farmer_duplicate_list = client.get(
+    f"/api/v1/farmers/duplicates?mobile_number={mobile_10}",
+    headers=headers,
+)
+test(
+    "Farmer persona cannot list duplicate profiles",
+    farmer_duplicate_list.status_code == 403,
+    farmer_duplicate_list.text,
+)
+
+r = client.get(
+    f"/api/v1/farmers/duplicates?mobile_number={mobile_10}",
+    headers=admin_headers,
+)
 test("Duplicate list returns 200", r.status_code == 200, f"Status: {r.status_code}")
 dup_body = r.json()
 test("Duplicate list has one group", dup_body["group_count"] == 1)
 test("Duplicate list recommends richer farmer", dup_body["groups"][0]["recommended_primary_farmer_id"] == rich_farmer_id)
 
-r = client.post(
+farmer_archive = client.post(
     f"/api/v1/farmers/{rich_farmer_id}/duplicates/archive",
     headers=headers,
+    json={
+        "duplicate_farmer_ids": [empty_duplicate_id],
+        "reason": "unauthorised farmer archive probe",
+    },
+)
+test(
+    "Farmer persona cannot archive duplicate profiles",
+    farmer_archive.status_code == 403,
+    farmer_archive.text,
+)
+
+r = client.post(
+    f"/api/v1/farmers/{rich_farmer_id}/duplicates/archive",
+    headers=admin_headers,
     json={
         "duplicate_farmer_ids": [empty_duplicate_id],
         "reason": "profile hydration regression cleanup",
@@ -322,6 +359,11 @@ r = client.post(
 )
 test("Empty duplicate archived", r.status_code == 200, f"Status: {r.status_code}")
 test("Archive response contains duplicate", r.json()["archived"][0]["id"] == empty_duplicate_id)
+test(
+    "Archive records authenticated administrator",
+    r.json()["actor_id"] == str(admin_user_id),
+    r.text,
+)
 
 r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers=headers)
 test("Hydration still returns primary after archive", r.status_code == 200)

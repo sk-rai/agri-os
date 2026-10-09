@@ -226,3 +226,14 @@ Assigned agents can hydrate only farmers in their active assignment scope,
 unassigned agents cannot discover profiles by mobile, and explicit web
 administrators retain tenant-wide compatibility access. The requested mobile
 number never grants persona scope by itself.
+
+## Duplicate farmer administration boundary
+
+Duplicate-profile discovery and archival remain outside operational farmer and
+agent personas. The inventory requires admin view capability, while archival
+requires admin edit capability.
+
+The server derives tenant and archive actor from the authenticated admin
+principal. Possession of a personal or assigned farmer relationship does not
+grant duplicate-cleanup authority because the operation can affect identity
+resolution and historical profile continuity.

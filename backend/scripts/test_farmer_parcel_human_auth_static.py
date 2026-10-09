@@ -23,6 +23,8 @@ def main():
     enrollment_read = block("list_farmer_project_enrollments", "list_project_farmer_enrollments")
     launch_read = block("get_farmer_launch_context", "create_parcel")
     self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
+    duplicate_read = block("list_duplicate_farmers", "archive_duplicate_farmers")
+    duplicate_archive = block("archive_duplicate_farmers", "get_farmer_profile_by_mobile")
     by_mobile_read = block("get_farmer_profile_by_mobile", "get_my_profile_hydration")
     self_hydration_read = block("get_my_profile_hydration", "get_my_farmer_profile")
     self_farmer_read = block("get_my_farmer_profile", "get_land_intelligence_context")
@@ -153,6 +155,38 @@ def main():
             and "x_tenant_id" not in route,
             f"{label} does not trust tenant headers directly",
         )
+    require(
+        "require_admin_permission(AdminPermission.VIEW)" in duplicate_read,
+        "Duplicate farmer listing requires admin view permission",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in duplicate_read,
+        "Duplicate farmer listing derives tenant from verified admin",
+    )
+    require(
+        "X-Tenant-ID" not in duplicate_read
+        and "x_tenant_id" not in duplicate_read,
+        "Duplicate farmer listing does not trust tenant headers directly",
+    )
+    require(
+        "require_admin_permission(AdminPermission.EDIT)" in duplicate_archive,
+        "Duplicate farmer archive requires admin edit permission",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in duplicate_archive,
+        "Duplicate farmer archive derives tenant from verified admin",
+    )
+    require(
+        '"actor_id": str(principal.user_id)' in duplicate_archive,
+        "Duplicate farmer archive records verified administrator",
+    )
+    require(
+        "X-Tenant-ID" not in duplicate_archive
+        and "x_tenant_id" not in duplicate_archive
+        and "X-Actor-ID" not in duplicate_archive
+        and "x_actor_id" not in duplicate_archive,
+        "Duplicate farmer archive does not trust identity headers directly",
+    )
     require(
         "Depends(require_authenticated_human())" in by_mobile_read,
         "Farmer by-mobile hydration requires an authenticated human",
