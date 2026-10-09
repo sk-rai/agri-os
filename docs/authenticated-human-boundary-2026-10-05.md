@@ -269,3 +269,16 @@ visibility. Enrollment payload project joins are independently tenant-bounded.
 
 The enrollment-creation POST remains a separate mutation authorization
 checkpoint.
+
+## Farmer self-profile read checkpoint
+
+`GET /api/v1/farmers/me` and `GET /api/v1/farmers/me/profile` now require the
+shared authenticated-human boundary. Tenant and user identity come from the
+verified bearer principal rather than trusted tenant or actor headers.
+
+Self-profile resolution first uses the explicit tenant-bounded
+`Farmer.user_id` relationship. For pre-existing profiles that have not yet
+been linked, compatibility lookup uses only the persisted authenticated
+user's mobile number; no caller-supplied mobile or actor identity is trusted.
+Missing bearer and token/header tenant mismatch fail closed, while endpoint
+paths and response schemas remain stable.

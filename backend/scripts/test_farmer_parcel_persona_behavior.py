@@ -302,6 +302,56 @@ def main():
             missing_readiness.text,
         )
 
+        missing_self_hydration = client.get(
+            "/api/v1/farmers/me/profile",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_self_hydration.status_code == 401,
+            "Farmer self hydration rejects missing bearer",
+            missing_self_hydration.text,
+        )
+
+        missing_self_profile = client.get(
+            "/api/v1/farmers/me",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_self_profile.status_code == 401,
+            "Farmer self profile rejects missing bearer",
+            missing_self_profile.text,
+        )
+
+        personal_self_hydration = client.get(
+            "/api/v1/farmers/me/profile",
+            headers=farmer_headers,
+        )
+        require(
+            personal_self_hydration.status_code == 200,
+            "Farmer reads personal self hydration",
+            personal_self_hydration.text,
+        )
+        require(
+            personal_self_hydration.json()["farmer"]["id"] == str(personal.id),
+            "Self hydration prefers explicitly linked farmer",
+            personal_self_hydration.text,
+        )
+
+        personal_self_profile = client.get(
+            "/api/v1/farmers/me",
+            headers=farmer_headers,
+        )
+        require(
+            personal_self_profile.status_code == 200,
+            "Farmer reads personal self profile",
+            personal_self_profile.text,
+        )
+        require(
+            personal_self_profile.json()["id"] == str(personal.id),
+            "Self profile returns explicitly linked farmer",
+            personal_self_profile.text,
+        )
+
         farmer_readiness = client.get(
             f"/api/v1/farmers/profile-readiness?project_id={project_id}",
             headers=farmer_headers,
@@ -1010,6 +1060,8 @@ def main():
                 "field_agent_worklist_scope": True,
                 "farmer_enrollment_read_scope": True,
                 "farmer_launch_context_scope": True,
+                "farmer_self_profile_scope": True,
+                "farmer_self_hydration_scope": True,
                 "assigned_agent_read_scope": True,
                 "unassigned_read_empty": True,
                 "admin_tenant_read": True,

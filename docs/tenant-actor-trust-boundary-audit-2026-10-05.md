@@ -203,3 +203,15 @@ agent, unrelated farmer, web administrator, and post-completion launch
 behavior. These GET routes no longer appear as unprotected non-reference-read
 findings. The POST route sharing the project-enrollment path remains a separate
 mutation finding.
+
+## Farmer self-profile read checkpoint
+
+The farmer self-profile and self-hydration GET routes now require verified
+human identity and derive tenant and user scope from the bearer principal.
+Both routes resolve an explicit tenant-bounded farmer/user relationship first,
+with a persisted-user mobile fallback for legacy unlinked profiles.
+
+Static and direct behavior coverage verifies missing bearer, tenant mismatch,
+explicit linked-farmer precedence, persisted-mobile compatibility, and
+regression cleanup. These routes no longer appear as unprotected
+non-reference-read findings.

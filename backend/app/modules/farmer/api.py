@@ -809,6 +809,69 @@ def _select_hydration_farmer(db: Session, tenant_id: str, mobile_number: str) ->
     return selected, duplicates
 
 
+def _resolve_authenticated_user_farmer(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+) -> tuple[User, Farmer, list[Farmer]]:
+    """Resolve the authenticated user's tenant-bounded farmer profile."""
+    user = (
+        db.query(User)
+        .filter(
+            User.id == principal.user_id,
+            User.tenant_id == principal.tenant_id,
+            User.is_active == True,
+        )
+        .first()
+    )
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    linked_farmer = (
+        db.query(Farmer)
+        .filter(
+            Farmer.tenant_id == principal.tenant_id,
+            Farmer.user_id == principal.user_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .order_by(
+            Farmer.updated_at.desc(),
+            Farmer.created_at.desc(),
+        )
+        .first()
+    )
+    if linked_farmer:
+        same_mobile = (
+            db.query(Farmer)
+            .filter(
+                Farmer.tenant_id == principal.tenant_id,
+                Farmer.mobile_number == linked_farmer.mobile_number,
+                Farmer.status != "ARCHIVED",
+                Farmer.is_active == True,
+            )
+            .all()
+        )
+        duplicates = [
+            farmer
+            for farmer in same_mobile
+            if farmer.id != linked_farmer.id
+        ]
+        return user, linked_farmer, duplicates
+
+    farmer, duplicates = _select_hydration_farmer(
+        db,
+        principal.tenant_id,
+        user.mobile_number,
+    )
+    if not farmer:
+        raise HTTPException(
+            404,
+            "No farmer profile found for this user",
+        )
+    return user, farmer, duplicates
+
+
 def _model_patch_values(body: BaseModel) -> dict:
     if hasattr(body, "model_dump"):
         return body.model_dump(exclude_unset=True)
@@ -7331,52 +7394,34 @@ def get_farmer_profile_by_mobile(
 def get_my_profile_hydration(
     include_form_contract: bool = Query(False),
     project_id: Optional[uuid.UUID] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
-    """Authenticated profile hydration endpoint for Android after login."""
-    from app.modules.auth.models import User
-
-    user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
-    if not user:
-        raise HTTPException(404, "User not found")
-
-    farmer, duplicates = _select_hydration_farmer(db, x_tenant_id, user.mobile_number)
-    if not farmer:
-        raise HTTPException(404, "No farmer profile found for this user")
-    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates, include_form_contract=include_form_contract, form_project_id=project_id)
+    """Return profile hydration for the authenticated human."""
+    _, farmer, duplicates = _resolve_authenticated_user_farmer(
+        db,
+        principal=principal,
+    )
+    return _build_profile_hydration_response(
+        db,
+        principal.tenant_id,
+        farmer,
+        duplicates,
+        include_form_contract=include_form_contract,
+        form_project_id=project_id,
+    )
 
 
 @router.get("/farmers/me")
 def get_my_farmer_profile(
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
-    """Get farmer profile for the logged-in user.
-
-    Returns 404 if no farmer profile exists (user hasn't been pre-registered).
-    Used for bulk-import flow where enterprise pre-registers farmers.
-    """
-    from app.modules.auth.models import User
-
-    # Find user by actor_id
-    user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
-    if not user:
-        raise HTTPException(404, "User not found")
-
-    # Find farmer by mobile number + tenant
-    farmer = (
-        db.query(Farmer)
-        .filter(
-            Farmer.mobile_number == user.mobile_number,
-            Farmer.tenant_id == x_tenant_id,
-        )
-        .first()
+    """Get the authenticated human's farmer profile."""
+    _, farmer, _ = _resolve_authenticated_user_farmer(
+        db,
+        principal=principal,
     )
-    if not farmer:
-        raise HTTPException(404, "No farmer profile found for this user")
 
     return {
         "id": str(farmer.id),

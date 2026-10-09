@@ -22,10 +22,12 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.modules.auth.models import User
+from app.modules.auth.service import create_jwt
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
 from app.modules.media.models import WeatherSnapshot
 from app.modules.workflow.models import CropCycle, CropStageInstance
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 client = TestClient(app)
@@ -80,10 +82,17 @@ headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": str(uuid.uuid4())}
 rich_farmer_id = None
 empty_duplicate_id = None
 parcel_id = None
+admin_user_id = None
+admin_headers = None
 
 db = SessionLocal()
 try:
     ensure_tenant(db, tenant_id)
+    admin_user, admin_headers = create_test_admin(
+        db,
+        tenant_id=tenant_id,
+    )
+    admin_user_id = admin_user.id
     crop, template = first_crop_and_template(db)
 
     empty_duplicate = Farmer(
@@ -114,6 +123,7 @@ try:
         mobile_number=mobile,
         role="FARMER",
         display_name="Hydrated Farmer",
+        tenant_id=tenant_id,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -184,6 +194,12 @@ try:
     empty_duplicate_id = str(empty_duplicate.id)
     parcel_id = str(parcel.id)
     db.commit()
+    token, _ = create_jwt(user, "profile-hydration-regression")
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-ID": tenant_id,
+        "X-Actor-ID": str(user.id),
+    }
 finally:
     db.close()
 
@@ -213,7 +229,7 @@ test("Hydration summary mirrors home readiness", body["summary"]["profile_ready_
 test("Default hydration omits heavy form contract", body.get("form_contract") is None)
 
 print("\n[1a] Profile readiness summary")
-readiness = client.get("/api/v1/farmers/profile-readiness", headers={"X-Tenant-ID": tenant_id})
+readiness = client.get("/api/v1/farmers/profile-readiness", headers=admin_headers)
 test("Profile readiness returns 200", readiness.status_code == 200, f"Status: {readiness.status_code} Body: {readiness.text[:300]}")
 readiness_body = readiness.json()
 test("Profile readiness schema stable", readiness_body["schema_version"] == "farmer_profile_readiness.v1")
@@ -246,6 +262,22 @@ test("/farmers/me/profile returns 200", r.status_code == 200, f"Status: {r.statu
 actor_body = r.json()
 test("Actor hydration returns same farmer", actor_body["farmer"]["id"] == rich_farmer_id)
 test("Actor hydration can include form contract", actor_body["form_contract"]["schema_version"] == "profile_form_contract_bundle.v1")
+
+me_response = client.get("/api/v1/farmers/me", headers=headers)
+test("/farmers/me returns 200", me_response.status_code == 200, me_response.text[:300])
+test("Self farmer endpoint returns same farmer", me_response.json()["id"] == rich_farmer_id)
+
+missing_me = client.get(
+    "/api/v1/farmers/me",
+    headers={"X-Tenant-ID": tenant_id},
+)
+test("Self farmer endpoint rejects missing bearer", missing_me.status_code == 401, missing_me.text[:300])
+
+mismatch_me = client.get(
+    "/api/v1/farmers/me/profile",
+    headers={**headers, "X-Tenant-ID": "default"},
+)
+test("Self hydration rejects token/header tenant mismatch", mismatch_me.status_code == 403, mismatch_me.text[:300])
 
 print("\n[3] Duplicate direct enrollment guard")
 r = client.post(
@@ -331,6 +363,9 @@ try:
     db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
     db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
     db.query(User).filter(User.mobile_number == mobile).delete(synchronize_session=False)
+    db.commit()
+    if admin_user_id:
+        delete_test_admin(db, admin_user_id)
     db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
     db.commit()
     test("Temporary rows cleaned up", True)

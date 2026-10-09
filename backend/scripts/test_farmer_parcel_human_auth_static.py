@@ -22,6 +22,9 @@ def main():
     worklist_read = block("get_field_agent_worklist", "update_farmer_profile")
     enrollment_read = block("list_farmer_project_enrollments", "list_project_farmer_enrollments")
     launch_read = block("get_farmer_launch_context", "create_parcel")
+    self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
+    self_hydration_read = block("get_my_profile_hydration", "get_my_farmer_profile")
+    self_farmer_read = block("get_my_farmer_profile", "get_land_intelligence_context")
     farmer_update = block("update_farmer_profile", "download_project_enrollment_csv_template")
     parcel_create = block("create_parcel", "list_parcels")
     parcel_read = block("list_parcels", "update_parcel_profile")
@@ -149,6 +152,43 @@ def main():
             and "x_tenant_id" not in route,
             f"{label} does not trust tenant headers directly",
         )
+    for label, route in [
+        ("Farmer self hydration", self_hydration_read),
+        ("Farmer self profile", self_farmer_read),
+    ]:
+        require(
+            "Depends(require_authenticated_human())" in route,
+            f"{label} requires an authenticated human",
+        )
+        require(
+            "_resolve_authenticated_user_farmer" in route,
+            f"{label} resolves a persisted farmer identity",
+        )
+        require(
+            "X-Tenant-ID" not in route
+            and "x_tenant_id" not in route
+            and "X-Actor-ID" not in route
+            and "x_actor_id" not in route,
+            f"{label} does not trust identity headers directly",
+        )
+    require(
+        "User.id == principal.user_id" in self_resolver
+        and "User.tenant_id == principal.tenant_id" in self_resolver,
+        "Self-profile resolution tenant-bounds the authenticated user",
+    )
+    require(
+        "Farmer.user_id == principal.user_id" in self_resolver,
+        "Self-profile resolution prefers explicit farmer linkage",
+    )
+    require(
+        "_select_hydration_farmer" in self_resolver
+        and "user.mobile_number" in self_resolver,
+        "Self-profile resolution keeps verified persisted-mobile compatibility",
+    )
+    require(
+        "principal.tenant_id" in self_hydration_read,
+        "Farmer self hydration derives tenant from verified identity",
+    )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 
 

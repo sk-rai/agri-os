@@ -202,3 +202,15 @@ unassigned and unrelated operational identities fail closed with `404`.
 Explicit web administrators retain tenant-wide access. Tenant selection comes
 from the authenticated principal, and joined project data is independently
 tenant-bounded. Enrollment creation remains a separate mutation tranche.
+
+## Farmer self-profile persona integration checkpoint
+
+The Android self-profile and self-hydration reads now resolve identity from
+the authenticated principal. An explicitly linked personal farmer profile
+takes precedence, including when its profile mobile differs from other
+candidate records.
+
+Legacy mobile-based profile resolution remains available only through the
+persisted, tenant-bounded authenticated user record. This supports older
+unlinked farmer rows without treating request headers or caller-provided
+mobile values as authorization evidence.
