@@ -146,7 +146,7 @@ def main():
         check(complete_payload["metadata"]["last_lifecycle_change"]["to_status"] == "COMPLETED", "Lifecycle metadata records new status")
         check(complete_payload["metadata"]["last_lifecycle_change"]["reason"] == "Regression project completed", "Lifecycle metadata records reason")
 
-        hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers={"X-Tenant-ID": tenant_id})
+        hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers=editor_headers)
         check(hydration.status_code == 200, "Hydration returns after lifecycle update", hydration.text[:300])
         check(hydration.json()["farmer_context"]["mode"] == "SELF_SERVICE", "Farmer falls back to self-service after completed enrollment")
 
@@ -228,7 +228,7 @@ def main():
         check(statuses[str(bulk_enrollment_ids[1])] == "COMPLETED", "Bulk pending row completed")
         check(statuses[str(bulk_enrollment_ids[2])] == "COMPLETED", "Bulk pre-completed row remains completed")
 
-        bulk_hydration = client.get(f"/api/v1/farmers/by-mobile/{db.query(Farmer).filter(Farmer.id == bulk_farmer_ids[0]).first().mobile_number}", headers={"X-Tenant-ID": tenant_id})
+        bulk_hydration = client.get(f"/api/v1/farmers/by-mobile/{db.query(Farmer).filter(Farmer.id == bulk_farmer_ids[0]).first().mobile_number}", headers=editor_headers)
         check(bulk_hydration.status_code == 200, "Hydration returns after bulk lifecycle update", bulk_hydration.text[:300])
         check(bulk_hydration.json()["farmer_context"]["mode"] == "SELF_SERVICE", "Bulk completed farmer falls back to self-service")
 

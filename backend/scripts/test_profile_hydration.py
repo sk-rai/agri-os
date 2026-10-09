@@ -204,9 +204,23 @@ finally:
     db.close()
 
 print("\n[1] Hydrate by 10-digit mobile")
-r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers={"X-Tenant-ID": tenant_id})
+missing_by_mobile = client.get(
+    f"/api/v1/farmers/by-mobile/{mobile_10}",
+    headers={"X-Tenant-ID": tenant_id},
+)
+test(
+    "Hydration by mobile rejects missing bearer",
+    missing_by_mobile.status_code == 401,
+    missing_by_mobile.text,
+)
+
+r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers=headers)
 test("Hydration by mobile returns 200", r.status_code == 200, f"Status: {r.status_code}")
 body = r.json()
+test(
+    "Persisted user mobile supports legacy unlinked farmer hydration",
+    body["farmer"]["id"] == rich_farmer_id,
+)
 test("Hydration includes schema version", body["schema_version"] == "profile_hydration.v1")
 test("Selects richer farmer over empty duplicate", body["farmer"]["id"] == rich_farmer_id)
 test("Reports duplicate farmer", body["summary"]["duplicate_farmer_count"] == 1)
@@ -242,7 +256,7 @@ test("Profile readiness counts satellite enrichment readiness", readiness_body["
 test("Profile readiness exposes per-farmer completion", any(row["farmer"]["id"] == rich_farmer_id and row["profile_completion"]["is_complete_for_home"] for row in readiness_body["farmers"]))
 
 print("\n[1b] Hydrate with backend-owned profile form contract")
-r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}?include_form_contract=true", headers={"X-Tenant-ID": tenant_id})
+r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}?include_form_contract=true", headers=headers)
 test("Hydration with form contract returns 200", r.status_code == 200, f"Status: {r.status_code}")
 contract_body = r.json()
 form_contract = contract_body["form_contract"]
@@ -309,7 +323,7 @@ r = client.post(
 test("Empty duplicate archived", r.status_code == 200, f"Status: {r.status_code}")
 test("Archive response contains duplicate", r.json()["archived"][0]["id"] == empty_duplicate_id)
 
-r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers={"X-Tenant-ID": tenant_id})
+r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers=headers)
 test("Hydration still returns primary after archive", r.status_code == 200)
 test("Archived duplicate no longer counted", r.json()["summary"]["duplicate_farmer_count"] == 0)
 
@@ -347,7 +361,7 @@ r = client.post(
 )
 test("PARCEL_GEOMETRY sync accepted", r.status_code == 200 and len(r.json()["accepted"]) == 1, f"Status: {r.status_code} Body: {r.text}")
 
-r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers={"X-Tenant-ID": tenant_id})
+r = client.get(f"/api/v1/farmers/by-mobile/{mobile_10}", headers=headers)
 parcel_body = r.json()["parcels"][0]
 test("GPS_WALK source returned in hydration", parcel_body["geometry_source"] == "GPS_WALK")
 test("GPS_WALK returns Polygon GeoJSON", parcel_body["geojson_type"] == "Polygon")

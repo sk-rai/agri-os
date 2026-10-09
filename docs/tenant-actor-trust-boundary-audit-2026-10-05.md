@@ -215,3 +215,17 @@ Static and direct behavior coverage verifies missing bearer, tenant mismatch,
 explicit linked-farmer precedence, persisted-mobile compatibility, and
 regression cleanup. These routes no longer appear as unprotected
 non-reference-read findings.
+
+## Farmer by-mobile hydration checkpoint
+
+The by-mobile farmer hydration route now requires verified human identity,
+derives tenant scope from the bearer principal, and authorizes the selected
+farmer through personal linkage, active assignment, or bounded web-admin
+scope. Legacy compatibility uses only the persisted authenticated user's
+mobile and is disabled after explicit farmer linkage exists.
+
+Static and behavior coverage verifies missing bearer, personal farmer,
+assigned agent, unassigned agent, unrelated farmer, web administrator,
+persisted-mobile compatibility, tenant mismatch, and non-disclosing `404`
+responses. The route no longer appears as an unprotected non-reference-read
+finding.

@@ -282,3 +282,16 @@ been linked, compatibility lookup uses only the persisted authenticated
 user's mobile number; no caller-supplied mobile or actor identity is trusted.
 Missing bearer and token/header tenant mismatch fail closed, while endpoint
 paths and response schemas remain stable.
+
+## Farmer by-mobile hydration checkpoint
+
+`GET /api/v1/farmers/by-mobile/{mobile_number}` now requires the shared
+authenticated-human boundary and derives tenant scope from the verified bearer
+principal. The mobile path value is a lookup key, not authorization evidence.
+
+Personal farmers may hydrate an explicitly linked profile, assigned agents may
+hydrate explicitly assigned farmers, and explicit web administrators retain
+tenant-wide lookup. A persisted-user mobile fallback supports legacy unlinked
+farmer profiles only while the authenticated user has no explicit farmer
+linkage. Missing bearer, unrelated or unassigned access, and tenant mismatch
+fail closed without disclosing whether the requested mobile exists.

@@ -7374,20 +7374,72 @@ def get_farmer_profile_by_mobile(
     mobile_number: str,
     include_form_contract: bool = Query(False),
     project_id: Optional[uuid.UUID] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
-    """Hydrate Android local storage after mobile login.
+    """Hydrate an authorised farmer profile after mobile login.
 
-    Returns farmer + parcels + soil profiles + active/completed crop cycles.
-    If multiple farmer rows share the mobile number, selects the richest active
-    profile and reports the extras under `duplicates` for cleanup.
+    Explicit personal-farmer linkage and assigned-farmer visibility are
+    authoritative. Persisted-user mobile matching remains a compatibility
+    fallback only while the authenticated user has no linked farmer profile.
     """
+    tenant_id = principal.tenant_id
     normalized_mobile = normalize_mobile_number(mobile_number)
-    farmer, duplicates = _select_hydration_farmer(db, x_tenant_id, normalized_mobile)
+    farmer, duplicates = _select_hydration_farmer(
+        db,
+        tenant_id,
+        normalized_mobile,
+    )
     if not farmer:
         raise HTTPException(404, "No farmer profile found for this mobile number")
-    return _build_profile_hydration_response(db, x_tenant_id, farmer, duplicates, include_form_contract=include_form_contract, form_project_id=project_id)
+
+    readable_farmer_ids = _readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    if (
+        readable_farmer_ids is not None
+        and farmer.id not in readable_farmer_ids
+    ):
+        user = (
+            db.query(User)
+            .filter(
+                User.id == principal.user_id,
+                User.tenant_id == tenant_id,
+                User.is_active == True,
+            )
+            .first()
+        )
+        has_linked_farmer = (
+            db.query(Farmer.id)
+            .filter(
+                Farmer.tenant_id == tenant_id,
+                Farmer.user_id == principal.user_id,
+                Farmer.status != "ARCHIVED",
+                Farmer.is_active == True,
+            )
+            .first()
+            is not None
+        )
+        persisted_mobile_matches = (
+            user is not None
+            and normalize_mobile_number(user.mobile_number)
+            == normalized_mobile
+        )
+        if has_linked_farmer or not persisted_mobile_matches:
+            raise HTTPException(
+                404,
+                "No farmer profile found for this mobile number",
+            )
+
+    return _build_profile_hydration_response(
+        db,
+        tenant_id,
+        farmer,
+        duplicates,
+        include_form_contract=include_form_contract,
+        form_project_id=project_id,
+    )
 
 
 @router.get("/farmers/me/profile")

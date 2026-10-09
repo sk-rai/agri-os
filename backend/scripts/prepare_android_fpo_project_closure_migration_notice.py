@@ -111,9 +111,9 @@ def create_notice(client: TestClient, headers: dict, actor_id: uuid.UUID) -> dic
     return generated
 
 
-def verify_applied_state(client: TestClient) -> dict:
+def verify_applied_state(client: TestClient, headers: dict) -> dict:
     feed = request_json(client, "GET", f"/api/v1/broadcasts/farmers/{SELECTED_FARMER_ID}/broadcasts?language_code=en&include_read=true")
-    hydration = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}")
+    hydration = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}", headers)
     check(feed["count"] == 1, "Selected farmer broadcast feed has closure notice", feed)
     item = feed["broadcasts"][0]
     check(item["campaign"]["metadata"].get("event_type") == "PROJECT_CLOSURE_MIGRATION_NOTICE", "Closure notice event type is Android-visible")
@@ -140,17 +140,18 @@ def apply_state(reset: bool) -> dict:
     set_selected_enrollment_status("ACTIVE")
     db = SessionLocal()
     admin_user, admin_headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id=TENANT_ID)
+    admin_user_id = admin_user.id
     db.close()
     try:
         client = TestClient(app)
-        campaign = create_notice(client, admin_headers, admin_user.id)
+        campaign = create_notice(client, admin_headers, admin_user_id)
         set_selected_enrollment_status("COMPLETED")
-        applied = verify_applied_state(client)
+        applied = verify_applied_state(client, admin_headers)
         return {"campaign": campaign, "applied": applied}
     finally:
         cleanup_db = SessionLocal()
         try:
-            delete_test_admin(cleanup_db, admin_user.id)
+            delete_test_admin(cleanup_db, admin_user_id)
         finally:
             cleanup_db.close()
 
@@ -163,10 +164,30 @@ def reset_state() -> dict:
     finally:
         db.close()
     set_selected_enrollment_status("ACTIVE")
-    client = TestClient(app)
-    hydration = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}")
-    check(hydration["farmer_context"]["mode"] == "PROJECT", "Reset restores selected farmer PROJECT context", hydration["farmer_context"])
-    return {"hydration_context": hydration["farmer_context"]}
+    db = SessionLocal()
+    admin_user, admin_headers = create_test_admin(
+        db,
+        role="ENTERPRISE_ADMIN",
+        tenant_id=TENANT_ID,
+    )
+    admin_user_id = admin_user.id
+    db.close()
+    try:
+        client = TestClient(app)
+        hydration = request_json(
+            client,
+            "GET",
+            f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}",
+            admin_headers,
+        )
+        check(hydration["farmer_context"]["mode"] == "PROJECT", "Reset restores selected farmer PROJECT context", hydration["farmer_context"])
+        return {"hydration_context": hydration["farmer_context"]}
+    finally:
+        cleanup_db = SessionLocal()
+        try:
+            delete_test_admin(cleanup_db, admin_user_id)
+        finally:
+            cleanup_db.close()
 
 
 def main() -> int:

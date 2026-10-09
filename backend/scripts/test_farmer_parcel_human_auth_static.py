@@ -23,6 +23,7 @@ def main():
     enrollment_read = block("list_farmer_project_enrollments", "list_project_farmer_enrollments")
     launch_read = block("get_farmer_launch_context", "create_parcel")
     self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
+    by_mobile_read = block("get_farmer_profile_by_mobile", "get_my_profile_hydration")
     self_hydration_read = block("get_my_profile_hydration", "get_my_farmer_profile")
     self_farmer_read = block("get_my_farmer_profile", "get_land_intelligence_context")
     farmer_update = block("update_farmer_profile", "download_project_enrollment_csv_template")
@@ -152,6 +153,42 @@ def main():
             and "x_tenant_id" not in route,
             f"{label} does not trust tenant headers directly",
         )
+    require(
+        "Depends(require_authenticated_human())" in by_mobile_read,
+        "Farmer by-mobile hydration requires an authenticated human",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in by_mobile_read,
+        "Farmer by-mobile hydration derives tenant from verified identity",
+    )
+    require(
+        "_readable_farmer_ids" in by_mobile_read,
+        "Farmer by-mobile hydration applies persona-scoped visibility",
+    )
+    require(
+        "Farmer.user_id == principal.user_id" in by_mobile_read,
+        "Farmer by-mobile hydration detects explicit personal linkage",
+    )
+    require(
+        "user.mobile_number" in by_mobile_read
+        and "persisted_mobile_matches" in by_mobile_read,
+        "Farmer by-mobile hydration limits compatibility to persisted mobile",
+    )
+    require(
+        "has_linked_farmer or not persisted_mobile_matches" in by_mobile_read,
+        "Farmer by-mobile hydration disables fallback after explicit linkage",
+    )
+    require(
+        'raise HTTPException(\n                404,' in by_mobile_read,
+        "Farmer by-mobile hydration fails closed without mobile disclosure",
+    )
+    require(
+        "X-Tenant-ID" not in by_mobile_read
+        and "x_tenant_id" not in by_mobile_read
+        and "X-Actor-ID" not in by_mobile_read
+        and "x_actor_id" not in by_mobile_read,
+        "Farmer by-mobile hydration does not trust identity headers directly",
+    )
     for label, route in [
         ("Farmer self hydration", self_hydration_read),
         ("Farmer self profile", self_farmer_read),

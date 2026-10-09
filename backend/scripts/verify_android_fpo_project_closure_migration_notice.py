@@ -129,7 +129,7 @@ def verify_farmer_notice_feed(client: TestClient) -> dict:
 
 
 def verify_lifecycle_transition(client: TestClient, headers: dict) -> dict:
-    before = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}")
+    before = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}", headers)
     check(before["farmer_context"]["mode"] == "PROJECT", "Before closure selected farmer is in PROJECT context", before["farmer_context"])
     check(before["farmer_context"]["can_continue_independently"] is False, "Before closure active project blocks independent context")
 
@@ -142,7 +142,7 @@ def verify_lifecycle_transition(client: TestClient, headers: dict) -> dict:
     )
     check(patched["status"] == "COMPLETED", "Selected enrollment can be completed", patched)
 
-    after = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}")
+    after = request_json(client, "GET", f"/api/v1/farmers/by-mobile/{SELECTED_MOBILE}?include_form_contract=true&project_id={PROJECT_ID}", headers)
     context = after["farmer_context"]
     check(context["mode"] == "SELF_SERVICE", "After closure farmer hydrates into SELF_SERVICE context", context)
     check(context["can_continue_independently"] is True, "After closure farmer can continue independently", context)

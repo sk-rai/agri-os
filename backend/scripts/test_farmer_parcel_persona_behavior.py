@@ -352,6 +352,101 @@ def main():
             personal_self_profile.text,
         )
 
+        missing_by_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{personal.mobile_number}",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_by_mobile.status_code == 401,
+            "Farmer by-mobile hydration rejects missing bearer",
+            missing_by_mobile.text,
+        )
+
+        personal_by_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{personal.mobile_number}",
+            headers=farmer_headers,
+        )
+        require(
+            personal_by_mobile.status_code == 200,
+            "Farmer hydrates personal profile by mobile",
+            personal_by_mobile.text,
+        )
+        require(
+            personal_by_mobile.json()["farmer"]["id"] == str(personal.id),
+            "Farmer by-mobile hydration returns personal farmer",
+            personal_by_mobile.text,
+        )
+
+        farmer_cross_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{assisted.mobile_number}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_cross_mobile.status_code == 404,
+            "Farmer cannot discover assisted farmer by mobile",
+            farmer_cross_mobile.text,
+        )
+
+        agent_by_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{assisted.mobile_number}",
+            headers=agent_headers,
+        )
+        require(
+            agent_by_mobile.status_code == 200,
+            "Assigned agent hydrates assisted farmer by mobile",
+            agent_by_mobile.text,
+        )
+        require(
+            agent_by_mobile.json()["farmer"]["id"] == str(assisted.id),
+            "Agent by-mobile hydration returns assigned farmer",
+            agent_by_mobile.text,
+        )
+
+        agent_cross_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{unrelated.mobile_number}",
+            headers=agent_headers,
+        )
+        require(
+            agent_cross_mobile.status_code == 404,
+            "Assigned agent cannot discover unrelated farmer by mobile",
+            agent_cross_mobile.text,
+        )
+
+        unassigned_by_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{assisted.mobile_number}",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_by_mobile.status_code == 404,
+            "Unassigned agent cannot discover farmer by mobile",
+            unassigned_by_mobile.text,
+        )
+
+        admin_by_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{unrelated.mobile_number}",
+            headers=admin_headers,
+        )
+        require(
+            admin_by_mobile.status_code == 200,
+            "Web administrator hydrates tenant farmer by mobile",
+            admin_by_mobile.text,
+        )
+        require(
+            admin_by_mobile.json()["farmer"]["id"] == str(unrelated.id),
+            "Administrator by-mobile hydration remains tenant bounded",
+            admin_by_mobile.text,
+        )
+
+        mismatch_by_mobile = client.get(
+            f"/api/v1/farmers/by-mobile/{personal.mobile_number}",
+            headers={**farmer_headers, "X-Tenant-ID": "default"},
+        )
+        require(
+            mismatch_by_mobile.status_code == 403,
+            "Farmer by-mobile hydration rejects tenant mismatch",
+            mismatch_by_mobile.text,
+        )
+
         farmer_readiness = client.get(
             f"/api/v1/farmers/profile-readiness?project_id={project_id}",
             headers=farmer_headers,
@@ -1062,6 +1157,7 @@ def main():
                 "farmer_launch_context_scope": True,
                 "farmer_self_profile_scope": True,
                 "farmer_self_hydration_scope": True,
+                "farmer_by_mobile_scope": True,
                 "assigned_agent_read_scope": True,
                 "unassigned_read_empty": True,
                 "admin_tenant_read": True,

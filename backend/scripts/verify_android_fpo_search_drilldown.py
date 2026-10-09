@@ -88,8 +88,7 @@ def verify_project_trace_drilldown(client: TestClient, headers: dict) -> dict:
     }
 
 
-def verify_android_visible_drilldown(client: TestClient) -> dict:
-    headers = {"X-Tenant-ID": TENANT_ID}
+def verify_android_visible_drilldown(client: TestClient, headers: dict) -> dict:
     n, mobile, crop, *_ = FARMERS[5]
     selected_farmer_id = farmer_id(n)
     hydration = get_json(client, f"/api/v1/farmers/by-mobile/{mobile}?include_form_contract=true&project_id={PROJECT_ID}", headers)
@@ -140,7 +139,7 @@ def main() -> int:
             "project_id": str(PROJECT_ID),
             "admin_search": verify_admin_search(client, admin_headers),
             "project_trace_drilldown": verify_project_trace_drilldown(client, admin_headers),
-            "android_visible_drilldown": verify_android_visible_drilldown(client),
+            "android_visible_drilldown": verify_android_visible_drilldown(client, admin_headers),
             "stage_search_backing": verify_db_stage_search_backing(),
             "readiness": {
                 "ready_for_android_fpo_search_maestro": True,

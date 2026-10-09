@@ -84,7 +84,7 @@ def verify_android_visible_apis(client: TestClient) -> dict:
 
     n, mobile, crop, *_ = FARMERS[0]
     sample_farmer_id = farmer_id(n)
-    hydration = get_json(client, f"/api/v1/farmers/by-mobile/{mobile}?include_form_contract=true&project_id={PROJECT_ID}", headers)
+    hydration = get_json(client, f"/api/v1/farmers/by-mobile/{mobile}?include_form_contract=true&project_id={PROJECT_ID}", admin_headers)
     check(hydration["farmer"]["id"] == str(sample_farmer_id), "Hydration returns deterministic FPO farmer")
     check(hydration["farmer_context"]["mode"] == "PROJECT", "FPO farmer hydrates in project context")
     check(hydration["summary"]["active_project_enrollment_count"] == 1, "FPO farmer has one active project membership")

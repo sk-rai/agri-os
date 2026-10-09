@@ -150,7 +150,7 @@ def main():
         db.close()
 
     print("\n[2] Hydration includes project memberships")
-    hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers={"X-Tenant-ID": tenant_id})
+    hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers=headers)
     check(hydration.status_code == 200, "Hydration returns 200", hydration.text[:300])
     body = hydration.json()
     check(body["summary"]["project_enrollment_count"] == 1, "Hydration summary counts project enrollment")
@@ -198,7 +198,7 @@ def main():
     check(updated["enrollment_method"] == "WEB_ADMIN", "Enrollment method updated")
     check(updated["status"] == "COMPLETED", "Enrollment status updated to completed")
 
-    completed_hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers={"X-Tenant-ID": tenant_id})
+    completed_hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers=headers)
     check(completed_hydration.status_code == 200, "Hydration still works after project completion", completed_hydration.text[:300])
     completed_body = completed_hydration.json()
     check(completed_body["summary"]["active_project_enrollment_count"] == 0, "Completed enrollment is no longer active")

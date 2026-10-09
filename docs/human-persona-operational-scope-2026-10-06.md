@@ -214,3 +214,15 @@ Legacy mobile-based profile resolution remains available only through the
 persisted, tenant-bounded authenticated user record. This supports older
 unlinked farmer rows without treating request headers or caller-provided
 mobile values as authorization evidence.
+
+## Farmer by-mobile hydration persona checkpoint
+
+By-mobile profile hydration now applies the same personal-farmer and
+assigned-farmer visibility used by the core farmer reads. Explicit
+`Farmer.user_id` linkage remains authoritative; once present, it disables the
+legacy persisted-mobile fallback.
+
+Assigned agents can hydrate only farmers in their active assignment scope,
+unassigned agents cannot discover profiles by mobile, and explicit web
+administrators retain tenant-wide compatibility access. The requested mobile
+number never grants persona scope by itself.
