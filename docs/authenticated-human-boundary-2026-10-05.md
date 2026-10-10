@@ -334,3 +334,14 @@ otherwise inaccessible project farmer.
 This route remains project staffing administration. It does not implement the
 future farmer-consented freelance specialist workflow documented in
 `docs/freelance-agricultural-services-roadmap.md`.
+
+## Farmer project-enrollment lifecycle status checkpoint
+
+`PATCH /api/v1/farmer-project-enrollments/{enrollment_id}/status` now derives
+tenant context exclusively from the verified administrator. It requires
+project-edit permission plus the explicit web-admin capability.
+
+The enrollment and its joined project are independently tenant-bounded.
+Lifecycle metadata and immutable audit events record the authenticated
+administrator. Missing bearer credentials, view-only access, actor
+impersonation, and token/header tenant mismatch fail closed.

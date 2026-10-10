@@ -261,3 +261,15 @@ independent farmers. Freelance field-agent or agronomist access will require a
 separate mutual-consent engagement and revocable data grant rather than a
 synthetic project assignment. That deferred model is defined in
 `docs/freelance-agricultural-services-roadmap.md`.
+
+## Farmer project-enrollment lifecycle administration
+
+Single-enrollment lifecycle transitions are explicit web-admin operations.
+Operational agents and agronomists cannot complete, cancel, archive, reactivate,
+or otherwise change project membership merely because they have an operational
+persona or edit-like project capability.
+
+Tenant scope and lifecycle attribution come from the verified administrator.
+This project-membership lifecycle remains separate from future freelance
+specialist engagements, which will use farmer consent and revocable access
+rather than project enrollment state.

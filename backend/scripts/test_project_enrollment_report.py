@@ -135,16 +135,73 @@ def main():
         check(any(item["id"] == str(enrollment_id) for item in source_response.json()["enrollments"]), "Source filter includes seeded row")
 
         editor, editor_headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id=tenant_id)
+        lifecycle_request = {
+            "status": "COMPLETED",
+            "reason": "Regression project completed",
+        }
+
+        missing_lifecycle_bearer = client.patch(
+            f"/api/v1/farmer-project-enrollments/{enrollment_id}/status",
+            headers={"X-Tenant-ID": tenant_id},
+            json=lifecycle_request,
+        )
+        check(
+            missing_lifecycle_bearer.status_code == 401,
+            "Enrollment lifecycle update rejects missing bearer",
+            missing_lifecycle_bearer.text,
+        )
+
+        viewer_lifecycle_update = client.patch(
+            f"/api/v1/farmer-project-enrollments/{enrollment_id}/status",
+            headers=headers,
+            json=lifecycle_request,
+        )
+        check(
+            viewer_lifecycle_update.status_code == 403,
+            "Enrollment lifecycle update rejects view-only administrator",
+            viewer_lifecycle_update.text,
+        )
+
+        impersonated_lifecycle_update = client.patch(
+            f"/api/v1/farmer-project-enrollments/{enrollment_id}/status",
+            headers={**editor_headers, "X-Actor-ID": str(uuid.uuid4())},
+            json=lifecycle_request,
+        )
+        check(
+            impersonated_lifecycle_update.status_code == 403,
+            "Enrollment lifecycle update rejects actor impersonation",
+            impersonated_lifecycle_update.text,
+        )
+
+        mismatched_lifecycle_tenant = client.patch(
+            f"/api/v1/farmer-project-enrollments/{enrollment_id}/status",
+            headers={
+                **editor_headers,
+                "X-Tenant-ID": "lifecycle-tenant-mismatch",
+            },
+            json=lifecycle_request,
+        )
+        check(
+            mismatched_lifecycle_tenant.status_code == 403,
+            "Enrollment lifecycle update rejects tenant mismatch",
+            mismatched_lifecycle_tenant.text,
+        )
+
         complete_response = client.patch(
             f"/api/v1/farmer-project-enrollments/{enrollment_id}/status",
             headers=editor_headers,
-            json={"status": "COMPLETED", "reason": "Regression project completed"},
+            json=lifecycle_request,
         )
         check(complete_response.status_code == 200, "Enrollment lifecycle status update returns 200", complete_response.text[:500])
         complete_payload = complete_response.json()
         check(complete_payload["status"] == "COMPLETED", "Enrollment status is completed")
         check(complete_payload["metadata"]["last_lifecycle_change"]["to_status"] == "COMPLETED", "Lifecycle metadata records new status")
         check(complete_payload["metadata"]["last_lifecycle_change"]["reason"] == "Regression project completed", "Lifecycle metadata records reason")
+        check(
+            complete_payload["metadata"]["last_lifecycle_change"]["actor_id"]
+            == str(editor.id),
+            "Lifecycle metadata records authenticated administrator",
+        )
 
         hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers=editor_headers)
         check(hydration.status_code == 200, "Hydration returns after lifecycle update", hydration.text[:300])
@@ -157,6 +214,10 @@ def main():
         check(audit_event is not None, "Enrollment lifecycle status update is audited")
         check(audit_event.after_config["status"] == "COMPLETED", "Audit stores after status")
         check(audit_event.reason == "Regression project completed", "Audit stores reason")
+        check(
+            audit_event.actor_id == editor.id,
+            "Audit stores authenticated administrator",
+        )
 
         bulk_project = Project(
             id=bulk_project_id,

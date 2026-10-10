@@ -268,3 +268,15 @@ cleanup.
 
 Future freelance specialist services for independent farmers remain a separate
 farmer-consented relationship and are not represented by this route.
+
+## Farmer project-enrollment lifecycle status checkpoint
+
+The single-enrollment lifecycle status mutation now requires verified
+project-edit permission and the explicit web-admin boundary. Tenant identity
+comes from the authenticated principal rather than the request header.
+
+The enrollment and joined project are tenant-bounded, and lifecycle metadata
+plus audit events record the verified administrator. Regression coverage
+verifies missing bearer, view-only denial, actor impersonation denial, tenant
+mismatch denial, successful completion, audit attribution, Android hydration
+fallback to self-service, and cleanup.

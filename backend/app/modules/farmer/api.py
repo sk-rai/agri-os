@@ -6692,33 +6692,40 @@ def _update_enrollment_lifecycle_status(
 def update_farmer_project_enrollment_status(
     enrollment_id: uuid.UUID,
     body: FarmerProjectEnrollmentStatusPatch,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PROJECT_EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT)),
 ):
     """Update a project enrollment lifecycle status with reason and audit.
 
     Completing or cancelling the last active project enrollment does not deactivate
     the farmer; profile hydration/launch context will move them to SELF_SERVICE.
     """
+    if not _farmer_admin_can_edit(principal):
+        raise _farmer_scope_forbidden(
+            "Project enrollment lifecycle updates require an explicit web administrator."
+        )
+
+    tenant_id = principal.tenant_id
     enrollment = (
         db.query(FarmerProjectEnrollment)
         .filter(
             FarmerProjectEnrollment.id == enrollment_id,
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
         )
         .first()
     )
     if not enrollment:
         raise HTTPException(404, "Project enrollment not found")
 
-    project = db.query(Project).filter(Project.id == enrollment.project_id, Project.tenant_id == x_tenant_id).first()
+    project = db.query(Project).filter(Project.id == enrollment.project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
 
     payload = _update_enrollment_lifecycle_status(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         enrollment=enrollment,
         project=project,
         target_status=body.status,
@@ -6727,7 +6734,7 @@ def update_farmer_project_enrollment_status(
     )
     db.commit()
     db.refresh(enrollment)
-    return _enrollment_payload(enrollment, project) if payload else _enrollment_payload(enrollment, project)
+    return _enrollment_payload(enrollment, project)
 
 
 @router.get("/projects/{project_id}/farmer-enrollments/lifecycle-preview")

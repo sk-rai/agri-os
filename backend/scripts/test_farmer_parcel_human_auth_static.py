@@ -30,6 +30,10 @@ def main():
         "update_farmer_project_agent_assignment",
         "_update_enrollment_lifecycle_status",
     )
+    enrollment_status_update = block(
+        "update_farmer_project_enrollment_status",
+        "preview_project_enrollment_lifecycle",
+    )
     self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
     duplicate_read = block("list_duplicate_farmers", "archive_duplicate_farmers")
     duplicate_archive = block("archive_duplicate_farmers", "get_farmer_profile_by_mobile")
@@ -350,6 +354,39 @@ def main():
         and "X-Actor-ID" not in agent_assignment
         and "x_actor_id" not in agent_assignment,
         "Project agent assignment does not trust identity headers directly",
+    )
+    require(
+        "require_admin_permission(AdminPermission.PROJECT_EDIT)"
+        in enrollment_status_update,
+        "Enrollment lifecycle update requires project-edit permission",
+    )
+    require(
+        "_farmer_admin_can_edit(principal)" in enrollment_status_update,
+        "Enrollment lifecycle update keeps an explicit web-admin boundary",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in enrollment_status_update,
+        "Enrollment lifecycle update derives tenant from verified admin",
+    )
+    require(
+        "FarmerProjectEnrollment.tenant_id == tenant_id"
+        in enrollment_status_update,
+        "Enrollment lifecycle update tenant-bounds enrollment",
+    )
+    require(
+        "Project.tenant_id == tenant_id" in enrollment_status_update,
+        "Enrollment lifecycle update tenant-bounds joined project",
+    )
+    require(
+        "actor_id=principal.user_id" in enrollment_status_update,
+        "Enrollment lifecycle update records verified administrator",
+    )
+    require(
+        "X-Tenant-ID" not in enrollment_status_update
+        and "x_tenant_id" not in enrollment_status_update
+        and "X-Actor-ID" not in enrollment_status_update
+        and "x_actor_id" not in enrollment_status_update,
+        "Enrollment lifecycle update does not trust identity headers directly",
     )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 
