@@ -20,8 +20,10 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
+from app.core.admin_auth import AdminPermission, AdminPrincipal, ROLE_PERMISSIONS, require_admin_permission
 from app.core.database import Base, get_db
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
 from app.shared.models import AuditMixin, UUIDPrimaryKey
 from app.modules.media.provider_runtime_policy import provider_live_execution_status, provider_runtime_policy_from_config
 from app.modules.farmer.soil_enrichment_adapters import normalize_open_meteo_soil_moisture, normalize_soilgrids_properties
@@ -628,6 +630,47 @@ def _infer_soil_profile_project_id(db: Session, *, tenant_id: str, parcel_id: uu
     if len(active_enrollments) == 1:
         return active_enrollments[0].project_id
     return None
+
+
+SOIL_PROFILE_WEB_ADMIN_ROLES = {
+    "ENTERPRISE_ADMIN",
+    "MANAGER",
+    "ADMIN_EDITOR",
+    "ADMIN_PUBLISHER",
+}
+
+
+def _require_can_manage_soil_profile(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    actor_id: uuid.UUID,
+    farmer_id: uuid.UUID,
+) -> None:
+    """Require personal, assigned-agent, or explicit web-admin farmer scope."""
+    if actor_id != principal.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "FARMER_SCOPE_DENIED",
+                "message": "Mutation actor must match the authenticated user.",
+            },
+        )
+    role = str(principal.role or "").upper()
+    if (
+        role in SOIL_PROFILE_WEB_ADMIN_ROLES
+        and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
+    ):
+        return
+    if resolve_human_persona_scope(db, principal).can_operate_farmer(farmer_id):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "FARMER_SCOPE_DENIED",
+            "message": "Authenticated user cannot manage this farmer's soil profile.",
+        },
+    )
 
 
 def _soil_enrichment_summary_payload(snapshots: list[SoilEnrichmentSnapshot]) -> dict:
@@ -1787,9 +1830,8 @@ def get_soil_enrichment_summary(
 @router.post("", response_model=SoilProfileResponse, status_code=201)
 def create_soil_profile(
     body: SoilProfileCreate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Create or update soil profile for a parcel.
 
@@ -1798,15 +1840,22 @@ def create_soil_profile(
     - Tier 2: + soil_texture + soil_color (farmer observation)
     - Tier 3: + all 12 SHC parameters (lab test data)
     """
-    inferred_project_id = _infer_soil_profile_project_id(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id, farmer_id=body.farmer_id)
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=body.soil_texture, path="soil_texture")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=body.soil_color, path="soil_color")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=body.data_source, path="data_source")
-    _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
+    tenant_id = principal.tenant_id
+    inferred_project_id = _infer_soil_profile_project_id(db, tenant_id=tenant_id, parcel_id=body.parcel_id, farmer_id=body.farmer_id)
+    _require_can_manage_soil_profile(
+        db,
+        principal=principal,
+        actor_id=principal.user_id,
+        farmer_id=body.farmer_id,
+    )
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=body.soil_texture, path="soil_texture")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=body.soil_color, path="soil_color")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=body.data_source, path="data_source")
+    _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_types", value=body.soil_type_code, path="soil_type_code")
 
     profile = SoilProfile(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         parcel_id=body.parcel_id,
         farmer_id=body.farmer_id,
         test_date=body.test_date or date.today(),
@@ -1842,27 +1891,34 @@ def create_soil_profile(
 def update_soil_profile(
     profile_id: uuid.UUID,
     body: SoilProfileUpdate,
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Update mutable soil profile fields for backend-driven profile maintenance."""
-    profile = db.query(SoilProfile).filter(SoilProfile.id == profile_id, SoilProfile.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    profile = db.query(SoilProfile).filter(SoilProfile.id == profile_id, SoilProfile.tenant_id == tenant_id).first()
     if not profile:
         raise HTTPException(404, "Soil profile not found")
+    _require_can_manage_soil_profile(
+        db,
+        principal=principal,
+        actor_id=principal.user_id,
+        farmer_id=profile.farmer_id,
+    )
 
     values = _model_patch_values(body)
     if not values:
         raise HTTPException(400, "At least one soil profile field must be provided")
 
-    inferred_project_id = _infer_soil_profile_project_id(db, tenant_id=x_tenant_id, parcel_id=profile.parcel_id, farmer_id=profile.farmer_id)
+    inferred_project_id = _infer_soil_profile_project_id(db, tenant_id=tenant_id, parcel_id=profile.parcel_id, farmer_id=profile.farmer_id)
     if "soil_texture" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=values.get("soil_texture"), path="soil_texture")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_textures", value=values.get("soil_texture"), path="soil_texture")
     if "soil_color" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=values.get("soil_color"), path="soil_color")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_colors", value=values.get("soil_color"), path="soil_color")
     if "data_source" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=values.get("data_source"), path="data_source")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_data_sources", value=values.get("data_source"), path="data_source")
     if "soil_type_code" in values:
-        _validate_profile_option_value(db, tenant_id=x_tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
+        _validate_profile_option_value(db, tenant_id=tenant_id, project_id=inferred_project_id, option_set="soil_types", value=values.get("soil_type_code"), path="soil_type_code")
 
     for field in ["soil_type_code", "soil_texture", "soil_color", "test_date", "lab_name", "shc_card_number", "nitrogen_n", "phosphorus_p", "potassium_k", "sulphur_s", "zinc_zn", "iron_fe", "copper_cu", "manganese_mn", "ph", "ec", "organic_carbon_oc", "data_source", "notes"]:
         if field in values:

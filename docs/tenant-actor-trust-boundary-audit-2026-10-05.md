@@ -293,3 +293,16 @@ record the verified administrator. Regression coverage verifies missing bearer,
 actor impersonation, tenant mismatch, view-only preview, view-only apply denial,
 successful lifecycle changes, audit attribution, hydration fallback, and
 cleanup. Neither route remains in the unauthenticated or header-trust findings.
+
+## Soil-profile mutation checkpoint
+
+The core soil-profile create and update routes now require the shared verified
+human principal, derive tenant context from that principal, and apply persisted
+personal-farmer or assigned-agent scope with an explicit web-admin boundary.
+
+Create validates tenant-bounded parcel/farmer linkage; update tenant-bounds the
+profile before authorization. Static and direct behavior coverage verifies
+missing bearer, personal farmer access, assigned-agent access, unrelated and
+unassigned denial, administrator access, tenant mismatch, Android payload
+compatibility, and cleanup. These two routes no longer appear as unauthenticated
+mutation findings.

@@ -357,3 +357,15 @@ Apply events record the verified administrator. Missing bearer credentials,
 actor impersonation, tenant mismatch, and view-only apply attempts fail closed.
 These project controls remain separate from future farmer-consented freelance
 specialist engagements.
+
+## Soil-profile mutation checkpoint
+
+`POST /api/v1/soil-profiles` and `PATCH /api/v1/soil-profiles/{profile_id}`
+now require a verified human principal. Tenant selection comes from the bearer
+identity rather than caller-supplied tenant or actor headers.
+
+Personal farmers may manage their own soil profiles, assigned project agents
+may manage profiles for explicitly assigned farmers, and explicit web
+administrators retain tenant-wide edit capability. Parcel/farmer linkage and
+existing profiles are tenant-bounded. Missing bearer, unrelated or unassigned
+personas, actor impersonation, and tenant mismatch fail closed.

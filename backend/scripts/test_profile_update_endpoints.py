@@ -187,8 +187,8 @@ def main():
     check(isolated_farmer.status_code == 403, "Farmer update rejects tenant mismatch", isolated_farmer.text)
     isolated_parcel = client.patch(f"/api/v1/parcels/{parcel_id}", headers=mismatch_headers, json={"local_name": "Wrong Tenant"})
     check(isolated_parcel.status_code == 403, "Parcel update rejects tenant mismatch", isolated_parcel.text)
-    isolated_soil = client.patch(f"/api/v1/soil-profiles/{soil_profile_id}", headers={"X-Tenant-ID": "default", "X-Actor-ID": str(actor_id)}, json={"ph": 8})
-    check(isolated_soil.status_code == 404, "Soil profile update is tenant isolated", isolated_soil.text)
+    isolated_soil = client.patch(f"/api/v1/soil-profiles/{soil_profile_id}", headers=mismatch_headers, json={"ph": 8})
+    check(isolated_soil.status_code == 403, "Soil profile update rejects tenant mismatch", isolated_soil.text)
 
     db = SessionLocal()
     try:

@@ -14,6 +14,7 @@ from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilProfile
 from app.modules.master_data.models.crop import Crop, CropCategory
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def now():
@@ -44,6 +45,9 @@ def main():
     crop_category_id = uuid.uuid4()
     crop_id = uuid.uuid4()
     test_crop_code = "PROFILE_TEST_RICE"
+    admin_user = None
+    admin_user_id = None
+    headers = None
 
     db = SessionLocal()
     try:
@@ -118,13 +122,13 @@ def main():
             created_at=now(),
             updated_at=now(),
         ))
+        admin_user, headers = create_test_admin(db, tenant_id=tenant_id)
+        admin_user_id = admin_user.id
         db.commit()
     finally:
         db.close()
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": str(actor_id)}
-
     options = client.get(f"/api/v1/forms/options/soil_types?project_id={project_id}", headers=headers)
     check(options.status_code == 200, "Project soil type option set returns 200", options.text)
     option_body = options.json()
@@ -209,6 +213,8 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        if admin_user_id:
+            delete_test_admin(db, admin_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

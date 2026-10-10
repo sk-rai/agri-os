@@ -286,3 +286,15 @@ These operations close or reopen project membership in aggregate. They do not
 create freelance specialist access for independently enrolled farmers; that
 future relationship remains consent-based and revocable under the separate
 services roadmap.
+
+## Soil-profile persona integration
+
+Core soil-profile creation and update now use the persisted human persona
+scope. A personal farmer can maintain soil observations for their own parcel;
+an assigned project agent can maintain an assisted farmer's profile; unrelated
+and unassigned identities are denied. Explicit web administrators retain
+tenant-wide maintenance capability.
+
+This access follows current farmer ownership or project assignment. It does not
+grant a future freelance agronomist access: independent specialist access will
+require the separate farmer-consented, revocable engagement model.

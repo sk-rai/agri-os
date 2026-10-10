@@ -3,6 +3,7 @@
 from pathlib import Path
 
 SOURCE = (Path(__file__).resolve().parents[1] / "app/modules/farmer/api.py").read_text()
+SOIL_SOURCE = (Path(__file__).resolve().parents[1] / "app/modules/farmer/soil_profile.py").read_text()
 
 
 def require(condition, label):
@@ -13,6 +14,10 @@ def require(condition, label):
 
 def block(name, next_name):
     return SOURCE.split(f"def {name}(", 1)[1].split(f"def {next_name}(", 1)[0]
+
+
+def soil_block(name, next_name):
+    return SOIL_SOURCE.split(f"def {name}(", 1)[1].split(f"def {next_name}(", 1)[0]
 
 
 def main():
@@ -53,6 +58,8 @@ def main():
     parcel_read = block("list_parcels", "update_parcel_profile")
     parcel_update = block("update_parcel_profile", "update_parcel_geometry")
     geometry = block("update_parcel_geometry", "get_form_field_config")
+    soil_create = soil_block("create_soil_profile", "update_soil_profile")
+    soil_update = soil_block("update_soil_profile", "list_soil_profiles")
     for label, route in [
         ("Farmer enrollment", enroll),
         ("Farmer update", farmer_update),
@@ -63,6 +70,34 @@ def main():
         require("Depends(require_authenticated_human())" in route, f"{label} requires an authenticated human")
         require("principal.tenant_id" in route, f"{label} derives tenant from verified identity")
         require("X-Actor-ID" not in route and "x_actor_id" not in route, f"{label} does not trust actor headers")
+    for label, route in [
+        ("Soil profile creation", soil_create),
+        ("Soil profile update", soil_update),
+    ]:
+        require("Depends(require_authenticated_human())" in route, f"{label} requires an authenticated human")
+        require("tenant_id = principal.tenant_id" in route, f"{label} derives tenant from verified identity")
+        require("_require_can_manage_soil_profile" in route, f"{label} applies persona-scoped farmer authorization")
+        require("actor_id=principal.user_id" in route, f"{label} derives actor from verified identity")
+        require(
+            "X-Tenant-ID" not in route
+            and "x_tenant_id" not in route
+            and "X-Actor-ID" not in route
+            and "x_actor_id" not in route,
+            f"{label} does not trust identity headers directly",
+        )
+    require(
+        "resolve_human_persona_scope(db, principal).can_operate_farmer(farmer_id)" in SOIL_SOURCE,
+        "Soil profile authorization resolves persisted persona scope",
+    )
+    require(
+        "AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())" in SOIL_SOURCE,
+        "Soil profile authorization keeps an explicit web-admin boundary",
+    )
+    require(
+        "Parcel.tenant_id == tenant_id" in SOIL_SOURCE
+        and "Parcel.farmer_id == farmer_id" in SOIL_SOURCE,
+        "Soil profile creation tenant-bounds parcel and farmer linkage",
+    )
     require("resolve_human_persona_scope" in SOURCE, "Mutations resolve persisted persona scope")
     require("resolve_human_persona_scope(db, principal).can_operate_farmer" in SOURCE, "Farmer operations require ownership or assignment")
     require("_farmer_admin_can_edit" in SOURCE, "Web-admin bypass is explicit")

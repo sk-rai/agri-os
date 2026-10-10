@@ -21,6 +21,7 @@ from app.modules.farmer.models import (
     ProjectRole,
     Tenant,
 )
+from app.modules.farmer.soil_profile import SoilProfile
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -923,6 +924,69 @@ def main():
             personal_parcel_create.text,
         )
 
+        missing_soil = client.post(
+            "/api/v1/soil-profiles",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"farmer_id": str(personal.id), "parcel_id": str(personal_parcel.id)},
+        )
+        require(missing_soil.status_code == 401, "Soil profile creation rejects missing bearer", missing_soil.text)
+
+        personal_soil = client.post(
+            "/api/v1/soil-profiles",
+            headers=farmer_headers,
+            json={
+                "farmer_id": str(personal.id),
+                "parcel_id": str(personal_parcel.id),
+                "soil_texture": "LOAMY",
+                "data_source": "MANUAL",
+            },
+        )
+        require(personal_soil.status_code == 201, "Farmer creates personal soil profile", personal_soil.text)
+        personal_soil_id = personal_soil.json()["id"]
+
+        farmer_cross_soil = client.post(
+            "/api/v1/soil-profiles",
+            headers=farmer_headers,
+            json={"farmer_id": str(unrelated.id), "parcel_id": str(unrelated_parcel.id)},
+        )
+        require(farmer_cross_soil.status_code == 403, "Farmer cannot create unrelated soil profile", farmer_cross_soil.text)
+
+        agent_soil = client.post(
+            "/api/v1/soil-profiles",
+            headers=agent_headers,
+            json={"farmer_id": str(assisted.id), "parcel_id": str(assisted_parcel.id), "data_source": "MANUAL"},
+        )
+        require(agent_soil.status_code == 201, "Assigned agent creates assisted-farmer soil profile", agent_soil.text)
+        agent_soil_id = agent_soil.json()["id"]
+
+        unassigned_soil = client.patch(
+            f"/api/v1/soil-profiles/{agent_soil_id}",
+            headers=unassigned_headers,
+            json={"ph": 6.8},
+        )
+        require(unassigned_soil.status_code == 403, "Unassigned agent cannot update assisted-farmer soil profile", unassigned_soil.text)
+
+        farmer_soil_update = client.patch(
+            f"/api/v1/soil-profiles/{personal_soil_id}",
+            headers=farmer_headers,
+            json={"ph": 7.2},
+        )
+        require(farmer_soil_update.status_code == 200, "Farmer updates personal soil profile", farmer_soil_update.text)
+
+        admin_soil_update = client.patch(
+            f"/api/v1/soil-profiles/{agent_soil_id}",
+            headers=admin_headers,
+            json={"ph": 7.0},
+        )
+        require(admin_soil_update.status_code == 200, "Web administrator updates tenant soil profile", admin_soil_update.text)
+
+        mismatch_soil = client.patch(
+            f"/api/v1/soil-profiles/{personal_soil_id}",
+            headers={**farmer_headers, "X-Tenant-ID": "default"},
+            json={"ph": 8.0},
+        )
+        require(mismatch_soil.status_code == 403, "Soil profile update rejects tenant mismatch", mismatch_soil.text)
+
         unrelated_farmer_update = client.patch(
             f"/api/v1/farmers/{unrelated.id}",
             headers=farmer_headers,
@@ -1163,6 +1227,7 @@ def main():
                 "admin_tenant_read": True,
                 "farmer_personal_update": True,
                 "farmer_personal_parcel_create": True,
+                "soil_profile_persona_scope": True,
                 "assigned_agent_farmer_update": True,
                 "assigned_agent_parcel_create": True,
                 "assigned_agent_geometry": True,
@@ -1177,6 +1242,9 @@ def main():
         db.close()
         cleanup = SessionLocal()
         try:
+            cleanup.query(SoilProfile).filter(
+                SoilProfile.tenant_id == tenant_id
+            ).delete(synchronize_session=False)
             cleanup.query(Parcel).filter(
                 Parcel.tenant_id == tenant_id
             ).delete(synchronize_session=False)
