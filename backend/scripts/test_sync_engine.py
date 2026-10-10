@@ -1,19 +1,82 @@
 """Test sync engine: idempotency, dependency, conflict detection, audit chain."""
+import atexit
 import sys
 import uuid
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from app.core.database import SessionLocal
 from app.main import app
+from app.modules.farmer.models import Tenant
+from scripts.admin_auth_test_utils import (
+    create_test_admin,
+    delete_test_admin,
+)
 
 client = TestClient(app)
 PASS = "\033[92m✅\033[0m"
 FAIL = "\033[91m❌\033[0m"
 
-TENANT = "default"
-ACTOR = str(uuid.uuid4())
-HEADERS = {"X-Tenant-ID": TENANT, "X-Actor-ID": ACTOR}
+TENANT = f"sync-engine-{uuid.uuid4().hex[:8]}"
+
+_auth_db = SessionLocal()
+try:
+    _auth_db.add(Tenant(
+        id=TENANT,
+        name="Sync Engine Regression Tenant",
+        type="ENTERPRISE",
+    ))
+    _auth_db.commit()
+    _sync_user, HEADERS = create_test_admin(
+        _auth_db,
+        tenant_id=TENANT,
+    )
+    ACTOR = str(_sync_user.id)
+    _sync_user_id = _sync_user.id
+finally:
+    _auth_db.close()
+
+
+def _cleanup_auth_user():
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("DELETE FROM sync_conflicts WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text(
+                "DELETE FROM sync_processed_events "
+                "WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text("DELETE FROM audit_chain WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text("DELETE FROM parcels WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text("DELETE FROM farmers WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.commit()
+        delete_test_admin(db, _sync_user_id)
+        db.query(Tenant).filter(
+            Tenant.id == TENANT
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+atexit.register(_cleanup_auth_user)
 
 def unique_mobile() -> str:
     return "+91" + str(uuid.uuid4().int)[-10:]
@@ -148,7 +211,6 @@ test("Conflict type is VERSION_MISMATCH",
 print("\n[6] Workflow invalid conflict (bad stage code)")
 event_id_6 = str(uuid.uuid4())
 # Use a real lifecycle template ID from our seeded data
-from app.core.database import SessionLocal
 from app.modules.master_data.models import CropLifecycleTemplate
 db = SessionLocal()
 template = db.query(CropLifecycleTemplate).first()
@@ -218,7 +280,6 @@ test("Total processed = 3", data["total_processed"] == 3)
 
 # --- Test 8: Audit chain integrity ---
 print("\n[8] Audit chain integrity")
-from sqlalchemy import text
 from app.core.database import engine
 
 with engine.connect() as conn:
@@ -246,7 +307,7 @@ with engine.connect() as conn:
 print("\n[9] Tenant-scoped idempotency row")
 tenant_scope_event_id = str(uuid.uuid4())
 r = client.post("/api/v1/sync/events",
-    headers={"X-Tenant-ID": TENANT, "X-Actor-ID": str(uuid.uuid4())},
+    headers=HEADERS,
     json={"events": [{
         "event_id": tenant_scope_event_id,
         "entity_type": "farmer",

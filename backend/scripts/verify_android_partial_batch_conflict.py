@@ -23,6 +23,7 @@ Optional modes:
 
 from __future__ import annotations
 
+
 import argparse
 import json
 import os
@@ -32,6 +33,7 @@ from pathlib import Path
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.sync_bearer_env import authenticated_sync_headers
 
 from fastapi.testclient import TestClient
 
@@ -47,7 +49,10 @@ CYCLE_ID = "aa346148-468b-47de-9c86-47ad41aa1f11"
 EXPECTED_STAGE_CODE = "NURSERY"
 EXPECTED_COST = Decimal("325.50")
 BASELINE_PATH = Path("/tmp/android_partial_batch_conflict_baseline.json")
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
+HEADERS = authenticated_sync_headers(
+    TENANT_ID,
+    ACTOR_ID,
+)
 
 client = TestClient(app)
 

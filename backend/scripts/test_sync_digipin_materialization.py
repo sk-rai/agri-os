@@ -12,6 +12,10 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.master_data.digipin import validate_digipin
+from scripts.admin_auth_test_utils import (
+    create_test_admin,
+    delete_test_admin,
+)
 
 
 client = TestClient(app)
@@ -33,13 +37,22 @@ def main():
     print("=" * 72)
 
     tenant_id = f"sync-digipin-{uuid.uuid4().hex[:8]}"
-    actor_id = str(uuid.uuid4())
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
+    actor_id = None
+    headers = None
 
     db = SessionLocal()
     try:
-        db.add(Tenant(id=tenant_id, name="Sync DigiPin Test Tenant", type="ENTERPRISE"))
+        db.add(Tenant(
+            id=tenant_id,
+            name="Sync DigiPin Test Tenant",
+            type="ENTERPRISE",
+        ))
         db.commit()
+        admin_user, headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+        )
+        actor_id = admin_user.id
     finally:
         db.close()
 
@@ -121,9 +134,36 @@ def main():
         check(validate_digipin(parcel.centroid_digipin), "Sync parcel centroid DigiPin validates", parcel.centroid_digipin)
         check(parcel.centroid_digipin == "4P3JK852C9", "Geometry sync recomputes parcel DigiPin from latest centroid", parcel.centroid_digipin)
     finally:
-        db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
+        db.query(Parcel).filter(
+            Parcel.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
+        db.query(Farmer).filter(
+            Farmer.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
+        db.execute(
+            __import__("sqlalchemy").text(
+                "DELETE FROM sync_conflicts WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        db.execute(
+            __import__("sqlalchemy").text(
+                "DELETE FROM sync_processed_events WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        db.execute(
+            __import__("sqlalchemy").text(
+                "DELETE FROM audit_chain WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        db.commit()
+        if actor_id:
+            delete_test_admin(db, actor_id)
+        db.query(Tenant).filter(
+            Tenant.id == tenant_id
+        ).delete(synchronize_session=False)
         db.commit()
         db.close()
 

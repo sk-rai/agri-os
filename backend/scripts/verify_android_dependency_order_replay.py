@@ -17,6 +17,7 @@ the ordered batch because DEPENDENCY_MISSING rows are retryable.
 
 from __future__ import annotations
 
+
 import argparse
 import json
 import os
@@ -27,6 +28,7 @@ from pathlib import Path
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.sync_bearer_env import authenticated_sync_headers
 
 from fastapi.testclient import TestClient
 
@@ -48,7 +50,10 @@ ACTOR_ID = "11111111-1111-4111-8111-111111111111"
 EXPECTED_STAGE_CODE = "NURSERY"
 EXPECTED_COST = Decimal("325.50")
 BASELINE_PATH = Path("/tmp/android_dependency_order_replay_baseline.json")
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
+HEADERS = authenticated_sync_headers(
+    TENANT_ID,
+    ACTOR_ID,
+)
 
 client = TestClient(app)
 

@@ -203,7 +203,13 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
                 enrolled_by=_uuid_or_none(actor_id),
                 status="ACTIVE",
                 parcel_ids=[],
-                assigned_user_ids=[],
+                assigned_user_ids=_uuid_string_list_or_empty(
+                    _first_payload_value(
+                        payload,
+                        "assigned_user_ids",
+                        "assignedUserIds",
+                    )
+                ),
                 metadata_={
                     "created_from": "POST /api/v1/sync/events",
                     "android_offline_sync": True,
@@ -217,6 +223,15 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
             enrollment.status = "ACTIVE"
             enrollment.enrollment_source = enrollment.enrollment_source or "ANDROID_SYNC_FARMER_CREATE"
             enrollment.enrolled_by = enrollment.enrolled_by or _uuid_or_none(actor_id)
+            assigned_user_ids = _first_payload_value(
+                payload,
+                "assigned_user_ids",
+                "assignedUserIds",
+            )
+            if assigned_user_ids is not None:
+                enrollment.assigned_user_ids = _uuid_string_list_or_empty(
+                    assigned_user_ids
+                )
             enrollment.metadata_ = {
                 **(enrollment.metadata_ or {}),
                 "android_offline_sync_seen": True,

@@ -145,11 +145,17 @@ def main():
             tenant_id=tenant_id,
             role="ENTERPRISE_ADMIN",
         )
+        self_sync_user, self_sync_headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="FARMER",
+        )
         created_user_ids.extend([
             farmer_user.id,
             agent_user.id,
             unassigned_user.id,
             admin_user.id,
+            self_sync_user.id,
         ])
 
         project = Project(
@@ -578,6 +584,356 @@ def main():
             "Personal crop cycle persists completion",
         )
 
+        self_sync_farmer_id = uuid.uuid4()
+        self_sync_event = {
+            "event_id": str(uuid.uuid4()),
+            "entity_type": "FARMER",
+            "entity_id": str(self_sync_farmer_id),
+            "operation": "CREATE",
+            "payload": {
+                "mobile_number": self_sync_user.mobile_number,
+                "display_name": "Independent Sync Farmer",
+                "village_name_manual": "Independent Sync Village",
+                "status": "ACTIVE",
+            },
+            "version": 1,
+            "dependency_ids": [],
+            "metadata": {"source": "self_sync_enrollment_regression"},
+        }
+        self_sync_response = client.post(
+            "/api/v1/sync/events",
+            headers=self_sync_headers,
+            json={"events": [self_sync_event]},
+        )
+        require(
+            self_sync_response.status_code == 200
+            and self_sync_response.json()["accepted"]
+            == [self_sync_event["event_id"]],
+            "Independent farmer self-enrolls through sync",
+            self_sync_response.text,
+        )
+
+        db.expire_all()
+        self_synced_farmer = db.query(Farmer).filter(
+            Farmer.id == self_sync_farmer_id,
+            Farmer.tenant_id == tenant_id,
+        ).first()
+        require(
+            self_synced_farmer is not None,
+            "Self-sync farmer is materialized",
+        )
+        require(
+            self_synced_farmer.user_id == self_sync_user.id,
+            "Self-sync farmer is linked to authenticated user",
+        )
+        require(
+            self_synced_farmer.enrolled_by == self_sync_user.id,
+            "Self-sync farmer records authenticated user",
+        )
+
+        agent_sync_farmer_id = uuid.uuid4()
+        agent_sync_parcel_id = uuid.uuid4()
+        agent_farmer_event = {
+            "event_id": str(uuid.uuid4()),
+            "entity_type": "FARMER",
+            "entity_id": str(agent_sync_farmer_id),
+            "operation": "CREATE",
+            "payload": {
+                "project_id": str(project_id),
+                "mobile_number": (
+                    f"+9192{uuid.uuid4().int % 100000000:08d}"
+                ),
+                "display_name": "Agent Sync Farmer",
+                "village_name_manual": "Agent Sync Village",
+                "status": "ACTIVE",
+            },
+            "version": 1,
+            "dependency_ids": [],
+            "metadata": {"source": "agent_sync_enrollment_regression"},
+        }
+        agent_parcel_event = {
+            "event_id": str(uuid.uuid4()),
+            "entity_type": "PARCEL",
+            "entity_id": str(agent_sync_parcel_id),
+            "operation": "CREATE",
+            "payload": {
+                "farmer_id": str(agent_sync_farmer_id),
+                "project_id": str(project_id),
+                "local_name": "AGENT-SYNC-PARCEL",
+                "village_name_manual": "Agent Sync Village",
+                "reported_area": 1,
+                "reported_area_unit": "ACRE",
+                "ownership_type": "OWNED",
+                "status": "ACTIVE",
+            },
+            "version": 1,
+            "dependency_ids": [agent_farmer_event["event_id"]],
+            "metadata": {"source": "agent_sync_enrollment_regression"},
+        }
+        agent_enrollment_sync = client.post(
+            "/api/v1/sync/events",
+            headers=agent_headers,
+            json={"events": [agent_farmer_event, agent_parcel_event]},
+        )
+        agent_enrollment_body = agent_enrollment_sync.json()
+        require(
+            agent_enrollment_sync.status_code == 200,
+            "Project agent enrollment sync returns 200",
+            agent_enrollment_body,
+        )
+        require(
+            agent_enrollment_body["accepted"]
+            == [
+                agent_farmer_event["event_id"],
+                agent_parcel_event["event_id"],
+            ],
+            "Project agent creates farmer and dependent parcel",
+            agent_enrollment_body,
+        )
+
+        db.expire_all()
+        agent_synced_farmer = db.query(Farmer).filter(
+            Farmer.id == agent_sync_farmer_id,
+            Farmer.tenant_id == tenant_id,
+        ).first()
+        agent_synced_enrollment = db.query(
+            FarmerProjectEnrollment
+        ).filter(
+            FarmerProjectEnrollment.tenant_id == tenant_id,
+            FarmerProjectEnrollment.farmer_id == agent_sync_farmer_id,
+            FarmerProjectEnrollment.project_id == project_id,
+        ).first()
+        agent_synced_parcel = db.query(Parcel).filter(
+            Parcel.id == agent_sync_parcel_id,
+            Parcel.tenant_id == tenant_id,
+        ).first()
+
+        require(
+            agent_synced_farmer is not None
+            and agent_synced_farmer.enrolled_by == agent_user.id,
+            "Agent-created farmer records authenticated agent",
+        )
+        require(
+            agent_synced_farmer.user_id is None,
+            "Agent enrollment does not impersonate farmer identity",
+        )
+        require(
+            agent_synced_enrollment is not None
+            and agent_synced_enrollment.assigned_user_ids
+            == [str(agent_user.id)],
+            "Agent enrollment persists authenticated assignment",
+        )
+        require(
+            agent_synced_parcel is not None
+            and agent_synced_parcel.farmer_id == agent_sync_farmer_id,
+            "Dependent parcel is linked to agent-created farmer",
+        )
+
+        followup_agent_event = {
+            "event_id": str(uuid.uuid4()),
+            "entity_type": "PARCEL",
+            "entity_id": str(agent_sync_parcel_id),
+            "operation": "UPDATE",
+            "payload": {
+                "farmer_id": str(agent_sync_farmer_id),
+                "local_name": "AGENT-SYNC-FOLLOWUP",
+            },
+            "version": 2,
+            "dependency_ids": [],
+            "metadata": {"source": "agent_sync_followup_regression"},
+        }
+        followup_agent_sync = client.post(
+            "/api/v1/sync/events",
+            headers=agent_headers,
+            json={"events": [followup_agent_event]},
+        )
+        require(
+            followup_agent_sync.status_code == 200
+            and followup_agent_sync.json()["accepted"]
+            == [followup_agent_event["event_id"]],
+            "Persisted assignment authorizes later agent sync",
+            followup_agent_sync.text,
+        )
+
+        def parcel_sync_event(parcel, farmer, label):
+            return {
+                "event_id": str(uuid.uuid4()),
+                "entity_type": "PARCEL",
+                "entity_id": str(parcel.id),
+                "operation": "UPDATE",
+                "payload": {
+                    "farmer_id": str(farmer.id),
+                    "local_name": label,
+                },
+                "version": 1,
+                "dependency_ids": [],
+                "metadata": {"source": "sync_persona_regression"},
+            }
+
+        personal_sync_event = parcel_sync_event(
+            personal_parcel,
+            personal,
+            "PERSONAL-SYNC",
+        )
+        personal_sync = client.post(
+            "/api/v1/sync/events",
+            headers=farmer_headers,
+            json={"events": [personal_sync_event]},
+        )
+        require(
+            personal_sync.status_code == 200
+            and personal_sync.json()["accepted"]
+            == [personal_sync_event["event_id"]],
+            "Farmer syncs personal parcel",
+            personal_sync.text,
+        )
+
+        unrelated_sync_event = parcel_sync_event(
+            unrelated_parcel,
+            unrelated,
+            "UNRELATED-FARMER-SYNC",
+        )
+        unrelated_sync = client.post(
+            "/api/v1/sync/events",
+            headers=farmer_headers,
+            json={"events": [unrelated_sync_event]},
+        )
+        require(
+            unrelated_sync.status_code == 200
+            and unrelated_sync.json()["accepted"] == []
+            and unrelated_sync.json()["failed"][0]["error_code"]
+            == "SYNC_SCOPE_DENIED",
+            "Farmer cannot sync unrelated parcel",
+            unrelated_sync.text,
+        )
+
+        assisted_sync_event = parcel_sync_event(
+            assisted_parcel,
+            assisted,
+            "ASSIGNED-AGENT-SYNC",
+        )
+        assisted_sync = client.post(
+            "/api/v1/sync/events",
+            headers=agent_headers,
+            json={"events": [assisted_sync_event]},
+        )
+        require(
+            assisted_sync.status_code == 200
+            and assisted_sync.json()["accepted"]
+            == [assisted_sync_event["event_id"]],
+            "Assigned agent syncs assisted parcel",
+            assisted_sync.text,
+        )
+
+        unassigned_sync_event = parcel_sync_event(
+            assisted_parcel,
+            assisted,
+            "UNASSIGNED-AGENT-SYNC",
+        )
+        unassigned_sync = client.post(
+            "/api/v1/sync/events",
+            headers=unassigned_headers,
+            json={"events": [unassigned_sync_event]},
+        )
+        require(
+            unassigned_sync.status_code == 200
+            and unassigned_sync.json()["accepted"] == []
+            and unassigned_sync.json()["failed"][0]["error_code"]
+            == "SYNC_SCOPE_DENIED",
+            "Unassigned agent cannot sync assisted parcel",
+            unassigned_sync.text,
+        )
+
+        admin_sync_event = parcel_sync_event(
+            unrelated_parcel,
+            unrelated,
+            "ADMIN-SYNC",
+        )
+        admin_sync = client.post(
+            "/api/v1/sync/events",
+            headers=admin_headers,
+            json={"events": [admin_sync_event]},
+        )
+        require(
+            admin_sync.status_code == 200
+            and admin_sync.json()["accepted"]
+            == [admin_sync_event["event_id"]],
+            "Web administrator syncs tenant parcel",
+            admin_sync.text,
+        )
+
+        mixed_allowed_parcel_id = uuid.uuid4()
+        mixed_allowed = {
+            "event_id": str(uuid.uuid4()),
+            "entity_type": "PARCEL",
+            "entity_id": str(mixed_allowed_parcel_id),
+            "operation": "CREATE",
+            "payload": {
+                "farmer_id": str(personal.id),
+                "project_id": str(project_id),
+                "local_name": "MIXED-ALLOWED",
+                "village_name_manual": "Crop Persona Village",
+                "reported_area": 1,
+                "reported_area_unit": "ACRE",
+                "ownership_type": "OWNED",
+                "status": "ACTIVE",
+            },
+            "version": 1,
+            "dependency_ids": [],
+            "metadata": {"source": "sync_persona_mixed_regression"},
+        }
+        mixed_denied = parcel_sync_event(
+            unrelated_parcel,
+            unrelated,
+            "MIXED-DENIED",
+        )
+        mixed_sync = client.post(
+            "/api/v1/sync/events",
+            headers=farmer_headers,
+            json={"events": [mixed_allowed, mixed_denied]},
+        )
+        mixed_body = mixed_sync.json()
+        require(
+            mixed_sync.status_code == 200,
+            "Mixed sync batch returns 200",
+            mixed_sync.text,
+        )
+        require(
+            mixed_body["accepted"] == [mixed_allowed["event_id"]],
+            "Mixed sync batch commits authorized event",
+            mixed_body,
+        )
+        require(
+            len(mixed_body["failed"]) == 1
+            and mixed_body["failed"][0]["event_id"]
+            == mixed_denied["event_id"]
+            and mixed_body["failed"][0]["error_code"]
+            == "SYNC_SCOPE_DENIED",
+            "Mixed sync batch rejects unauthorized event",
+            mixed_body,
+        )
+        require(
+            mixed_body["total_processed"] == 2,
+            "Mixed sync batch counts both events",
+            mixed_body,
+        )
+
+        db.expire_all()
+        require(
+            db.query(Parcel).filter(
+                Parcel.id == mixed_allowed_parcel_id,
+                Parcel.tenant_id == tenant_id,
+            ).first().local_name == "MIXED-ALLOWED",
+            "Authorized mixed event is materialized",
+        )
+        require(
+            db.query(Parcel).filter(
+                Parcel.id == unrelated_parcel.id,
+                Parcel.tenant_id == tenant_id,
+            ).first().local_name == "ADMIN-SYNC",
+            "Denied mixed event is not materialized",
+        )
+
         print({
             "schema_version": "crop_cycle_persona_behavior.v1",
             "personal_farmer": True,
@@ -618,6 +974,14 @@ def main():
         db.query(Project).filter(
             Project.tenant_id == tenant_id
         ).delete(synchronize_session=False)
+        db.execute(
+            text("DELETE FROM sync_conflicts WHERE tenant_id = :tenant_id"),
+            {"tenant_id": tenant_id},
+        )
+        db.execute(
+            text("DELETE FROM sync_processed_events WHERE tenant_id = :tenant_id"),
+            {"tenant_id": tenant_id},
+        )
         db.execute(
             text("DELETE FROM audit_chain WHERE tenant_id = :tenant_id"),
             {"tenant_id": tenant_id},

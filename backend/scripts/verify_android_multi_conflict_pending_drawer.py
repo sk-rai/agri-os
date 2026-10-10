@@ -6,6 +6,7 @@ canonical VERSION_MISMATCH + WORKFLOW_INVALID batch itself.
 
 from __future__ import annotations
 
+
 import argparse
 import json
 import sys
@@ -14,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.sync_bearer_env import authenticated_sync_headers
 
 from fastapi.testclient import TestClient
 
@@ -24,7 +26,10 @@ from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessed
 
 TENANT_ID = "android-dynamic-test"
 ACTOR_ID = "11111111-1111-4111-8111-111111111111"
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
+HEADERS = authenticated_sync_headers(
+    TENANT_ID,
+    ACTOR_ID,
+)
 BASELINE_PATH = Path("/tmp/android_multi_conflict_pending_drawer_baseline.json")
 
 VERSION_EVENT_ID = "0f7e0a6b-8472-5d6d-8a14-a9d000000111"

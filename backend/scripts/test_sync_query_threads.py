@@ -80,6 +80,61 @@ def main():
 
     client = TestClient(app)
 
+    auth_probe = sync_event("QUERY_THREAD", thread_id, {
+        "id": str(thread_id),
+        "project_id": str(project_id),
+        "farmer_id": str(farmer_id),
+        "parcel_id": str(parcel_id),
+        "subject": "Unauthorized sync probe",
+        "category": "CROP_HEALTH",
+        "priority": "NORMAL",
+        "status": "OPEN",
+        "metadata": {"source": "sync_auth_regression"},
+    })
+
+    missing_bearer = client.post(
+        "/api/v1/sync/events",
+        headers={
+            "X-Tenant-ID": tenant_id,
+            "X-Actor-ID": str(actor_id),
+        },
+        json={"events": [auth_probe]},
+    )
+    check(
+        missing_bearer.status_code == 401,
+        "Sync events rejects missing bearer",
+        missing_bearer.text,
+    )
+
+    impersonated_headers = {
+        **headers,
+        "X-Actor-ID": str(uuid.uuid4()),
+    }
+    actor_mismatch = client.post(
+        "/api/v1/sync/events",
+        headers=impersonated_headers,
+        json={"events": [auth_probe]},
+    )
+    check(
+        actor_mismatch.status_code == 403,
+        "Sync events rejects actor impersonation",
+        actor_mismatch.text,
+    )
+
+    tenant_mismatch = client.post(
+        "/api/v1/sync/events",
+        headers={
+            **headers,
+            "X-Tenant-ID": "sync-query-tenant-mismatch",
+        },
+        json={"events": [auth_probe]},
+    )
+    check(
+        tenant_mismatch.status_code == 403,
+        "Sync events rejects tenant mismatch",
+        tenant_mismatch.text,
+    )
+
     print("\n[1] Sync creates query thread")
     create_thread = client.post("/api/v1/sync/events", headers=headers, json={"events": [sync_event("QUERY_THREAD", thread_id, {
         "id": str(thread_id),
@@ -144,6 +199,24 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.execute(
+            __import__("sqlalchemy").text(
+                "DELETE FROM sync_conflicts WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        db.execute(
+            __import__("sqlalchemy").text(
+                "DELETE FROM sync_processed_events WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        db.execute(
+            __import__("sqlalchemy").text(
+                "DELETE FROM audit_chain WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": tenant_id},
+        )
         delete_test_admin(db, actor_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()

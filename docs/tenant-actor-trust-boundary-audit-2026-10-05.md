@@ -342,3 +342,31 @@ impersonation, tenant mismatch, personal-farmer access, assigned-agent access,
 unassigned and unrelated denial, administrator access, farmer/parcel mismatch,
 verified lifecycle attribution, and regression cleanup. These routes no longer
 appear as unauthenticated mutation findings.
+
+## Offline sync mutation checkpoint
+
+`POST /api/v1/sync/events` previously claimed JWT protection while accepting
+`X-Tenant-ID` and `X-Actor-ID` as authoritative values. Because the endpoint
+materializes farmers, parcels, geometry, soil profiles, project enrollments,
+query records, field reports, crop cycles, stages, and activities, this was a
+high-impact tenant and actor trust boundary.
+
+The route now requires `AuthenticatedPrincipal`, derives tenant and actor from
+the verified bearer, and partitions each batch through a dedicated sync
+persona-authorizer before conflict detection or materialization. Existing
+farmer ownership, active project assignment, bounded agent project access, and
+explicit edit-capable web-administrator authority determine event access.
+
+Independent self-enrollment binds the farmer to the authenticated user's
+persisted mobile identity. Agent enrollment records the authenticated agent
+and persists the assignment. Unauthorized events return
+`SYNC_SCOPE_DENIED`; authorized events in the same batch continue through
+dependency, conflict, idempotency, materialization, and audit processing.
+
+Static and behavior coverage verifies missing bearer, actor impersonation,
+tenant mismatch, personal and assigned access, unassigned and unrelated
+denial, administrator access, self- and agent-enrollment attribution,
+mixed-batch isolation, dependency behavior, conflict behavior, idempotency,
+and regression cleanup. All in-repository `/sync/events` callers now either
+use authenticated test identities or require explicit persisted-fixture bearer
+credentials.

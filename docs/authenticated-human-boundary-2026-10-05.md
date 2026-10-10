@@ -406,3 +406,35 @@ administrators retain tenant-wide edit capability. Missing bearer, actor
 impersonation, tenant mismatch, unrelated or unassigned personas, and
 farmer/parcel mismatch fail closed. Stage, activity, completion, and audit
 attribution use the authenticated actor.
+
+## Offline operational sync checkpoint
+
+`POST /api/v1/sync/events` now requires the shared authenticated-human
+boundary. Tenant and actor identity are derived exclusively from the verified
+bearer principal; caller-supplied tenant and actor headers are compatibility
+assertions and must match that identity.
+
+Each event is authorized independently. Personal farmers may sync their own
+profiles and related operational records, explicitly assigned project agents
+may sync assigned farmers, and edit-capable web administrators retain
+tenant-wide operational scope. An independent farmer may create their own
+profile only when the submitted mobile matches the persisted authenticated
+user; the resulting farmer is linked to that user. An active project agent may
+create a farmer only through a project they can access, and the authenticated
+agent is persisted as the assignment and enrollment actor.
+
+Authorization preserves partial-batch behavior: permitted events can commit
+while denied events return `SYNC_SCOPE_DENIED` in `failed[]`. Denied events are
+not materialized or recorded as successfully processed. Dependency,
+idempotency, conflict, and audit behavior remain per event, with audit actor
+attribution derived from the verified principal.
+
+Persistent Android verification fixtures now require
+`ANDROID_SYNC_BEARER_TOKEN` and `ANDROID_SYNC_ACTOR_ID`; they do not create
+users implicitly. Self-contained regressions create temporary authenticated
+administrators and remove their tenant, sync, conflict, and audit rows.
+
+This project-assignment authority does not establish a freelance-service
+relationship. Future independent agronomist access remains subject to the
+separate farmer-consented, purpose-limited, time-bounded, and revocable
+engagement model.

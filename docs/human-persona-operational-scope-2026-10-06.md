@@ -332,3 +332,29 @@ This authorization covers personal ownership and current project assignment
 only. A future freelance agronomist or field agent must receive a separate,
 farmer-consented, purpose-limited, time-bounded, and revocable service grant
 before operating an independent farmer's crop cycle.
+
+## Offline sync persona integration
+
+Offline operational sync now follows the same persisted persona boundaries as
+direct farmer, parcel, and crop-cycle operations. The bearer principal supplies
+the authoritative tenant and actor. Event payloads cannot select a different
+tenant or audit actor.
+
+A farmer can sync only their linked farmer profile and related records. An
+active project agent can sync explicitly assigned farmers and may enroll a new
+farmer only through an accessible project. Agent-led enrollment persists the
+authenticated agent assignment so subsequent offline operations remain
+authorized. Edit-capable web administrators retain bounded tenant-wide
+operation.
+
+Batches remain resilient: an authorized event can commit even when another
+event in the same request is denied. Persona denials use the stable
+`SYNC_SCOPE_DENIED` error and do not materialize the rejected entity. Tests
+cover self-enrollment, agent enrollment, personal and assigned operation,
+unassigned and unrelated denial, administrator operation, mixed batches,
+verified attribution, and cleanup.
+
+Project enrollment and assignment are not substitutes for the future
+freelance agricultural-services model. A freelance agronomist serving an
+independent farmer will require an explicit farmer-consented service grant
+with separate purpose, geography, duration, and revocation controls.

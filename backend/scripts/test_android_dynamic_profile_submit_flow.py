@@ -15,6 +15,7 @@ This script mutates only the dedicated test mobile/tenant and cleans it first.
 
 from __future__ import annotations
 
+
 import json
 import sys
 import uuid
@@ -22,6 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.sync_bearer_env import authenticated_sync_headers
 
 from fastapi.testclient import TestClient
 
@@ -37,7 +39,10 @@ from scripts.seed_android_dynamic_profile_test_context import (
 )
 
 client = TestClient(app)
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": str(uuid.uuid4())}
+HEADERS = authenticated_sync_headers(
+    TENANT_ID,
+    str(uuid.uuid4()),
+)
 SYNC_TEST_MOBILE = "+919900000004"
 ALT_PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000002")
 

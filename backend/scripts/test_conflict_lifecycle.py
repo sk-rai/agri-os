@@ -11,25 +11,95 @@ Simulates the offline chaos scenario:
 This validates Task 4.3 (dashboard) and Task 4.2 (conflict resolution).
 """
 
+import atexit
 import sys
 import uuid
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from app.core.database import SessionLocal
 from app.main import app
+from app.modules.farmer.models import Tenant
+from scripts.admin_auth_test_utils import (
+    create_test_admin,
+    delete_test_admin,
+)
 
 client = TestClient(app)
 PASS = "\033[92m✅\033[0m"
 FAIL = "\033[91m❌\033[0m"
 
-TENANT = "default"
-ACTOR_A = str(uuid.uuid4())
-ACTOR_B = str(uuid.uuid4())
-OPERATOR = str(uuid.uuid4())
-HEADERS_A = {"X-Tenant-ID": TENANT, "X-Actor-ID": ACTOR_A}
-HEADERS_B = {"X-Tenant-ID": TENANT, "X-Actor-ID": ACTOR_B}
-HEADERS_OP = {"X-Tenant-ID": TENANT, "X-Actor-ID": OPERATOR}
+TENANT = f"sync-conflict-{uuid.uuid4().hex[:8]}"
+
+_auth_db = SessionLocal()
+try:
+    _auth_db.add(Tenant(
+        id=TENANT,
+        name="Sync Conflict Lifecycle Tenant",
+        type="ENTERPRISE",
+    ))
+    _auth_db.commit()
+    _user_a, HEADERS_A = create_test_admin(
+        _auth_db,
+        tenant_id=TENANT,
+    )
+    _user_b, HEADERS_B = create_test_admin(
+        _auth_db,
+        tenant_id=TENANT,
+    )
+    _operator_user, HEADERS_OP = create_test_admin(
+        _auth_db,
+        tenant_id=TENANT,
+    )
+    ACTOR_A = str(_user_a.id)
+    ACTOR_B = str(_user_b.id)
+    OPERATOR = str(_operator_user.id)
+    _auth_user_ids = [
+        _user_a.id,
+        _user_b.id,
+        _operator_user.id,
+    ]
+finally:
+    _auth_db.close()
+
+
+def _cleanup_auth_users():
+    db = SessionLocal()
+    try:
+        db.execute(
+            text("DELETE FROM sync_conflicts WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text(
+                "DELETE FROM sync_processed_events "
+                "WHERE tenant_id = :tenant_id"
+            ),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text("DELETE FROM audit_chain WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.execute(
+            text("DELETE FROM farmers WHERE tenant_id = :tenant_id"),
+            {"tenant_id": TENANT},
+        )
+        db.commit()
+        for user_id in _auth_user_ids:
+            delete_test_admin(db, user_id)
+        db.query(Tenant).filter(
+            Tenant.id == TENANT
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+atexit.register(_cleanup_auth_users)
 
 
 def unique_mobile() -> str:
@@ -155,7 +225,6 @@ test("Conflicts resolved incremented", resolved_after_resolution == resolved_bef
 
 # --- Step 9: Audit chain records resolution ---
 print("\n[9] Audit chain integrity after resolution")
-from sqlalchemy import text
 from app.core.database import engine
 
 with engine.connect() as conn:

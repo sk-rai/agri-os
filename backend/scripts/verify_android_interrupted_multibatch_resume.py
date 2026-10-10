@@ -17,6 +17,7 @@ infer committed event IDs from SYNC_COMMIT audit metadata source/index.
 
 from __future__ import annotations
 
+
 import argparse
 import json
 import sys
@@ -25,6 +26,7 @@ from pathlib import Path
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.sync_bearer_env import authenticated_sync_headers
 
 from fastapi.testclient import TestClient
 
@@ -36,7 +38,10 @@ from app.modules.workflow.models import CropActivity
 
 TENANT_ID = "android-dynamic-test"
 ACTOR_ID = "11111111-1111-4111-8111-111111111111"
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
+HEADERS = authenticated_sync_headers(
+    TENANT_ID,
+    ACTOR_ID,
+)
 CYCLE_ID = "aa346148-468b-47de-9c86-47ad41aa1f11"
 EXPECTED_STAGE_CODE = "NURSERY"
 DEFAULT_COUNT = 25

@@ -21,6 +21,10 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, Tenant
 from app.modules.sync.models import AuditChainEntry, SyncConflict, SyncProcessedEvent
+from scripts.admin_auth_test_utils import (
+    create_test_admin,
+    delete_test_admin,
+)
 
 
 def check(condition, label, detail=None):
@@ -41,13 +45,13 @@ def main():
     print("=" * 72)
 
     tenant_id = f"sync-membership-{uuid.uuid4().hex[:8]}"
-    actor_id = str(uuid.uuid4())
+    actor_id = None
+    headers = None
     farmer_id = uuid.uuid4()
     project_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     enrollment_id = uuid.uuid4()
     mobile = f"+9197{uuid.uuid4().int % 100000000:08d}"
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": actor_id}
 
     db = SessionLocal()
     try:
@@ -58,7 +62,12 @@ def main():
             created_at=now(),
             updated_at=now(),
         ))
-        db.flush()
+        db.commit()
+        admin_user, headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+        )
+        actor_id = str(admin_user.id)
         db.add(Project(
             id=project_id,
             tenant_id=tenant_id,
@@ -206,13 +215,13 @@ def main():
         db.close()
 
     print("\n[3] Hydration and launch context include synced membership")
-    hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers={"X-Tenant-ID": tenant_id})
+    hydration = client.get(f"/api/v1/farmers/by-mobile/{mobile}", headers=headers)
     check(hydration.status_code == 200, "Hydration returns 200", hydration.text[:300])
     hydration_body = hydration.json()
     check(hydration_body["summary"]["project_enrollment_count"] == 1, "Hydration counts synced membership")
     check(hydration_body["project_enrollments"][0]["id"] == str(enrollment_id), "Hydration preserves enrollment id")
 
-    launch = client.get(f"/api/v1/farmers/{farmer_id}/launch-context", headers={"X-Tenant-ID": tenant_id})
+    launch = client.get(f"/api/v1/farmers/{farmer_id}/launch-context", headers=headers)
     check(launch.status_code == 200, "Launch context returns 200", launch.text[:300])
     launch_body = launch.json()
     check(launch_body["active_project_count"] == 1, "Launch context counts one active project")
@@ -228,8 +237,15 @@ def main():
         db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
+        db.query(Project).filter(
+            Project.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
+        db.commit()
+        if actor_id:
+            delete_test_admin(db, uuid.UUID(actor_id))
+        db.query(Tenant).filter(
+            Tenant.id == tenant_id
+        ).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")
     finally:

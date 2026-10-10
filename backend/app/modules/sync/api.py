@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
 from app.modules.sync import service
+from app.modules.sync.authorization import authorize_sync_events
 
 router = APIRouter(prefix="/api/v1/sync", tags=["sync"])
 
@@ -69,51 +71,56 @@ class SyncBatchResponse(BaseModel):
 @router.post("/events", response_model=SyncBatchResponse)
 def process_sync_events(
     body: SyncBatchRequest,
-    request: Request,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """Process a batch of offline sync events.
+    """Process authenticated offline sync events.
 
-    Idempotent: re-submitting the same event_id is safe (returns accepted).
-    Batch-resilient: some events may succeed while others conflict.
-
-    Requires:
-    - Valid JWT (actor_id extracted from token)
-    - X-Tenant-ID header
-    - Events with unique event_ids
+    Tenant and actor identity are derived from the verified bearer principal.
+    Each event is also checked against personal-farmer ownership, explicit
+    project assignment, or bounded web-administrator authority.
     """
-    # Extract actor_id from JWT (for MVP, use a header; proper JWT extraction later)
-    actor_id = request.headers.get("X-Actor-ID")
-    if not actor_id:
-        raise HTTPException(status_code=400, detail="X-Actor-ID header required")
-
-    # Convert events to dicts for service layer
     events_data = [
         {
-            "event_id": str(e.event_id),
-            "entity_type": e.entity_type,
-            "entity_id": str(e.entity_id) if e.entity_id else None,
-            "operation": e.operation,
-            "payload": e.payload,
-            "version": e.version,
-            "dependency_ids": [str(d) for d in e.dependency_ids],
-            "metadata": e.metadata,
+            "event_id": str(event.event_id),
+            "entity_type": event.entity_type,
+            "entity_id": str(event.entity_id) if event.entity_id else None,
+            "operation": event.operation,
+            "payload": event.payload,
+            "version": event.version,
+            "dependency_ids": [
+                str(dependency_id)
+                for dependency_id in event.dependency_ids
+            ],
+            "metadata": event.metadata,
         }
-        for e in body.events
+        for event in body.events
     ]
 
-    # Process batch
-    result = service.process_sync_batch(
-        db=db,
-        tenant_id=x_tenant_id,
-        actor_id=actor_id,
+    authorized_events, denied_events = authorize_sync_events(
+        db,
+        principal=principal,
         events=events_data,
     )
+    result = service.process_sync_batch(
+        db=db,
+        tenant_id=principal.tenant_id,
+        actor_id=str(principal.user_id),
+        events=authorized_events,
+    )
+    result.failed.extend(denied_events)
 
     return SyncBatchResponse(
         accepted=result.accepted,
-        conflicts=[ConflictInfo(**c) for c in result.conflicts],
-        failed=[FailedInfo(**f) for f in result.failed],
-        total_processed=len(result.accepted) + len(result.conflicts) + len(result.failed),
+        conflicts=[
+            ConflictInfo(**conflict)
+            for conflict in result.conflicts
+        ],
+        failed=[
+            FailedInfo(**failure)
+            for failure in result.failed
+        ],
+        total_processed=len(events_data),
     )

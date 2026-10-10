@@ -13,6 +13,7 @@ Uses android-dynamic-test crop-cycle fixture and validates:
 
 from __future__ import annotations
 
+
 import json
 import sys
 import uuid
@@ -20,6 +21,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.sync_bearer_env import authenticated_sync_headers
 
 from fastapi.testclient import TestClient
 
@@ -38,7 +40,10 @@ from scripts.seed_android_crop_cycle_test_fixture import (
 
 client = TestClient(app)
 ACTOR_ID = str(uuid.uuid4())
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
+HEADERS = authenticated_sync_headers(
+    TENANT_ID,
+    ACTOR_ID,
+)
 ACTIVITY_COST = "325.50"
 ALT_PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000002")
 
