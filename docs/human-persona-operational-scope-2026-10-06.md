@@ -313,3 +313,22 @@ an independent farmer may eventually consent to a verified agronomist or field
 agent providing services, but that relationship must use an explicit,
 purpose-limited, time-bounded, and revocable service engagement rather than
 project assignment or administrative ingestion authority.
+
+## Crop-cycle persona integration
+
+The crop-cycle operational loop now uses persisted human persona scope for
+creation, stage transitions, activity logging, and completion. A personal
+farmer can operate cycles for their linked farmer profile. An active project
+agent can operate cycles only for explicitly assigned farmers with active
+project access. Explicit edit-capable web administrators retain tenant-wide
+operational scope.
+
+The parcel is the authoritative farmer relationship during cycle creation.
+Caller-supplied farmer identifiers must agree with the tenant-bounded parcel;
+mobile-number inference and arbitrary tenant-farmer fallback are prohibited.
+All lifecycle attribution is derived from the verified principal.
+
+This authorization covers personal ownership and current project assignment
+only. A future freelance agronomist or field agent must receive a separate,
+farmer-consented, purpose-limited, time-bounded, and revocable service grant
+before operating an independent farmer's crop cycle.

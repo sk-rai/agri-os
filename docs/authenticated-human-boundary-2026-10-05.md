@@ -387,3 +387,22 @@ fail closed.
 These routes represent trusted data ingestion. They do not grant agronomists
 or field agents access to independent farmers. Future freelance agricultural
 services remain a separate, farmer-consented and revocable engagement model.
+
+## Crop-cycle mutation checkpoint
+
+Crop-cycle creation, crop-stage transition, explicit crop-cycle completion,
+and crop-activity logging now require the shared authenticated-human boundary.
+Tenant and actor identity come from the verified bearer principal rather than
+caller-supplied tenant or actor headers.
+
+Creation resolves the target farmer exclusively through the tenant-bounded
+parcel relationship. A supplied farmer identifier must match that persisted
+relationship. The former persisted-mobile and arbitrary first-farmer tenant
+fallbacks have been removed.
+
+Personal farmers may operate their own crop cycles, explicitly assigned
+project agents may operate their assigned farmers' cycles, and explicit web
+administrators retain tenant-wide edit capability. Missing bearer, actor
+impersonation, tenant mismatch, unrelated or unassigned personas, and
+farmer/parcel mismatch fail closed. Stage, activity, completion, and audit
+attribution use the authenticated actor.

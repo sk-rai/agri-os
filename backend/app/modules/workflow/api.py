@@ -18,6 +18,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
+from app.core.admin_auth import AdminPermission, ROLE_PERMISSIONS
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.workflow.models import WorkflowFinanceReportConfig, CropCycle, CropStageInstance, CropActivity
 from app.modules.workflow.template_service import (
     find_published_workflow_template,
@@ -39,10 +42,54 @@ from app.modules.master_data.input_assignment_service import (
     allowed_input_codes_for_project_crop,
     assert_catalog_input_allowed_for_project_crop,
 )
-from app.modules.farmer.models import Parcel
+from app.modules.farmer.models import Farmer, Parcel
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
+
+
+
+WORKFLOW_WEB_ADMIN_ROLES = {
+    "ENTERPRISE_ADMIN",
+    "MANAGER",
+    "ADMIN_EDITOR",
+    "ADMIN_PUBLISHER",
+}
+
+
+def _workflow_admin_can_edit(
+    principal: AuthenticatedPrincipal,
+) -> bool:
+    role = str(principal.role or "").upper()
+    return (
+        role in WORKFLOW_WEB_ADMIN_ROLES
+        and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
+    )
+
+
+def _workflow_scope_forbidden(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "CROP_CYCLE_SCOPE_DENIED",
+            "message": message,
+        },
+    )
+
+
+def _require_principal_can_operate_cycle_farmer(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    farmer_id: uuid.UUID,
+) -> None:
+    if _workflow_admin_can_edit(principal):
+        return
+    scope = resolve_human_persona_scope(db, principal)
+    if not scope.can_operate_farmer(farmer_id):
+        raise _workflow_scope_forbidden(
+            "Authenticated user cannot manage this farmer's crop cycle."
+        )
 
 
 def _assert_project_workflow_allows_cycle(
@@ -406,48 +453,58 @@ def _validate_activity_traceability(db: Session, *, tenant_id: str, cycle: CropC
 @router.post("", response_model=CropCycleResponse, status_code=201)
 def create_crop_cycle(
     body: CropCycleCreate,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Create a crop cycle and auto-instantiate stages from lifecycle template.
 
     Loads stages from crop_lifecycle_templates (never hardcoded).
-    Auto-derives farmer_id from X-Actor-ID and lifecycle_template_id from crop_code+season.
+    Derives farmer_id from the tenant-bounded parcel and lifecycle_template_id from crop_code+season.
     """
 
-    # Auto-derive farmer_id from actor (parcel owner or self-enrollment)
-    farmer_id = body.farmer_id
-    if not farmer_id:
-        from app.modules.farmer.models import Farmer, Parcel
-        # First: get farmer from the parcel (most reliable)
-        parcel = db.query(Parcel).filter(Parcel.id == body.parcel_id).first()
-        if parcel and parcel.farmer_id:
-            # Verify this farmer actually exists in farmers table
-            farmer_exists = db.query(Farmer).filter(Farmer.id == parcel.farmer_id).first()
-            if farmer_exists:
-                farmer_id = parcel.farmer_id
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
 
-        # If parcel didn't resolve a valid farmer, try mobile number lookup
-        if not farmer_id:
-            from app.modules.auth.models import User
-            user = db.query(User).filter(User.id == uuid.UUID(x_actor_id)).first()
-            if user:
-                farmer = db.query(Farmer).filter(
-                    Farmer.mobile_number == user.mobile_number,
-                    Farmer.tenant_id == x_tenant_id,
-                ).first()
-                if farmer:
-                    farmer_id = farmer.id
+    parcel = (
+        db.query(Parcel)
+        .filter(
+            Parcel.id == body.parcel_id,
+            Parcel.tenant_id == tenant_id,
+            Parcel.status != "ARCHIVED",
+            Parcel.is_active == True,
+        )
+        .first()
+    )
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
 
-        # Last resort: if we still can't find a farmer, check if there's ANY farmer for this tenant
-        if not farmer_id:
-            any_farmer = db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id).first()
-            if any_farmer:
-                farmer_id = any_farmer.id
+    farmer = (
+        db.query(Farmer)
+        .filter(
+            Farmer.id == parcel.farmer_id,
+            Farmer.tenant_id == tenant_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .first()
+    )
+    if not farmer:
+        raise HTTPException(404, "Farmer not found")
 
-    if not farmer_id:
-        raise HTTPException(400, "Cannot determine farmer. No farmer record found for this user/tenant.")
+    if body.farmer_id and body.farmer_id != farmer.id:
+        raise HTTPException(
+            400,
+            "farmer_id must match the parcel farmer_id",
+        )
+
+    farmer_id = farmer.id
+    _require_principal_can_operate_cycle_farmer(
+        db,
+        principal=principal,
+        farmer_id=farmer_id,
+    )
 
     # Auto-lookup lifecycle template from crop_code + season_code
     template_id = body.lifecycle_template_id
@@ -506,7 +563,7 @@ def create_crop_cycle(
     existing_cycles = (
         db.query(CropCycle)
         .filter(
-            CropCycle.tenant_id == x_tenant_id,
+            CropCycle.tenant_id == tenant_id,
             CropCycle.farmer_id == farmer_id,
             CropCycle.parcel_id == body.parcel_id,
             CropCycle.status != "ARCHIVED",
@@ -562,13 +619,13 @@ def create_crop_cycle(
         db,
         crop_code=resolved_crop_code,
         season_code=requested_season_code,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         lifecycle_template_id=template.id,
     )
     pinned_workflow_version = workflow_pair[1] if workflow_pair else None
     _assert_project_workflow_allows_cycle(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=body.project_id,
         crop_code=resolved_crop_code,
         season_code=requested_season_code,
@@ -579,7 +636,7 @@ def create_crop_cycle(
     cycle_id = uuid.uuid4()
     cycle = CropCycle(
         id=cycle_id,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         farmer_id=farmer_id,
         parcel_id=body.parcel_id,
         project_id=body.project_id,
@@ -601,7 +658,7 @@ def create_crop_cycle(
         stages_data = workflow_version_to_stage_definitions_for_scope(
             db,
             pinned_workflow_version.id,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             project_id=body.project_id,
             crop_code=resolved_crop_code,
             season_code=requested_season_code,
@@ -617,7 +674,7 @@ def create_crop_cycle(
         instance = CropStageInstance(
             id=uuid.uuid4(),
             crop_cycle_id=cycle_id,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             stage_code=stage_def["code"],
             stage_name=stage_name,
             stage_order=stage_def["order"],
@@ -635,8 +692,8 @@ def create_crop_cycle(
     correlation_id = str(uuid.uuid4())
     append_audit(
         db=db,
-        tenant_id=x_tenant_id,
-        actor_id=x_actor_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         correlation_id=correlation_id,
         entity_type="crop_cycle",
         entity_id=str(cycle_id),
@@ -1313,9 +1370,10 @@ def advance_stage(
     cycle_id: uuid.UUID,
     stage_id: uuid.UUID,
     body: StageTransition,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Advance a crop stage through the state machine.
 
@@ -1323,26 +1381,39 @@ def advance_stage(
     Updates crop_cycle.status based on aggregate stage states.
     Publishes crop_stage_completed.v1 event on COMPLETE.
     """
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+
+    cycle = (
+        db.query(CropCycle)
+        .filter(
+            CropCycle.id == cycle_id,
+            CropCycle.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+
+    _require_principal_can_operate_cycle_farmer(
+        db,
+        principal=principal,
+        farmer_id=cycle.farmer_id,
+    )
+
     # Load stage instance
     stage = (
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.id == stage_id,
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
         )
         .first()
     )
     if not stage:
         raise HTTPException(404, "Stage instance not found")
 
-    cycle = (
-        db.query(CropCycle)
-        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
-        .first()
-    )
-    if not cycle:
-        raise HTTPException(404, "Crop cycle not found")
     if cycle.status == "COMPLETED":
         raise HTTPException(409, "Completed crop cycles are read-only")
 
@@ -1365,7 +1436,7 @@ def advance_stage(
             db.query(CropStageInstance)
             .filter(
                 CropStageInstance.crop_cycle_id == cycle_id,
-                CropStageInstance.tenant_id == x_tenant_id,
+                CropStageInstance.tenant_id == tenant_id,
             )
             .order_by(CropStageInstance.stage_order)
             .all()
@@ -1402,7 +1473,7 @@ def advance_stage(
             if earlier_stage.status == "ACTIVE":
                 earlier_stage.status = "COMPLETED"
                 earlier_stage.actual_end_date = earlier_stage.actual_end_date or today
-                earlier_stage.completed_by = uuid.UUID(x_actor_id)
+                earlier_stage.completed_by = uuid.UUID(actor_id)
                 earlier_stage.updated_at = datetime.now(timezone.utc)
                 auto_completed_stages.append(earlier_stage)
 
@@ -1412,10 +1483,10 @@ def advance_stage(
 
     if body.action == "START":
         stage.actual_start_date = today
-        stage.started_by = uuid.UUID(x_actor_id)
+        stage.started_by = uuid.UUID(actor_id)
     elif body.action == "COMPLETE":
         stage.actual_end_date = today
-        stage.completed_by = uuid.UUID(x_actor_id)
+        stage.completed_by = uuid.UUID(actor_id)
     elif body.action == "SKIP":
         stage.skip_reason = body.skip_reason or body.notes
     # Update crop cycle status (auto-aggregate). Completing HARVEST is the
@@ -1425,7 +1496,7 @@ def advance_stage(
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
         )
         .order_by(CropStageInstance.stage_order)
         .all()
@@ -1434,7 +1505,7 @@ def advance_stage(
 
     if body.action == "COMPLETE" and stage.stage_code == "HARVEST":
         auto_completed_stages.extend(
-            finalize_crop_cycle_completion(cycle, all_stages, x_actor_id, today)
+            finalize_crop_cycle_completion(cycle, all_stages, actor_id, today)
         )
     else:
         cycle.status = compute_cycle_status(all_stages)
@@ -1459,8 +1530,8 @@ def advance_stage(
     correlation_id = str(uuid.uuid4())
     append_audit(
         db=db,
-        tenant_id=x_tenant_id,
-        actor_id=x_actor_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         correlation_id=correlation_id,
         entity_type="crop_stage",
         entity_id=str(stage_id),
@@ -1485,7 +1556,7 @@ def advance_stage(
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
         )
         .order_by(CropStageInstance.stage_order)
         .all()
@@ -1510,28 +1581,38 @@ def advance_stage(
 def complete_crop_cycle(
     cycle_id: uuid.UUID,
     body: Optional[CropCycleCompleteRequest] = None,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Explicitly complete a crop cycle and all its stages.
 
     This is a backend escape hatch for Android/product flows where the user
     finishes harvest and wants the cycle moved to history/read-only.
     """
+
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
     cycle = (
         db.query(CropCycle)
-        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
+        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id)
         .first()
     )
     if not cycle:
         raise HTTPException(404, "Crop cycle not found")
 
+    _require_principal_can_operate_cycle_farmer(
+        db,
+        principal=principal,
+        farmer_id=cycle.farmer_id,
+    )
+
     stages = (
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
         )
         .order_by(CropStageInstance.stage_order)
         .all()
@@ -1541,7 +1622,7 @@ def complete_crop_cycle(
 
     old_cycle_status = cycle.status
     completed_on = date.today()
-    auto_completed_stages = finalize_crop_cycle_completion(cycle, stages, x_actor_id, completed_on)
+    auto_completed_stages = finalize_crop_cycle_completion(cycle, stages, actor_id, completed_on)
 
     events_published = [f"crop_stage_completed.v1:{s.stage_code}" for s in auto_completed_stages]
     if cycle.status != old_cycle_status:
@@ -1551,8 +1632,8 @@ def complete_crop_cycle(
     correlation_id = str(uuid.uuid4())
     append_audit(
         db=db,
-        tenant_id=x_tenant_id,
-        actor_id=x_actor_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         correlation_id=correlation_id,
         entity_type="crop_cycle",
         entity_id=str(cycle_id),
@@ -1580,9 +1661,10 @@ def complete_crop_cycle(
 def log_activity(
     cycle_id: uuid.UUID,
     body: ActivityCreate,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Log an agricultural activity (fertilizer, pesticide, irrigation, etc.).
 
@@ -1590,25 +1672,34 @@ def log_activity(
     If no stage is active, activity is still accepted (linked to cycle only).
     Append-only for conflict resolution.
     """
+
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
     # Verify cycle exists and belongs to tenant
     cycle = (
         db.query(CropCycle)
-        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
+        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id)
         .first()
     )
     if not cycle:
         raise HTTPException(404, "Crop cycle not found")
+
+    _require_principal_can_operate_cycle_farmer(
+        db,
+        principal=principal,
+        farmer_id=cycle.farmer_id,
+    )
     if cycle.status == "COMPLETED":
         raise HTTPException(409, "Completed crop cycles are read-only")
-    traceability = _validate_activity_traceability(db, tenant_id=x_tenant_id, cycle=cycle, body=body)
-    assert_catalog_input_allowed_for_project_crop(db, tenant_id=x_tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code, input_code=traceability["input_code"] or body.input_code)
+    traceability = _validate_activity_traceability(db, tenant_id=tenant_id, cycle=cycle, body=body)
+    assert_catalog_input_allowed_for_project_crop(db, tenant_id=tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code, input_code=traceability["input_code"] or body.input_code)
 
     # Find currently active stage (if any)
     active_stage = (
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
             CropStageInstance.status == "ACTIVE",
         )
         .order_by(CropStageInstance.stage_order.desc())
@@ -1619,7 +1710,7 @@ def log_activity(
         id=uuid.uuid4(),
         crop_cycle_id=cycle_id,
         stage_instance_id=active_stage.id if active_stage else None,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         farmer_id=cycle.farmer_id,
         activity_type=body.activity_type,
         input_code=traceability["input_code"] or body.input_code,
@@ -1642,7 +1733,7 @@ def log_activity(
         activity_date=body.activity_date,
         gps_lat=body.gps_lat,
         gps_lng=body.gps_lng,
-        logged_by=uuid.UUID(x_actor_id),
+        logged_by=uuid.UUID(actor_id),
         notes=body.notes,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -1659,8 +1750,8 @@ def log_activity(
     correlation_id = str(uuid.uuid4())
     append_audit(
         db=db,
-        tenant_id=x_tenant_id,
-        actor_id=x_actor_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         correlation_id=correlation_id,
         entity_type="crop_activity",
         entity_id=str(activity.id),

@@ -323,3 +323,22 @@ tenant-trust, or actor-trust findings.
 
 Freelance specialist engagements remain outside this administrative boundary
 and require a future farmer-consent grant model.
+
+## Crop-cycle mutation checkpoint
+
+Four crop-cycle mutations now use verified human identity: cycle creation,
+stage transition, explicit cycle completion, and activity logging. Each derives
+tenant and actor from the bearer principal and applies personal-farmer,
+explicitly assigned-agent, or bounded web-administrator authorization.
+
+Cycle creation tenant-bounds both parcel and farmer and requires any supplied
+farmer identifier to match the parcel's persisted farmer. The legacy
+mobile-number inference and arbitrary first-farmer tenant fallback have been
+removed. Existing cycles and stage instances are tenant-bounded before
+mutation, and audit records use the verified actor.
+
+Static and direct behavior coverage verifies missing bearer, actor
+impersonation, tenant mismatch, personal-farmer access, assigned-agent access,
+unassigned and unrelated denial, administrator access, farmer/parcel mismatch,
+verified lifecycle attribution, and regression cleanup. These routes no longer
+appear as unauthenticated mutation findings.
