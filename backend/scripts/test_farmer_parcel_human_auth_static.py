@@ -60,6 +60,22 @@ def main():
     geometry = block("update_parcel_geometry", "get_form_field_config")
     soil_create = soil_block("create_soil_profile", "update_soil_profile")
     soil_update = soil_block("update_soil_profile", "list_soil_profiles")
+    soilgrids_fetch = soil_block(
+        "fetch_soilgrids_baseline_snapshot",
+        "create_shc_slusi_manual_capture_snapshot",
+    )
+    shc_manual_capture = soil_block(
+        "create_shc_slusi_manual_capture_snapshot",
+        "create_shc_slusi_point_capture_snapshot",
+    )
+    shc_point_capture = soil_block(
+        "create_shc_slusi_point_capture_snapshot",
+        "create_soil_enrichment_snapshot",
+    )
+    soil_enrichment_create = soil_block(
+        "create_soil_enrichment_snapshot",
+        "latest_soil_enrichment_snapshot",
+    )
     for label, route in [
         ("Farmer enrollment", enroll),
         ("Farmer update", farmer_update),
@@ -97,6 +113,44 @@ def main():
         "Parcel.tenant_id == tenant_id" in SOIL_SOURCE
         and "Parcel.farmer_id == farmer_id" in SOIL_SOURCE,
         "Soil profile creation tenant-bounds parcel and farmer linkage",
+    )
+    for label, route in [
+        ("SoilGrids enrichment fetch", soilgrids_fetch),
+        ("SHC/SLUSI manual capture", shc_manual_capture),
+        ("SHC/SLUSI point capture", shc_point_capture),
+        ("Direct soil enrichment ingestion", soil_enrichment_create),
+    ]:
+        require(
+            "require_admin_permission(AdminPermission.EDIT)" in route,
+            f"{label} requires admin edit permission",
+        )
+        require(
+            "_require_soil_enrichment_admin(principal)" in route,
+            f"{label} keeps an explicit web-admin boundary",
+        )
+        require(
+            "tenant_id = principal.tenant_id" in route,
+            f"{label} derives tenant from verified administrator",
+        )
+        require(
+            "_parcel_for_soil_enrichment" in route
+            and "tenant_id=tenant_id" in route,
+            f"{label} tenant-bounds the parcel",
+        )
+        require(
+            "principal.user_id" in route,
+            f"{label} records the verified administrator",
+        )
+        require(
+            "X-Tenant-ID" not in route
+            and "x_tenant_id" not in route
+            and "X-Actor-ID" not in route
+            and "x_actor_id" not in route,
+            f"{label} does not trust identity headers directly",
+        )
+    require(
+        "SOIL_ENRICHMENT_ADMIN_REQUIRED" in SOIL_SOURCE,
+        "Soil enrichment denial has a stable error",
     )
     require("resolve_human_persona_scope" in SOURCE, "Mutations resolve persisted persona scope")
     require("resolve_human_persona_scope(db, principal).can_operate_farmer" in SOURCE, "Farmer operations require ownership or assignment")

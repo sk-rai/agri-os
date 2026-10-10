@@ -640,6 +640,32 @@ SOIL_PROFILE_WEB_ADMIN_ROLES = {
 }
 
 
+def _soil_profile_admin_can_edit(
+    principal: AuthenticatedPrincipal | AdminPrincipal,
+) -> bool:
+    role = str(principal.role or "").upper()
+    return (
+        role in SOIL_PROFILE_WEB_ADMIN_ROLES
+        and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
+    )
+
+
+def _require_soil_enrichment_admin(principal: AdminPrincipal) -> None:
+    """Restrict trusted enrichment ingestion to explicit web administrators."""
+    if _soil_profile_admin_can_edit(principal):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "SOIL_ENRICHMENT_ADMIN_REQUIRED",
+            "message": (
+                "Soil enrichment ingestion requires an explicit "
+                "web administrator."
+            ),
+        },
+    )
+
+
 def _require_can_manage_soil_profile(
     db: Session,
     *,
@@ -656,11 +682,7 @@ def _require_can_manage_soil_profile(
                 "message": "Mutation actor must match the authenticated user.",
             },
         )
-    role = str(principal.role or "").upper()
-    if (
-        role in SOIL_PROFILE_WEB_ADMIN_ROLES
-        and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
-    ):
+    if _soil_profile_admin_can_edit(principal):
         return
     if resolve_human_persona_scope(db, principal).can_operate_farmer(farmer_id):
         return
@@ -874,8 +896,10 @@ def infer_soil_from_district(
 @router.post("/enrichments/soilgrids/fetch", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
 def fetch_soilgrids_baseline_snapshot(
     body: SoilGridsFetchRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Fetch/normalize a SoilGrids baseline snapshot for a parcel.
 
@@ -888,7 +912,10 @@ def fetch_soilgrids_baseline_snapshot(
         resolve_parcel_soilgrids_coordinate,
     )
 
-    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    _require_soil_enrichment_admin(principal)
+    tenant_id = principal.tenant_id
+
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=tenant_id, parcel_id=body.parcel_id)
     try:
         coordinate = resolve_parcel_soilgrids_coordinate(db, parcel)
     except ValueError as exc:
@@ -912,9 +939,14 @@ def fetch_soilgrids_baseline_snapshot(
         coordinate_source=coordinate.source,
     )
     timestamp = datetime.now(timezone.utc)
+    metadata = _soil_enrichment_source_metadata(
+        normalized["provider"],
+        normalized.get("metadata") or {},
+    )
+    metadata["actor_id"] = str(principal.user_id)
     snapshot = SoilEnrichmentSnapshot(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         parcel_id=parcel.id,
         farmer_id=parcel.farmer_id,
         provider=normalized["provider"],
@@ -938,7 +970,7 @@ def fetch_soilgrids_baseline_snapshot(
         cec=normalized.get("cec"),
         normalized_values=normalized.get("normalized_values") or {},
         raw_payload=normalized.get("raw_payload") or {},
-        metadata_=_soil_enrichment_source_metadata(normalized["provider"], normalized.get("metadata") or {}),
+        metadata_=metadata,
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -951,15 +983,19 @@ def fetch_soilgrids_baseline_snapshot(
 @router.post("/enrichments/shc-slusi/manual-capture", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
 def create_shc_slusi_manual_capture_snapshot(
     body: ShcSlusiManualCaptureRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Store an admin-observed SHC/SLUSI visual-layer soil baseline.
 
     This endpoint intentionally does not scrape/fetch SLUSI data. It records a trusted manual
     observation or future import row from the government visualisation with explicit provenance.
     """
-    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    _require_soil_enrichment_admin(principal)
+    tenant_id = principal.tenant_id
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=tenant_id, parcel_id=body.parcel_id)
     timestamp = datetime.now(timezone.utc)
     parameter_key = body.parameter.strip().upper().replace(" ", "_")
     normalized_values = {
@@ -981,9 +1017,10 @@ def create_shc_slusi_manual_capture_snapshot(
         "source_url": body.source_url,
         "notes": body.notes,
     })
+    metadata["actor_id"] = str(principal.user_id)
     snapshot = SoilEnrichmentSnapshot(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         parcel_id=parcel.id,
         farmer_id=parcel.farmer_id,
         provider="SHC_SLUSI",
@@ -1009,15 +1046,19 @@ def create_shc_slusi_manual_capture_snapshot(
 @router.post("/enrichments/shc-slusi/point-capture", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
 def create_shc_slusi_point_capture_snapshot(
     body: ShcSlusiPointCaptureRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Store a full SHC/SLUSI point popup or WMS GetFeatureInfo observation.
 
     This records the richer point-level values visible after zoom/click in the public UI.
     It still does not fetch/scrape the government service directly.
     """
-    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    _require_soil_enrichment_admin(principal)
+    tenant_id = principal.tenant_id
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=tenant_id, parcel_id=body.parcel_id)
     timestamp = datetime.now(timezone.utc)
     numeric_values = {
         "n_kg_ha": body.n_kg_ha,
@@ -1064,9 +1105,10 @@ def create_shc_slusi_point_capture_snapshot(
         "wms_url": body.wms_url,
         "notes": body.notes,
     })
+    metadata["actor_id"] = str(principal.user_id)
     snapshot = SoilEnrichmentSnapshot(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         parcel_id=parcel.id,
         farmer_id=parcel.farmer_id,
         provider="SHC_SLUSI",
@@ -1098,19 +1140,28 @@ def create_shc_slusi_point_capture_snapshot(
 @router.post("/enrichments", response_model=SoilEnrichmentSnapshotResponse, status_code=201)
 def create_soil_enrichment_snapshot(
     body: SoilEnrichmentSnapshotCreate,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Store a provider-derived soil baseline/moisture snapshot for a parcel."""
-    parcel = _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=body.parcel_id)
+    _require_soil_enrichment_admin(principal)
+    tenant_id = principal.tenant_id
+    parcel = _parcel_for_soil_enrichment(db, tenant_id=tenant_id, parcel_id=body.parcel_id)
     farmer_id = body.farmer_id or parcel.farmer_id
     if farmer_id != parcel.farmer_id:
         raise HTTPException(400, "farmer_id must match parcel farmer_id")
 
     timestamp = datetime.now(timezone.utc)
+    metadata = _soil_enrichment_source_metadata(
+        body.provider,
+        body.metadata or {},
+    )
+    metadata["actor_id"] = str(principal.user_id)
     snapshot = SoilEnrichmentSnapshot(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         parcel_id=body.parcel_id,
         farmer_id=farmer_id,
         provider=body.provider.strip().upper(),
@@ -1139,7 +1190,7 @@ def create_soil_enrichment_snapshot(
         evapotranspiration_mm=body.evapotranspiration_mm,
         normalized_values=body.normalized_values or {},
         raw_payload=body.raw_payload or {},
-        metadata_=_soil_enrichment_source_metadata(body.provider, body.metadata or {}),
+        metadata_=metadata,
         error_message=body.error_message,
         created_at=timestamp,
         updated_at=timestamp,

@@ -298,3 +298,18 @@ tenant-wide maintenance capability.
 This access follows current farmer ownership or project assignment. It does not
 grant a future freelance agronomist access: independent specialist access will
 require the separate farmer-consented, revocable engagement model.
+
+## Soil-enrichment ingestion boundary
+
+Automated SoilGrids fetches, SHC/SLUSI captures, and direct enrichment
+snapshot ingestion are trusted administrative operations. They require verified
+edit-capable web-administrator identity, derive tenant and actor from that
+identity, tenant-bound the target parcel, and preserve the authenticated
+administrator in snapshot provenance.
+
+Farmer and field-agent personas cannot use these ingestion routes. This
+boundary is intentionally separate from the future freelance specialist model:
+an independent farmer may eventually consent to a verified agronomist or field
+agent providing services, but that relationship must use an explicit,
+purpose-limited, time-bounded, and revocable service engagement rather than
+project assignment or administrative ingestion authority.

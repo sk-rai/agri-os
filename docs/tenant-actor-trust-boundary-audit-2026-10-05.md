@@ -306,3 +306,20 @@ missing bearer, personal farmer access, assigned-agent access, unrelated and
 unassigned denial, administrator access, tenant mismatch, Android payload
 compatibility, and cleanup. These two routes no longer appear as unauthenticated
 mutation findings.
+
+## Soil-enrichment mutation checkpoint
+
+Four soil-enrichment mutations now use verified administrative identity:
+SoilGrids baseline fetch, SHC/SLUSI manual capture, SHC/SLUSI point capture,
+and direct enrichment snapshot ingestion. Each requires edit permission plus
+the explicit web-administrator boundary.
+
+The routes derive tenant and actor from the verified principal, tenant-bound
+the parcel lookup, and record the authenticated administrator in provenance
+metadata. Static and behavior coverage verifies missing bearer, farmer-persona
+denial, actor impersonation, tenant mismatch, successful ingestion, and actor
+attribution. These routes no longer appear as unauthenticated mutation,
+tenant-trust, or actor-trust findings.
+
+Freelance specialist engagements remain outside this administrative boundary
+and require a future farmer-consent grant model.

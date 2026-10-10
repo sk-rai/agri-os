@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.farmer.soil_profile import SoilEnrichmentSnapshot
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
 def now():
@@ -39,6 +40,10 @@ def main():
     project_id = uuid.uuid4()
     farmer_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
+    admin_user_id = None
+    farmer_user_id = None
+    admin_headers = None
+    farmer_headers = None
 
     db = SessionLocal()
     try:
@@ -89,11 +94,23 @@ def main():
             updated_at=now(),
         ))
         db.commit()
+        admin_user, admin_headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="ENTERPRISE_ADMIN",
+        )
+        farmer_user, farmer_headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="FARMER",
+        )
+        admin_user_id = admin_user.id
+        farmer_user_id = farmer_user.id
     finally:
         db.close()
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": tenant_id}
+    headers = admin_headers
 
     source_contract = client.get("/api/v1/soil-profiles/enrichments/source-contract", headers=headers)
     check(source_contract.status_code == 200, "Soil enrichment source contract returns 200", source_contract.text)
@@ -107,6 +124,66 @@ def main():
     shc_contract = source_payload["sources"]["SHC_SLUSI"]
     check(shc_contract["observed_transport"] == "OGC_WMS_GETFEATUREINFO_JSON", "Source contract records observed SHC/SLUSI WMS transport")
     check("n_kg_ha" in shc_contract["expected_point_fields"], "Source contract documents SHC/SLUSI point nutrient fields")
+
+    missing_bearer = client.post(
+        "/api/v1/soil-profiles/enrichments",
+        headers={"X-Tenant-ID": tenant_id},
+        json={
+            "parcel_id": str(parcel_id),
+            "provider": "SOILGRIDS",
+            "snapshot_type": "BASELINE",
+        },
+    )
+    check(
+        missing_bearer.status_code == 401,
+        "Soil enrichment ingestion rejects missing bearer",
+        missing_bearer.text,
+    )
+
+    farmer_denied = client.post(
+        "/api/v1/soil-profiles/enrichments",
+        headers=farmer_headers,
+        json={
+            "parcel_id": str(parcel_id),
+            "provider": "SOILGRIDS",
+            "snapshot_type": "BASELINE",
+        },
+    )
+    check(
+        farmer_denied.status_code == 403,
+        "Farmer persona cannot ingest trusted soil enrichment",
+        farmer_denied.text,
+    )
+
+    impersonated = client.post(
+        "/api/v1/soil-profiles/enrichments",
+        headers={**headers, "X-Actor-ID": str(uuid.uuid4())},
+        json={
+            "parcel_id": str(parcel_id),
+            "provider": "SOILGRIDS",
+            "snapshot_type": "BASELINE",
+        },
+    )
+    check(
+        impersonated.status_code == 403,
+        "Soil enrichment ingestion rejects actor impersonation",
+        impersonated.text,
+    )
+
+    tenant_mismatch = client.post(
+        "/api/v1/soil-profiles/enrichments",
+        headers={**headers, "X-Tenant-ID": "soil-enrichment-mismatch"},
+        json={
+            "parcel_id": str(parcel_id),
+            "provider": "SOILGRIDS",
+            "snapshot_type": "BASELINE",
+        },
+    )
+    check(
+        tenant_mismatch.status_code == 403,
+        "Soil enrichment ingestion rejects tenant mismatch",
+        tenant_mismatch.text,
+    )
 
     soilgrids = client.post("/api/v1/soil-profiles/enrichments", headers=headers, json={
         "parcel_id": str(parcel_id),
@@ -135,6 +212,7 @@ def main():
     check(baseline["resolution_meters"] == 250, "Resolution stored")
     check(baseline["normalized_values"]["texture_class"] == "CLAY_LOAM", "Normalized provider values stored")
     check(baseline["metadata"]["provider_family"] == "OPEN_SOURCE_BASELINE", "SoilGrids provenance metadata stored")
+    check(baseline["metadata"]["actor_id"] == str(admin_user_id), "Direct enrichment records verified administrator")
 
     slusi = client.post("/api/v1/soil-profiles/enrichments/shc-slusi/manual-capture", headers=headers, json={
         "parcel_id": str(parcel_id),
@@ -155,6 +233,7 @@ def main():
     check(slusi_body["normalized_values"]["status_class"] == "SUFFICIENT", "SHC/SLUSI manual capture stores class")
     check(slusi_body["metadata"]["provider_family"] == "GOVT_VISUAL_BASELINE", "SHC/SLUSI provenance metadata stored")
     check(slusi_body["metadata"]["automation_mode"] == "MANUAL_OR_IMPORT_UNTIL_OFFICIAL_API", "SHC/SLUSI automation mode documented")
+    check(slusi_body["metadata"]["actor_id"] == str(admin_user_id), "Manual capture records verified administrator")
 
     slusi_point = client.post("/api/v1/soil-profiles/enrichments/shc-slusi/point-capture", headers=headers, json={
         "parcel_id": str(parcel_id),
@@ -202,6 +281,7 @@ def main():
     check(slusi_point_body["normalized_values"]["soil_land_properties"]["texture_50k"] == "Fine Loamy", "SHC/SLUSI point texture stored")
     check(slusi_point_body["metadata"]["capture_method"] == "ADMIN_POINT_POPUP_CAPTURE", "SHC/SLUSI point capture provenance stored")
     check(slusi_point_body["metadata"]["observed_transport"] == "OGC_WMS_GETFEATUREINFO_JSON", "SHC/SLUSI point WMS provenance stored")
+    check(slusi_point_body["metadata"]["actor_id"] == str(admin_user_id), "Point capture records verified administrator")
 
 
     fake_soilgrids_payload = {
@@ -226,6 +306,7 @@ def main():
     check(fetched_body["ph"] == 6.8, "SoilGrids fetch scales pH x10 value")
     check(fetched_body["clay_percent"] == 31.2, "SoilGrids fetch scales texture percentage")
     check(fetched_body["metadata"]["coordinate_source"] == "PARCEL_CENTROID", "SoilGrids fetch records coordinate source")
+    check(fetched_body["metadata"]["actor_id"] == str(admin_user_id), "SoilGrids fetch records verified administrator")
 
     fetch_without_payload = client.post("/api/v1/soil-profiles/enrichments/soilgrids/fetch", headers=headers, json={
         "parcel_id": str(parcel_id),
@@ -271,6 +352,11 @@ def main():
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
+        db.commit()
+        if admin_user_id:
+            delete_test_admin(db, admin_user_id)
+        if farmer_user_id:
+            delete_test_admin(db, farmer_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")

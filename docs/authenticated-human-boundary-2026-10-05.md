@@ -369,3 +369,21 @@ may manage profiles for explicitly assigned farmers, and explicit web
 administrators retain tenant-wide edit capability. Parcel/farmer linkage and
 existing profiles are tenant-bounded. Missing bearer, unrelated or unassigned
 personas, actor impersonation, and tenant mismatch fail closed.
+
+## Trusted soil-enrichment ingestion checkpoint
+
+The SoilGrids fetch, SHC/SLUSI manual capture, SHC/SLUSI point capture,
+and direct soil-enrichment ingestion routes now require a verified
+administrator with edit permission. An explicit web-administrator boundary
+prevents farmer and field-agent personas from writing trusted provider
+snapshots.
+
+Tenant selection and ingestion attribution come from the verified principal.
+Parcel lookup is independently tenant-bounded, and each stored snapshot records
+the authenticated administrator in its provenance metadata. Missing bearer
+tokens, actor impersonation, tenant mismatch, and non-administrator ingestion
+fail closed.
+
+These routes represent trusted data ingestion. They do not grant agronomists
+or field agents access to independent farmers. Future freelance agricultural
+services remain a separate, farmer-consented and revocable engagement model.
