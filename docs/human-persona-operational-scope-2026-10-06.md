@@ -273,3 +273,16 @@ Tenant scope and lifecycle attribution come from the verified administrator.
 This project-membership lifecycle remains separate from future freelance
 specialist engagements, which will use farmer consent and revocable access
 rather than project enrollment state.
+
+## Bulk project-enrollment lifecycle administration
+
+Bulk preview is limited to project-scoped web-admin viewers; bulk apply is
+limited to explicit web administrators with project-edit permission. Tenant
+scope comes from the verified principal, and the project and all affected
+enrollments are tenant-bounded. Bulk audit attribution uses the authenticated
+administrator.
+
+These operations close or reopen project membership in aggregate. They do not
+create freelance specialist access for independently enrolled farmers; that
+future relationship remains consent-based and revocable under the separate
+services roadmap.

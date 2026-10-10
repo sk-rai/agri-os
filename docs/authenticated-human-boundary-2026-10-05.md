@@ -345,3 +345,15 @@ The enrollment and its joined project are independently tenant-bounded.
 Lifecycle metadata and immutable audit events record the authenticated
 administrator. Missing bearer credentials, view-only access, actor
 impersonation, and token/header tenant mismatch fail closed.
+
+## Bulk project-enrollment lifecycle checkpoint
+
+Project lifecycle preview now requires a verified, project-scoped web-admin
+viewer. Bulk lifecycle apply requires verified project-edit permission and the
+explicit web-admin edit capability. Both routes derive tenant context from the
+authenticated principal and tenant-bound the project and enrollment rows.
+
+Apply events record the verified administrator. Missing bearer credentials,
+actor impersonation, tenant mismatch, and view-only apply attempts fail closed.
+These project controls remain separate from future farmer-consented freelance
+specialist engagements.

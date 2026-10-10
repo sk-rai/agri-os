@@ -34,6 +34,14 @@ def main():
         "update_farmer_project_enrollment_status",
         "preview_project_enrollment_lifecycle",
     )
+    bulk_lifecycle_preview = block(
+        "preview_project_enrollment_lifecycle",
+        "apply_project_enrollment_lifecycle",
+    )
+    bulk_lifecycle_apply = block(
+        "apply_project_enrollment_lifecycle",
+        "list_farmer_project_enrollments",
+    )
     self_resolver = block("_resolve_authenticated_user_farmer", "_model_patch_values")
     duplicate_read = block("list_duplicate_farmers", "archive_duplicate_farmers")
     duplicate_archive = block("archive_duplicate_farmers", "get_farmer_profile_by_mobile")
@@ -387,6 +395,55 @@ def main():
         and "X-Actor-ID" not in enrollment_status_update
         and "x_actor_id" not in enrollment_status_update,
         "Enrollment lifecycle update does not trust identity headers directly",
+    )
+    require(
+        "require_admin_permission(AdminPermission.VIEW, project_scoped=True)" in bulk_lifecycle_preview,
+        "Bulk enrollment lifecycle preview requires project-scoped view permission",
+    )
+    require(
+        "_farmer_admin_can_view(principal)" in bulk_lifecycle_preview,
+        "Bulk enrollment lifecycle preview keeps an explicit web-admin boundary",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in bulk_lifecycle_preview,
+        "Bulk enrollment lifecycle preview derives tenant from verified admin",
+    )
+    require(
+        "Project.tenant_id == tenant_id" in bulk_lifecycle_preview
+        and "FarmerProjectEnrollment.tenant_id == tenant_id" in bulk_lifecycle_preview,
+        "Bulk enrollment lifecycle preview tenant-bounds project and enrollments",
+    )
+    require(
+        "require_admin_permission(" in bulk_lifecycle_apply
+        and "AdminPermission.PROJECT_EDIT" in bulk_lifecycle_apply
+        and "project_scoped=True" in bulk_lifecycle_apply,
+        "Bulk enrollment lifecycle apply requires project-scoped edit permission",
+    )
+    require(
+        "_farmer_admin_can_edit(principal)" in bulk_lifecycle_apply,
+        "Bulk enrollment lifecycle apply keeps an explicit web-admin boundary",
+    )
+    require(
+        "tenant_id = principal.tenant_id" in bulk_lifecycle_apply,
+        "Bulk enrollment lifecycle apply derives tenant from verified admin",
+    )
+    require(
+        "Project.tenant_id == tenant_id" in bulk_lifecycle_apply
+        and "FarmerProjectEnrollment.tenant_id == tenant_id" in bulk_lifecycle_apply,
+        "Bulk enrollment lifecycle apply tenant-bounds project and enrollments",
+    )
+    require(
+        "actor_id=principal.user_id" in bulk_lifecycle_apply,
+        "Bulk enrollment lifecycle apply records verified administrator",
+    )
+    require(
+        "X-Tenant-ID" not in bulk_lifecycle_preview
+        and "x_tenant_id" not in bulk_lifecycle_preview
+        and "X-Tenant-ID" not in bulk_lifecycle_apply
+        and "x_tenant_id" not in bulk_lifecycle_apply
+        and "X-Actor-ID" not in bulk_lifecycle_apply
+        and "x_actor_id" not in bulk_lifecycle_apply,
+        "Bulk enrollment lifecycle routes do not trust identity headers directly",
     )
     print("FARMER PARCEL HUMAN AUTH STATIC CONTRACT PASSED")
 

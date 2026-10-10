@@ -280,3 +280,16 @@ plus audit events record the verified administrator. Regression coverage
 verifies missing bearer, view-only denial, actor impersonation denial, tenant
 mismatch denial, successful completion, audit attribution, Android hydration
 fallback to self-service, and cleanup.
+
+## Bulk project-enrollment lifecycle checkpoint
+
+The lifecycle preview and apply routes now derive tenant context from verified
+project-scoped admin principals. Preview requires view permission plus the
+explicit web-admin boundary; apply requires project-edit permission plus the
+web-admin edit boundary.
+
+Project and enrollment queries are tenant-bounded, and bulk apply audit events
+record the verified administrator. Regression coverage verifies missing bearer,
+actor impersonation, tenant mismatch, view-only preview, view-only apply denial,
+successful lifecycle changes, audit attribution, hydration fallback, and
+cleanup. Neither route remains in the unauthenticated or header-trust findings.

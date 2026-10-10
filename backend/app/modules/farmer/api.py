@@ -37,9 +37,18 @@ from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAudi
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
 FARMER_WEB_ADMIN_ROLES = {"ENTERPRISE_ADMIN", "MANAGER", "ADMIN_EDITOR", "ADMIN_PUBLISHER"}
+FARMER_WEB_ADMIN_VIEW_ROLES = FARMER_WEB_ADMIN_ROLES | {"ADMIN_VIEWER", "VIEWER"}
 
 
-def _farmer_admin_can_edit(principal: AuthenticatedPrincipal) -> bool:
+def _farmer_admin_can_view(principal: AuthenticatedPrincipal | AdminPrincipal) -> bool:
+    role = str(principal.role or "").upper()
+    return (
+        role in FARMER_WEB_ADMIN_VIEW_ROLES
+        and AdminPermission.VIEW in ROLE_PERMISSIONS.get(role, set())
+    )
+
+
+def _farmer_admin_can_edit(principal: AuthenticatedPrincipal | AdminPrincipal) -> bool:
     role = str(principal.role or "").upper()
     return role in FARMER_WEB_ADMIN_ROLES and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
 
@@ -6741,23 +6750,30 @@ def update_farmer_project_enrollment_status(
 def preview_project_enrollment_lifecycle(
     project_id: uuid.UUID,
     target_status: str = Query(..., pattern=r"^(COMPLETED|CANCELLED|ARCHIVED|ACTIVE|PENDING)$"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW, project_scoped=True)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW, project_scoped=True)),
 ):
     """Preview bulk enrollment lifecycle update for a project."""
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not _farmer_admin_can_view(principal):
+        raise _farmer_scope_forbidden(
+            "Project enrollment lifecycle preview requires an explicit web administrator."
+        )
+
+    tenant_id = principal.tenant_id
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
     query = db.query(FarmerProjectEnrollment).filter(
-        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.tenant_id == tenant_id,
         FarmerProjectEnrollment.project_id == project_id,
         FarmerProjectEnrollment.status.in_(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES),
     )
     affected = query.count()
     by_status = {
         status: db.query(FarmerProjectEnrollment).filter(
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
             FarmerProjectEnrollment.project_id == project_id,
             FarmerProjectEnrollment.status == status,
         ).count()
@@ -6765,7 +6781,7 @@ def preview_project_enrollment_lifecycle(
     }
     return {
         "schema_version": "project_enrollment_lifecycle_preview.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "project_id": str(project_id),
         "target_status": target_status,
         "source_statuses": sorted(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES),
@@ -6780,18 +6796,28 @@ def preview_project_enrollment_lifecycle(
 def apply_project_enrollment_lifecycle(
     project_id: uuid.UUID,
     body: ProjectEnrollmentLifecycleApplyRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)),
 ):
     """Bulk update ACTIVE/PENDING project enrollments with a single reason."""
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    if not _farmer_admin_can_edit(principal):
+        raise _farmer_scope_forbidden(
+            "Bulk project enrollment lifecycle updates require an explicit web administrator."
+        )
+
+    tenant_id = principal.tenant_id
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
     enrollments = (
         db.query(FarmerProjectEnrollment)
         .filter(
-            FarmerProjectEnrollment.tenant_id == x_tenant_id,
+            FarmerProjectEnrollment.tenant_id == tenant_id,
             FarmerProjectEnrollment.project_id == project_id,
             FarmerProjectEnrollment.status.in_(PROJECT_ENROLLMENT_BULK_SOURCE_STATUSES),
         )
@@ -6800,13 +6826,13 @@ def apply_project_enrollment_lifecycle(
     )
     updated = []
     skipped = db.query(FarmerProjectEnrollment).filter(
-        FarmerProjectEnrollment.tenant_id == x_tenant_id,
+        FarmerProjectEnrollment.tenant_id == tenant_id,
         FarmerProjectEnrollment.project_id == project_id,
     ).count() - len(enrollments)
     for enrollment in enrollments:
         updated.append(_update_enrollment_lifecycle_status(
             db,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             enrollment=enrollment,
             project=project,
             target_status=body.target_status,
@@ -6816,7 +6842,7 @@ def apply_project_enrollment_lifecycle(
         ))
     db.add(ProjectAppConfigAuditEvent(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         actor_id=principal.user_id,
         action="BULK_UPDATE_PROJECT_ENROLLMENT_STATUS_SUMMARY",
@@ -6830,7 +6856,7 @@ def apply_project_enrollment_lifecycle(
     db.commit()
     return {
         "schema_version": "project_enrollment_lifecycle_apply.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "project_id": str(project_id),
         "target_status": body.target_status,
         "updated_count": len(updated),

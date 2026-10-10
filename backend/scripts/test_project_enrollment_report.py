@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, ProjectAppConfigAuditEvent, Tenant
+from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project, ProjectAppConfigAuditEvent, ProjectRole, Tenant
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -233,6 +233,16 @@ def main():
         )
         db.add(bulk_project)
         db.flush()
+        db.add(ProjectRole(
+            id=uuid.uuid4(),
+            project_id=bulk_project_id,
+            user_id=admin.id,
+            role="ADMIN_VIEWER",
+            territory_scope={},
+            is_active=True,
+            created_at=now(),
+            updated_at=now(),
+        ))
         bulk_statuses = ["ACTIVE", "PENDING", "COMPLETED"]
         for index, farmer_uuid in enumerate(bulk_farmer_ids):
             db.add(Farmer(
@@ -263,24 +273,126 @@ def main():
             ))
         db.commit()
 
-        preview = client.get(
-            f"/api/v1/projects/{bulk_project_id}/farmer-enrollments/lifecycle-preview?target_status=COMPLETED",
-            headers=editor_headers,
+        preview_url = (
+            f"/api/v1/projects/{bulk_project_id}"
+            "/farmer-enrollments/lifecycle-preview?target_status=COMPLETED"
         )
-        check(preview.status_code == 200, "Bulk lifecycle preview returns 200", preview.text[:500])
+
+        missing_preview_bearer = client.get(
+            preview_url,
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        check(
+            missing_preview_bearer.status_code == 401,
+            "Bulk lifecycle preview rejects missing bearer",
+            missing_preview_bearer.text,
+        )
+
+        impersonated_preview = client.get(
+            preview_url,
+            headers={**headers, "X-Actor-ID": str(uuid.uuid4())},
+        )
+        check(
+            impersonated_preview.status_code == 403,
+            "Bulk lifecycle preview rejects actor impersonation",
+            impersonated_preview.text,
+        )
+
+        mismatched_preview_tenant = client.get(
+            preview_url,
+            headers={
+                **headers,
+                "X-Tenant-ID": "bulk-lifecycle-tenant-mismatch",
+            },
+        )
+        check(
+            mismatched_preview_tenant.status_code == 403,
+            "Bulk lifecycle preview rejects tenant mismatch",
+            mismatched_preview_tenant.text,
+        )
+
+        preview = client.get(
+            preview_url,
+            headers=headers,
+        )
+        check(preview.status_code == 200, "View-only administrator previews bulk lifecycle", preview.text[:500])
         preview_payload = preview.json()
         check(preview_payload["affected_count"] == 2, "Bulk preview counts active and pending enrollments")
         check(preview_payload["can_apply"] is True, "Bulk preview is applyable")
+        check(
+            preview_payload["tenant_id"] == tenant_id,
+            "Bulk preview returns verified tenant",
+        )
+
+        bulk_apply_url = (
+            f"/api/v1/projects/{bulk_project_id}"
+            "/farmer-enrollments/lifecycle-apply"
+        )
+        bulk_apply_request = {
+            "target_status": "COMPLETED",
+            "reason": "Regression bulk project completed",
+        }
+
+        missing_apply_bearer = client.post(
+            bulk_apply_url,
+            headers={"X-Tenant-ID": tenant_id},
+            json=bulk_apply_request,
+        )
+        check(
+            missing_apply_bearer.status_code == 401,
+            "Bulk lifecycle apply rejects missing bearer",
+            missing_apply_bearer.text,
+        )
+
+        viewer_apply = client.post(
+            bulk_apply_url,
+            headers=headers,
+            json=bulk_apply_request,
+        )
+        check(
+            viewer_apply.status_code == 403,
+            "Bulk lifecycle apply rejects view-only administrator",
+            viewer_apply.text,
+        )
+
+        impersonated_apply = client.post(
+            bulk_apply_url,
+            headers={**editor_headers, "X-Actor-ID": str(uuid.uuid4())},
+            json=bulk_apply_request,
+        )
+        check(
+            impersonated_apply.status_code == 403,
+            "Bulk lifecycle apply rejects actor impersonation",
+            impersonated_apply.text,
+        )
+
+        mismatched_apply_tenant = client.post(
+            bulk_apply_url,
+            headers={
+                **editor_headers,
+                "X-Tenant-ID": "bulk-lifecycle-tenant-mismatch",
+            },
+            json=bulk_apply_request,
+        )
+        check(
+            mismatched_apply_tenant.status_code == 403,
+            "Bulk lifecycle apply rejects tenant mismatch",
+            mismatched_apply_tenant.text,
+        )
 
         bulk_apply = client.post(
-            f"/api/v1/projects/{bulk_project_id}/farmer-enrollments/lifecycle-apply",
+            bulk_apply_url,
             headers=editor_headers,
-            json={"target_status": "COMPLETED", "reason": "Regression bulk project completed"},
+            json=bulk_apply_request,
         )
         check(bulk_apply.status_code == 200, "Bulk lifecycle apply returns 200", bulk_apply.text[:500])
         bulk_payload = bulk_apply.json()
         check(bulk_payload["updated_count"] == 2, "Bulk apply updates two enrollments")
         check(bulk_payload["skipped_count"] == 1, "Bulk apply skips already terminal rows")
+        check(
+            bulk_payload["tenant_id"] == tenant_id,
+            "Bulk apply returns verified tenant",
+        )
 
         db.expire_all()
         bulk_rows = db.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.project_id == bulk_project_id).all()
@@ -299,6 +411,10 @@ def main():
         ).order_by(ProjectAppConfigAuditEvent.created_at.desc()).first()
         check(bulk_audit is not None, "Bulk lifecycle summary is audited")
         check(bulk_audit.after_config["updated_count"] == 2, "Bulk audit stores update count")
+        check(
+            bulk_audit.actor_id == editor.id,
+            "Bulk audit stores authenticated administrator",
+        )
 
         trace_response = client.get(f"/api/v1/reports/projects/{bulk_project_id}/trace", headers=headers)
         check(trace_response.status_code == 200, "Project trace returns enrollment lifecycle", trace_response.text[:500])
@@ -318,6 +434,7 @@ def main():
         cleanup = SessionLocal()
         try:
             cleanup.query(ProjectAppConfigAuditEvent).filter(ProjectAppConfigAuditEvent.project_id.in_([project_id, bulk_project_id])).delete(synchronize_session=False)
+            cleanup.query(ProjectRole).filter(ProjectRole.project_id.in_([project_id, bulk_project_id])).delete(synchronize_session=False)
             cleanup.query(FarmerProjectEnrollment).filter(FarmerProjectEnrollment.project_id.in_([project_id, bulk_project_id])).delete(synchronize_session=False)
             cleanup.query(Parcel).filter(Parcel.id == parcel_id).delete(synchronize_session=False)
             cleanup.query(Farmer).filter(Farmer.id.in_([farmer_id] + bulk_farmer_ids)).delete(synchronize_session=False)
