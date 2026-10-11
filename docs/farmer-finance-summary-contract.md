@@ -125,14 +125,19 @@ Android receives only backend-computed values plus backend display hints.
 
 ## Admin endpoints
 
-Recommended admin endpoints:
+Implemented configuration endpoints:
 
-- GET /api/v1/finance/report-config
-- POST /api/v1/finance/report-config/drafts
-- POST /api/v1/finance/report-config/drafts/{draft_id}/validate
-- GET /api/v1/finance/report-config/drafts/{draft_id}/preview
-- POST /api/v1/finance/report-config/drafts/{draft_id}/publish
-- GET /api/v1/finance/report-config/audit
+- `GET /api/v1/crop-cycles/finance/report-config` resolves the effective
+  published configuration or the backend default.
+- `POST /api/v1/crop-cycles/finance/report-config/validate` requires verified
+  `EDIT` permission and validates without persistence.
+- `POST /api/v1/crop-cycles/finance/report-config/publish` requires verified
+  `PUBLISH` permission and creates a versioned runtime configuration.
+
+Validation and publishing derive tenant scope from verified identity. Optional
+project scope must identify an active project in that tenant. Publishing and
+archival attribution use the authenticated publisher. None of these endpoints
+can change the fixed P&L formula.
 
 ## Implementation order
 

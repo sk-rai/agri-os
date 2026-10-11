@@ -403,3 +403,20 @@ Static and behavior coverage verifies missing bearer, insufficient permission,
 actor impersonation, tenant mismatch, foreign-project denial, successful
 publishing, verified attribution, and cleanup. The route no longer appears as
 an unauthenticated mutation finding.
+
+## Finance report configuration checkpoint
+
+The finance report configuration validation and publishing mutations now use
+the shared administrator authorization boundary. Validation requires edit
+permission; publishing requires publish permission.
+
+Both routes derive tenant scope from the verified administrator. Publishing
+also derives version attribution from that administrator for both publication
+and archival. Optional project identifiers are checked against an active
+project in the authenticated tenant, and caller-supplied tenant or actor
+headers are not trusted by the route implementation.
+
+Static and behavior coverage verifies missing bearer, insufficient permission,
+actor impersonation, tenant mismatch, cross-tenant project denial, successful
+validation and publishing, version archival, verified attribution, and fixture
+cleanup.

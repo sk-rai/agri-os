@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.master_data.models import CropLifecycleTemplate
@@ -47,9 +48,14 @@ def main() -> int:
     print("=" * 72)
 
     tenant_id = f"finance-config-{uuid.uuid4().hex[:8]}"
-    headers = {"X-Tenant-ID": tenant_id, "X-Actor-ID": str(uuid.uuid4())}
+    foreign_tenant_id = f"finance-config-foreign-{uuid.uuid4().hex[:8]}"
+    created_user_ids = []
+    headers = None
+    editor_headers = None
+    viewer_headers = None
 
     project_id = uuid.uuid4()
+    foreign_project_id = uuid.uuid4()
     farmer_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     cycle_id = uuid.uuid4()
@@ -61,21 +67,72 @@ def main() -> int:
         lifecycle_template = db.query(CropLifecycleTemplate).first()
         check(lifecycle_template is not None, "At least one lifecycle template exists")
 
-        db.add(Tenant(id=tenant_id, name="Finance Config Tenant", type="ENTERPRISE", created_at=now, updated_at=now))
-        db.add(Project(
-            id=project_id,
-            tenant_id=tenant_id,
-            name="Finance Config Project",
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=180),
-            status="ACTIVE",
-            geography_scope={},
-            crop_scope=["RICE"],
-            config={},
-            created_at=now,
-            updated_at=now,
-        ))
+        db.add_all([
+            Tenant(
+                id=tenant_id,
+                name="Finance Config Tenant",
+                type="ENTERPRISE",
+                created_at=now,
+                updated_at=now,
+            ),
+            Tenant(
+                id=foreign_tenant_id,
+                name="Foreign Finance Config Tenant",
+                type="ENTERPRISE",
+                created_at=now,
+                updated_at=now,
+            ),
+        ])
+        db.add_all([
+            Project(
+                id=project_id,
+                tenant_id=tenant_id,
+                name="Finance Config Project",
+                start_date=date.today(),
+                end_date=date.today() + timedelta(days=180),
+                status="ACTIVE",
+                geography_scope={},
+                crop_scope=["RICE"],
+                config={},
+                created_at=now,
+                updated_at=now,
+            ),
+            Project(
+                id=foreign_project_id,
+                tenant_id=foreign_tenant_id,
+                name="Foreign Finance Config Project",
+                start_date=date.today(),
+                end_date=date.today() + timedelta(days=180),
+                status="ACTIVE",
+                geography_scope={},
+                crop_scope=["RICE"],
+                config={},
+                created_at=now,
+                updated_at=now,
+            ),
+        ])
         db.commit()
+
+        publisher_user, headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="ADMIN_PUBLISHER",
+        )
+        editor_user, editor_headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="ADMIN_EDITOR",
+        )
+        viewer_user, viewer_headers = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="ADMIN_VIEWER",
+        )
+        created_user_ids.extend([
+            publisher_user.id,
+            editor_user.id,
+            viewer_user.id,
+        ])
         db.add(Farmer(
             id=farmer_id,
             tenant_id=tenant_id,
@@ -157,6 +214,127 @@ def main() -> int:
         default_payload = get_default.json()
         check(default_payload["source"]["source"] == "DEFAULT_CONFIG", "Default config source is reported")
 
+        missing_validate = client.post(
+            "/api/v1/crop-cycles/finance/report-config/validate",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"config": DEFAULT_FINANCE_REPORT_CONFIG},
+        )
+        check(
+            missing_validate.status_code == 401,
+            "Finance config validation rejects missing bearer",
+            missing_validate.text[:500],
+        )
+
+        viewer_validate = client.post(
+            "/api/v1/crop-cycles/finance/report-config/validate",
+            headers=viewer_headers,
+            json={"config": DEFAULT_FINANCE_REPORT_CONFIG},
+        )
+        check(
+            viewer_validate.status_code == 403,
+            "Finance config validation rejects view-only administrator",
+            viewer_validate.text[:500],
+        )
+
+        editor_validate = client.post(
+            "/api/v1/crop-cycles/finance/report-config/validate",
+            headers=editor_headers,
+            json={
+                "config": DEFAULT_FINANCE_REPORT_CONFIG,
+                "project_id": str(project_id),
+            },
+        )
+        check(
+            editor_validate.status_code == 200,
+            "Edit-capable administrator validates tenant project config",
+            editor_validate.text[:500],
+        )
+        check(
+            editor_validate.json()["validated_by"] == str(editor_user.id),
+            "Finance config validation reports verified administrator",
+            editor_validate.json(),
+        )
+
+        foreign_validate = client.post(
+            "/api/v1/crop-cycles/finance/report-config/validate",
+            headers=editor_headers,
+            json={
+                "config": DEFAULT_FINANCE_REPORT_CONFIG,
+                "project_id": str(foreign_project_id),
+            },
+        )
+        check(
+            foreign_validate.status_code == 404,
+            "Finance config validation rejects foreign-tenant project",
+            foreign_validate.text[:500],
+        )
+
+        missing_publish = client.post(
+            "/api/v1/crop-cycles/finance/report-config/publish",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"config": DEFAULT_FINANCE_REPORT_CONFIG},
+        )
+        check(
+            missing_publish.status_code == 401,
+            "Finance config publishing rejects missing bearer",
+            missing_publish.text[:500],
+        )
+
+        editor_publish = client.post(
+            "/api/v1/crop-cycles/finance/report-config/publish",
+            headers=editor_headers,
+            json={"config": DEFAULT_FINANCE_REPORT_CONFIG},
+        )
+        check(
+            editor_publish.status_code == 403,
+            "Finance config publishing requires publish permission",
+            editor_publish.text[:500],
+        )
+
+        impersonated_headers = {
+            **headers,
+            "X-Actor-ID": str(uuid.uuid4()),
+        }
+        impersonated_publish = client.post(
+            "/api/v1/crop-cycles/finance/report-config/publish",
+            headers=impersonated_headers,
+            json={"config": DEFAULT_FINANCE_REPORT_CONFIG},
+        )
+        check(
+            impersonated_publish.status_code == 403,
+            "Finance config publishing rejects actor impersonation",
+            impersonated_publish.text[:500],
+        )
+
+        mismatched_headers = {
+            **headers,
+            "X-Tenant-ID": foreign_tenant_id,
+        }
+        mismatched_publish = client.post(
+            "/api/v1/crop-cycles/finance/report-config/publish",
+            headers=mismatched_headers,
+            json={"config": DEFAULT_FINANCE_REPORT_CONFIG},
+        )
+        check(
+            mismatched_publish.status_code == 403,
+            "Finance config publishing rejects tenant mismatch",
+            mismatched_publish.text[:500],
+        )
+
+        foreign_publish = client.post(
+            "/api/v1/crop-cycles/finance/report-config/publish",
+            headers=headers,
+            json={
+                "config": DEFAULT_FINANCE_REPORT_CONFIG,
+                "project_id": str(foreign_project_id),
+            },
+        )
+        check(
+            foreign_publish.status_code == 404,
+            "Finance config publishing rejects foreign-tenant project",
+            foreign_publish.text[:500],
+        )
+
         invalid_config = dict(DEFAULT_FINANCE_REPORT_CONFIG)
         invalid_config["expense_categories"] = ["SEED"]
         invalid_config["activity_expense_mapping"] = {"FERTILIZER": "NOT_ALLOWED"}
@@ -183,6 +361,64 @@ def main() -> int:
         check(published["status"] == "PUBLISHED", "Published config status is PUBLISHED")
         check(published["config_version"] == 1, "First config version is 1")
 
+        first_record = (
+            db.query(WorkflowFinanceReportConfig)
+            .filter(
+                WorkflowFinanceReportConfig.id
+                == uuid.UUID(published["config_id"])
+            )
+            .one()
+        )
+        check(
+            first_record.published_by == str(publisher_user.id),
+            "Published config records verified administrator",
+            first_record.published_by,
+        )
+
+        republish = client.post(
+            "/api/v1/crop-cycles/finance/report-config/publish",
+            headers=headers,
+            json={"config": config, "reason": "regression republish"},
+        )
+        check(
+            republish.status_code == 200,
+            "Finance config republish returns 200",
+            republish.text[:500],
+        )
+        check(
+            republish.json()["config_version"] == 2,
+            "Republish increments config version",
+        )
+
+        db.expire_all()
+        first_record = (
+            db.query(WorkflowFinanceReportConfig)
+            .filter(
+                WorkflowFinanceReportConfig.id
+                == uuid.UUID(published["config_id"])
+            )
+            .one()
+        )
+        latest_record = (
+            db.query(WorkflowFinanceReportConfig)
+            .filter(
+                WorkflowFinanceReportConfig.id
+                == uuid.UUID(republish.json()["config_id"])
+            )
+            .one()
+        )
+        check(first_record.status == "ARCHIVED", "Previous config is archived")
+        check(
+            first_record.archived_by == str(publisher_user.id),
+            "Archived config records verified administrator",
+            first_record.archived_by,
+        )
+        check(
+            latest_record.published_by == str(publisher_user.id),
+            "Republished config records verified administrator",
+            latest_record.published_by,
+        )
+
         get_published = client.get("/api/v1/crop-cycles/finance/report-config", headers=headers)
         check(get_published.status_code == 200, "Published finance config lookup returns 200", get_published.text[:500])
         check(get_published.json()["source"]["source"] == "PUBLISHED_CONFIG", "Published config source is reported")
@@ -206,8 +442,10 @@ def main() -> int:
         check(pnl_payload["totals"]["profit_or_loss"] == "13800.00", "P&L fixed formula computed")
         check(pnl_payload["analytics_dimensions"]["season_code"] == "KHARIF", "P&L analytics dimensions present")
 
-        stored_count = db.query(WorkflowFinanceReportConfig).filter(WorkflowFinanceReportConfig.tenant_id == tenant_id).count()
-        check(stored_count == 1, "One persisted finance config row stored")
+        stored_count = db.query(WorkflowFinanceReportConfig).filter(
+            WorkflowFinanceReportConfig.tenant_id == tenant_id
+        ).count()
+        check(stored_count == 2, "Two versioned finance config rows stored")
 
         print("=" * 72)
         print("Finance report config persistence validated")
@@ -221,8 +459,17 @@ def main() -> int:
         db.query(WorkflowFinanceReportConfig).filter(WorkflowFinanceReportConfig.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
+        db.query(Project).filter(
+            Project.tenant_id.in_([tenant_id, foreign_tenant_id])
+        ).delete(synchronize_session=False)
+        db.commit()
+
+        for user_id in created_user_ids:
+            delete_test_admin(db, user_id)
+
+        db.query(Tenant).filter(
+            Tenant.id.in_([tenant_id, foreign_tenant_id])
+        ).delete(synchronize_session=False)
         db.commit()
         db.close()
 

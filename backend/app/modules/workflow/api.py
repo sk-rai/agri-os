@@ -18,7 +18,12 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
-from app.core.admin_auth import AdminPermission, ROLE_PERMISSIONS
+from app.core.admin_auth import (
+    AdminPermission,
+    AdminPrincipal,
+    ROLE_PERMISSIONS,
+    require_admin_permission,
+)
 from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
 from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.workflow.models import WorkflowFinanceReportConfig, CropCycle, CropStageInstance, CropActivity
@@ -42,7 +47,7 @@ from app.modules.master_data.input_assignment_service import (
     allowed_input_codes_for_project_crop,
     assert_catalog_input_allowed_for_project_crop,
 )
-from app.modules.farmer.models import Farmer, Parcel
+from app.modules.farmer.models import Farmer, Parcel, Project
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
@@ -1177,6 +1182,29 @@ class FinanceReportConfigPublishRequest(BaseModel):
     reason: Optional[str] = None
 
 
+def _assert_finance_report_config_project_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id: Optional[uuid.UUID],
+) -> None:
+    if project_id is None:
+        return
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == tenant_id,
+            Project.is_active == True,
+            Project.status == "ACTIVE",
+        )
+        .first()
+    )
+    if project is None:
+        raise HTTPException(404, "Project not found")
+
+
 @router.get("/finance/report-config")
 def get_finance_report_config(
     db: Session = Depends(get_db),
@@ -1201,25 +1229,49 @@ def get_finance_report_config(
 
 
 @router.post("/finance/report-config/validate")
-def validate_finance_report_config_endpoint(body: FinanceReportConfigPublishRequest):
-    """Validate finance report config without persisting it."""
-    return validate_finance_report_config(body.config)
+def validate_finance_report_config_endpoint(
+    body: FinanceReportConfigPublishRequest,
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    """Validate finance report config within verified administrator scope."""
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _assert_finance_report_config_project_scope(
+        db,
+        tenant_id=tenant_id,
+        project_id=body.project_id,
+    )
+    validation = validate_finance_report_config(body.config)
+    validation["validated_by"] = actor_id
+    return validation
 
 
 @router.post("/finance/report-config/publish")
 def publish_finance_report_config(
     body: FinanceReportConfigPublishRequest,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
 ):
-    """Publish a validated finance report config for tenant/project/crop/season scope."""
+    """Publish finance report config within verified administrator scope."""
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _assert_finance_report_config_project_scope(
+        db,
+        tenant_id=tenant_id,
+        project_id=body.project_id,
+    )
+
     validation = validate_finance_report_config(body.config)
     if not validation["valid"]:
         raise HTTPException(409, {"error": "FINANCE_REPORT_CONFIG_INVALID", "validation": validation})
 
     scope_filter = [
-        WorkflowFinanceReportConfig.tenant_id == x_tenant_id,
+        WorkflowFinanceReportConfig.tenant_id == tenant_id,
         WorkflowFinanceReportConfig.is_active == True,
         WorkflowFinanceReportConfig.project_id == body.project_id if body.project_id else WorkflowFinanceReportConfig.project_id.is_(None),
         WorkflowFinanceReportConfig.crop_code == body.crop_code if body.crop_code else WorkflowFinanceReportConfig.crop_code.is_(None),
@@ -1243,11 +1295,11 @@ def publish_finance_report_config(
     for row in existing_published:
         row.status = "ARCHIVED"
         row.archived_at = now_ts
-        row.archived_by = x_actor_id
+        row.archived_by = actor_id
         row.updated_at = now_ts
 
     record = WorkflowFinanceReportConfig(
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=body.project_id,
         crop_code=body.crop_code,
         season_code=body.season_code,
@@ -1256,7 +1308,7 @@ def publish_finance_report_config(
         config=body.config,
         validation_result=validation,
         published_at=now_ts,
-        published_by=x_actor_id,
+        published_by=actor_id,
         reason=body.reason,
         metadata_={"fixed_formula": "profit_or_loss = total_income - total_expenses"},
         created_at=now_ts,

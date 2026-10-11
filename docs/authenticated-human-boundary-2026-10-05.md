@@ -468,3 +468,15 @@ authenticated tenant. Crop and climate-region reference validation remains in
 place. Missing bearer credentials, insufficient publishing permission, actor
 impersonation, tenant mismatch, malformed project identifiers, and
 foreign-tenant projects fail closed.
+
+## Finance report configuration checkpoint
+
+Finance report configuration validation and publishing now use verified
+administrator identity. Validation requires edit permission, while publishing
+requires the narrower publish permission. Tenant and actor identity come from
+the authenticated principal rather than caller-supplied identity headers.
+
+An optional project scope must resolve to an active project in the verified
+tenant. Cross-tenant or inactive project scopes fail closed. Published and
+archived configuration versions record the authenticated publisher, while the
+profit-and-loss formula remains fixed and non-executable.

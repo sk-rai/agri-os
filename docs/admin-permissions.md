@@ -93,3 +93,12 @@ The suite currently covers:
 - Tenant user invitation, role changes, project access, audit, and revocation.
 - JWT-backed admin role and project-scope enforcement across representative protected endpoints.
 
+## Finance report configuration
+
+`POST /api/v1/crop-cycles/finance/report-config/validate` requires `EDIT`.
+It performs validation without persistence but remains an administrative
+configuration operation.
+
+`POST /api/v1/crop-cycles/finance/report-config/publish` requires `PUBLISH`.
+Publishing and archival attribution use the verified administrator, and any
+optional project scope must belong to the authenticated tenant and be active.

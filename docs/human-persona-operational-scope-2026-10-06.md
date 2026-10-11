@@ -385,3 +385,15 @@ tenant. This administrative publishing authority remains separate from the
 future freelance agricultural-services model: a farmer-consented specialist
 engagement does not grant authority to publish tenant or project suitability
 policy.
+
+## Finance report configuration governance
+
+Finance report configuration is an administrative governance operation, not a
+farmer or field-agent operation. Edit-capable administrators may validate
+configuration, while only publish-capable administrators may publish a runtime
+version.
+
+Tenant and publisher attribution derive from verified identity. Optional
+project scope is tenant-bounded and active-project-bounded. Configuration may
+control approved mappings, display flags, thresholds, and report layout, but it
+cannot replace or execute the fixed profit-and-loss formula.
