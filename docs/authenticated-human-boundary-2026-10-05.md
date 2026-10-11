@@ -492,3 +492,15 @@ terminal lifecycle operations require publish permission. Caller-supplied
 creator, approver, and lifecycle actor identifiers are retained only for
 request compatibility and do not control stored attribution. Optional campaign
 project scope must identify an active project in the authenticated tenant.
+
+## Product catalog administration checkpoint
+
+Seven product-catalog mutations now derive tenant and actor identity from the
+verified administrator: CSV application, manufacturer creation and update,
+product creation and update, package addition, and project product approval.
+
+Global catalog maintenance retains `EDIT`; project approval retains
+project-scoped `PROJECT_EDIT`. Every resulting product-catalog audit event
+records the authenticated administrator. Missing bearer credentials,
+insufficient permission, actor impersonation, tenant mismatch, and unassigned
+project access fail closed.

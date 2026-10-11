@@ -218,10 +218,32 @@ def product_payload(row, approval=None):
     }
 
 
-def record_audit(db, tenant, principal, entity_type, entity_id, entity_code, action, before, after, reason):
-    db.add(ProductCatalogAuditEvent(id=uuid.uuid4(), tenant_id=tenant, entity_type=entity_type, entity_id=entity_id,
-        entity_code=entity_code, actor_id=principal.user_id, action=action, before_payload=before, after_payload=after,
-        reason=reason, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)))
+def record_audit(
+    db,
+    tenant_id,
+    actor_id,
+    entity_type,
+    entity_id,
+    entity_code,
+    action,
+    before,
+    after,
+    reason,
+):
+    db.add(ProductCatalogAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        entity_code=entity_code,
+        actor_id=actor_id,
+        action=action,
+        before_payload=before,
+        after_payload=after,
+        reason=reason,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    ))
 
 
 def _product_import_batch_payload(batch: ProductCatalogImportBatch) -> dict:
@@ -471,9 +493,12 @@ def apply_product_csv_import(
     x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     batch = db.query(ProductCatalogImportBatch).filter(
         ProductCatalogImportBatch.id == batch_id,
-        ProductCatalogImportBatch.tenant_id == x_tenant_id,
+        ProductCatalogImportBatch.tenant_id == tenant_id,
         ProductCatalogImportBatch.is_active == True,
     ).first()
     if not batch:
@@ -566,7 +591,7 @@ def apply_product_csv_import(
             counts["manufacturers_unchanged"] += 1
         else:
             counts["manufacturers_created" if before_manufacturer is None else "manufacturers_updated"] += 1
-            record_audit(db, x_tenant_id, principal, "MANUFACTURER", manufacturer.id, manufacturer.code, "IMPORT_CREATE_MANUFACTURER" if before_manufacturer is None else "IMPORT_UPDATE_MANUFACTURER", before_manufacturer, after_manufacturer, body.reason)
+            record_audit(db, tenant_id, actor_id, "MANUFACTURER", manufacturer.id, manufacturer.code, "IMPORT_CREATE_MANUFACTURER" if before_manufacturer is None else "IMPORT_UPDATE_MANUFACTURER", before_manufacturer, after_manufacturer, body.reason)
 
         product = products.get(row["product_code"])
         before_product = product_payload(product) if product else None
@@ -592,7 +617,7 @@ def apply_product_csv_import(
             counts["products_unchanged"] += 1
         else:
             counts["products_created" if before_product is None else "products_updated"] += 1
-            record_audit(db, x_tenant_id, principal, "PRODUCT", product.id, product.code, "IMPORT_CREATE_PRODUCT" if before_product is None else "IMPORT_UPDATE_PRODUCT", before_product, after_product, body.reason)
+            record_audit(db, tenant_id, actor_id, "PRODUCT", product.id, product.code, "IMPORT_CREATE_PRODUCT" if before_product is None else "IMPORT_UPDATE_PRODUCT", before_product, after_product, body.reason)
 
         package = packages.get(row["package_sku"])
         before_package = package_payload(package) if package else None
@@ -613,7 +638,7 @@ def apply_product_csv_import(
             counts["packages_unchanged"] += 1
         else:
             counts["packages_created" if before_package is None else "packages_updated"] += 1
-            record_audit(db, x_tenant_id, principal, "PACKAGE", package.id, package.sku, "IMPORT_CREATE_PACKAGE" if before_package is None else "IMPORT_UPDATE_PACKAGE", before_package, after_package, body.reason)
+            record_audit(db, tenant_id, actor_id, "PACKAGE", package.id, package.sku, "IMPORT_CREATE_PACKAGE" if before_package is None else "IMPORT_UPDATE_PACKAGE", before_package, after_package, body.reason)
 
     batch.status = "APPLIED"
     batch.applied_at = now
@@ -654,28 +679,59 @@ def list_manufacturers(db: Session = Depends(get_db), principal: AdminPrincipal 
 
 
 @router.post("/manufacturers")
-def create_manufacturer(body: ManufacturerCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def create_manufacturer(
+    body: ManufacturerCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     if db.query(Manufacturer).filter(Manufacturer.code == body.code).first(): raise HTTPException(409, "Manufacturer code already exists")
     row = Manufacturer(id=uuid.uuid4(), code=body.code, canonical_name=body.canonical_name.strip(), short_name=body.short_name,
         country=body.country, aliases=body.aliases, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
     db.add(row); db.flush(); after = manufacturer_payload(row)
-    record_audit(db, x_tenant_id, principal, "MANUFACTURER", row.id, row.code, "CREATE_MANUFACTURER", None, after, body.reason)
+    record_audit(db, tenant_id, actor_id, "MANUFACTURER", row.id, row.code, "CREATE_MANUFACTURER", None, after, body.reason)
     db.commit(); return after
 
 
 @router.put("/manufacturers/{manufacturer_code}")
-def update_manufacturer(manufacturer_code: str, body: ManufacturerUpdate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def update_manufacturer(
+    manufacturer_code: str,
+    body: ManufacturerUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     row = db.query(Manufacturer).filter(Manufacturer.code == manufacturer_code.upper(), Manufacturer.is_active == True).first()
     if not row: raise HTTPException(404, "Manufacturer not found")
     before = manufacturer_payload(row)
     for key, value in body.model_dump(exclude_unset=True, exclude={"reason"}).items(): setattr(row, key, value)
     row.updated_at = datetime.now(timezone.utc); after = manufacturer_payload(row)
-    record_audit(db, x_tenant_id, principal, "MANUFACTURER", row.id, row.code, "UPDATE_MANUFACTURER", before, after, body.reason)
+    record_audit(db, tenant_id, actor_id, "MANUFACTURER", row.id, row.code, "UPDATE_MANUFACTURER", before, after, body.reason)
     db.commit(); return after
 
 
 @router.post("/products")
-def create_product(body: ProductCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def create_product(
+    body: ProductCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     if db.query(AgriculturalProduct).filter(AgriculturalProduct.code == body.code).first(): raise HTTPException(409, "Product code already exists")
     canonical = db.query(AgriculturalInput).filter(AgriculturalInput.code == body.canonical_input_code, AgriculturalInput.catalog_status == "PUBLISHED", AgriculturalInput.is_active == True).first()
     manufacturer = db.query(Manufacturer).filter(Manufacturer.code == body.manufacturer_code, Manufacturer.is_active == True).first()
@@ -692,24 +748,46 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db), x_tenant_
     db.add(row); db.flush()
     for package in body.packages: db.add(AgriculturalProductPackage(id=uuid.uuid4(), product_id=row.id, sku=package.sku, quantity=package.quantity, unit=package.unit, pack_label=package.pack_label, barcode=package.barcode, status="ACTIVE", created_at=now, updated_at=now))
     db.flush(); db.refresh(row); after = product_payload(row)
-    record_audit(db, x_tenant_id, principal, "PRODUCT", row.id, row.code, "CREATE_PRODUCT", None, after, body.reason)
+    record_audit(db, tenant_id, actor_id, "PRODUCT", row.id, row.code, "CREATE_PRODUCT", None, after, body.reason)
     db.commit(); return after
 
 
 @router.post("/products/{product_code}/packages")
-def add_product_package(product_code: str, body: PackageAdd, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def add_product_package(
+    product_code: str,
+    body: PackageAdd,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     product = db.query(AgriculturalProduct).filter(AgriculturalProduct.code == product_code.upper()).first()
     if not product: raise HTTPException(404, "Product not found")
     if db.query(AgriculturalProductPackage).filter((AgriculturalProductPackage.sku == body.sku) | (AgriculturalProductPackage.barcode == body.barcode if body.barcode else False)).first(): raise HTTPException(409, "Package SKU or barcode already exists")
     now = datetime.now(timezone.utc)
     package = AgriculturalProductPackage(id=uuid.uuid4(), product_id=product.id, sku=body.sku, quantity=body.quantity, unit=body.unit, pack_label=body.pack_label, barcode=body.barcode, status="ACTIVE", created_at=now, updated_at=now)
     db.add(package); db.flush(); after = package_payload(package)
-    record_audit(db, x_tenant_id, principal, "PACKAGE", package.id, package.sku, "ADD_PRODUCT_PACKAGE", None, after, body.reason)
+    record_audit(db, tenant_id, actor_id, "PACKAGE", package.id, package.sku, "ADD_PRODUCT_PACKAGE", None, after, body.reason)
     db.commit(); return after
 
 
 @router.put("/products/{product_code}")
-def update_product(product_code: str, body: ProductUpdate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def update_product(
+    product_code: str,
+    body: ProductUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     row = db.query(AgriculturalProduct).filter(AgriculturalProduct.code == product_code.upper()).first()
     if not row: raise HTTPException(404, "Product not found")
     before = product_payload(row); data = body.model_dump(exclude_unset=True, exclude={"reason", *PRODUCT_SOURCE_METADATA_FIELDS})
@@ -717,7 +795,7 @@ def update_product(product_code: str, body: ProductUpdate, db: Session = Depends
     for key, value in data.items(): setattr(row, key, value)
     row.metadata_ = _merge_product_source_metadata(row.metadata_, body)
     row.updated_at = datetime.now(timezone.utc); after = product_payload(row)
-    record_audit(db, x_tenant_id, principal, "PRODUCT", row.id, row.code, "UPDATE_PRODUCT", before, after, body.reason)
+    record_audit(db, tenant_id, actor_id, "PRODUCT", row.id, row.code, "UPDATE_PRODUCT", before, after, body.reason)
     db.commit(); return after
 
 
@@ -743,17 +821,32 @@ def list_products(input_code: Optional[str] = Query(None), manufacturer_code: Op
 
 
 @router.put("/projects/{project_id}/products/{product_code}")
-def approve_product(project_id: uuid.UUID, product_code: str, body: ApprovalUpdate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True))):
+def approve_product(
+    project_id: uuid.UUID,
+    product_code: str,
+    body: ApprovalUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     product = db.query(AgriculturalProduct).filter(AgriculturalProduct.code == product_code.upper(), AgriculturalProduct.status == "ACTIVE", AgriculturalProduct.is_active == True).first()
     if not product: raise HTTPException(404, "Active product not found")
-    approval = db.query(ProjectProductApproval).filter(ProjectProductApproval.tenant_id == x_tenant_id, ProjectProductApproval.project_id == project_id, ProjectProductApproval.product_id == product.id).first()
+    approval = db.query(ProjectProductApproval).filter(ProjectProductApproval.tenant_id == tenant_id, ProjectProductApproval.project_id == project_id, ProjectProductApproval.product_id == product.id).first()
     before = None if not approval else {"enabled": approval.enabled, "preferred": approval.preferred, "display_order": approval.display_order, "reason": approval.reason}
     if not approval:
-        approval = ProjectProductApproval(id=uuid.uuid4(), tenant_id=x_tenant_id, project_id=project_id, product_id=product.id, created_at=datetime.now(timezone.utc)); db.add(approval)
+        approval = ProjectProductApproval(id=uuid.uuid4(), tenant_id=tenant_id, project_id=project_id, product_id=product.id, created_at=datetime.now(timezone.utc)); db.add(approval)
     approval.enabled, approval.preferred, approval.display_order, approval.reason = body.enabled, body.preferred, body.display_order, body.reason
     approval.updated_at = datetime.now(timezone.utc); approval.is_active = True
     after = {"enabled": approval.enabled, "preferred": approval.preferred, "display_order": approval.display_order, "reason": approval.reason}
-    record_audit(db, x_tenant_id, principal, "PROJECT_PRODUCT_APPROVAL", approval.id, product.code, "UPSERT_PRODUCT_APPROVAL", before, after, body.reason)
+    record_audit(db, tenant_id, actor_id, "PROJECT_PRODUCT_APPROVAL", approval.id, product.code, "UPSERT_PRODUCT_APPROVAL", before, after, body.reason)
     db.commit(); return {"product": product_payload(product, approval)}
 
 

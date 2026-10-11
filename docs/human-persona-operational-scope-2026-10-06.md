@@ -409,3 +409,14 @@ Tenant scope, campaign creator, campaign approver, and administrative audit
 actors come from verified identity. Farmer personas retain only their separate,
 farmer-scoped delivery read and acknowledgement lifecycle; they cannot author
 or administer campaigns.
+
+## Product catalog administration governance
+
+Manufacturer, branded-product, package, and catalog-import maintenance are
+tenant administrative operations requiring edit permission. Project product
+approval additionally requires project-edit authority within the addressed
+project.
+
+These powers do not belong to farmer or field-agent personas. Tenant scope and
+audit attribution come from verified administrator identity, and project
+approval does not expand beyond persisted project membership.

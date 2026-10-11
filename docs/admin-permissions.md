@@ -112,3 +112,14 @@ cancellation require `PUBLISH`.
 All administrative broadcast attribution uses the verified principal.
 Caller-supplied creator, approver, or lifecycle actor identifiers do not
 control persisted campaign or audit identity.
+
+## Product catalog administration
+
+Product CSV application and manufacturer, product, and package maintenance
+require `EDIT`. Project product approval requires `PROJECT_EDIT` plus active
+membership in the addressed project, except for the tenant enterprise
+administrator.
+
+All product-catalog mutation scope and audit attribution derive from the
+verified administrator principal. Tenant and actor headers remain compatibility
+assertions and cannot select another audit tenant or actor.

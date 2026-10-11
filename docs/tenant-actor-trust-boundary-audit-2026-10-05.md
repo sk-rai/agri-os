@@ -436,3 +436,19 @@ Static and behavior coverage verifies missing bearer, actor impersonation,
 tenant mismatch, insufficient farmer permission, invalid project scope,
 verified creation and publication attribution, all eight administrative audit
 actions, and regression cleanup.
+
+## Product catalog mutation checkpoint
+
+Seven product-catalog mutation routes previously passed a typed administrator
+to a shared audit helper but did not expose their verified actor derivation at
+the route boundary. They also continued to pass the asserted tenant header
+into mutation audit and approval persistence.
+
+The routes now bind tenant and actor from `AdminPrincipal`, pass those explicit
+values to the audit helper, and tenant-bound import-batch and project-approval
+writes with the verified tenant. Project product approval retains
+project-scoped authorization.
+
+Static and behavior coverage verifies permissions, missing bearer credentials,
+actor impersonation, tenant mismatch, unassigned project denial, successful
+catalog operations, verified audit attribution, and regression cleanup.

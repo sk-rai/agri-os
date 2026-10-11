@@ -23,19 +23,71 @@ def cleanup(db, user=None):
         db.query(AgriculturalProduct).filter(AgriculturalProduct.id==product.id).delete(synchronize_session=False)
     from app.modules.master_data.models import ProductCatalogImportBatch
     db.query(ProductCatalogImportBatch).filter(ProductCatalogImportBatch.file_name=="products.csv").delete(synchronize_session=False)
-    db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([MFG,PRODUCT,CSV_MFG,CSV_PRODUCT,"REG-CSV-45KG"])).delete(synchronize_session=False)
+    db.query(ProductCatalogAuditEvent).filter(ProductCatalogAuditEvent.entity_code.in_([MFG,PRODUCT,"REG-UREA-5KG",CSV_MFG,CSV_PRODUCT,"REG-CSV-45KG"])).delete(synchronize_session=False)
     db.query(Manufacturer).filter(Manufacturer.code.in_([MFG,CSV_MFG])).delete(synchronize_session=False)
     db.query(Project).filter(Project.id==PROJECT).delete(synchronize_session=False)
     db.commit()
     if user: delete_test_admin(db,user.id)
 
 def main():
-    db=SessionLocal(); admin,headers=create_test_admin(db); cleanup(db)
+    db=SessionLocal()
+    admin,headers=create_test_admin(db)
+    cleanup(db)
+    viewer = None
+    unassigned_manager = None
     try:
         if not db.query(Tenant).filter(Tenant.id=="default").first(): db.add(Tenant(id="default",name="Default",type="ENTERPRISE",created_at=datetime.now(timezone.utc),updated_at=datetime.now(timezone.utc)))
         db.add(Project(id=PROJECT,tenant_id="default",name="Product Regression",start_date=date(2027,1,1),end_date=date(2027,12,31),status="PLANNED",crop_scope=["RICE"],created_at=datetime.now(timezone.utc),updated_at=datetime.now(timezone.utc))); db.commit()
+        viewer, viewer_headers = create_test_admin(
+            db,
+            role="ADMIN_VIEWER",
+            tenant_id="default",
+        )
+        unassigned_manager, manager_headers = create_test_admin(
+            db,
+            role="MANAGER",
+            tenant_id="default",
+        )
         client=TestClient(app,headers=headers)
-        m=client.post("/api/v1/product-catalog/manufacturers",json={"code":MFG,"canonical_name":"Regression Agro Industries","short_name":"RAI","country":"India","reason":"Regression manufacturer"})
+
+        manufacturer_body={"code":MFG,"canonical_name":"Regression Agro Industries","short_name":"RAI","country":"India","reason":"Regression manufacturer"}
+
+        missing_bearer=TestClient(app).post(
+            "/api/v1/product-catalog/manufacturers",
+            headers={"X-Tenant-ID":"default","X-Actor-ID":str(admin.id)},
+            json=manufacturer_body,
+        )
+        check(missing_bearer.status_code==401,"product catalog mutation rejects missing bearer")
+
+        viewer_create=TestClient(app,headers=viewer_headers).post(
+            "/api/v1/product-catalog/manufacturers",
+            json=manufacturer_body,
+        )
+        check(viewer_create.status_code==403,"product catalog mutation rejects view-only administrator")
+
+        impersonated_headers={**headers,"X-Actor-ID":str(uuid.uuid4())}
+        impersonated=TestClient(app).post(
+            "/api/v1/product-catalog/manufacturers",
+            headers=impersonated_headers,
+            json=manufacturer_body,
+        )
+        impersonation_detail=impersonated.json().get("detail",{})
+        check(
+            impersonated.status_code in {401,403}
+            and isinstance(impersonation_detail,dict)
+            and impersonation_detail.get("error")=="ACTOR_ID_MISMATCH",
+            "product catalog mutation rejects actor impersonation",
+        )
+
+        mismatched_headers={**headers,"X-Tenant-ID":"product-catalog-foreign"}
+        tenant_mismatch=TestClient(app).post(
+            "/api/v1/product-catalog/manufacturers",
+            headers=mismatched_headers,
+            json=manufacturer_body,
+        )
+        check(tenant_mismatch.status_code==403,"product catalog mutation rejects tenant mismatch")
+
+        m=client.post("/api/v1/product-catalog/manufacturers",json=manufacturer_body)
         check(m.status_code==200 and m.json()["code"]==MFG,"manufacturer is created")
         m_update=client.put(f"/api/v1/product-catalog/manufacturers/{MFG}",json={"short_name":"RAI Updated","reason":"Regression manufacturer update"})
         check(m_update.status_code==200 and m_update.json()["short_name"]=="RAI Updated","manufacturer metadata is updated")
@@ -76,6 +128,12 @@ def main():
         check(invalid_history.status_code==200 and all(item["status"]=="INVALID" for item in invalid_history.json()["imports"]),"product CSV import history filters invalid batches")
         catalog=TestClient(app).get(f"/api/v1/product-catalog/products?input_code=UREA_46_N", headers={"X-Tenant-ID":"default"})
         check(catalog.status_code==200 and any(x["code"]==PRODUCT for x in catalog.json()["products"]),"runtime lists product by canonical input")
+        unassigned_approval=TestClient(app,headers=manager_headers).put(
+            f"/api/v1/product-catalog/projects/{PROJECT}/products/{PRODUCT}",
+            json={"enabled":True,"preferred":True,"display_order":1,"reason":"Unassigned manager must fail"},
+        )
+        check(unassigned_approval.status_code==403,"unassigned manager cannot approve project product")
+
         approval=client.put(f"/api/v1/product-catalog/projects/{PROJECT}/products/{PRODUCT}",json={"enabled":True,"preferred":True,"display_order":1,"reason":"Preferred project urea"})
         check(approval.status_code==200 and approval.json()["product"]["project_approval"]["preferred"],"project marks product preferred")
         scoped=TestClient(app).get(f"/api/v1/product-catalog/products?input_code=UREA_46_N&project_id={PROJECT}",headers={"X-Tenant-ID":"default"})
@@ -90,7 +148,37 @@ def main():
         check(all(x["code"]!=PRODUCT for x in runtime.json()["products"]),"discontinued product is hidden from runtime")
         audit=client.get(f"/api/v1/product-catalog/audit?entity_code={PRODUCT}").json()
         check({"CREATE_PRODUCT","UPDATE_PRODUCT"}.issubset({x["action"] for x in audit["events"]}),"product mutations are audited")
+
+        expected_actions={
+            "CREATE_MANUFACTURER",
+            "UPDATE_MANUFACTURER",
+            "CREATE_PRODUCT",
+            "ADD_PRODUCT_PACKAGE",
+            "UPDATE_PRODUCT",
+            "IMPORT_CREATE_MANUFACTURER",
+            "IMPORT_CREATE_PRODUCT",
+            "IMPORT_CREATE_PACKAGE",
+            "UPSERT_PRODUCT_APPROVAL",
+        }
+        audit_rows=db.query(ProductCatalogAuditEvent).filter(
+            ProductCatalogAuditEvent.entity_code.in_([
+                MFG,
+                PRODUCT,
+                "REG-UREA-5KG",
+                CSV_MFG,
+                CSV_PRODUCT,
+                "REG-CSV-45KG",
+            ])
+        ).all()
+        check(expected_actions.issubset({row.action for row in audit_rows}),"all product catalog mutations write audit events")
+        check({row.actor_id for row in audit_rows}=={admin.id},"all product catalog audit events record verified administrator")
         print("PASS")
     finally:
-        cleanup(db,admin); db.close()
+        cleanup(db)
+        if unassigned_manager is not None:
+            delete_test_admin(db,unassigned_manager.id)
+        if viewer is not None:
+            delete_test_admin(db,viewer.id)
+        delete_test_admin(db,admin.id)
+        db.close()
 if __name__=="__main__": main()
