@@ -397,3 +397,15 @@ Tenant and publisher attribution derive from verified identity. Optional
 project scope is tenant-bounded and active-project-bounded. Configuration may
 control approved mappings, display flags, thresholds, and report layout, but it
 cannot replace or execute the fixed profit-and-loss formula.
+
+## Broadcast administration governance
+
+Broadcast authoring and delivery administration are web-administrator
+operations. Edit-capable administrators may create drafts and edit content or
+audience rules. Publish-capable administrators may publish campaigns, generate
+or retry deliveries, and transition campaigns to expired or cancelled states.
+
+Tenant scope, campaign creator, campaign approver, and administrative audit
+actors come from verified identity. Farmer personas retain only their separate,
+farmer-scoped delivery read and acknowledgement lifecycle; they cannot author
+or administer campaigns.

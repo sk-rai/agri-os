@@ -102,3 +102,13 @@ configuration operation.
 `POST /api/v1/crop-cycles/finance/report-config/publish` requires `PUBLISH`.
 Publishing and archival attribution use the verified administrator, and any
 optional project scope must belong to the authenticated tenant and be active.
+
+## Broadcast administration
+
+Broadcast draft creation, content editing, and audience-rule editing require
+`EDIT`. Campaign publication, delivery generation, delivery retry, expiry, and
+cancellation require `PUBLISH`.
+
+All administrative broadcast attribution uses the verified principal.
+Caller-supplied creator, approver, or lifecycle actor identifiers do not
+control persisted campaign or audit identity.

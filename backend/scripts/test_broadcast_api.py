@@ -367,10 +367,37 @@ def main():
     )
     check(tenant_mismatch.status_code == 403, "Broadcast mutation rejects token/header tenant mismatch")
 
+    farmer_create = client.post(
+        "/api/v1/broadcasts",
+        headers=farmer_headers,
+        json=security_payload,
+    )
+    check(
+        farmer_create.status_code == 403,
+        "Farmer cannot create administrative broadcast",
+        farmer_create.text,
+    )
+
+    unknown_project = client.post(
+        "/api/v1/broadcasts",
+        headers=headers,
+        json={
+            **security_payload,
+            "project_id": str(uuid.uuid4()),
+        },
+    )
+    check(
+        unknown_project.status_code == 404,
+        "Broadcast creation rejects project outside verified tenant scope",
+        unknown_project.text,
+    )
+
     print("\n[1] Create draft campaign via API")
     created_id = uuid.uuid4()
     create = client.post("/api/v1/broadcasts", headers=headers, json={
         "id": str(created_id),
+        "project_id": str(project_id),
+        "created_by": str(uuid.uuid4()),
         "title": "Weather alert draft",
         "category": "WEATHER",
         "priority": "URGENT",
@@ -430,6 +457,12 @@ def main():
     check(create.status_code == 201, "Create broadcast draft returns 201", create.text)
     created = create.json()
     check(created["id"] == str(created_id), "Create preserves requested campaign id")
+    check(created["project_id"] == str(project_id), "Create preserves tenant-bounded project")
+    check(
+        created["created_by"] == str(admin_id),
+        "Create records verified administrator instead of supplied actor",
+        created["created_by"],
+    )
     check(created["status"] == "DRAFT", "Created campaign starts as draft")
     check(created["category"] == "WEATHER", "Create normalizes category")
     check(created["priority"] == "URGENT", "Create normalizes priority")
@@ -462,6 +495,11 @@ def main():
     check(publish.status_code == 200, "Publish broadcast draft returns 200", publish.text)
     published = publish.json()
     check(published["status"] == "PUBLISHED", "Publish changes status")
+    check(
+        published["approved_by"] == str(admin_id),
+        "Publish records verified administrator instead of supplied approver",
+        published["approved_by"],
+    )
     check(published["starts_at"] is not None, "Publish sets starts_at")
     check(published["metadata"]["delivery_generation"] == "NOT_STARTED", "Publish does not generate deliveries yet")
 
@@ -741,7 +779,14 @@ def main():
 
 
     print("\n[1c-life] Broadcast lifecycle transitions")
-    expire = client.post(f"/api/v1/broadcasts/{created_id}/expire", headers=headers, json={"reason": "Regression expiry"})
+    expire = client.post(
+        f"/api/v1/broadcasts/{created_id}/expire",
+        headers=headers,
+        json={
+            "actor_id": str(uuid.uuid4()),
+            "reason": "Regression expiry",
+        },
+    )
     check(expire.status_code == 200, "Expire published broadcast returns 200", expire.text)
     expired = expire.json()
     check(expired["status"] == "EXPIRED", "Expire changes broadcast status")
@@ -759,12 +804,81 @@ def main():
         "audience_rules": [{"rule_type": "FARMER", "operator": "IN", "values": [str(farmer_id)]}],
     })
     check(cancel_create.status_code == 201, "Create cancel regression draft returns 201", cancel_create.text)
-    cancel = client.post(f"/api/v1/broadcasts/{cancel_id}/cancel", headers=headers, json={"reason": "Regression cancellation"})
+    cancel = client.post(
+        f"/api/v1/broadcasts/{cancel_id}/cancel",
+        headers=headers,
+        json={
+            "actor_id": str(uuid.uuid4()),
+            "reason": "Regression cancellation",
+        },
+    )
     check(cancel.status_code == 200, "Cancel draft broadcast returns 200", cancel.text)
     check(cancel.json()["status"] == "CANCELLED", "Cancel changes draft broadcast status")
 
     isolated = client.get(f"/api/v1/broadcasts/{campaign_id}", headers={"X-Tenant-ID": "default"})
     check(isolated.status_code == 404, "Broadcast detail tenant isolated", isolated.text)
+
+    db = SessionLocal()
+    try:
+        administrative_actions = {
+            "CREATE_CAMPAIGN",
+            "ADD_CONTENT",
+            "ADD_AUDIENCE_RULE",
+            "PUBLISH_CAMPAIGN",
+            "GENERATE_DELIVERIES",
+            "RETRY_DELIVERIES",
+            "EXPIRE_CAMPAIGN",
+            "CANCEL_CAMPAIGN",
+        }
+        administrative_audits = (
+            db.query(BroadcastAuditEvent)
+            .filter(
+                BroadcastAuditEvent.tenant_id == tenant_id,
+                BroadcastAuditEvent.campaign_id.in_(
+                    [created_id, cancel_id]
+                ),
+                BroadcastAuditEvent.action.in_(administrative_actions),
+            )
+            .all()
+        )
+        observed_actions = {row.action for row in administrative_audits}
+        check(
+            observed_actions == administrative_actions,
+            "Broadcast lifecycle records every administrative audit action",
+            observed_actions,
+        )
+        check(
+            {
+                row.actor_id
+                for row in administrative_audits
+            } == {admin_id},
+            "Every administrative broadcast audit uses verified administrator",
+            [
+                (row.action, str(row.actor_id))
+                for row in administrative_audits
+            ],
+        )
+
+        created_campaign = (
+            db.query(BroadcastCampaign)
+            .filter(
+                BroadcastCampaign.id == created_id,
+                BroadcastCampaign.tenant_id == tenant_id,
+            )
+            .one()
+        )
+        check(
+            created_campaign.created_by == admin_id,
+            "Stored campaign creator is verified administrator",
+            created_campaign.created_by,
+        )
+        check(
+            created_campaign.approved_by == admin_id,
+            "Stored campaign approver is verified administrator",
+            created_campaign.approved_by,
+        )
+    finally:
+        db.close()
 
     db = SessionLocal()
     try:

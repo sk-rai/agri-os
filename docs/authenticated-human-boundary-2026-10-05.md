@@ -480,3 +480,15 @@ An optional project scope must resolve to an active project in the verified
 tenant. Cross-tenant or inactive project scopes fail closed. Published and
 archived configuration versions record the authenticated publisher, while the
 profit-and-loss formula remains fixed and non-executable.
+
+## Broadcast administration checkpoint
+
+Broadcast campaign creation, content editing, audience-rule editing,
+publication, delivery generation, delivery retry, expiry, and cancellation now
+derive tenant and actor identity from the verified administrator principal.
+
+Draft editing requires edit permission. Publication and all delivery or
+terminal lifecycle operations require publish permission. Caller-supplied
+creator, approver, and lifecycle actor identifiers are retained only for
+request compatibility and do not control stored attribution. Optional campaign
+project scope must identify an active project in the authenticated tenant.

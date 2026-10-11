@@ -217,3 +217,14 @@ Live external provider execution is blocked by default. Provider config must exp
 ## Provider HTTP client boundary
 
 External provider HTTP calls must go through `app.modules.media.provider_http_client`. The boundary blocks live execution unless provider config explicitly enables it, and it is the future insertion point for timeout, retry, rate-limit, and response/error normalization. Raw HTTP calls should not be scattered across weather or soil modules.
+
+## Administrative authorization boundary
+
+Creating or editing a weather broadcast requires verified administrator
+`EDIT` permission. Publishing the campaign, generating or retrying deliveries,
+and expiring or cancelling it require verified `PUBLISH` permission.
+
+The backend derives tenant and audit actor identity from the authenticated
+administrator. Clients must not treat `created_by`, `approved_by`, or lifecycle
+`actor_id` request fields as an attribution mechanism. Android remains a
+consumer of generated farmer deliveries and does not administer campaigns.

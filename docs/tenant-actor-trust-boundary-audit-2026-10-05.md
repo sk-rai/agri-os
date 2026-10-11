@@ -420,3 +420,19 @@ Static and behavior coverage verifies missing bearer, insufficient permission,
 actor impersonation, tenant mismatch, cross-tenant project denial, successful
 validation and publishing, version archival, verified attribution, and fixture
 cleanup.
+
+## Broadcast administration checkpoint
+
+Eight broadcast administration mutations now use typed verified administrator
+principals: campaign creation, content addition, audience-rule addition,
+publication, delivery generation, delivery retry, expiry, and cancellation.
+
+The routes derive tenant and actor identity from the authenticated principal.
+Creation tenant-bounds optional project scope. Persisted creator and approver
+fields and every administrative broadcast audit event use the verified
+administrator rather than request-body attribution fields.
+
+Static and behavior coverage verifies missing bearer, actor impersonation,
+tenant mismatch, insufficient farmer permission, invalid project scope,
+verified creation and publication attribution, all eight administrative audit
+actions, and regression cleanup.

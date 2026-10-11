@@ -8,10 +8,19 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.admin_auth import AdminPermission, require_admin_permission
+from app.core.admin_auth import (
+    AdminPermission,
+    AdminPrincipal,
+    require_admin_permission,
+)
 from app.core.database import get_db
 from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
-from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel
+from app.modules.farmer.models import (
+    Farmer,
+    FarmerProjectEnrollment,
+    Parcel,
+    Project,
+)
 from app.modules.media.api import _iso
 from app.modules.media.models import BroadcastAuditEvent, BroadcastAudienceRule, BroadcastCampaign, BroadcastContent, BroadcastDelivery, MediaAsset, MediaAttachment, WeatherSnapshot
 
@@ -95,6 +104,29 @@ class BroadcastCampaignCreate(BaseModel):
             raise ValueError(f"priority must be one of {sorted(BROADCAST_PRIORITIES)}")
         return normalized
 
+
+
+
+def _assert_broadcast_project_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    project_id: uuid.UUID | None,
+) -> None:
+    if project_id is None:
+        return
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if project is None:
+        raise HTTPException(404, "Project not found")
 
 
 def _parse_optional_datetime(value):
@@ -305,14 +337,22 @@ def _campaign_payload(row: BroadcastCampaign, *, content_count: int = 0, rule_co
 def create_broadcast_campaign(
     body: BroadcastCampaignCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     from datetime import datetime, timezone
+    _assert_broadcast_project_scope(
+        db,
+        tenant_id=tenant_id,
+        project_id=body.project_id,
+    )
     now_ts = datetime.now(timezone.utc)
     campaign = BroadcastCampaign(
         id=body.id or uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=body.project_id,
         title=body.title,
         category=body.category,
@@ -320,7 +360,7 @@ def create_broadcast_campaign(
         status="DRAFT",
         starts_at=_parse_optional_datetime(body.starts_at),
         expires_at=_parse_optional_datetime(body.expires_at),
-        created_by=body.created_by,
+        created_by=actor_id,
         metadata_=body.metadata or {},
         is_active=True,
         created_at=now_ts,
@@ -332,7 +372,7 @@ def create_broadcast_campaign(
     for content_body in body.contents:
         db.add(BroadcastContent(
             id=uuid.uuid4(),
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             campaign_id=campaign.id,
             language_code=content_body.language_code,
             title=content_body.title,
@@ -347,7 +387,7 @@ def create_broadcast_campaign(
     for rule_body in body.audience_rules:
         db.add(BroadcastAudienceRule(
             id=uuid.uuid4(),
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             campaign_id=campaign.id,
             rule_type=rule_body.rule_type,
             operator=rule_body.operator,
@@ -356,12 +396,12 @@ def create_broadcast_campaign(
             created_at=now_ts,
         ))
 
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="CREATE_CAMPAIGN", actor_type="ADMIN_WEB", actor_id=body.created_by, after={"status": campaign.status, "title": campaign.title, "category": campaign.category, "priority": campaign.priority}, metadata={"content_count": len(body.contents), "audience_rule_count": len(body.audience_rules)})
+    _record_broadcast_audit(db, tenant_id=tenant_id, campaign_id=campaign.id, action="CREATE_CAMPAIGN", actor_type="ADMIN_WEB", actor_id=actor_id, after={"status": campaign.status, "title": campaign.title, "category": campaign.category, "priority": campaign.priority}, metadata={"content_count": len(body.contents), "audience_rule_count": len(body.audience_rules)})
     db.commit()
     db.refresh(campaign)
     payload = _campaign_payload(campaign, content_count=len(body.contents), rule_count=len(body.audience_rules), delivery_count=0)
-    payload["contents"] = [_content_payload(row, db) for row in db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()]
-    payload["audience_rules"] = [_rule_payload(row) for row in db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()]
+    payload["contents"] = [_content_payload(row, db) for row in db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()]
+    payload["audience_rules"] = [_rule_payload(row) for row in db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()]
     payload["delivery_summary"] = {"total": 0, "pending": 0, "delivered": 0, "read": 0, "acknowledged": 0, "failed": 0}
     return payload
 
@@ -372,12 +412,15 @@ def add_broadcast_content(
     campaign_id: uuid.UUID,
     body: BroadcastContentCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     from datetime import datetime, timezone
 
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
     if campaign.status != "DRAFT":
@@ -386,7 +429,7 @@ def add_broadcast_content(
     now_ts = datetime.now(timezone.utc)
     row = BroadcastContent(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         campaign_id=campaign.id,
         language_code=body.language_code,
         title=body.title,
@@ -399,10 +442,10 @@ def add_broadcast_content(
     )
     db.add(row)
     campaign.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="ADD_CONTENT", actor_type="ADMIN_WEB", after={"content_id": str(row.id), "language_code": row.language_code, "title": row.title})
+    _record_broadcast_audit(db, tenant_id=tenant_id, campaign_id=campaign.id, action="ADD_CONTENT", actor_type="ADMIN_WEB", actor_id=actor_id, after={"content_id": str(row.id), "language_code": row.language_code, "title": row.title})
     db.commit()
     db.refresh(campaign)
-    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+    return _broadcast_detail_payload(db, campaign, tenant_id)
 
 
 @router.post("/{campaign_id}/audience-rules", status_code=201)
@@ -410,12 +453,15 @@ def add_broadcast_audience_rule(
     campaign_id: uuid.UUID,
     body: BroadcastAudienceRuleCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     from datetime import datetime, timezone
 
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
     if campaign.status != "DRAFT":
@@ -424,7 +470,7 @@ def add_broadcast_audience_rule(
     now_ts = datetime.now(timezone.utc)
     row = BroadcastAudienceRule(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         campaign_id=campaign.id,
         rule_type=body.rule_type,
         operator=body.operator,
@@ -434,10 +480,10 @@ def add_broadcast_audience_rule(
     )
     db.add(row)
     campaign.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="ADD_AUDIENCE_RULE", actor_type="ADMIN_WEB", after={"rule_id": str(row.id), "rule_type": row.rule_type, "operator": row.operator, "values": row.values or []})
+    _record_broadcast_audit(db, tenant_id=tenant_id, campaign_id=campaign.id, action="ADD_AUDIENCE_RULE", actor_type="ADMIN_WEB", actor_id=actor_id, after={"rule_id": str(row.id), "rule_type": row.rule_type, "operator": row.operator, "values": row.values or []})
     db.commit()
     db.refresh(campaign)
-    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+    return _broadcast_detail_payload(db, campaign, tenant_id)
 
 
 
@@ -774,24 +820,27 @@ def publish_broadcast_campaign(
     campaign_id: uuid.UUID,
     body: BroadcastPublishRequest | None = None,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     from datetime import datetime, timezone
 
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
     if campaign.status != "DRAFT":
         raise HTTPException(409, "Only DRAFT broadcasts can be published")
 
-    content_count = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).count()
+    content_count = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == campaign.id).count()
     if content_count == 0:
         raise HTTPException(400, "Broadcast requires at least one content row before publishing")
 
     now_ts = datetime.now(timezone.utc)
     campaign.status = "PUBLISHED"
-    campaign.approved_by = body.approved_by if body else None
+    campaign.approved_by = actor_id
     if campaign.starts_at is None:
         campaign.starts_at = now_ts
     metadata = dict(campaign.metadata_ or {})
@@ -800,12 +849,12 @@ def publish_broadcast_campaign(
     metadata["delivery_generation"] = "NOT_STARTED"
     campaign.metadata_ = metadata
     campaign.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="PUBLISH_CAMPAIGN", actor_type="ADMIN_WEB", actor_id=campaign.approved_by, before={"status": "DRAFT"}, after={"status": campaign.status, "starts_at": _iso(campaign.starts_at)}, reason=body.reason if body else None, metadata={"content_count": content_count})
+    _record_broadcast_audit(db, tenant_id=tenant_id, campaign_id=campaign.id, action="PUBLISH_CAMPAIGN", actor_type="ADMIN_WEB", actor_id=campaign.approved_by, before={"status": "DRAFT"}, after={"status": campaign.status, "starts_at": _iso(campaign.starts_at)}, reason=body.reason if body else None, metadata={"content_count": content_count})
     db.commit()
     db.refresh(campaign)
 
-    contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
-    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
+    contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
+    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
     payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=0)
     payload["contents"] = [_content_payload(row, db) for row in contents]
     payload["audience_rules"] = [_rule_payload(row) for row in rules]
@@ -822,6 +871,7 @@ def _transition_broadcast_status(
     target_status: str,
     allowed_from: set[str],
     action: str,
+    actor_id: uuid.UUID,
     body: BroadcastLifecycleRequest | None = None,
 ):
     from datetime import datetime, timezone
@@ -850,7 +900,7 @@ def _transition_broadcast_status(
         campaign_id=campaign.id,
         action=action,
         actor_type="ADMIN_WEB",
-        actor_id=body.actor_id if body else None,
+        actor_id=actor_id,
         before={"status": before_status},
         after={"status": campaign.status, "expires_at": _iso(campaign.expires_at)},
         reason=body.reason if body else None,
@@ -866,27 +916,30 @@ def _transition_broadcast_status(
 def generate_broadcast_deliveries(
     campaign_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     from datetime import datetime, timezone
 
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
     if campaign.status != "PUBLISHED":
         raise HTTPException(409, "Only PUBLISHED broadcasts can generate deliveries")
 
-    resolved = _resolve_broadcast_audience(db, tenant_id=x_tenant_id, campaign_id=campaign.id)
+    resolved = _resolve_broadcast_audience(db, tenant_id=tenant_id, campaign_id=campaign.id)
     farmer_ids = set(resolved["farmer_ids"])
 
     if not resolved["rule_summaries"]:
-        return _broadcast_detail_payload(db, campaign, x_tenant_id)
+        return _broadcast_detail_payload(db, campaign, tenant_id)
 
     now_ts = datetime.now(timezone.utc)
     existing = {
         str(row.farmer_id)
-        for row in db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id, BroadcastDelivery.farmer_id.isnot(None)).all()
+        for row in db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == campaign.id, BroadcastDelivery.farmer_id.isnot(None)).all()
     }
     skipped_existing = len(farmer_ids.intersection(existing))
 
@@ -895,12 +948,12 @@ def generate_broadcast_deliveries(
         farmer_id = uuid.UUID(str(farmer_id_text))
         if str(farmer_id) in existing:
             continue
-        farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+        farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
         if not farmer:
             continue
         db.add(BroadcastDelivery(
             id=uuid.uuid4(),
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             campaign_id=campaign.id,
             farmer_id=farmer.id,
             delivery_status="PENDING",
@@ -919,10 +972,10 @@ def generate_broadcast_deliveries(
     metadata["last_delivery_generation_at"] = now_ts.isoformat()
     campaign.metadata_ = metadata
     campaign.updated_at = now_ts
-    _record_broadcast_audit(db, tenant_id=x_tenant_id, campaign_id=campaign.id, action="GENERATE_DELIVERIES", actor_type="ADMIN_WEB", after={"created": created, "total_targeted": len(farmer_ids), "skipped_existing": skipped_existing}, metadata={"unsupported_rule_count": resolved.get("unsupported_rule_count", 0), "existing_delivery_count": len(existing)})
+    _record_broadcast_audit(db, tenant_id=tenant_id, campaign_id=campaign.id, action="GENERATE_DELIVERIES", actor_type="ADMIN_WEB", actor_id=actor_id, after={"created": created, "total_targeted": len(farmer_ids), "skipped_existing": skipped_existing}, metadata={"unsupported_rule_count": resolved.get("unsupported_rule_count", 0), "existing_delivery_count": len(existing)})
     db.commit()
     db.refresh(campaign)
-    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+    return _broadcast_detail_payload(db, campaign, tenant_id)
 
 
 
@@ -931,12 +984,15 @@ def generate_broadcast_deliveries(
 def retry_undelivered_broadcast_deliveries(
     campaign_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     from datetime import datetime, timezone
 
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
     if campaign.status != "PUBLISHED":
@@ -945,7 +1001,7 @@ def retry_undelivered_broadcast_deliveries(
     now_ts = datetime.now(timezone.utc)
     max_retries = 3
     rows = db.query(BroadcastDelivery).filter(
-        BroadcastDelivery.tenant_id == x_tenant_id,
+        BroadcastDelivery.tenant_id == tenant_id,
         BroadcastDelivery.campaign_id == campaign.id,
         BroadcastDelivery.delivery_status.in_(["PENDING", "FAILED"]),
     ).all()
@@ -953,7 +1009,7 @@ def retry_undelivered_broadcast_deliveries(
     retried = 0
     marked_failed = 0
     skipped_acknowledged = db.query(BroadcastDelivery).filter(
-        BroadcastDelivery.tenant_id == x_tenant_id,
+        BroadcastDelivery.tenant_id == tenant_id,
         BroadcastDelivery.campaign_id == campaign.id,
         BroadcastDelivery.delivery_status.in_(["DELIVERED", "ACKNOWLEDGED"]),
     ).count()
@@ -990,16 +1046,17 @@ def retry_undelivered_broadcast_deliveries(
 
     _record_broadcast_audit(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         campaign_id=campaign.id,
         action="RETRY_DELIVERIES",
         actor_type="ADMIN_WEB",
+        actor_id=actor_id,
         after={"retried": retried, "marked_failed": marked_failed, "skipped_acknowledged": skipped_acknowledged},
         metadata={"max_retries": max_retries},
     )
     db.commit()
     db.refresh(campaign)
-    return _broadcast_detail_payload(db, campaign, x_tenant_id)
+    return _broadcast_detail_payload(db, campaign, tenant_id)
 
 
 
@@ -1009,16 +1066,20 @@ def expire_broadcast_campaign(
     campaign_id: uuid.UUID,
     body: BroadcastLifecycleRequest | None = None,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     return _transition_broadcast_status(
         db,
         campaign_id=campaign_id,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         target_status="EXPIRED",
         allowed_from={"PUBLISHED"},
         action="EXPIRE_CAMPAIGN",
+        actor_id=actor_id,
         body=body,
     )
 
@@ -1028,16 +1089,20 @@ def cancel_broadcast_campaign(
     campaign_id: uuid.UUID,
     body: BroadcastLifecycleRequest | None = None,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    _principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     return _transition_broadcast_status(
         db,
         campaign_id=campaign_id,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         target_status="CANCELLED",
         allowed_from={"DRAFT", "PUBLISHED"},
         action="CANCEL_CAMPAIGN",
+        actor_id=actor_id,
         body=body,
     )
 
