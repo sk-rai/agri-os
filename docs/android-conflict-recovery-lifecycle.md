@@ -112,7 +112,7 @@ After Android local recovery and backend acknowledgement:
 - `sync_processed_events.status` remains `CONFLICT` for the event id;
 - `sync_conflicts.status=RESOLVED_SERVER`;
 - `sync_conflicts.resolved_at` is set;
-- `sync_conflicts.resolved_by` is set from `X-Actor-ID`;
+- `sync_conflicts.resolved_by` is set from the verified administrator principal; `X-Actor-ID` is only a matching compatibility assertion;
 - a `CONFLICT_RESOLVED` audit row exists;
 - no `FAILED` processed-event row exists;
 - no pending conflict remains for that event.

@@ -54,6 +54,11 @@ try:
         _auth_db,
         tenant_id=TENANT,
     )
+    _viewer_user, HEADERS_VIEWER = create_test_admin(
+        _auth_db,
+        tenant_id=TENANT,
+        role="ADMIN_VIEWER",
+    )
     ACTOR_A = str(_user_a.id)
     ACTOR_B = str(_user_b.id)
     OPERATOR = str(_operator_user.id)
@@ -61,6 +66,7 @@ try:
         _user_a.id,
         _user_b.id,
         _operator_user.id,
+        _viewer_user.id,
     ]
 finally:
     _auth_db.close()
@@ -191,6 +197,53 @@ test("Conflict type in detail", detail["conflict_type"] == "VERSION_MISMATCH")
 
 # --- Step 6: Operator resolves conflict (accept client) ---
 print("\n[6] Operator resolves conflict (ACCEPT_CLIENT)")
+
+missing_bearer = client.patch(
+    f"/api/v1/sync/conflicts/{conflict_id}",
+    headers={"X-Tenant-ID": TENANT},
+    json={"strategy": "ACCEPT_CLIENT"},
+)
+test(
+    "Conflict resolution rejects missing bearer",
+    missing_bearer.status_code == 401,
+    missing_bearer.text,
+)
+
+view_only = client.patch(
+    f"/api/v1/sync/conflicts/{conflict_id}",
+    headers=HEADERS_VIEWER,
+    json={"strategy": "ACCEPT_CLIENT"},
+)
+test(
+    "Conflict resolution rejects view-only administrator",
+    view_only.status_code == 403,
+    view_only.text,
+)
+
+actor_impersonation = client.patch(
+    f"/api/v1/sync/conflicts/{conflict_id}",
+    headers={**HEADERS_OP, "X-Actor-ID": str(uuid.uuid4())},
+    json={"strategy": "ACCEPT_CLIENT"},
+)
+test(
+    "Conflict resolution rejects actor impersonation",
+    actor_impersonation.status_code == 403
+    and actor_impersonation.json().get("detail", {}).get("error")
+    == "ACTOR_ID_MISMATCH",
+    actor_impersonation.text,
+)
+
+tenant_mismatch = client.patch(
+    f"/api/v1/sync/conflicts/{conflict_id}",
+    headers={**HEADERS_OP, "X-Tenant-ID": "sync-conflict-tenant-mismatch"},
+    json={"strategy": "ACCEPT_CLIENT"},
+)
+test(
+    "Conflict resolution rejects tenant mismatch",
+    tenant_mismatch.status_code == 403,
+    tenant_mismatch.text,
+)
+
 r = client.patch(
     f"/api/v1/sync/conflicts/{conflict_id}",
     headers=HEADERS_OP,
@@ -229,7 +282,7 @@ from app.core.database import engine
 
 with engine.connect() as conn:
     result = conn.execute(text("""
-        SELECT action, chain_hash FROM audit_chain
+        SELECT action, chain_hash, actor_id FROM audit_chain
         WHERE tenant_id = :tid ORDER BY id
     """), {"tid": TENANT}).fetchall()
     actions = [r[0] for r in result]
@@ -237,6 +290,30 @@ with engine.connect() as conn:
     test("SYNC_CONFLICT in audit", "SYNC_CONFLICT" in actions)
     test("CONFLICT_RESOLVED in audit", "CONFLICT_RESOLVED" in actions)
     test("All hashes unique", len(set(r[1] for r in result)) == len(result))
+    resolution_audit = [
+        row for row in result if row[0] == "CONFLICT_RESOLVED"
+    ]
+    test(
+        "Conflict resolution audit records authenticated administrator",
+        len(resolution_audit) == 1
+        and str(resolution_audit[0][2]) == OPERATOR,
+        resolution_audit,
+    )
+
+    resolved_by = conn.execute(text("""
+        SELECT resolved_by
+        FROM sync_conflicts
+        WHERE tenant_id = :tid
+          AND id = :conflict_id
+    """), {
+        "tid": TENANT,
+        "conflict_id": conflict_id,
+    }).scalar()
+    test(
+        "Conflict row records authenticated administrator",
+        str(resolved_by) == OPERATOR,
+        resolved_by,
+    )
 
 # --- Step 10: Idempotency on resolution (can't resolve twice) ---
 print("\n[10] Can't resolve same conflict twice")

@@ -438,3 +438,20 @@ This project-assignment authority does not establish a freelance-service
 relationship. Future independent agronomist access remains subject to the
 separate farmer-consented, purpose-limited, time-bounded, and revocable
 engagement model.
+
+## Sync conflict-resolution checkpoint
+
+`PATCH /api/v1/sync/conflicts/{conflict_id}` now requires a verified
+administrator with `EDIT` permission. Tenant and resolver identity are derived
+from the authenticated admin principal; `X-Tenant-ID` and `X-Actor-ID` remain
+compatibility assertions and cannot select another tenant or actor.
+
+The selected pending conflict and all duplicate pending rows for the same sync
+event are tenant-bounded before resolution. Each updated conflict records the
+authenticated administrator in `resolved_by`, and the immutable
+`CONFLICT_RESOLVED` audit entry uses the same verified actor.
+
+Missing bearer credentials, view-only administrators, actor impersonation,
+tenant mismatch, and repeated resolution fail closed. Conflict strategy,
+duplicate-row resolution, dashboard counts, audit-chain integrity, and
+regression cleanup remain covered.

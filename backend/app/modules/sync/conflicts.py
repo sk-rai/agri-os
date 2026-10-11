@@ -19,6 +19,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
+from app.core.admin_auth import (
+    AdminPermission,
+    AdminPrincipal,
+    require_admin_permission,
+)
 from app.core.database import get_db
 from app.modules.sync.models import SyncConflict
 from app.modules.sync.service import append_audit
@@ -293,9 +298,10 @@ def get_conflict(
 def resolve_conflict(
     conflict_id: UUID,
     body: ResolveRequest,
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_actor_id: str = Header(..., alias="X-Actor-ID"),
 ):
     """Resolve a pending conflict.
 
@@ -305,11 +311,14 @@ def resolve_conflict(
 
     Per governance: every resolution is immutably audit-logged.
     """
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+
     conflict = (
         db.query(SyncConflict)
         .filter(
             SyncConflict.id == conflict_id,
-            SyncConflict.tenant_id == x_tenant_id,
+            SyncConflict.tenant_id == tenant_id,
             SyncConflict.status == "PENDING_REVIEW",
         )
         .first()
@@ -330,10 +339,10 @@ def resolve_conflict(
 
     resolution_status = status_map[body.strategy]
     resolved_at = datetime.now(timezone.utc)
-    resolved_by = uuid_mod.UUID(x_actor_id)
+    resolved_by = principal.user_id
 
     duplicate_pending_conflicts = db.query(SyncConflict).filter(
-        SyncConflict.tenant_id == x_tenant_id,
+        SyncConflict.tenant_id == tenant_id,
         SyncConflict.event_id == conflict.event_id,
         SyncConflict.status == "PENDING_REVIEW",
     ).all()
@@ -346,8 +355,8 @@ def resolve_conflict(
     correlation_id = str(uuid_mod.uuid4())
     append_audit(
         db=db,
-        tenant_id=x_tenant_id,
-        actor_id=x_actor_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         correlation_id=correlation_id,
         entity_type=conflict.entity_type,
         entity_id=str(conflict.entity_id),

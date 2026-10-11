@@ -370,3 +370,21 @@ mixed-batch isolation, dependency behavior, conflict behavior, idempotency,
 and regression cleanup. All in-repository `/sync/events` callers now either
 use authenticated test identities or require explicit persisted-fixture bearer
 credentials.
+
+## Sync conflict-resolution mutation checkpoint
+
+The sync conflict-resolution mutation previously trusted caller-supplied
+`X-Tenant-ID` and `X-Actor-ID` values when selecting pending conflicts,
+updating duplicate rows, writing `resolved_by`, and appending the immutable
+audit event.
+
+The route now requires `AdminPermission.EDIT`, derives tenant and actor from
+the verified `AdminPrincipal`, tenant-bounds both the selected conflict and
+duplicate pending conflicts, and records the verified administrator in the
+conflict rows and `CONFLICT_RESOLVED` audit entry.
+
+Static and lifecycle coverage verifies missing bearer, insufficient
+permission, actor impersonation, tenant mismatch, successful resolution,
+verified attribution, duplicate-resolution denial, audit-chain integrity, and
+fixture cleanup. The route no longer appears as an unauthenticated mutation
+finding.

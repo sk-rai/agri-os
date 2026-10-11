@@ -358,3 +358,16 @@ Project enrollment and assignment are not substitutes for the future
 freelance agricultural-services model. A freelance agronomist serving an
 independent farmer will require an explicit farmer-consented service grant
 with separate purpose, geography, duration, and revocation controls.
+
+## Sync conflict-resolution administrative boundary
+
+Conflict resolution is a tenant-governance operation rather than a farmer or
+field-agent mutation. Accepting a client value, retaining the server value, or
+performing a semantic merge requires a verified administrator with `EDIT`
+permission. The tenant and resolver come from the persisted authenticated
+identity, and resolution attribution cannot be supplied by the caller.
+
+This boundary does not authorize project agents or future freelance
+agronomists to resolve platform sync conflicts. Any future specialist service
+engagement remains farmer-consented, purpose-limited, time-bounded, and
+revocable, and does not inherit administrative conflict-governance authority.
