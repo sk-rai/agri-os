@@ -388,3 +388,18 @@ permission, actor impersonation, tenant mismatch, successful resolution,
 verified attribution, duplicate-resolution denial, audit-chain integrity, and
 fixture cleanup. The route no longer appears as an unauthenticated mutation
 finding.
+
+## Crop-climate suitability override checkpoint
+
+The suitability-override publishing route previously accepted unauthenticated
+requests and trusted `X-Tenant-ID` and `X-Actor-ID` when writing runtime
+agronomic guidance.
+
+The route now requires `AdminPermission.PUBLISH`, derives tenant and publisher
+from the verified `AdminPrincipal`, validates any supplied project inside that
+tenant, and stores the authenticated administrator in `published_by`.
+
+Static and behavior coverage verifies missing bearer, insufficient permission,
+actor impersonation, tenant mismatch, foreign-project denial, successful
+publishing, verified attribution, and cleanup. The route no longer appears as
+an unauthenticated mutation finding.

@@ -455,3 +455,16 @@ Missing bearer credentials, view-only administrators, actor impersonation,
 tenant mismatch, and repeated resolution fail closed. Conflict strategy,
 duplicate-row resolution, dashboard counts, audit-chain integrity, and
 regression cleanup remain covered.
+
+## Crop-climate suitability publishing checkpoint
+
+`POST /api/v1/crop-catalog/suitability-overrides` now requires a verified
+administrator with `PUBLISH` permission. Tenant and publisher identity are
+derived from the authenticated principal; caller-supplied tenant and actor
+headers cannot select the stored tenant or `published_by` value.
+
+When an override names a project, the project must be active and belong to the
+authenticated tenant. Crop and climate-region reference validation remains in
+place. Missing bearer credentials, insufficient publishing permission, actor
+impersonation, tenant mismatch, malformed project identifiers, and
+foreign-tenant projects fail closed.

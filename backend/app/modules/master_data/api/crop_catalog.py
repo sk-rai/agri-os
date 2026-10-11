@@ -7,7 +7,13 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.admin_auth import (
+    AdminPermission,
+    AdminPrincipal,
+    require_admin_permission,
+)
 from app.core.database import get_db
+from app.modules.farmer.models import Project
 from app.modules.master_data.models import (
     Crop,
     CropPropagationOption,
@@ -494,18 +500,34 @@ def list_crop_climate_suitability_overrides(
 @router.post("/suitability-overrides", response_model=dict)
 def publish_crop_climate_suitability_override(
     payload: dict = Body(...),
-    tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    actor_id: str | None = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.PUBLISH)
+    ),
     db: Session = Depends(get_db),
 ):
     from uuid import UUID
     from app.modules.master_data.models import Crop, CropClimateSuitabilityOverride, GeographyClimateRegion
 
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
     crop_code = str(payload.get("crop_code") or "").upper()
     season_code = str(payload.get("season_code") or "").upper()
     region_code = str(payload.get("region_code") or "")
     project_id = payload.get("project_id")
-    project_uuid = UUID(project_id) if project_id else None
+    try:
+        project_uuid = UUID(str(project_id)) if project_id else None
+    except (TypeError, ValueError):
+        raise HTTPException(400, "project_id must be a valid UUID")
+
+    if project_uuid:
+        project = db.query(Project).filter(
+            Project.id == project_uuid,
+            Project.tenant_id == tenant_id,
+            Project.is_active == True,
+        ).first()
+        if not project:
+            raise HTTPException(404, "Project not found")
+
     status = str(payload.get("suitability_status") or "UNKNOWN").upper()
 
     allowed = {"HIGHLY_SUITABLE", "SUITABLE", "CONDITIONAL", "NOT_TYPICAL", "UNSUITABLE", "UNKNOWN"}

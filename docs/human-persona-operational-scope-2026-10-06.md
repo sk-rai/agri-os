@@ -371,3 +371,17 @@ This boundary does not authorize project agents or future freelance
 agronomists to resolve platform sync conflicts. Any future specialist service
 engagement remains farmer-consented, purpose-limited, time-bounded, and
 revocable, and does not inherit administrative conflict-governance authority.
+
+## Crop-climate suitability publishing boundary
+
+Publishing crop-climate suitability overrides is a runtime agronomic-governance
+operation. It requires explicit `PUBLISH` permission and uses the verified
+administrator as tenant authority and publisher. Ordinary editors,
+agronomists, farmers, and field agents cannot publish these overrides through
+the endpoint.
+
+A project-scoped override must reference an active project in the authenticated
+tenant. This administrative publishing authority remains separate from the
+future freelance agricultural-services model: a farmer-consented specialist
+engagement does not grant authority to publish tenant or project suitability
+policy.

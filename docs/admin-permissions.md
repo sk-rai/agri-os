@@ -56,6 +56,7 @@ import { useAdminProfile, hasAdminPermission, adminRoleLabel } from "@/lib/admin
 | `/project-workflows` | Project workflow assignment list/audit visible. | `PROJECT_EDIT` plus safe-edit lifecycle open state for enable/disable/metadata changes. |
 | `/inputs` | Input catalog, usage references, CSV template/export, and audit visible. | `EDIT` for create/update/archive/restore/submit/reject/CSV apply; `PUBLISH` for publish. |
 | `/products` | Product/manufacturer/rule browsing visible. | `EDIT` for manufacturer/product/rule edits; `PROJECT_EDIT` for project product approvals. |
+| `/crop-climate-suitability` | Climate regions, rules, and tenant/project overrides visible. | `PUBLISH` for suitability overrides; a supplied project must belong to the authenticated tenant. |
 | `/project-inputs` | Project input assignment list/stats/audit visible. | `PROJECT_EDIT` for enable/disable/reorder/metadata changes. |
 | `/conflicts` | Conflict list/detail visible. | `EDIT` for accepting client/server conflict resolution. |
 | Trace/report screens | Reporting and export actions remain visible. | No mutation guard currently needed unless future write actions are added. |
