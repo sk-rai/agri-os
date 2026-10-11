@@ -123,3 +123,13 @@ administrator.
 All product-catalog mutation scope and audit attribution derive from the
 verified administrator principal. Tenant and actor headers remain compatibility
 assertions and cannot select another audit tenant or actor.
+
+## Weather administration
+
+Weather provider configuration, manual refresh recording, adapter execution,
+due-provider execution, manual snapshot creation, and refresh-worker execution
+require `EDIT`.
+
+Each route derives tenant and actor from the verified administrator. Provider
+and snapshot metadata record the verified administrative actor and operation;
+caller-supplied metadata cannot override those attribution fields.

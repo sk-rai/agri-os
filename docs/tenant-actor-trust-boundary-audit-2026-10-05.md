@@ -452,3 +452,19 @@ project-scoped authorization.
 Static and behavior coverage verifies permissions, missing bearer credentials,
 actor impersonation, tenant mismatch, unassigned project denial, successful
 catalog operations, verified audit attribution, and regression cleanup.
+
+## Weather administration mutation checkpoint
+
+Six weather mutations previously used authenticated admin dependencies but
+continued to select and persist weather state using the asserted tenant header,
+without explicit verified actor attribution at the route boundary.
+
+The routes now derive tenant and actor from `AdminPrincipal`, tenant-bound all
+provider and snapshot operations with that verified tenant, and persist
+backend-owned administrative actor/action metadata for provider configuration,
+refreshes, adapter runs, worker runs, and manual snapshots.
+
+Static and behavior coverage verifies edit permission, missing bearer
+credentials, insufficient permission, actor impersonation, tenant mismatch,
+verified attribution across all six operations, tenant isolation, existing
+adapter behavior, and fixture cleanup.

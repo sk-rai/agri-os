@@ -258,3 +258,16 @@ Supported live-fetch config fields:
 3. Add location expansion strategy for pincode/district/weather-grid.
 4. Add configurable risk-flag thresholds per tenant/project/crop.
 5. Add IMD/government advisory adapter once source format and licensing are confirmed.
+
+## Administrative authorization and attribution
+
+Provider creation, refresh recording, adapter execution, due-provider
+execution, manual snapshot creation, and refresh-worker execution require a
+verified administrator with `EDIT`.
+
+The authenticated principal supplies tenant and actor identity. Provider and
+snapshot metadata record `administrative_actor_id`,
+`administrative_action`, and `administrative_action_at` for administrative
+writes. Request metadata cannot override those backend-owned values. Android
+continues to consume normalized snapshots and never invokes provider
+administration surfaces directly.

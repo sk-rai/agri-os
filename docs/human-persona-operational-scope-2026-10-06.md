@@ -420,3 +420,14 @@ project.
 These powers do not belong to farmer or field-agent personas. Tenant scope and
 audit attribution come from verified administrator identity, and project
 approval does not expand beyond persisted project membership.
+
+## Weather administration governance
+
+Weather provider configuration and execution are tenant administrative
+operations requiring edit permission. Farmers and field agents consume
+backend-normalized weather outcomes but cannot configure providers, run
+adapters or workers, or create administrative snapshots.
+
+Tenant scope and operational attribution come from verified administrator
+identity. Worker and adapter execution remain backend-controlled and do not
+grant direct external-provider access to Android clients.

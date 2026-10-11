@@ -185,6 +185,36 @@ def _snapshot_payload(row: WeatherSnapshot) -> dict:
     }
 
 
+def _record_weather_provider_admin_attribution(
+    provider: WeatherProviderConfig,
+    *,
+    actor_id: uuid.UUID,
+    action: str,
+) -> None:
+    metadata = dict(provider.metadata_ or {})
+    metadata.update({
+        "administrative_actor_id": str(actor_id),
+        "administrative_action": action,
+        "administrative_action_at": _now().isoformat(),
+    })
+    provider.metadata_ = metadata
+
+
+def _record_weather_snapshot_admin_attribution(
+    snapshot: WeatherSnapshot,
+    *,
+    actor_id: uuid.UUID,
+    action: str,
+) -> None:
+    metadata = dict(snapshot.metadata_ or {})
+    metadata.update({
+        "administrative_actor_id": str(actor_id),
+        "administrative_action": action,
+        "administrative_action_at": _now().isoformat(),
+    })
+    snapshot.metadata_ = metadata
+
+
 def _weather_provider_is_due(provider, now: datetime) -> bool:
     if not getattr(provider, "is_enabled", False):
         return False
@@ -200,6 +230,7 @@ def _run_due_weather_refresh_worker(
     db: Session,
     *,
     tenant_id: str,
+    actor_id: uuid.UUID,
     dry_run: bool = True,
     provider_code: Optional[str] = None,
     limit: int = 50,
@@ -286,6 +317,11 @@ def _run_due_weather_refresh_worker(
                         created_at=now,
                         updated_at=now,
                     )
+                    _record_weather_snapshot_admin_attribution(
+                        snapshot,
+                        actor_id=actor_id,
+                        action="RUN_REFRESH_WORKER",
+                    )
                     db.add(snapshot)
                     db.flush()
                     created_snapshot_id = str(snapshot.id)
@@ -301,6 +337,11 @@ def _run_due_weather_refresh_worker(
                     "last_worker_created_snapshot_id": created_snapshot_id,
                 })
                 provider.metadata_ = metadata
+                _record_weather_provider_admin_attribution(
+                    provider,
+                    actor_id=actor_id,
+                    action="RUN_REFRESH_WORKER",
+                )
                 refreshed_count += 1
                 status = "FETCHED_DEMO_PAYLOAD" if demo_payload else "FETCHED_STUB"
                 message = "Demo payload normalized into WeatherSnapshot." if demo_payload else "Provider metadata advanced by backend refresh worker stub."
@@ -342,16 +383,38 @@ def _run_due_weather_refresh_worker(
     }
 
 @router.post("/providers", status_code=201)
-def create_weather_provider(body: WeatherProviderCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def create_weather_provider(
+    body: WeatherProviderCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     now_ts = _now()
-    existing = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == x_tenant_id, WeatherProviderConfig.provider_code == body.provider_code).first()
-    row = existing or WeatherProviderConfig(id=body.id or uuid.uuid4(), tenant_id=x_tenant_id, provider_code=body.provider_code, created_at=now_ts)
+    existing = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.tenant_id == tenant_id,
+        WeatherProviderConfig.provider_code == body.provider_code,
+    ).first()
+    row = existing or WeatherProviderConfig(
+        id=body.id or uuid.uuid4(),
+        tenant_id=tenant_id,
+        provider_code=body.provider_code,
+        created_at=now_ts,
+    )
     row.display_name = body.display_name
     row.provider_type = body.provider_type
     row.refresh_interval_hours = body.refresh_interval_hours
     row.is_enabled = body.is_enabled
     row.config = body.config or {}
     row.metadata_ = body.metadata or {}
+    _record_weather_provider_admin_attribution(
+        row,
+        actor_id=actor_id,
+        action="UPSERT_WEATHER_PROVIDER",
+    )
     row.next_refresh_at = now_ts + timedelta(hours=row.refresh_interval_hours)
     row.updated_at = now_ts
     db.add(row)
@@ -402,11 +465,13 @@ def run_due_weather_provider_adapters(
     only processes provider configs already stored in the backend and records
     adapter status even when a provider skips or fails.
     """
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     now_ts = _now()
     due_providers = (
         db.query(WeatherProviderConfig)
         .filter(
-            WeatherProviderConfig.tenant_id == x_tenant_id,
+            WeatherProviderConfig.tenant_id == tenant_id,
             WeatherProviderConfig.is_enabled == True,
             or_(WeatherProviderConfig.next_refresh_at.is_(None), WeatherProviderConfig.next_refresh_at <= now_ts),
         )
@@ -417,7 +482,7 @@ def run_due_weather_provider_adapters(
     if dry_run:
         return {
             "schema_version": "weather_provider_due_run.v1",
-            "tenant_id": x_tenant_id,
+            "tenant_id": tenant_id,
             "generated_at": _iso(now_ts),
             "dry_run": True,
             "due_count": len(due_providers),
@@ -430,7 +495,23 @@ def run_due_weather_provider_adapters(
     total_snapshots = 0
     for provider in due_providers:
         result = run_weather_provider_adapter(provider)
-        created_snapshots = persist_weather_provider_refresh(db, provider=provider, result=result, timestamp=now_ts)
+        created_snapshots = persist_weather_provider_refresh(
+            db,
+            provider=provider,
+            result=result,
+            timestamp=now_ts,
+        )
+        _record_weather_provider_admin_attribution(
+            provider,
+            actor_id=actor_id,
+            action="RUN_DUE_PROVIDER_ADAPTERS",
+        )
+        for snapshot in created_snapshots:
+            _record_weather_snapshot_admin_attribution(
+                snapshot,
+                actor_id=actor_id,
+                action="RUN_DUE_PROVIDER_ADAPTERS",
+            )
         total_snapshots += len(created_snapshots)
         provider_results.append({
             "provider_id": str(provider.id),
@@ -446,7 +527,7 @@ def run_due_weather_provider_adapters(
 
     return {
         "schema_version": "weather_provider_due_run.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "generated_at": _iso(now_ts),
         "dry_run": False,
         "due_count": len(due_providers),
@@ -460,9 +541,22 @@ def run_due_weather_provider_adapters(
 
 
 @router.post("/providers/{provider_id}/refresh")
-def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProviderRefreshRequest, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def record_weather_provider_refresh(
+    provider_id: uuid.UUID,
+    body: WeatherProviderRefreshRequest,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     now_ts = _now()
-    provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
+    provider = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.id == provider_id,
+        WeatherProviderConfig.tenant_id == tenant_id,
+    ).first()
     if not provider:
         raise HTTPException(404, "Weather provider not found")
     result = WeatherAdapterResult(
@@ -471,14 +565,30 @@ def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProvide
         snapshots=[snapshot_input_from_mapping(snapshot.model_dump()) for snapshot in (body.snapshots or [])],
         metadata=body.metadata or {},
     )
-    created_snapshots = persist_weather_provider_refresh(db, provider=provider, result=result, timestamp=now_ts)
+    created_snapshots = persist_weather_provider_refresh(
+        db,
+        provider=provider,
+        result=result,
+        timestamp=now_ts,
+    )
+    _record_weather_provider_admin_attribution(
+        provider,
+        actor_id=actor_id,
+        action="RECORD_PROVIDER_REFRESH",
+    )
+    for snapshot in created_snapshots:
+        _record_weather_snapshot_admin_attribution(
+            snapshot,
+            actor_id=actor_id,
+            action="RECORD_PROVIDER_REFRESH",
+        )
     db.commit()
     db.refresh(provider)
     for row in created_snapshots:
         db.refresh(row)
     return {
         "schema_version": "weather_provider_refresh.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "provider": _provider_due_payload(provider, _now()),
         "status": body.status,
         "message": body.message,
@@ -488,20 +598,48 @@ def record_weather_provider_refresh(provider_id: uuid.UUID, body: WeatherProvide
 
 
 @router.post("/providers/{provider_id}/run-adapter")
-def run_weather_provider_adapter_endpoint(provider_id: uuid.UUID, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def run_weather_provider_adapter_endpoint(
+    provider_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     now_ts = _now()
-    provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
+    provider = db.query(WeatherProviderConfig).filter(
+        WeatherProviderConfig.id == provider_id,
+        WeatherProviderConfig.tenant_id == tenant_id,
+    ).first()
     if not provider:
         raise HTTPException(404, "Weather provider not found")
     result = run_weather_provider_adapter(provider)
-    created_snapshots = persist_weather_provider_refresh(db, provider=provider, result=result, timestamp=now_ts)
+    created_snapshots = persist_weather_provider_refresh(
+        db,
+        provider=provider,
+        result=result,
+        timestamp=now_ts,
+    )
+    _record_weather_provider_admin_attribution(
+        provider,
+        actor_id=actor_id,
+        action="RUN_PROVIDER_ADAPTER",
+    )
+    for snapshot in created_snapshots:
+        _record_weather_snapshot_admin_attribution(
+            snapshot,
+            actor_id=actor_id,
+            action="RUN_PROVIDER_ADAPTER",
+        )
     db.commit()
     db.refresh(provider)
     for row in created_snapshots:
         db.refresh(row)
     return {
         "schema_version": "weather_provider_adapter_run.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "provider": _provider_due_payload(provider, _now()),
         "status": result.status,
         "message": result.message,
@@ -511,16 +649,38 @@ def run_weather_provider_adapter_endpoint(provider_id: uuid.UUID, db: Session = 
 
 
 @router.post("/snapshots", status_code=201)
-def create_weather_snapshot(body: WeatherSnapshotCreate, db: Session = Depends(get_db), x_tenant_id: str = Header("default", alias="X-Tenant-ID"), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT))):
+def create_weather_snapshot(
+    body: WeatherSnapshotCreate,
+    db: Session = Depends(get_db),
+    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
+):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     now_ts = _now()
     if body.provider_id:
-        provider = db.query(WeatherProviderConfig).filter(WeatherProviderConfig.id == body.provider_id, WeatherProviderConfig.tenant_id == x_tenant_id).first()
+        provider = db.query(WeatherProviderConfig).filter(
+            WeatherProviderConfig.id == body.provider_id,
+            WeatherProviderConfig.tenant_id == tenant_id,
+        ).first()
         if not provider:
             raise HTTPException(404, "Weather provider not found")
         provider.last_refresh_at = now_ts
         provider.next_refresh_at = now_ts + timedelta(hours=provider.refresh_interval_hours)
         provider.updated_at = now_ts
-    row = create_weather_snapshot_row(snapshot_input_from_mapping(body.model_dump()), tenant_id=x_tenant_id, provider_id=body.provider_id, timestamp=now_ts)
+    row = create_weather_snapshot_row(
+        snapshot_input_from_mapping(body.model_dump()),
+        tenant_id=tenant_id,
+        provider_id=body.provider_id,
+        timestamp=now_ts,
+    )
+    _record_weather_snapshot_admin_attribution(
+        row,
+        actor_id=actor_id,
+        action="CREATE_WEATHER_SNAPSHOT",
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -587,9 +747,12 @@ def run_due_weather_refresh_worker(
     For now this is a backend-only worker stub. It advances provider refresh
     metadata when dry_run=false, but does not call external provider APIs yet.
     """
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     return _run_due_weather_refresh_worker(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         dry_run=dry_run,
         provider_code=provider_code,
         limit=limit,

@@ -504,3 +504,15 @@ project-scoped `PROJECT_EDIT`. Every resulting product-catalog audit event
 records the authenticated administrator. Missing bearer credentials,
 insufficient permission, actor impersonation, tenant mismatch, and unassigned
 project access fail closed.
+
+## Weather administration checkpoint
+
+Six backend weather mutations now derive tenant and actor identity from the
+verified administrator: provider configuration, due-adapter execution, manual
+refresh recording, single-adapter execution, manual snapshot creation, and
+refresh-worker execution.
+
+All retain edit permission. Provider and snapshot writes carry backend-owned
+administrative attribution metadata. Missing bearer credentials, insufficient
+permission, actor impersonation, tenant mismatch, and cross-tenant provider
+selection fail closed.

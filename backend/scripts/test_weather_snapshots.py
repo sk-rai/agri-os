@@ -104,15 +104,25 @@ def main():
 
     db = SessionLocal()
     admin = None
+    viewer = None
+    admin_user_id = None
+    viewer_user_id = None
     try:
         db.add(Tenant(id=tenant_id, name="Weather Test Tenant", type="ENTERPRISE", created_at=now(), updated_at=now()))
         db.commit()
         admin, admin_headers = create_test_admin(db, tenant_id=tenant_id)
+        viewer, viewer_headers = create_test_admin(
+            db,
+            role="ADMIN_VIEWER",
+            tenant_id=tenant_id,
+        )
+        admin_user_id = admin.id
+        viewer_user_id = viewer.id
     finally:
         db.close()
 
     provider_id = uuid.uuid4()
-    provider = client.post("/api/v1/weather/providers", headers=admin_headers, json={
+    provider_payload = {
         "id": str(provider_id),
         "provider_code": "open-meteo-test",
         "display_name": "Open Meteo Test",
@@ -141,12 +151,77 @@ def main():
                 }
             }
         },
-        "metadata": {"purpose": "regression"},
-    })
+        "metadata": {
+            "purpose": "regression",
+            "administrative_actor_id": str(uuid.uuid4()),
+        },
+    }
+
+    missing_bearer = client.post(
+        "/api/v1/weather/providers",
+        headers={
+            "X-Tenant-ID": tenant_id,
+            "X-Actor-ID": str(admin_user_id),
+        },
+        json=provider_payload,
+    )
+    check(
+        missing_bearer.status_code == 401,
+        "Weather administration rejects missing bearer",
+        missing_bearer.text,
+    )
+
+    viewer_create = client.post(
+        "/api/v1/weather/providers",
+        headers=viewer_headers,
+        json=provider_payload,
+    )
+    check(
+        viewer_create.status_code == 403,
+        "Weather administration rejects view-only administrator",
+        viewer_create.text,
+    )
+
+    impersonated = client.post(
+        "/api/v1/weather/providers",
+        headers={**admin_headers, "X-Actor-ID": str(uuid.uuid4())},
+        json=provider_payload,
+    )
+    impersonation_detail = impersonated.json().get("detail", {})
+    check(
+        impersonated.status_code in {401, 403}
+        and isinstance(impersonation_detail, dict)
+        and impersonation_detail.get("error") == "ACTOR_ID_MISMATCH",
+        "Weather administration rejects actor impersonation",
+        impersonated.text,
+    )
+
+    tenant_mismatch = client.post(
+        "/api/v1/weather/providers",
+        headers={
+            **admin_headers,
+            "X-Tenant-ID": "weather-test-foreign",
+        },
+        json=provider_payload,
+    )
+    check(
+        tenant_mismatch.status_code == 403,
+        "Weather administration rejects tenant mismatch",
+        tenant_mismatch.text,
+    )
+
+    provider = client.post(
+        "/api/v1/weather/providers",
+        headers=admin_headers,
+        json=provider_payload,
+    )
     check(provider.status_code == 201, "Create weather provider returns 201", provider.text)
     provider_body = provider.json()
     check(provider_body["refresh_interval_hours"] == 6, "Provider stores 6 hour refresh interval")
     check(provider_body["next_refresh_at"] is not None, "Provider computes next refresh timestamp")
+    check(provider_body["tenant_id"] == tenant_id, "Provider persists verified tenant")
+    check(provider_body["metadata"]["administrative_actor_id"] == str(admin_user_id), "Provider persists verified administrator")
+    check(provider_body["metadata"]["administrative_action"] == "UPSERT_WEATHER_PROVIDER", "Provider records administrative action")
 
     providers = client.get("/api/v1/weather/providers?enabled=true", headers=admin_headers)
     check(providers.status_code == 200, "List weather providers returns 200", providers.text)
@@ -186,6 +261,9 @@ def main():
     snapshot_body = snapshot.json()
     check(snapshot_body["condition_code"] == "HEAVY_RAIN", "Snapshot normalizes condition code")
     check("HEAVY_RAIN_NEXT_24H" in snapshot_body["risk_flags"], "Snapshot normalizes risk flags")
+    check(snapshot_body["tenant_id"] == tenant_id, "Snapshot persists verified tenant")
+    check(snapshot_body["metadata"]["administrative_actor_id"] == str(admin_user_id), "Snapshot persists verified administrator")
+    check(snapshot_body["metadata"]["administrative_action"] == "CREATE_WEATHER_SNAPSHOT", "Snapshot records administrative action")
 
     manual_refresh = client.post(f"/api/v1/weather/providers/{provider_id}/refresh", headers=admin_headers, json={
         "status": "SUCCESS",
@@ -209,12 +287,17 @@ def main():
     check(refresh_body["created_snapshot_count"] == 1, "Refresh can create normalized snapshots")
     check(refresh_body["provider"]["refresh_status"] == "SUCCESS", "Refresh records provider status")
     check(refresh_body["provider"]["next_refresh_at"] is not None, "Refresh computes next provider due timestamp")
+    check(refresh_body["provider"]["metadata"]["administrative_actor_id"] == str(admin_user_id), "Manual refresh records verified administrator")
+    check(refresh_body["provider"]["metadata"]["administrative_action"] == "RECORD_PROVIDER_REFRESH", "Manual refresh records administrative action")
+    check(refresh_body["snapshots"][0]["metadata"]["administrative_actor_id"] == str(admin_user_id), "Manual refresh snapshot records verified administrator")
 
     adapter_run = client.post(f"/api/v1/weather/providers/{provider_id}/run-adapter", headers=admin_headers)
     check(adapter_run.status_code == 200, "Run weather provider adapter stub returns 200", adapter_run.text)
     adapter_body = adapter_run.json()
     check(adapter_body["schema_version"] == "weather_provider_adapter_run.v1", "Adapter run schema stable")
     check(adapter_body["status"] == "SKIPPED", "Unimplemented external adapter is safely skipped")
+    check(adapter_body["provider"]["metadata"]["administrative_actor_id"] == str(admin_user_id), "Adapter execution records verified administrator")
+    check(adapter_body["provider"]["metadata"]["administrative_action"] == "RUN_PROVIDER_ADAPTER", "Adapter execution records administrative action")
 
     db_adapter = SessionLocal()
     try:
@@ -362,6 +445,9 @@ def main():
     check(due_result["status"] == "SUCCESS", "Due weather run records provider success")
     check(due_result["created_snapshot_count"] == 1, "Due weather run creates snapshot")
     check(due_result["snapshots"][0]["location_key"] == "Due Weather Village", "Due weather run preserves snapshot location")
+    check(due_result["provider"]["metadata"]["administrative_actor_id"] == str(admin_user_id), "Due-provider execution records verified administrator")
+    check(due_result["provider"]["metadata"]["administrative_action"] == "RUN_DUE_PROVIDER_ADAPTERS", "Due-provider execution records administrative action")
+    check(due_result["snapshots"][0]["metadata"]["administrative_actor_id"] == str(admin_user_id), "Due-provider snapshot records verified administrator")
 
     weather_health_after = client.get("/api/v1/weather/operations/health", headers=admin_headers)
     check(weather_health_after.status_code == 200, "Weather operations health returns 200 after due run", weather_health_after.text)
@@ -399,6 +485,17 @@ def main():
     check("live_execution" in worker_run_body["providers"][0], "Weather refresh worker exposes live execution status")
     check(any(row.get("created_snapshot_id") for row in worker_run_body["providers"]), "Weather refresh worker demo payload creates snapshot")
 
+    worker_db = SessionLocal()
+    try:
+        worker_provider = worker_db.query(WeatherProviderConfig).filter(
+            WeatherProviderConfig.id == provider_id,
+            WeatherProviderConfig.tenant_id == tenant_id,
+        ).first()
+        check(worker_provider.metadata_["administrative_actor_id"] == str(admin_user_id), "Refresh worker records verified administrator")
+        check(worker_provider.metadata_["administrative_action"] == "RUN_REFRESH_WORKER", "Refresh worker records administrative action")
+    finally:
+        worker_db.close()
+
     latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)
     check(latest.json()["summary"] == "Manual refresh weather snapshot", "Latest returns newest non-expired snapshot")
@@ -410,8 +507,10 @@ def main():
     try:
         db.query(WeatherSnapshot).filter(WeatherSnapshot.tenant_id == tenant_id).delete(synchronize_session=False)
         db.query(WeatherProviderConfig).filter(WeatherProviderConfig.tenant_id == tenant_id).delete(synchronize_session=False)
-        if admin:
-            delete_test_admin(db, admin.id)
+        if viewer_user_id:
+            delete_test_admin(db, viewer_user_id)
+        if admin_user_id:
+            delete_test_admin(db, admin_user_id)
         db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
         db.commit()
         check(True, "Temporary rows cleaned up")
