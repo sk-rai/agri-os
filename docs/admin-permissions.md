@@ -133,3 +133,11 @@ require `EDIT`.
 Each route derives tenant and actor from the verified administrator. Provider
 and snapshot metadata record the verified administrative actor and operation;
 caller-supplied metadata cannot override those attribution fields.
+
+## Identity administration
+
+Agent-profile creation and updates, project-access assignment, and project-access revocation require the `MANAGE_USERS` permission.
+
+These mutations derive tenant and actor identity from the verified administrator principal. `X-Tenant-ID` remains a consistency check and must not grant cross-tenant authority. Project-access changes require both the target user and project to belong to the verified tenant.
+
+Each successful mutation writes an immutable tenant user access audit event using the verified administrator as `actor_id`.

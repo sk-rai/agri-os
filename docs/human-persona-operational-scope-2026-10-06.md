@@ -431,3 +431,9 @@ adapters or workers, or create administrative snapshots.
 Tenant scope and operational attribution come from verified administrator
 identity. Worker and adapter execution remain backend-controlled and do not
 grant direct external-provider access to Android clients.
+
+## Identity administration governance
+
+Identity administrators may create and update agent profiles and assign or revoke tenant-scoped project access only when their persisted role grants `MANAGE_USERS`.
+
+Agent persona metadata and project membership never expand authority beyond the authenticated tenant. Cross-tenant users, profiles, and projects are not valid mutation targets. Administrative audit events identify both the verified administrator and the affected user.

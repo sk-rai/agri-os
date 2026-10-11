@@ -227,7 +227,8 @@ def _project_role_snapshot(role: Optional[ProjectRole]) -> Optional[dict]:
 def _record_access_audit(
     db: Session,
     *,
-    principal: AdminPrincipal,
+    tenant_id: str,
+    actor_id: uuid.UUID,
     target_user_id: uuid.UUID,
     action: str,
     before: Optional[dict],
@@ -237,9 +238,9 @@ def _record_access_audit(
 ) -> None:
     db.add(TenantUserAccessAuditEvent(
         id=uuid.uuid4(),
-        tenant_id=principal.tenant_id,
+        tenant_id=tenant_id,
         target_user_id=target_user_id,
-        actor_id=principal.user_id,
+        actor_id=actor_id,
         project_id=project_id,
         action=action,
         before_payload=before,
@@ -382,13 +383,15 @@ def upsert_agent_profile(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
 ):
-    user = _tenant_user(db, body.user_id, x_tenant_id)
-    _assert_agent_farmer_link(db, tenant_id=x_tenant_id, farmer_id=body.farmer_id)
-    profile = db.query(AgentProfile).filter(AgentProfile.tenant_id == x_tenant_id, AgentProfile.user_id == user.id).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    user = _tenant_user(db, body.user_id, tenant_id)
+    _assert_agent_farmer_link(db, tenant_id=tenant_id, farmer_id=body.farmer_id)
+    profile = db.query(AgentProfile).filter(AgentProfile.tenant_id == tenant_id, AgentProfile.user_id == user.id).first()
     created = profile is None
     before = _agent_profile_snapshot(profile)
     if not profile:
-        profile = AgentProfile(id=uuid.uuid4(), tenant_id=x_tenant_id, user_id=user.id, created_at=datetime.now(timezone.utc))
+        profile = AgentProfile(id=uuid.uuid4(), tenant_id=tenant_id, user_id=user.id, created_at=datetime.now(timezone.utc))
         db.add(profile)
     profile.farmer_id = body.farmer_id
     profile.agent_code = body.agent_code
@@ -407,7 +410,8 @@ def upsert_agent_profile(
     db.flush()
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         target_user_id=user.id,
         action="CREATE_AGENT_PROFILE" if created else "UPDATE_AGENT_PROFILE",
         before=before,
@@ -416,7 +420,7 @@ def upsert_agent_profile(
     )
     db.commit()
     db.refresh(profile)
-    return {"created": created, "agent_profile": _agent_profile_payload(db, profile, x_tenant_id)}
+    return {"created": created, "agent_profile": _agent_profile_payload(db, profile, tenant_id)}
 
 
 @router.get("/agent-profiles/{profile_id}")
@@ -440,7 +444,9 @@ def update_agent_profile(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
 ):
-    profile = db.query(AgentProfile).filter(AgentProfile.id == profile_id, AgentProfile.tenant_id == x_tenant_id, AgentProfile.is_active == True).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    profile = db.query(AgentProfile).filter(AgentProfile.id == profile_id, AgentProfile.tenant_id == tenant_id, AgentProfile.is_active == True).first()
     if not profile:
         raise HTTPException(404, "Agent profile not found")
     values = body.model_dump(exclude_unset=True)
@@ -448,7 +454,7 @@ def update_agent_profile(
     if not values:
         raise HTTPException(400, "At least one agent profile field must be provided")
     if "farmer_id" in values:
-        _assert_agent_farmer_link(db, tenant_id=x_tenant_id, farmer_id=values.get("farmer_id"))
+        _assert_agent_farmer_link(db, tenant_id=tenant_id, farmer_id=values.get("farmer_id"))
     before = _agent_profile_snapshot(profile)
     for field in ["farmer_id", "agent_code", "role_type", "display_name", "mobile_number", "status", "skills", "languages", "territory_scope", "availability", "certification"]:
         if field in values:
@@ -459,7 +465,8 @@ def update_agent_profile(
     db.flush()
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         target_user_id=profile.user_id,
         action="UPDATE_AGENT_PROFILE",
         before=before,
@@ -468,7 +475,7 @@ def update_agent_profile(
     )
     db.commit()
     db.refresh(profile)
-    return {"agent_profile": _agent_profile_payload(db, profile, x_tenant_id)}
+    return {"agent_profile": _agent_profile_payload(db, profile, tenant_id)}
 
 
 @router.get("/me")
@@ -564,7 +571,8 @@ def assign_tenant_admin_role(
     after = _role_snapshot(user)
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
         target_user_id=user.id,
         action=action,
         before=before,
@@ -609,7 +617,8 @@ def revoke_tenant_admin_access(
     after = _role_snapshot(user)
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
         target_user_id=user.id,
         action="REVOKE_TENANT_ACCESS",
         before=before,
@@ -644,7 +653,8 @@ def change_tenant_admin_role(
     after = _role_snapshot(user)
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
         target_user_id=user.id,
         action="CHANGE_TENANT_ROLE",
         before=before,
@@ -664,10 +674,12 @@ def assign_project_access(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
 ):
-    user = _tenant_user(db, user_id, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    user = _tenant_user(db, user_id, tenant_id)
     project = db.query(Project).filter(
         Project.id == project_id,
-        Project.tenant_id == x_tenant_id,
+        Project.tenant_id == tenant_id,
         Project.is_active == True,
     ).first()
     if not project:
@@ -693,7 +705,8 @@ def assign_project_access(
     after = _project_role_snapshot(role)
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         target_user_id=user.id,
         project_id=project_id,
         action="ASSIGN_PROJECT_ACCESS" if before is None else "CHANGE_PROJECT_ACCESS",
@@ -702,7 +715,7 @@ def assign_project_access(
         reason=body.reason,
     )
     db.commit()
-    return {"user": _user_payload(db, user, x_tenant_id)}
+    return {"user": _user_payload(db, user, tenant_id)}
 
 
 @router.delete("/users/{user_id}/projects/{project_id}")
@@ -714,12 +727,14 @@ def revoke_project_access(
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
 ):
-    user = _tenant_user(db, user_id, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    user = _tenant_user(db, user_id, tenant_id)
     role = db.query(ProjectRole).join(Project, Project.id == ProjectRole.project_id).filter(
         ProjectRole.project_id == project_id,
         ProjectRole.user_id == user.id,
         ProjectRole.is_active == True,
-        Project.tenant_id == x_tenant_id,
+        Project.tenant_id == tenant_id,
     ).first()
     if not role:
         raise HTTPException(404, "Active project access not found")
@@ -729,7 +744,8 @@ def revoke_project_access(
     after = _project_role_snapshot(role)
     _record_access_audit(
         db,
-        principal=principal,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         target_user_id=user.id,
         project_id=project_id,
         action="REVOKE_PROJECT_ACCESS",
@@ -738,7 +754,7 @@ def revoke_project_access(
         reason=body.reason,
     )
     db.commit()
-    return {"user": _user_payload(db, user, x_tenant_id)}
+    return {"user": _user_payload(db, user, tenant_id)}
 
 
 @router.get("/user-access-audit")

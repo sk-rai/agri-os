@@ -468,3 +468,14 @@ Static and behavior coverage verifies edit permission, missing bearer
 credentials, insufficient permission, actor impersonation, tenant mismatch,
 verified attribution across all six operations, tenant isolation, existing
 adapter behavior, and fixture cleanup.
+
+## Identity administration mutation checkpoint
+
+The following identity-administration mutations now satisfy the authenticated tenant-and-actor boundary:
+
+- `POST /api/v1/admin/agent-profiles`
+- `PATCH /api/v1/admin/agent-profiles/{profile_id}`
+- `PUT /api/v1/admin/users/{user_id}/projects/{project_id}`
+- `DELETE /api/v1/admin/users/{user_id}/projects/{project_id}`
+
+All four require `MANAGE_USERS`, derive tenant and actor from `AdminPrincipal`, tenant-bound selected records, reject unverified identity headers, and write audit events attributed to the verified administrator.

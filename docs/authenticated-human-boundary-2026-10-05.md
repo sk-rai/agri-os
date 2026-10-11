@@ -516,3 +516,9 @@ All retain edit permission. Provider and snapshot writes carry backend-owned
 administrative attribution metadata. Missing bearer credentials, insufficient
 permission, actor impersonation, tenant mismatch, and cross-tenant provider
 selection fail closed.
+
+## Identity administration checkpoint
+
+The agent-profile and project-access mutation routes require an authenticated administrator with `MANAGE_USERS`.
+
+The routes derive `tenant_id` and `actor_id` from the verified principal, reject actor impersonation and tenant mismatch, tenant-bound target users, profiles, and projects, and persist verified administrator attribution in `tenant_user_access_audit_events`.
