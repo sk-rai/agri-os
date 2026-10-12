@@ -470,3 +470,14 @@ administration applies.
 Previewing village LGD codes does not apply scope, activate boundary
 candidates, promote mappings, enable runtime lookup, or change Android
 behavior. A separate authorized apply operation remains required.
+
+## Workflow project override governance
+
+Project workflow overrides are administrative configuration changes. A verified
+administrator must have `PROJECT_EDIT` permission and access to the target
+project. Tenant identity and audit attribution come from the authenticated
+principal.
+
+The shared default workflow catalog may be selected, but project overrides are
+always stored in the verified tenant and project scope. Deletion is implemented
+as recoverable archival, with immutable before/after audit evidence.

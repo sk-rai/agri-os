@@ -559,3 +559,16 @@ impersonation, tenant mismatch, and foreign-tenant project access are rejected.
 Successful previews report verified attribution while preserving the
 read-only contract. Regression coverage confirms that project geography,
 project configuration, and immutable audit-event counts remain unchanged.
+
+## Workflow project override checkpoint
+
+Project workflow override creation and archival now cross the authenticated
+human boundary through `PROJECT_EDIT` with project-scoped authorization. Both
+routes derive tenant and actor identity from the verified administrator,
+tenant-bound the project and selected workflow records, and reject tenant or
+actor impersonation.
+
+Successful creation records
+`CREATE_PROJECT_WORKFLOW_OVERRIDE`; archival records
+`ARCHIVE_PROJECT_WORKFLOW_OVERRIDE`. The immutable events preserve the verified
+administrator and the applicable override state.

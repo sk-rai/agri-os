@@ -523,3 +523,16 @@ tenant/actor boundary:
 
 The trust-boundary audit reports no finding for
 `preview_project_geography_scope_import`.
+
+## Workflow project override mutation checkpoint
+
+The two project workflow override mutations now expose authenticated tenant and
+actor markers:
+
+- `POST /api/v1/workflow-catalog/projects/{project_id}/workflow-overrides`
+- `DELETE /api/v1/workflow-catalog/projects/{project_id}/workflow-overrides/{override_id}`
+
+Both require project-scoped `PROJECT_EDIT`, derive `tenant_id` and `actor_id`
+from the verified administrator, tenant-bound project and workflow resources,
+and avoid direct identity-header authority. Creation and archival write
+immutable workflow audit events attributed to the verified administrator.

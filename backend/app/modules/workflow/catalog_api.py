@@ -3485,7 +3485,6 @@ def create_project_workflow_override(
     project_id: uuid.UUID,
     body: WorkflowOverrideCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(
         require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
     ),
@@ -3494,10 +3493,13 @@ def create_project_workflow_override(
 
     This customizes project rendering without mutating the base workflow template.
     """
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
-    _assert_project_workflow_editable(db, project, x_tenant_id)
+    _assert_project_workflow_editable(db, project, tenant_id)
 
     version_row = (
         db.query(WorkflowTemplate, WorkflowTemplateVersion)
@@ -3507,7 +3509,7 @@ def create_project_workflow_override(
             WorkflowTemplateVersion.is_active == True,
             WorkflowTemplateVersion.status == "PUBLISHED",
             WorkflowTemplate.is_active == True,
-            WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+            WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
         )
         .first()
     )
@@ -3535,7 +3537,7 @@ def create_project_workflow_override(
         if resolved_input["metadata"]["input_source"] == "CATALOG":
             assert_catalog_input_allowed_for_project_crop(
                 db,
-                tenant_id=x_tenant_id,
+                tenant_id=tenant_id,
                 project_id=project_id,
                 crop_code=template.crop_code,
                 input_code=resolved_input["input_code"],
@@ -3549,7 +3551,7 @@ def create_project_workflow_override(
 
     override = WorkflowTemplateOverride(
         id=uuid.uuid4(),
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         template_version_id=body.template_version_id,
         target_type=target_type,
@@ -3562,8 +3564,36 @@ def create_project_workflow_override(
         updated_at=datetime.now(timezone.utc),
     )
     db.add(override)
+    db.flush()
+    override_snapshot = _override_payload(override)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=tenant_id,
+        template_id=template.id,
+        template_version_id=body.template_version_id,
+        actor_id=actor_id,
+        action="CREATE_PROJECT_WORKFLOW_OVERRIDE",
+        target_type="WORKFLOW_OVERRIDE",
+        target_id=str(override.id),
+        target_code=body.target_code,
+        before=None,
+        after=override_snapshot,
+        reason=body.reason,
+        metadata={
+            "project_id": str(project_id),
+            "project_name": project.name,
+            "operation": operation,
+            "priority": body.priority,
+        },
+    )
     db.commit()
-    return preview_workflow_template_version(body.template_version_id, project_id, db, x_tenant_id)
+    return preview_workflow_template_version(
+        body.template_version_id,
+        project_id,
+        db,
+        tenant_id,
+    )
+
 
 
 @router.delete("/projects/{project_id}/workflow-overrides/{override_id}")
@@ -3571,31 +3601,73 @@ def delete_project_workflow_override(
     project_id: uuid.UUID,
     override_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(
         require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)
     ),
 ):
     """Archive a project-level override and return updated preview."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     override = (
         db.query(WorkflowTemplateOverride)
         .filter(
             WorkflowTemplateOverride.id == override_id,
             WorkflowTemplateOverride.project_id == project_id,
-            WorkflowTemplateOverride.tenant_id == x_tenant_id,
+            WorkflowTemplateOverride.tenant_id == tenant_id,
             WorkflowTemplateOverride.is_active == True,
         )
         .first()
     )
     if not override:
         raise HTTPException(404, "Workflow override not found")
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
-    _assert_project_workflow_editable(db, project, x_tenant_id)
+    _assert_project_workflow_editable(db, project, tenant_id)
+
+    version_row = (
+        db.query(WorkflowTemplate, WorkflowTemplateVersion)
+        .join(
+            WorkflowTemplateVersion,
+            WorkflowTemplateVersion.template_id == WorkflowTemplate.id,
+        )
+        .filter(
+            WorkflowTemplateVersion.id == override.template_version_id,
+            WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
+        )
+        .first()
+    )
+    if not version_row:
+        raise HTTPException(404, "Workflow template version not found")
+    template, version = version_row
 
     version_id = override.template_version_id
+    before_snapshot = _override_payload(override)
     override.is_active = False
     override.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    after_snapshot = _override_payload(override)
+    _record_workflow_audit_event(
+        db,
+        tenant_id=tenant_id,
+        template_id=template.id,
+        template_version_id=version_id,
+        actor_id=actor_id,
+        action="ARCHIVE_PROJECT_WORKFLOW_OVERRIDE",
+        target_type="WORKFLOW_OVERRIDE",
+        target_id=str(override.id),
+        target_code=override.target_code,
+        before=before_snapshot,
+        after=after_snapshot,
+        reason=override.reason,
+        metadata={"project_id": str(project_id)},
+    )
     db.commit()
-    return preview_workflow_template_version(version_id, project_id, db, x_tenant_id)
+    return preview_workflow_template_version(
+        version_id,
+        project_id,
+        db,
+        tenant_id,
+    )
+

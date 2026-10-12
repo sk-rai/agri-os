@@ -183,3 +183,18 @@ response reports the verified tenant and administrator through `tenant_id` and
 The endpoint remains read-only: it validates, normalizes, and resolves village
 LGD codes but does not update project scope, configuration, candidate state,
 runtime eligibility, or audit tables.
+
+## Workflow project overrides
+
+Creating and archiving project workflow overrides requires a verified
+administrator with `PROJECT_EDIT` permission and project-scoped authorization.
+The mutation derives tenant and actor identity from the authenticated principal;
+`X-Tenant-ID` and `X-Actor-ID` are consistency checks rather than sources of
+authority.
+
+Override creation is restricted to published workflow templates owned by the
+verified tenant or the shared `default` catalog. Archival tenant-bounds the
+project, override, and workflow template before retaining the override as an
+inactive record. Both operations write immutable workflow audit events with the
+verified administrator, project, template version, reason, and before/after
+state.
