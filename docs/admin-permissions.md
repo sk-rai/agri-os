@@ -157,3 +157,16 @@ administrative identity.
   establish mutation authority.
 - Successful mutations preserve immutable before/after state, the applied
   patch, patched sections, reason, verified tenant, and verified administrator.
+
+## Company-discovery CSV administration
+
+Company-discovery CSV processing is an authenticated administrative workflow.
+
+- `POST /api/v1/company-discovery-candidates/csv/validate` requires `EDIT`.
+- `POST /api/v1/company-discovery-candidates/csv/import` requires `EDIT`.
+- Both operations derive tenant and actor from the verified bearer identity.
+- `X-Tenant-ID` and `X-Actor-ID` are consistency assertions only and cannot
+  establish mutation authority.
+- Validation reports the verified administrator through `validated_by`.
+- Successful imports record verified actor provenance on each candidate and
+  write an immutable `IMPORT_COMPANY_DISCOVERY_CSV` batch audit event.

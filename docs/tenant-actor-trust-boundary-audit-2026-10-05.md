@@ -493,3 +493,18 @@ tenant/actor boundary:
 
 The trust-boundary audit reports no mutation findings for
 `update_tenant_app_config` or `update_project_app_config`.
+
+## Company-discovery CSV mutation checkpoint
+
+The company-discovery CSV validation and import routes now satisfy the verified
+tenant/actor boundary:
+
+- both routes require bearer authentication and `EDIT`;
+- tenant and actor derive from the verified administrator;
+- imported candidates are persisted only in the verified tenant;
+- identity headers cannot become mutation authority;
+- validation reports verified attribution;
+- import writes candidate provenance and one immutable batch audit.
+
+The trust-boundary audit reports no findings for
+`validate_company_discovery_csv` or `import_company_discovery_csv`.

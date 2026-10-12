@@ -274,6 +274,7 @@ class CompanyDiscoveryCsvValidationResponse(BaseModel):
     rows: list[dict]
     required_columns: list[str]
     optional_columns: list[str]
+    validated_by: str
     message: str
 
 
@@ -2287,29 +2288,53 @@ def download_company_discovery_template(principal: AdminPrincipal = Depends(requ
     )
 
 
-@router.post("/company-discovery-candidates/csv/validate", response_model=CompanyDiscoveryCsvValidationResponse)
+@router.post(
+    "/company-discovery-candidates/csv/validate",
+    response_model=CompanyDiscoveryCsvValidationResponse,
+)
 def validate_company_discovery_csv(
     file: UploadFile = File(...),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.VIEW)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     contents = file.file.read()
-    return _parse_company_discovery_csv(contents, file_name=file.filename or "company-discovery.csv", tenant_id=x_tenant_id)
+    validation = _parse_company_discovery_csv(
+        contents,
+        file_name=file.filename or "company-discovery.csv",
+        tenant_id=tenant_id,
+    )
+    validation["validated_by"] = str(actor_id)
+    return validation
 
 
 @router.post("/company-discovery-candidates/csv/import")
 def import_company_discovery_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
 ):
-    tenant = db.query(Tenant).filter(Tenant.id == x_tenant_id, Tenant.is_active == True).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.is_active == True,
+    ).first()
     if not tenant:
         raise HTTPException(404, "Tenant not found")
 
+    file_name = file.filename or "company-discovery.csv"
     contents = file.file.read()
-    validation = _parse_company_discovery_csv(contents, file_name=file.filename or "company-discovery.csv", tenant_id=x_tenant_id)
+    validation = _parse_company_discovery_csv(
+        contents,
+        file_name=file_name,
+        tenant_id=tenant_id,
+    )
     if not validation["valid"]:
         raise HTTPException(400, validation)
 
@@ -2317,8 +2342,14 @@ def import_company_discovery_csv(
     now = datetime.now(timezone.utc)
     for row in validation["rows"]:
         candidate_body = row["candidate"]
+        import_metadata = {
+            **(candidate_body["metadata"] or {}),
+            "imported_by": str(actor_id),
+            "imported_at": now.isoformat(),
+            "import_schema": validation["schema_version"],
+        }
         candidate = CompanyDiscoveryCandidate(
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             candidate_name=candidate_body["candidate_name"],
             normalized_name=candidate_body["normalized_name"],
             company_type=candidate_body["company_type"],
@@ -2331,12 +2362,32 @@ def import_company_discovery_csv(
             duplicate_keys=candidate_body["duplicate_keys"],
             review_status="PENDING_REVIEW",
             review_notes=candidate_body["review_notes"],
-            metadata_=candidate_body["metadata"],
+            metadata_=import_metadata,
             created_at=now,
             updated_at=now,
         )
         db.add(candidate)
         imported.append(candidate)
+
+    db.flush()
+    candidate_ids = [str(candidate.id) for candidate in imported]
+    db.add(CompanyProfileAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        company_profile_id=None,
+        actor_id=actor_id,
+        action="IMPORT_COMPANY_DISCOVERY_CSV",
+        patched_fields=["company_discovery_candidates"],
+        before_profile={},
+        after_profile={
+            "file_name": validation["file_name"],
+            "imported_count": len(imported),
+            "candidate_ids": candidate_ids,
+        },
+        source="CSV_IMPORT",
+        reason="Imported company discovery candidates for review.",
+        created_at=now,
+    ))
 
     db.commit()
     for candidate in imported:
@@ -2344,10 +2395,14 @@ def import_company_discovery_csv(
 
     return {
         "schema_version": "company_discovery_csv_import.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "file_name": validation["file_name"],
+        "imported_by": str(actor_id),
         "imported_count": len(imported),
-        "candidates": [_company_discovery_candidate_payload(candidate) for candidate in imported],
+        "candidates": [
+            _company_discovery_candidate_payload(candidate)
+            for candidate in imported
+        ],
         "message": "Company discovery candidates imported for review.",
     }
 

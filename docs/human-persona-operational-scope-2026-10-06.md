@@ -448,3 +448,14 @@ enterprise administrator with `MANAGE_USERS`. Project overrides require
 Project runtime safety remains unchanged: projects with enrolled or operational
 data may update display-level branding, while behavior-changing configuration
 sections remain locked.
+
+## Company-discovery CSV governance
+
+Company-discovery CSV validation and import are administrative data-curation
+operations. They are not farmer, field-agent, or self-service persona
+capabilities.
+
+An edit-capable administrator may validate external company evidence and import
+it into the authenticated tenant's review queue. Imported rows remain
+`PENDING_REVIEW`; import authorization does not grant automatic approval,
+tenant activation, or company-profile publication.

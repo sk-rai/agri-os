@@ -535,3 +535,16 @@ Tenant changes write `tenant_app_config_audit_events`; project changes write
 `project_app_config_audit_events`. Both records preserve the verified actor,
 scope, reason, patch, affected sections, and immutable before/after
 configuration snapshots.
+
+## Company-discovery CSV checkpoint
+
+Company-discovery CSV validation and import now require an authenticated
+administrator with `EDIT`. Tenant and actor identity come exclusively from the
+verified principal. Missing bearer credentials, view-only roles, actor
+impersonation, and token/header tenant mismatch are rejected before processing
+or persistence.
+
+Validation responses identify the verified validator. Imported candidate
+metadata preserves importer, import timestamp, source filename, CSV line, and
+schema version. A batch-level immutable audit records the verified
+administrator, candidate IDs, filename, and imported count.
