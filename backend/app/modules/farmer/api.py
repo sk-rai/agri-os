@@ -32,7 +32,7 @@ from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_hu
 from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent
+from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent, TenantAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -2718,18 +2718,22 @@ def update_tenant_app_config(
     tenant_id: str,
     body: ProjectAppConfigPatch,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.MANAGE_USERS)
+    ),
 ):
     """Update tenant-level runtime app configuration.
 
     Tenant app-config defines white-label/default behavior. Project app-config
     can still override tenant defaults through /projects/{project_id}/app-config.
     """
-    if tenant_id != x_tenant_id:
+    authenticated_tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    if tenant_id != authenticated_tenant_id:
         raise HTTPException(403, {
             "error": "TENANT_ID_MISMATCH",
-            "message": "Path tenant_id must match X-Tenant-ID.",
+            "message": "Path tenant_id must match the authenticated tenant.",
         })
     if principal.role != "ENTERPRISE_ADMIN":
         raise HTTPException(403, {
@@ -2738,25 +2742,48 @@ def update_tenant_app_config(
             "current_role": principal.role,
         })
 
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    tenant = db.query(Tenant).filter(
+        Tenant.id == authenticated_tenant_id,
+        Tenant.is_active == True,
+    ).first()
     if not tenant:
         raise HTTPException(404, "Tenant not found")
 
     patch_payload = _project_app_config_patch_payload(body)
     if not patch_payload:
-        raise HTTPException(400, "At least one app-config section must be provided")
+        raise HTTPException(
+            400,
+            "At least one app-config section must be provided",
+        )
 
-    tenant.config = _deep_merge_config(tenant.config or {}, patch_payload)
-    tenant.updated_at = datetime.now(timezone.utc)
+    before_config = dict(tenant.config or {})
+    after_config = _deep_merge_config(before_config, patch_payload)
+    applied_sections = sorted(patch_payload.keys())
+    changed_at = datetime.now(timezone.utc)
+
+    tenant.config = after_config
+    tenant.updated_at = changed_at
+    db.add(TenantAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=authenticated_tenant_id,
+        actor_id=actor_id,
+        action="UPDATE_TENANT_APP_CONFIG",
+        patched_sections=applied_sections,
+        before_config=before_config,
+        after_config=after_config,
+        config_patch=patch_payload,
+        reason=body.reason,
+        created_at=changed_at,
+    ))
     db.commit()
     db.refresh(tenant)
 
     return {
         "schema_version": "tenant_app_config.v1",
-        "tenant_id": tenant_id,
+        "tenant_id": authenticated_tenant_id,
         "updated": True,
         "config": tenant.config or {},
-        "applied_sections": sorted(patch_payload.keys()),
+        "applied_sections": applied_sections,
         "message": "Tenant app-config updated.",
     }
 
@@ -5560,8 +5587,12 @@ def update_project_app_config(
     project_id: uuid.UUID,
     body: ProjectAppConfigPatch,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.PROJECT_EDIT, project_scoped=True)),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
 ):
     """Safely update runtime app/project configuration.
 
@@ -5569,42 +5600,75 @@ def update_project_app_config(
     project is active or farmers/parcels/crop cycles exist, only display-level
     branding changes are allowed; risky behavior-changing sections are blocked.
     """
-    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.tenant_id == tenant_id,
+    ).first()
     if not project:
         raise HTTPException(404, "Project not found")
 
     patch_payload = _project_app_config_patch_payload(body)
     if not patch_payload:
-        raise HTTPException(400, "At least one app-config section must be provided")
+        raise HTTPException(
+            400,
+            "At least one app-config section must be provided",
+        )
 
-    edit_policy = _project_edit_policy(db, project, x_tenant_id)
+    edit_policy = _project_edit_policy(db, project, tenant_id)
     requested_sections = set(patch_payload.keys())
     blocked_sections = []
     if not edit_policy["can_edit_core_config"]:
-        blocked_sections = sorted(requested_sections - PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS)
+        blocked_sections = sorted(
+            requested_sections - PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS
+        )
         if blocked_sections:
             raise HTTPException(409, {
                 "error": "PROJECT_APP_CONFIG_LOCKED",
-                "message": "Project has enrolled/runtime data; only branding app-config changes are allowed.",
+                "message": (
+                    "Project has enrolled/runtime data; only branding "
+                    "app-config changes are allowed."
+                ),
                 "blocked_sections": blocked_sections,
-                "allowed_sections": sorted(PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS),
+                "allowed_sections": sorted(
+                    PROJECT_APP_CONFIG_LOCKED_SAFE_SECTIONS
+                ),
                 "edit_policy": edit_policy,
             })
 
-    before_config = project.config or {}
-    project.config = _deep_merge_config(before_config, patch_payload)
-    project.updated_at = datetime.now(timezone.utc)
+    before_config = dict(project.config or {})
+    after_config = _deep_merge_config(before_config, patch_payload)
+    applied_sections = sorted(requested_sections)
+    changed_at = datetime.now(timezone.utc)
+
+    project.config = after_config
+    project.updated_at = changed_at
+    db.add(ProjectAppConfigAuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        project_id=project.id,
+        actor_id=actor_id,
+        action="UPDATE_PROJECT_APP_CONFIG",
+        patched_sections=applied_sections,
+        before_config=before_config,
+        after_config=after_config,
+        config_patch=patch_payload,
+        reason=body.reason,
+        created_at=changed_at,
+    ))
     db.commit()
     db.refresh(project)
 
     return {
         "schema_version": "project_app_config.v1",
         "project_id": str(project.id),
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "updated": True,
         "config": project.config or {},
-        "edit_policy": _project_edit_policy(db, project, x_tenant_id),
-        "applied_sections": sorted(requested_sections),
+        "edit_policy": _project_edit_policy(db, project, tenant_id),
+        "applied_sections": applied_sections,
         "blocked_sections": [],
         "message": "Project app-config updated.",
     }

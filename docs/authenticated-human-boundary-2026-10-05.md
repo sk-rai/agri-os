@@ -522,3 +522,16 @@ selection fail closed.
 The agent-profile and project-access mutation routes require an authenticated administrator with `MANAGE_USERS`.
 
 The routes derive `tenant_id` and `actor_id` from the verified principal, reject actor impersonation and tenant mismatch, tenant-bound target users, profiles, and projects, and persist verified administrator attribution in `tenant_user_access_audit_events`.
+
+## Runtime app configuration checkpoint
+
+Tenant and project runtime app-configuration mutations now resolve tenant and
+actor exclusively from the authenticated administrator. Missing bearer
+credentials, actor impersonation, token/header tenant mismatch, foreign-tenant
+resources, and insufficient permissions are rejected before configuration is
+changed.
+
+Tenant changes write `tenant_app_config_audit_events`; project changes write
+`project_app_config_audit_events`. Both records preserve the verified actor,
+scope, reason, patch, affected sections, and immutable before/after
+configuration snapshots.

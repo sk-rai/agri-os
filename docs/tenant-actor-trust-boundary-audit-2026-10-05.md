@@ -479,3 +479,17 @@ The following identity-administration mutations now satisfy the authenticated te
 - `DELETE /api/v1/admin/users/{user_id}/projects/{project_id}`
 
 All four require `MANAGE_USERS`, derive tenant and actor from `AdminPrincipal`, tenant-bound selected records, reject unverified identity headers, and write audit events attributed to the verified administrator.
+
+## Runtime app configuration mutation checkpoint
+
+The tenant and project app-configuration PATCH routes now satisfy the verified
+tenant/actor boundary:
+
+- bearer authentication and explicit administrative permission are required;
+- tenant identity and actor identity come from the verified principal;
+- project lookup is tenant bounded and project authorization is scoped;
+- caller-supplied identity headers cannot become mutation authority;
+- successful writes persist immutable verified-administrator attribution.
+
+The trust-boundary audit reports no mutation findings for
+`update_tenant_app_config` or `update_project_app_config`.

@@ -140,6 +140,45 @@ class CompanyDiscoveryCandidate(Base, UUIDPrimaryKey, AuditMixin):
     )
 
 
+class TenantAppConfigAuditEvent(Base, UUIDPrimaryKey):
+    """Immutable audit event for tenant runtime app-config changes."""
+
+    __tablename__ = "tenant_app_config_audit_events"
+
+    tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_id = Column(UUID(as_uuid=True), nullable=False)
+    action = Column(
+        String(50),
+        nullable=False,
+        default="UPDATE_TENANT_APP_CONFIG",
+    )
+    patched_sections = Column(JSONB, default=list, nullable=False)
+    before_config = Column(JSONB)
+    after_config = Column(JSONB)
+    config_patch = Column(JSONB, default=dict, nullable=False)
+    reason = Column(Text)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_tenant_app_config_audit_tenant_created",
+            "tenant_id",
+            "created_at",
+        ),
+        Index("idx_tenant_app_config_audit_actor", "actor_id"),
+        Index("idx_tenant_app_config_audit_action", "action"),
+    )
+
+
+
 class Project(Base, UUIDPrimaryKey, AuditMixin):
     """A time-bound operational project within a tenant.
 

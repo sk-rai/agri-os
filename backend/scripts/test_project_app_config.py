@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.modules.farmer.models import Farmer, Project, Tenant
+from app.modules.farmer.models import (Farmer, Project, ProjectAppConfigAuditEvent, Tenant)
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 
@@ -64,7 +64,63 @@ def main():
 
         client = TestClient(app)
 
-        print("\n[1] Planned empty project can update feature flags")
+        print("\n[1] Project app-config requires verified project administration")
+        missing_bearer = client.patch(
+            f"/api/v1/projects/{project_id}/app-config",
+            headers={"X-Tenant-ID": tenant_id},
+            json={
+                "branding": {"app_name": "Unauthenticated"},
+                "reason": "Missing bearer rejected",
+            },
+        )
+        check(
+            missing_bearer.status_code == 401,
+            "Project app-config rejects missing bearer",
+            missing_bearer.text,
+        )
+
+        impersonated_headers = dict(headers)
+        impersonated_headers["X-Actor-ID"] = str(uuid.uuid4())
+        impersonated = client.patch(
+            f"/api/v1/projects/{project_id}/app-config",
+            headers=impersonated_headers,
+            json={
+                "branding": {"app_name": "Impersonated"},
+                "reason": "Actor impersonation rejected",
+            },
+        )
+        check(
+            impersonated.status_code == 403,
+            "Project app-config rejects actor impersonation",
+            impersonated.text,
+        )
+        check(
+            impersonated.json()["detail"]["error"] == "ACTOR_ID_MISMATCH",
+            "Project actor impersonation has stable error code",
+        )
+
+        mismatched_headers = dict(headers)
+        mismatched_headers["X-Tenant-ID"] = f"{tenant_id}-foreign"
+        tenant_mismatch = client.patch(
+            f"/api/v1/projects/{project_id}/app-config",
+            headers=mismatched_headers,
+            json={
+                "branding": {"app_name": "Wrong Tenant"},
+                "reason": "Tenant mismatch rejected",
+            },
+        )
+        check(
+            tenant_mismatch.status_code == 403,
+            "Project app-config rejects token/header tenant mismatch",
+            tenant_mismatch.text,
+        )
+        check(
+            tenant_mismatch.json()["detail"]["error"]
+            == "ADMIN_PERMISSION_DENIED",
+            "Project tenant mismatch has stable permission error",
+        )
+
+        print("\n[2] Planned empty project can update feature flags")
         response = client.patch(
             f"/api/v1/projects/{project_id}/app-config",
             headers=headers,
@@ -137,14 +193,66 @@ def main():
         )
         check(branding.status_code == 200, "Locked project allows branding update", branding.text)
         check(branding.json()["config"]["branding"]["app_name"] == "Locked Branding Update", "Locked branding update persisted")
+
+        audit_rows = (
+            db.query(ProjectAppConfigAuditEvent)
+            .filter(
+                ProjectAppConfigAuditEvent.tenant_id == tenant_id,
+                ProjectAppConfigAuditEvent.project_id == project_id,
+                ProjectAppConfigAuditEvent.action
+                == "UPDATE_PROJECT_APP_CONFIG",
+            )
+            .order_by(ProjectAppConfigAuditEvent.created_at)
+            .all()
+        )
+        check(
+            len(audit_rows) == 2,
+            "Successful project app-config mutations write two audits",
+            len(audit_rows),
+        )
+        check(
+            all(str(row.actor_id) == str(admin.id) for row in audit_rows),
+            "Project app-config audits record verified administrator",
+            [str(row.actor_id) for row in audit_rows],
+        )
+        check(
+            audit_rows[0].reason
+            == "Enable backend-driven forms for planned project",
+            "Project app-config audit preserves initial reason",
+        )
+        check(
+            audit_rows[1].patched_sections == ["branding"],
+            "Locked branding audit records applied section",
+            audit_rows[1].patched_sections,
+        )
+        check(
+            audit_rows[1].before_config["branding"]["app_name"]
+            == "Configured Project",
+            "Project audit preserves prior configuration",
+        )
+        check(
+            audit_rows[1].after_config["branding"]["app_name"]
+            == "Locked Branding Update",
+            "Project audit preserves resulting configuration",
+        )
     finally:
         db.rollback()
-        db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Project).filter(Project.tenant_id == tenant_id).delete(synchronize_session=False)
-        db.query(Tenant).filter(Tenant.id == tenant_id).delete(synchronize_session=False)
+        db.query(ProjectAppConfigAuditEvent).filter(
+            ProjectAppConfigAuditEvent.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
+        db.query(Farmer).filter(
+            Farmer.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
+        db.query(Project).filter(
+            Project.tenant_id == tenant_id
+        ).delete(synchronize_session=False)
         db.commit()
         if admin:
             delete_test_admin(db, admin.id)
+        db.query(Tenant).filter(
+            Tenant.id == tenant_id
+        ).delete(synchronize_session=False)
+        db.commit()
         db.close()
 
     print("=" * 72)

@@ -141,3 +141,19 @@ Agent-profile creation and updates, project-access assignment, and project-acces
 These mutations derive tenant and actor identity from the verified administrator principal. `X-Tenant-ID` remains a consistency check and must not grant cross-tenant authority. Project-access changes require both the target user and project to belong to the verified tenant.
 
 Each successful mutation writes an immutable tenant user access audit event using the verified administrator as `actor_id`.
+
+## Runtime app configuration
+
+Runtime tenant and project app-configuration mutations require verified
+administrative identity.
+
+- `PATCH /api/v1/tenants/{tenant_id}/app-config` requires `MANAGE_USERS` and
+  remains restricted to `ENTERPRISE_ADMIN`. The path tenant must equal the
+  tenant carried by the verified bearer identity.
+- `PATCH /api/v1/projects/{project_id}/app-config` requires `PROJECT_EDIT`
+  through project-scoped authorization. The selected project must belong to
+  the verified administrator's tenant.
+- `X-Tenant-ID` and `X-Actor-ID` are consistency assertions only. They do not
+  establish mutation authority.
+- Successful mutations preserve immutable before/after state, the applied
+  patch, patched sections, reason, verified tenant, and verified administrator.

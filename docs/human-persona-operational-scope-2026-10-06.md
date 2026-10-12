@@ -437,3 +437,14 @@ grant direct external-provider access to Android clients.
 Identity administrators may create and update agent profiles and assign or revoke tenant-scoped project access only when their persisted role grants `MANAGE_USERS`.
 
 Agent persona metadata and project membership never expand authority beyond the authenticated tenant. Cross-tenant users, profiles, and projects are not valid mutation targets. Administrative audit events identify both the verified administrator and the affected user.
+
+## Runtime app configuration governance
+
+Runtime app configuration is an administrative control-plane operation, not a
+farmer or field-agent persona capability. Tenant defaults require an
+enterprise administrator with `MANAGE_USERS`. Project overrides require
+`PROJECT_EDIT` within the selected project scope.
+
+Project runtime safety remains unchanged: projects with enrolled or operational
+data may update display-level branding, while behavior-changing configuration
+sections remain locked.
