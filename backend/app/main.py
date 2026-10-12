@@ -14,9 +14,9 @@ from app.modules.master_data.api import master_data_router
 from app.modules.auth.api import router as auth_router
 from app.modules.auth.admin_api import router as admin_user_router
 from app.modules.sync import sync_router, dashboard_router, conflicts_router
-from app.modules.farmer import farmer_router
+from app.modules.farmer.api import router as farmer_router
 from app.modules.farmer.soil_profile import router as soil_profile_router
-from app.modules.workflow import workflow_router
+from app.modules.workflow.api import router as workflow_router
 from app.modules.workflow.forms import router as forms_router
 from app.modules.workflow.config import router as workflow_config_router
 from app.modules.workflow.catalog_api import router as workflow_catalog_router
