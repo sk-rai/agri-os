@@ -170,3 +170,16 @@ Company-discovery CSV processing is an authenticated administrative workflow.
 - Validation reports the verified administrator through `validated_by`.
 - Successful imports record verified actor provenance on each candidate and
   write an immutable `IMPORT_COMPANY_DISCOVERY_CSV` batch audit event.
+
+## Project geography import preview
+
+`POST /api/v1/projects/{project_id}/geography-scope/import-preview` requires
+`PROJECT_EDIT` through project-scoped authorization.
+
+The project is selected within the verified administrator's tenant. The
+response reports the verified tenant and administrator through `tenant_id` and
+`previewed_by`. Identity headers are consistency assertions only.
+
+The endpoint remains read-only: it validates, normalizes, and resolves village
+LGD codes but does not update project scope, configuration, candidate state,
+runtime eligibility, or audit tables.

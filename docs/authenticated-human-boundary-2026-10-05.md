@@ -548,3 +548,14 @@ Validation responses identify the verified validator. Imported candidate
 metadata preserves importer, import timestamp, source filename, CSV line, and
 schema version. A batch-level immutable audit records the verified
 administrator, candidate IDs, filename, and imported count.
+
+## Project geography import-preview checkpoint
+
+Project geography import preview now derives tenant and actor from the verified
+administrator and requires project-scoped `PROJECT_EDIT`. Missing bearer
+credentials, view-only roles, unassigned project administrators, actor
+impersonation, tenant mismatch, and foreign-tenant project access are rejected.
+
+Successful previews report verified attribution while preserving the
+read-only contract. Regression coverage confirms that project geography,
+project configuration, and immutable audit-event counts remain unchanged.

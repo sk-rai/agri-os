@@ -459,3 +459,14 @@ An edit-capable administrator may validate external company evidence and import
 it into the authenticated tenant's review queue. Imported rows remain
 `PENDING_REVIEW`; import authorization does not grant automatic approval,
 tenant activation, or company-profile publication.
+
+## Project geography import-preview governance
+
+Project geography import preview is an administrative planning capability. It
+is not available to farmer or field-agent personas, and tenant-level roles must
+also hold effective project-scoped `PROJECT_EDIT` access unless enterprise
+administration applies.
+
+Previewing village LGD codes does not apply scope, activate boundary
+candidates, promote mappings, enable runtime lookup, or change Android
+behavior. A separate authorized apply operation remains required.

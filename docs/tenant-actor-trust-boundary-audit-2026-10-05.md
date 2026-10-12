@@ -508,3 +508,18 @@ tenant/actor boundary:
 
 The trust-boundary audit reports no findings for
 `validate_company_discovery_csv` or `import_company_discovery_csv`.
+
+## Project geography import-preview checkpoint
+
+The project geography import-preview POST route now satisfies the verified
+tenant/actor boundary:
+
+- bearer authentication and project-scoped `PROJECT_EDIT` are required;
+- project lookup is bounded by the verified tenant;
+- actor identity derives from the verified principal;
+- caller-supplied identity headers cannot become authority;
+- the response reports verified tenant and previewing administrator;
+- the route performs no database writes.
+
+The trust-boundary audit reports no finding for
+`preview_project_geography_scope_import`.

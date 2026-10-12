@@ -3401,7 +3401,6 @@ def preview_project_geography_scope_import(
     project_id: uuid.UUID,
     body: ProjectGeographyScopeImportPreviewRequest,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(
         require_admin_permission(
             AdminPermission.PROJECT_EDIT,
@@ -3411,9 +3410,12 @@ def preview_project_geography_scope_import(
 ):
     """Validate canonical village LGD codes without changing scope."""
 
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     project = db.query(Project).filter(
         Project.id == project_id,
-        Project.tenant_id == x_tenant_id,
+        Project.tenant_id == tenant_id,
     ).first()
     if not project:
         raise HTTPException(404, "Project not found")
@@ -3421,7 +3423,7 @@ def preview_project_geography_scope_import(
     edit_policy = _project_edit_policy(
         db,
         project,
-        x_tenant_id,
+        tenant_id,
     )
 
     raw_codes = [
@@ -3499,6 +3501,8 @@ def preview_project_geography_scope_import(
     return {
         "schema_version":
             "project_geography_scope_import_preview.v1",
+        "tenant_id": tenant_id,
+        "previewed_by": str(actor_id),
         "project": {
             "id": str(project.id),
             "name": project.name,
