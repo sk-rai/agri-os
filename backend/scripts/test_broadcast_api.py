@@ -591,7 +591,7 @@ def main():
     check(pending_deliveries.json()["count"] == 3, "Broadcast deliveries status filter matches pending rows")
 
     print("\n[1d] Farmer broadcast consumption")
-    farmer_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi", headers=headers)
+    farmer_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=hi", headers=farmer_headers)
     check(farmer_feed.status_code == 200, "Farmer broadcast feed returns 200", farmer_feed.text)
     feed = farmer_feed.json()
     check(feed["schema_version"] == "farmer_broadcasts.v1", "Farmer feed schema stable")
@@ -657,7 +657,7 @@ def main():
     finally:
         db.close()
 
-    visibility_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=en", headers=headers)
+    visibility_feed = client.get(f"/api/v1/broadcasts/farmers/{farmer_id}/broadcasts?language_code=en", headers=farmer_headers)
     check(visibility_feed.status_code == 200, "Farmer feed visibility filter returns 200", visibility_feed.text)
     visibility_ids = {row["campaign"]["id"] for row in visibility_feed.json()["broadcasts"]}
     check(str(future_id) not in visibility_ids, "Future scheduled broadcast is hidden from farmer feed")
@@ -815,8 +815,15 @@ def main():
     check(cancel.status_code == 200, "Cancel draft broadcast returns 200", cancel.text)
     check(cancel.json()["status"] == "CANCELLED", "Cancel changes draft broadcast status")
 
-    isolated = client.get(f"/api/v1/broadcasts/{campaign_id}", headers={"X-Tenant-ID": "default"})
-    check(isolated.status_code == 404, "Broadcast detail tenant isolated", isolated.text)
+    isolated = client.get(
+        f"/api/v1/broadcasts/{campaign_id}",
+        headers={**headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        isolated.status_code == 403,
+        "Broadcast detail rejects token/header tenant mismatch",
+        isolated.text,
+    )
 
     db = SessionLocal()
     try:

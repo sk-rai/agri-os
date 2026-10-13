@@ -238,3 +238,16 @@ The remaining POST routes are classified by behavior rather than treated as ordi
 - `POST /api/v1/auth/device` is an intentional public authentication exchange. It validates a registered device credential before issuing a JWT.
 - `POST /api/v1/master-data/sync` is read-only reference transport. POST carries the client version manifest but performs no database writes.
 - Project-village-resolution dry run and workflow-draft CSV validation require verified administrator permissions, derive tenant and actor from the authenticated principal, and remain database write-free.
+
+## Broadcast read authorization
+
+Broadcast administration reads require a verified administrator with `VIEW`.
+This includes campaign listing and detail, delivery drilldown, audience preview,
+and immutable broadcast-audit history. The tenant is derived from the verified
+principal; `X-Tenant-ID` is only consistency context and cannot select another
+tenant.
+
+The farmer broadcast feed requires an authenticated human. Access is limited to
+the farmer's linked user or an actively assigned user in a tenant-bounded farmer
+project enrollment. Unrelated authenticated users receive
+`BROADCAST_FARMER_ACCESS_DENIED`, and foreign-tenant farmers remain hidden.

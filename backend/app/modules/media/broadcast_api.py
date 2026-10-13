@@ -779,9 +779,14 @@ def list_broadcast_campaigns(
     priority: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    query = db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    query = db.query(BroadcastCampaign).filter(BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True)
     if project_id:
         query = query.filter(BroadcastCampaign.project_id == project_id)
     if status:
@@ -794,7 +799,7 @@ def list_broadcast_campaigns(
     rows = query.order_by(BroadcastCampaign.created_at.desc()).limit(limit).all()
     return {
         "schema_version": "broadcast_campaigns.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {
             "project_id": str(project_id) if project_id else None,
             "status": status.upper() if status else None,
@@ -806,9 +811,9 @@ def list_broadcast_campaigns(
         "campaigns": [
             _campaign_payload(
                 row,
-                content_count=db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == row.id).count(),
-                rule_count=db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == row.id).count(),
-                delivery_count=db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == row.id).count(),
+                content_count=db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == row.id).count(),
+                rule_count=db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == row.id).count(),
+                delivery_count=db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == row.id).count(),
             )
             for row in rows
         ],
@@ -1115,13 +1120,18 @@ def list_broadcast_deliveries(
     status: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
 
-    query = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id)
+    query = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == campaign.id)
     if status:
         query = query.filter(BroadcastDelivery.delivery_status == status.upper())
 
@@ -1131,7 +1141,7 @@ def list_broadcast_deliveries(
     if farmer_ids:
         farmers = {
             row.id: row
-            for row in db.query(Farmer).filter(Farmer.tenant_id == x_tenant_id, Farmer.id.in_(farmer_ids)).all()
+            for row in db.query(Farmer).filter(Farmer.tenant_id == tenant_id, Farmer.id.in_(farmer_ids)).all()
         }
 
     deliveries = []
@@ -1149,7 +1159,7 @@ def list_broadcast_deliveries(
 
     return {
         "schema_version": "broadcast_deliveries.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "campaign_id": str(campaign.id),
         "filters": {"status": status.upper() if status else None, "limit": limit},
         "count": len(deliveries),
@@ -1161,17 +1171,22 @@ def list_broadcast_deliveries(
 def preview_broadcast_audience(
     campaign_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
 
-    resolved = _resolve_broadcast_audience(db, tenant_id=x_tenant_id, campaign_id=campaign.id)
-    existing_delivery_count = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id).count()
+    resolved = _resolve_broadcast_audience(db, tenant_id=tenant_id, campaign_id=campaign.id)
+    existing_delivery_count = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == campaign.id).count()
     return {
         "schema_version": "broadcast_audience_preview.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "campaign_id": str(campaign.id),
         "campaign_status": campaign.status,
         "audience_match_mode": resolved["audience_match_mode"],
@@ -1191,19 +1206,24 @@ def list_broadcast_audit_events(
     action: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
 
-    query = db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == x_tenant_id, BroadcastAuditEvent.campaign_id == campaign.id)
+    query = db.query(BroadcastAuditEvent).filter(BroadcastAuditEvent.tenant_id == tenant_id, BroadcastAuditEvent.campaign_id == campaign.id)
     if action:
         query = query.filter(BroadcastAuditEvent.action == action.upper())
     rows = query.order_by(BroadcastAuditEvent.created_at.desc()).limit(limit).all()
     return {
         "schema_version": "broadcast_audit_events.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "campaign_id": str(campaign.id),
         "filters": {"action": action.upper() if action else None, "limit": limit},
         "count": len(rows),
@@ -1215,15 +1235,20 @@ def list_broadcast_audit_events(
 def get_broadcast_campaign(
     campaign_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == x_tenant_id, BroadcastCampaign.is_active == True).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    campaign = db.query(BroadcastCampaign).filter(BroadcastCampaign.id == campaign_id, BroadcastCampaign.tenant_id == tenant_id, BroadcastCampaign.is_active == True).first()
     if not campaign:
         raise HTTPException(404, "Broadcast campaign not found")
 
-    contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == x_tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
-    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
-    deliveries = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == x_tenant_id, BroadcastDelivery.campaign_id == campaign.id).all()
+    contents = db.query(BroadcastContent).filter(BroadcastContent.tenant_id == tenant_id, BroadcastContent.campaign_id == campaign.id).order_by(BroadcastContent.language_code.asc()).all()
+    rules = db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).order_by(BroadcastAudienceRule.rule_type.asc()).all()
+    deliveries = db.query(BroadcastDelivery).filter(BroadcastDelivery.tenant_id == tenant_id, BroadcastDelivery.campaign_id == campaign.id).all()
 
     payload = _campaign_payload(campaign, content_count=len(contents), rule_count=len(rules), delivery_count=len(deliveries))
     payload["contents"] = [_content_payload(row, db) for row in contents]
@@ -1239,6 +1264,51 @@ def get_broadcast_campaign(
     return payload
 
 
+
+
+def _require_broadcast_farmer_access(
+    db: Session,
+    farmer: Farmer,
+    principal: AuthenticatedPrincipal,
+) -> None:
+    """Require the authenticated human to own or be assigned the farmer."""
+
+    if farmer.tenant_id != principal.tenant_id:
+        raise HTTPException(404, "Farmer not found")
+
+    if farmer.user_id and farmer.user_id == principal.user_id:
+        return
+
+    actor_text = str(principal.user_id)
+    enrollments = (
+        db.query(FarmerProjectEnrollment)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+            FarmerProjectEnrollment.farmer_id == farmer.id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+        )
+        .all()
+    )
+    if any(
+        actor_text in {
+            str(value)
+            for value in (row.assigned_user_ids or [])
+        }
+        for row in enrollments
+    ):
+        return
+
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "BROADCAST_FARMER_ACCESS_DENIED",
+            "message": (
+                "Authenticated user cannot consume this "
+                "farmer broadcast feed."
+            ),
+            "farmer_id": str(farmer.id),
+        },
+    )
 
 
 def _require_broadcast_delivery_access(
@@ -1360,11 +1430,17 @@ def list_farmer_broadcasts(
     include_read: bool = Query(True),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
 ):
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == x_tenant_id).first()
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    farmer = db.query(Farmer).filter(Farmer.id == farmer_id, Farmer.tenant_id == tenant_id).first()
     if not farmer:
         raise HTTPException(404, "Farmer not found")
+    _require_broadcast_farmer_access(db, farmer, principal)
 
     from datetime import datetime, timezone
     from sqlalchemy import or_
@@ -1374,9 +1450,9 @@ def list_farmer_broadcasts(
         db.query(BroadcastDelivery, BroadcastCampaign)
         .join(BroadcastCampaign, BroadcastCampaign.id == BroadcastDelivery.campaign_id)
         .filter(
-            BroadcastDelivery.tenant_id == x_tenant_id,
+            BroadcastDelivery.tenant_id == tenant_id,
             BroadcastDelivery.farmer_id == farmer_id,
-            BroadcastCampaign.tenant_id == x_tenant_id,
+            BroadcastCampaign.tenant_id == tenant_id,
             BroadcastCampaign.status == "PUBLISHED",
             BroadcastCampaign.is_active == True,
             or_(BroadcastCampaign.starts_at.is_(None), BroadcastCampaign.starts_at <= now_ts),
@@ -1390,19 +1466,19 @@ def list_farmer_broadcasts(
     items = []
     for delivery, campaign in rows:
         contents = db.query(BroadcastContent).filter(
-            BroadcastContent.tenant_id == x_tenant_id,
+            BroadcastContent.tenant_id == tenant_id,
             BroadcastContent.campaign_id == campaign.id,
         ).order_by(BroadcastContent.language_code.asc()).all()
         selected_content = _select_content_for_language(contents, language_code)
         items.append({
-            "campaign": _campaign_payload(campaign, content_count=len(contents), rule_count=db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == x_tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).count(), delivery_count=1),
+            "campaign": _campaign_payload(campaign, content_count=len(contents), rule_count=db.query(BroadcastAudienceRule).filter(BroadcastAudienceRule.tenant_id == tenant_id, BroadcastAudienceRule.campaign_id == campaign.id).count(), delivery_count=1),
             "content": _content_payload(selected_content, db) if selected_content else None,
             "delivery": _delivery_payload(delivery),
         })
 
     return {
         "schema_version": "farmer_broadcasts.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "farmer_id": str(farmer_id),
         "filters": {
             "language_code": language_code,

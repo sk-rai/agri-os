@@ -581,3 +581,13 @@ The final classifications are:
 - workflow-draft CSV validation: authenticated, verified-tenant and verified-actor validation with no database writes.
 
 The auditor explicitly distinguishes public authentication and read-only POST reference transport from business mutations. This classification does not exempt any state-changing business route from authentication, tenant, or actor requirements.
+
+## Broadcast read boundary checkpoint
+
+The campaign list/detail, delivery list, audience preview, broadcast audit, and
+farmer-feed GET routes no longer appear as unauthenticated non-reference reads.
+Administrator reads derive tenant and actor from a verified `VIEW` principal.
+The farmer feed derives the same identity from role-neutral human
+authentication and enforces linked-owner or active-assignment access. Static,
+behavior, legacy broadcast, tenant-isolation, cleanup, and live route-audit
+checks cover this boundary.

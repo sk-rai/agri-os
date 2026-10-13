@@ -506,3 +506,11 @@ The verified administrator determines the tenant and actor. Farmer, parcel, and 
 Tenant creation is outside ordinary tenant administration. Only a verified `ENTERPRISE_ADMIN` in the `default` platform tenant may provision another tenant, and every successful provisioning action produces immutable administrator attribution.
 
 Device login is an authentication exchange, not an authenticated business mutation. Master-data sync, project-village-resolution dry run, and workflow-draft CSV validation use POST request bodies but are non-mutating operations. The two administrative validation routes report the verified administrator and derive all scope from the authenticated principal.
+
+## Broadcast read governance
+
+Broadcast administrative visibility belongs to verified tenant administrators
+with `VIEW`. Farmer feed visibility belongs only to the linked farmer persona or
+an active assigned project user. Possession of a farmer UUID, delivery UUID, or
+tenant header does not grant visibility, and authenticated users cannot cross
+tenant boundaries through broadcast read routes.

@@ -599,3 +599,11 @@ Tenant provisioning now requires a verified platform administrator: `MANAGE_USER
 Device login remains intentionally unauthenticated because it is itself a credential-verification boundary. It issues a bearer token only after matching the registered device key and device identifier.
 
 Master-data sync is explicitly classified as read-only reference transport despite using POST for its client version manifest. Project-village-resolution dry run and workflow CSV draft validation derive tenant and actor from verified administrators and do not write application state.
+
+## Broadcast read authorization checkpoint
+
+The six non-reference broadcast GET routes now cross a verified human boundary.
+Five administration reads require `VIEW`; the farmer feed requires a persisted
+authenticated human and explicit farmer ownership or active assignment. Tenant
+and actor context are derived from the verified principal, actor impersonation
+and tenant-header mismatch are rejected, and foreign resources are not exposed.
