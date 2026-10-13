@@ -566,3 +566,15 @@ This boundary does not grant unauthenticated access to crop-cycle activity,
 farmer crop data, project configuration, or catalog administration. Any route
 that leaves the canonical read-only reference scope must enforce the
 appropriate authenticated persona and tenant boundary.
+
+## Geography reference-data governance
+
+Canonical administrative hierarchy and postal lookup data is global reference
+material rather than human-persona operational data. The hierarchy profile
+and seven active geography lookup routes therefore remain usable without an
+authenticated human persona.
+
+This boundary is limited to the exact read-only GET routes. Project geography,
+farmer location records, import operations, review decisions, promotion
+state, and runtime-boundary administration remain outside the reference-data
+exception.

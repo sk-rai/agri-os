@@ -307,3 +307,15 @@ This exception applies only to database-read-only GET routes under the
 master-data `/crops` router. Crop catalog mutations and operational crop data
 retain their existing authentication, permission, tenant, and actor
 requirements.
+
+## Public geography reference reads
+
+The geography hierarchy profile and canonical state, district, block, village,
+LGD-code resolution, PIN-code lookup, and village-search GET endpoints are
+intentional unauthenticated reference reads. They expose active government or
+postal reference information used for enrollment, offline caching, and
+location selection.
+
+These exemptions are exact, GET-only route classifications. They do not apply
+to geography imports, reviews, promotions, project matching, resolution
+evidence, runtime activation, or other operational geography endpoints.

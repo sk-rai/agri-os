@@ -654,3 +654,15 @@ Regression assertions require each route to remain `reference=true`,
 reports 35 remaining non-reference GET findings and no crop-reference
 findings. Authentication exemptions remain method-constrained and do not
 apply to mutations.
+
+## Geography reference classification checkpoint
+
+The trust-boundary auditor has an exact `REFERENCE_GET_PATHS` classification
+for the static geography hierarchy profile and seven canonical LGD/postal
+lookup routes. Each classified route is read-only, contains no tenant,
+project, or farmer scope, and is reported as `reference=true`,
+`public=false`, with no findings.
+
+Exact path matching prevents the exception from covering other routes on the
+large geography router. After this checkpoint, the audit reports 27 remaining
+non-reference GET findings and no geography-reference findings.

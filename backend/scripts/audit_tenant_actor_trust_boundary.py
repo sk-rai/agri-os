@@ -11,6 +11,16 @@ PUBLIC_GET_PATHS=("/api/v1/app-config/bootstrap",)
 REFERENCE_PREFIXES=("/api/v1/master-data/states","/api/v1/master-data/districts",
  "/api/v1/master-data/blocks","/api/v1/master-data/villages","/api/v1/crop-catalog",
  "/api/v1/input-catalog","/api/v1/forms","/api/v1/workflows","/crops")
+REFERENCE_GET_PATHS=(
+ "/geography/hierarchy-profile",
+ "/geography/states",
+ "/geography/districts",
+ "/geography/blocks",
+ "/geography/villages",
+ "/geography/villages/by-lgd-codes",
+ "/geography/villages/by-pin-code",
+ "/geography/villages/search",
+)
 REFERENCE_POST_PATHS=("/sync",)
 def literal(node):
     try:return ast.literal_eval(node)
@@ -56,7 +66,7 @@ def scan(path):
         tenant=any(x in body for x in ("X-Tenant-ID","x_tenant_id","principal.tenant_id"))
         actor=any(x in body for x in ("X-Actor-ID","x_actor_id","principal.user_id","claims.get('sub')","claims.get(\"sub\")"))
         public=any(full.startswith(p) for p in PUBLIC_PREFIXES) or (method=="GET" and full in PUBLIC_GET_PATHS)
-        reference=(method=="GET" and any(full.startswith(p) for p in REFERENCE_PREFIXES)) or (method=="POST" and full in REFERENCE_POST_PATHS)
+        reference=(method=="GET" and (any(full.startswith(p) for p in REFERENCE_PREFIXES) or full in REFERENCE_GET_PATHS)) or (method=="POST" and full in REFERENCE_POST_PATHS)
         flags=[]
         if method in MUTATIONS and not public and not reference and not(admin or bearer):flags.append("MUTATION_WITHOUT_AUTH_MARKER")
         if method in MUTATIONS and not public and not reference and not tenant:flags.append("MUTATION_WITHOUT_TENANT_MARKER")

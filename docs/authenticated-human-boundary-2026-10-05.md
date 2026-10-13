@@ -659,3 +659,14 @@ bootstrap flows.
 The classification is GET-constrained and does not exempt crop mutations or
 tenant/project operational reads. Static regression coverage verifies the
 routes remain active-only and database read-only.
+
+## Geography reference classification checkpoint
+
+Eight geography GET routes are explicitly classified as reference transport:
+the static hierarchy profile plus active state, district, block, village,
+LGD-code, PIN-code, and village-search lookups. The routes expose no tenant,
+project, farmer, or administrator records and perform no database writes.
+
+The auditor uses exact route matches instead of a broad `/geography` prefix,
+ensuring operational geography routes continue to require their established
+authentication, permission, tenant, and actor boundaries.
