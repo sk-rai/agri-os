@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.workflow.models import WorkflowTemplate, WorkflowTemplateVersion
 
 GREEN = "\033[92m"
@@ -70,8 +71,8 @@ def main():
     print("=" * 72)
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": TENANT_ID}
     db = SessionLocal()
+    admin_user, headers = create_test_admin(db, tenant_id=TENANT_ID)
     test_version_id = uuid.uuid4()
     try:
         template, current_version = get_rice_template_and_version(db)
@@ -135,6 +136,7 @@ def main():
         )
     finally:
         cleanup(db, test_version_id)
+        delete_test_admin(db, admin_user.id)
         db.close()
 
     print("\nAll workflow catalog single-active checks passed.")

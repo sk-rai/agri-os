@@ -319,3 +319,21 @@ location selection.
 These exemptions are exact, GET-only route classifications. They do not apply
 to geography imports, reviews, promotions, project matching, resolution
 evidence, runtime activation, or other operational geography endpoints.
+
+## Workflow catalog reads
+
+Workflow catalog reads no longer trust caller-supplied tenant or actor headers as authorization.
+
+Runtime catalog and published-preview routes require an authenticated human. They derive the tenant and actor from the verified principal. Tenant-wide catalog access remains available to an authenticated tenant member, while project-scoped catalog and preview requests require an enterprise administrator, a verified project role, or an actively enrolled farmer who owns the authenticated user identity.
+
+Workflow governance reads require administrator `VIEW` permission:
+
+- draft workflow preview;
+- draft publish-impact analysis;
+- legacy-cycle pin candidates;
+- template version history;
+- template audit history.
+
+Draft validation requires administrator `EDIT` permission because validation writes an immutable audit event. That audit records the verified administrator rather than a caller-supplied actor.
+
+Regression coverage is provided by `backend/scripts/test_workflow_catalog_read_auth_static.py` and `backend/scripts/test_workflow_catalog_read_auth_behavior.py`. Existing catalog, preview, enablement, draft, publishing, legacy-pin, version-assignment, and CSV-validation regressions use authenticated identities.

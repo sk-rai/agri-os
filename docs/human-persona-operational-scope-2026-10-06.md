@@ -578,3 +578,13 @@ This boundary is limited to the exact read-only GET routes. Project geography,
 farmer location records, import operations, review decisions, promotion
 state, and runtime-boundary administration remain outside the reference-data
 exception.
+
+## Workflow catalog read governance
+
+Workflow runtime reads use the verified human persona rather than treating tenant and actor headers as authority.
+
+Tenant catalog reads are available to authenticated tenant members. When a project is requested, access is limited to enterprise administrators, verified project roles, or the farmer identity associated with an active enrollment in that project. An unrelated farmer receives the stable `WORKFLOW_PROJECT_SCOPE_DENIED` response, and a foreign-tenant project is not disclosed.
+
+Workflow draft and history views remain administrative surfaces governed by administrator permissions. Read-only governance views require `VIEW`; draft validation requires `EDIT` because validation persists an audit event attributed to the verified administrator.
+
+Published and archived workflow rendering behavior, project enablements, version pinning, publish safeguards, legacy pin backfill, and CSV draft validation remain covered by authenticated regression callers.

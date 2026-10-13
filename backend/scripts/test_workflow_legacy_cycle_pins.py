@@ -151,7 +151,7 @@ def main():
 
         report = client.get(
             f"/api/v1/workflow-catalog/legacy-cycle-pins?project_id={project_id}&crop_code=RICE&season_code=KHARIF&limit=100",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(report.status_code == 200, "Legacy pin report returns 200", f"Status: {report.status_code}")
         rows = report.json()["cycles"]

@@ -189,7 +189,7 @@ def main():
 
         impact = client.get(
             f"/api/v1/workflow-catalog/drafts/{draft_version_id}/publish-impact?archive_previous=true",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(impact.status_code == 200, "Publish impact endpoint returns 200", f"Status: {impact.status_code}")
         impact_payload = impact.json()
@@ -214,7 +214,7 @@ def main():
 
         archived_preview = client.get(
             f"/api/v1/workflow-catalog/workflow-preview/{published_version.id}",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(archived_preview.status_code == 200, "Archived pinned version remains previewable", f"Status: {archived_preview.status_code}")
         check(archived_preview.json()["status"] == "ARCHIVED", "Archived preview reports ARCHIVED status")

@@ -666,3 +666,20 @@ project, or farmer scope, and is reported as `reference=true`,
 Exact path matching prevents the exception from covering other routes on the
 large geography router. After this checkpoint, the audit reports 27 remaining
 non-reference GET findings and no geography-reference findings.
+
+## Workflow catalog read boundary checkpoint
+
+Eight workflow catalog GET routes were removed from `NON_REFERENCE_READ_WITHOUT_AUTH_MARKER` findings:
+
+- enabled crop workflows;
+- published workflow preview;
+- draft workflow preview;
+- draft validation;
+- draft publish-impact analysis;
+- legacy-cycle pin candidates;
+- template version history;
+- template audit history.
+
+Runtime routes require an authenticated human and derive verified tenant and actor identity. Project-scoped runtime reads additionally enforce tenant-bounded project persona or active farmer-enrollment access. Administrative routes derive identity through administrator permission dependencies: governance reads require `VIEW`, while draft validation requires `EDIT` because it writes an immutable audit event.
+
+The full static audit remains read-only and reports 361 routes with 19 remaining read-boundary findings, down from 27. None of the secured workflow catalog routes remain flagged. Static and behavior regression contracts also verify missing-authentication rejection, actor and tenant mismatch rejection, project isolation, administrator permission enforcement, verified audit attribution, and preservation of existing workflow behavior.

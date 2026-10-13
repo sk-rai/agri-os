@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -29,7 +31,8 @@ def main():
     print("=" * 72)
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": "default"}
+    db = SessionLocal()
+    admin_user, headers = create_test_admin(db, tenant_id="default")
 
     catalog = client.get("/api/v1/workflow-catalog/enabled-crop-workflows", headers=headers)
     check(catalog.status_code == 200, "Enabled workflow catalog returns 200", f"Status: {catalog.status_code}")
@@ -54,6 +57,9 @@ def main():
     check(any(rec.get("input_code") == "UREA_46_N" for rec in recs), "Preview includes mapped input codes")
     check(isinstance(payload.get("warnings"), list), "Preview includes warnings list")
     check(isinstance(payload.get("applied_overrides"), list), "Preview includes applied overrides list")
+
+    delete_test_admin(db, admin_user.id)
+    db.close()
 
     print("\n" + "=" * 72)
     print("🟢 Workflow preview validated")

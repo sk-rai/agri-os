@@ -70,7 +70,11 @@ def main():
     print("=" * 72)
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": TENANT_ID}
+    bootstrap_db = SessionLocal()
+    bootstrap_admin, headers = create_test_admin(
+        bootstrap_db,
+        tenant_id=TENANT_ID,
+    )
 
     print("\n[1] Default implicit workflow catalog")
     response = client.get("/api/v1/workflow-catalog/enabled-crop-workflows", headers=headers)
@@ -80,6 +84,8 @@ def main():
     check("RICE" in codes, "Default catalog includes Rice")
     check("SUGARCANE" in codes, "Default catalog includes Sugarcane")
     check(all(item["enablement_source"] == "implicit_default" for item in payload["workflows"]), "Default catalog uses implicit default source")
+    delete_test_admin(bootstrap_db, bootstrap_admin.id)
+    bootstrap_db.close()
 
     print("\n[2] Project explicit allow-list and stage override")
     db = SessionLocal()

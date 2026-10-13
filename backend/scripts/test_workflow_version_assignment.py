@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.workflow.models import (
     CropActivity,
@@ -77,18 +78,28 @@ def main():
     print("=" * 72)
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": str(uuid.uuid4())}
     farmer_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     cycle_id = None
 
     db = SessionLocal()
+    farmer_user, headers = create_test_admin(
+        db,
+        role="FARMER",
+        tenant_id=TENANT_ID,
+    )
+    viewer_user, viewer_headers = create_test_admin(
+        db,
+        role="ADMIN_VIEWER",
+        tenant_id=TENANT_ID,
+    )
     try:
         ensure_default_tenant(db)
         workflow_template, published_version = get_rice_workflow(db)
         farmer = Farmer(
             id=farmer_id,
             tenant_id=TENANT_ID,
+            user_id=farmer_user.id,
             mobile_number="999" + str(farmer_id.int)[-7:],
             village_name_manual="Workflow Pin Test Village",
             primary_crop_code="RICE",
@@ -143,7 +154,10 @@ def main():
         check(rec_payload["workflow_template_version_id"] == str(published_version.id), "Recommendations are rendered from pinned version")
         check(rec_payload["workflow_template_pinning_status"] == "PINNED", "Recommendations report PINNED")
 
-        versions = client.get(f"/api/v1/workflow-catalog/templates/{workflow_template.id}/versions", headers={"X-Tenant-ID": TENANT_ID})
+        versions = client.get(
+            f"/api/v1/workflow-catalog/templates/{workflow_template.id}/versions",
+            headers=viewer_headers,
+        )
         check(versions.status_code == 200, "Version history endpoint returns 200", f"Status: {versions.status_code}")
         version_rows = versions.json()["versions"]
         row = next((item for item in version_rows if item["workflow_template_version_id"] == str(published_version.id)), None)
@@ -153,6 +167,8 @@ def main():
         check(row.get("is_read_only_for_existing_cycles") is True, "Used version is marked read-only for existing cycles")
     finally:
         cleanup(db, farmer_id, parcel_id, cycle_id)
+        delete_test_admin(db, farmer_user.id)
+        delete_test_admin(db, viewer_user.id)
         db.close()
 
     print("\n" + "=" * 72)

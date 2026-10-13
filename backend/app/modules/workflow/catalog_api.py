@@ -22,7 +22,14 @@ from sqlalchemy.orm import Session
 
 from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.core.database import get_db
-from app.modules.farmer.models import Farmer, Parcel, Project
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
+from app.modules.farmer.models import (
+    Farmer,
+    FarmerProjectEnrollment,
+    Parcel,
+    Project,
+)
 from app.modules.master_data.models import AgriculturalInput, Crop
 from app.modules.master_data.input_assignment_service import assert_catalog_input_allowed_for_project_crop
 from app.modules.workflow.models import (
@@ -45,6 +52,67 @@ from app.modules.workflow.template_service import (
 )
 
 router = APIRouter(prefix="/api/v1/workflow-catalog", tags=["workflow-catalog"])
+
+
+def _assert_workflow_runtime_project_access(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    project_id: Optional[uuid.UUID],
+) -> None:
+    """Require verified tenant membership and project access for runtime reads."""
+    if project_id is None:
+        return
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == principal.tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if principal.role == "ENTERPRISE_ADMIN":
+        return
+
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.has_project_access(project_id):
+        return
+
+    owns_enrolled_farmer = (
+        db.query(FarmerProjectEnrollment.id)
+        .join(Farmer, Farmer.id == FarmerProjectEnrollment.farmer_id)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+            FarmerProjectEnrollment.is_active == True,
+            Farmer.tenant_id == principal.tenant_id,
+            Farmer.user_id == principal.user_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .first()
+        is not None
+    )
+    if owns_enrolled_farmer:
+        return
+
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "WORKFLOW_PROJECT_SCOPE_DENIED",
+            "message": (
+                "Authenticated user is not assigned to the requested "
+                "workflow project."
+            ),
+            "project_id": str(project_id),
+        },
+    )
 
 
 WORKFLOW_CSV_COLUMNS = [
@@ -1077,7 +1145,9 @@ def list_enabled_crop_workflows(
     season: Optional[str] = Query(None),
     include_stages: bool = Query(False),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
 ):
     """Return crop workflow templates visible for a tenant/project.
 
@@ -1085,9 +1155,17 @@ def list_enabled_crop_workflows(
     system workflows are returned. If enablement rows exist, they act as an
     explicit allow-list.
     """
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    _assert_workflow_runtime_project_access(
+        db,
+        principal=principal,
+        project_id=project_id,
+    )
+
     rows = list_enabled_workflow_versions(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         crop_code=crop_code,
         season_code=season,
@@ -1127,7 +1205,7 @@ def list_enabled_crop_workflows(
             item["stages"] = workflow_version_to_stage_definitions_for_scope(
                 db,
                 version.id,
-                tenant_id=x_tenant_id,
+                tenant_id=tenant_id,
                 project_id=project_id,
                 crop_code=template.crop_code,
                 season_code=template.season_code,
@@ -1136,7 +1214,7 @@ def list_enabled_crop_workflows(
 
     return {
         "schema_version": "1.0.0",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "project_id": str(project_id) if project_id else None,
         "count": len(workflows),
         "workflows": workflows,
@@ -1480,14 +1558,24 @@ def preview_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
     project_id: Optional[uuid.UUID] = Query(None),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
 ):
     """Preview final Android-facing workflow JSON for a published version.
 
     The response is read-only and includes applied override metadata plus
     validation warnings useful before enabling edits/publishing in admin.
     """
-    rows = list_enabled_workflow_versions(db, tenant_id=x_tenant_id, project_id=project_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    _assert_workflow_runtime_project_access(
+        db,
+        principal=principal,
+        project_id=project_id,
+    )
+
+    rows = list_enabled_workflow_versions(db, tenant_id=tenant_id, project_id=project_id)
     selected = next((row for row in rows if str(row[1].id) == str(workflow_template_version_id)), None)
     if selected:
         template, version, enablement = selected
@@ -1500,7 +1588,7 @@ def preview_workflow_template_version(
                 WorkflowTemplateVersion.status.in_(["PUBLISHED", "ARCHIVED"]),
                 WorkflowTemplateVersion.is_active == True,
                 WorkflowTemplate.is_active == True,
-                WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+                WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
             )
             .first()
         )
@@ -1513,12 +1601,12 @@ def preview_workflow_template_version(
     stages = workflow_version_to_stage_definitions_for_scope(
         db,
         version.id,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         crop_code=template.crop_code,
         season_code=template.season_code,
     )
-    overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=x_tenant_id, project_id=project_id)
+    overrides = scoped_overrides(db, template_version_id=version.id, tenant_id=tenant_id, project_id=project_id)
     known_input_codes = {row.code for row in db.query(AgriculturalInput.code).filter(AgriculturalInput.is_active == True, AgriculturalInput.catalog_status == "PUBLISHED").all()}
     warnings = _preview_warnings(stages, known_input_codes)
 
@@ -1529,7 +1617,7 @@ def preview_workflow_template_version(
         stages=stages,
         overrides=overrides,
         warnings=warnings,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         preview_source="workflow_template",
         enablement_source="explicit" if enablement else "implicit_default",
@@ -1751,33 +1839,42 @@ def list_workflow_draft_validation_blockers(
 def preview_draft_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
     """Admin-only preview for DRAFT workflow versions.
 
     Android/public preview remains /workflow-preview and continues to serve only
     published, enabled workflow versions.
     """
-    return _render_draft_preview(db, workflow_template_version_id, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    return _render_draft_preview(db, workflow_template_version_id, tenant_id)
 
 
 @router.get("/drafts/{workflow_template_version_id}/validation")
 def validate_draft_workflow_template_version(
     workflow_template_version_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
-    x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.EDIT)
+    ),
 ):
     """Return non-mutating validation report for a DRAFT workflow version."""
-    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    template, version = _get_draft_template_version(db, workflow_template_version_id, tenant_id)
     _, report = _draft_validation(db, version.id)
     validated_at = datetime.now(timezone.utc)
     _record_workflow_audit_event(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         template_id=template.id,
         template_version_id=version.id,
-        actor_id=_actor_uuid(x_actor_id),
+        actor_id=actor_id,
         action="VALIDATE_DRAFT",
         target_type="VERSION",
         target_id=str(version.id),
@@ -1786,7 +1883,7 @@ def validate_draft_workflow_template_version(
     db.commit()
     return {
         **report,
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "workflow_template_id": str(template.id),
         "workflow_template_version_id": str(version.id),
         "workflow_template_code": template.code,
@@ -1905,7 +2002,7 @@ def reorder_draft_workflow_stages(
         reason="Reorder draft workflow stages",
     )
     db.commit()
-    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+    return _render_draft_preview(db, version.id, x_tenant_id)
 
 
 @router.patch("/drafts/{workflow_template_version_id}/stages/{stage_code}")
@@ -2293,7 +2390,7 @@ def create_draft_workflow_stage(
         reason=f"Create draft stage {stage.stage_code}",
     )
     db.commit()
-    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+    return _render_draft_preview(db, version.id, x_tenant_id)
 
 
 @router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/duplicate")
@@ -2372,7 +2469,7 @@ def duplicate_draft_workflow_stage(
         reason=f"Duplicate draft stage {source_stage.stage_code} as {new_stage.stage_code}",
     )
     db.commit()
-    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+    return _render_draft_preview(db, version.id, x_tenant_id)
 
 
 @router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/restore")
@@ -2435,7 +2532,7 @@ def restore_draft_workflow_stage(
         reason=f"Restore draft stage {stage.stage_code}",
     )
     db.commit()
-    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+    return _render_draft_preview(db, version.id, x_tenant_id)
 
 
 @router.delete("/drafts/{workflow_template_version_id}/stages/{stage_code}")
@@ -2489,7 +2586,7 @@ def delete_draft_workflow_stage(
         reason=f"Delete draft stage {stage.stage_code}",
     )
     db.commit()
-    return preview_draft_workflow_template_version(version.id, db=db, x_tenant_id=x_tenant_id)
+    return _render_draft_preview(db, version.id, x_tenant_id)
 
 
 @router.post("/drafts/{workflow_template_version_id}/stages/{stage_code}/recommendations")
@@ -2726,10 +2823,15 @@ def get_draft_publish_impact(
     workflow_template_version_id: uuid.UUID,
     archive_previous: bool = Query(True),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
     """Preview which existing published versions/cycles would be affected by publishing this draft."""
-    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    template, version = _get_draft_template_version(db, workflow_template_version_id, tenant_id)
     return _draft_publish_impact(db, template, version, archive_previous)
 
 
@@ -3052,12 +3154,17 @@ def list_legacy_cycle_pin_candidates(
     season_code: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
     """Report legacy crop cycles that are not pinned to a workflow version yet."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     candidates = _legacy_cycle_pin_candidates(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         crop_code=crop_code,
         season_code=season_code,
@@ -3070,7 +3177,7 @@ def list_legacy_cycle_pin_candidates(
         by_reason[row["reason"]] = by_reason.get(row["reason"], 0) + 1
     return {
         "schema_version": "workflow_legacy_cycle_pins.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {
             "project_id": str(project_id) if project_id else None,
             "crop_code": crop_code.upper() if crop_code else None,
@@ -3153,13 +3260,18 @@ def backfill_legacy_cycle_pins(
 def list_workflow_template_versions(
     template_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
     """Return version history for a workflow template, including DRAFT/PUBLISHED/ARCHIVED rows."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     template = db.query(WorkflowTemplate).filter(
         WorkflowTemplate.id == template_id,
         WorkflowTemplate.is_active == True,
-        WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+        WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
     ).first()
     if not template:
         raise HTTPException(404, "Workflow template not found")
@@ -3184,7 +3296,7 @@ def list_workflow_template_versions(
     items = [_workflow_version_summary(db, template, version, current_published.id if current_published else None) for version in versions]
     return {
         "schema_version": "1.0.0",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "workflow_template_id": str(template.id),
         "workflow_template_code": template.code,
         "label": {"en": template.canonical_name, "hi": template.canonical_name},
@@ -3212,20 +3324,24 @@ def list_workflow_template_audit_events(
     since: Optional[datetime] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
     """Return workflow template audit trail for admin governance."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     template = db.query(WorkflowTemplate).filter(
         WorkflowTemplate.id == template_id,
         WorkflowTemplate.is_active == True,
-        WorkflowTemplate.tenant_id.in_([x_tenant_id, "default"]),
+        WorkflowTemplate.tenant_id.in_([tenant_id, "default"]),
     ).first()
     if not template:
         raise HTTPException(404, "Workflow template not found")
 
-    db.commit()
     query = db.query(WorkflowTemplateAuditEvent).filter(
-        WorkflowTemplateAuditEvent.tenant_id == x_tenant_id,
+        WorkflowTemplateAuditEvent.tenant_id == tenant_id,
         WorkflowTemplateAuditEvent.template_id == template.id,
     )
     if version_id:
@@ -3244,7 +3360,7 @@ def list_workflow_template_audit_events(
     events = query.order_by(WorkflowTemplateAuditEvent.created_at.desc()).limit(limit).all()
     return {
         "schema_version": "1.0.0",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "workflow_template_id": str(template.id),
         "workflow_template_code": template.code,
         "count": len(events),

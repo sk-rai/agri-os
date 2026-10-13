@@ -670,3 +670,13 @@ project, farmer, or administrator records and perform no database writes.
 The auditor uses exact route matches instead of a broad `/geography` prefix,
 ensuring operational geography routes continue to require their established
 authentication, permission, tenant, and actor boundaries.
+
+## Workflow catalog read checkpoint
+
+The workflow catalog read boundary now separates runtime human access from administrative governance access.
+
+`GET /api/v1/workflow-catalog/enabled-crop-workflows` and the published workflow-preview route require an authenticated human and derive the tenant and actor from the verified principal. Optional project scope is tenant-bounded and permits only an enterprise administrator, an assigned project persona, or a farmer with an active project enrollment linked to the authenticated user.
+
+Draft preview, publish-impact analysis, legacy pin reporting, template version history, and template audit history require administrator `VIEW`. Draft validation requires administrator `EDIT` because it creates an immutable validation audit event.
+
+Missing bearer credentials, actor impersonation, tenant mismatch, unrelated project access, and insufficient administrator permissions are covered by behavior regression tests. Internal draft mutation handlers render their response through the internal preview renderer rather than calling the protected HTTP route function directly.
