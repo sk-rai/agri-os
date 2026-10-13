@@ -152,6 +152,20 @@ def create_primary_review(
     db: Session = Depends(get_db),
     principal=Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    if tenant_id != "default":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "GLOBAL_GEOGRAPHY_REVIEW_TENANT_REQUIRED",
+                "message": (
+                    "Global geography review mutations require a verified "
+                    "administrator in the default platform tenant."
+                ),
+            },
+        )
+
     decision = body.decision.upper()
     if decision not in PRIMARY_DECISIONS:
         raise HTTPException(400, {
@@ -201,7 +215,7 @@ def create_primary_review(
         "id": str(review_id), "snapshot": item["snapshot_id"],
         "item": item["evidence_item_id"], "village": item["village_id"],
         "source": item["source_feature_id"], "status": status,
-        "decision": decision, "actor": str(principal.user_id), "notes": body.notes,
+        "decision": decision, "actor": str(actor_id), "notes": body.notes,
     })
     db.execute(text("""
       insert into geography_village_resolution_evidence_review_events(
@@ -209,7 +223,7 @@ def create_primary_review(
       ) values(:id,:review,:action,:actor,:notes,cast(:evidence as jsonb))
     """), {
         "id": str(event_id), "review": str(review_id), "action": action,
-        "actor": str(principal.user_id), "notes": body.notes,
+        "actor": str(actor_id), "notes": body.notes,
         "evidence": json.dumps(evidence),
     })
     db.commit()
@@ -221,6 +235,7 @@ def create_primary_review(
     }
 
 
+
 @router.post("/{review_id}/second-review")
 def complete_second_review(
     review_id: UUID,
@@ -228,6 +243,20 @@ def complete_second_review(
     db: Session = Depends(get_db),
     principal=Depends(require_admin_permission(AdminPermission.PUBLISH)),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    if tenant_id != "default":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "GLOBAL_GEOGRAPHY_REVIEW_TENANT_REQUIRED",
+                "message": (
+                    "Global geography review mutations require a verified "
+                    "administrator in the default platform tenant."
+                ),
+            },
+        )
+
     if principal.role != "ENTERPRISE_ADMIN":
         raise HTTPException(403, {"code": "ENTERPRISE_ADMIN_SECOND_REVIEW_REQUIRED"})
     decision = body.decision.upper()
@@ -242,7 +271,7 @@ def complete_second_review(
     """), {"id": str(review_id)}).mappings().first()
     if not review:
         raise HTTPException(409, {"code": "PENDING_SECOND_EVIDENCE_REVIEW_NOT_FOUND"})
-    if review["primary_reviewer_id"] == str(principal.user_id):
+    if review["primary_reviewer_id"] == str(actor_id):
         raise HTTPException(409, {"code": "SECOND_REVIEWER_MUST_DIFFER_FROM_PRIMARY"})
     status = {"APPROVE": "APPROVED", "REJECT": "REJECTED", "HOLD": "HELD"}[decision]
     action = {"APPROVE": "SECOND_APPROVED", "REJECT": "SECOND_REJECTED", "HOLD": "SECOND_HELD"}[decision]
@@ -251,7 +280,7 @@ def complete_second_review(
       set status=:status,second_decision=:decision,second_reviewer_id=:actor,
           second_notes=:notes,updated_at=now() where id=:id
     """), {
-        "status": status, "decision": decision, "actor": str(principal.user_id),
+        "status": status, "decision": decision, "actor": str(actor_id),
         "notes": body.notes, "id": str(review_id),
     })
     db.execute(text("""
@@ -260,7 +289,7 @@ def complete_second_review(
       ) values(:id,:review,:action,:actor,:notes,cast(:evidence as jsonb))
     """), {
         "id": str(uuid4()), "review": str(review_id), "action": action,
-        "actor": str(principal.user_id), "notes": body.notes,
+        "actor": str(actor_id), "notes": body.notes,
         "evidence": json.dumps(_guardrails()),
     })
     db.commit()
@@ -269,3 +298,4 @@ def complete_second_review(
         "review_id": str(review_id), "status": status, "decision": decision,
         "application_authorized": False, "guardrails": _guardrails(),
     }
+

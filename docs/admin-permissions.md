@@ -198,3 +198,22 @@ project, override, and workflow template before retaining the override as an
 inactive record. Both operations write immutable workflow audit events with the
 verified administrator, project, template version, reason, and before/after
 state.
+
+## Geography review administration
+
+Shared national geography review queues are platform-level resources rather
+than tenant-owned business data. Mutations for NWDP boundary candidates, NWDP
+demographic profiles, CoRE/LGD mapping candidates, and two-session village
+resolution evidence therefore require a verified administrator whose tenant is
+the `default` platform tenant. Ordinary tenant administrators are rejected even
+when their role includes `EDIT` or `PUBLISH`.
+
+Reviewer identity is derived from the authenticated principal and persisted in
+review metadata, reviewer columns, or immutable review events. Identity headers
+are consistency checks and are not sources of mutation authority.
+
+The disabled NWDP project-matching apply contract is different: it is
+project-scoped, requires `PROJECT_EDIT`, derives tenant and actor from the
+verified principal, and tenant-bounds the project lookup. It remains write-free
+and returns `501`; no matching, promotion, runtime lookup, or Android behavior is
+enabled.

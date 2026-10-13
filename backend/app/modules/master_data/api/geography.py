@@ -3284,17 +3284,26 @@ def apply_nwdp_boundary_project_matching_disabled(
     admin_confirmation: bool = Query(default=False),
     feature_flag_enabled: bool = Query(default=False),
     db: Session = Depends(get_db),
-    principal=Depends(require_admin_permission(AdminPermission.EDIT)),
+    principal=Depends(
+        require_admin_permission(
+            AdminPermission.PROJECT_EDIT,
+            project_scoped=True,
+        )
+    ),
 ):
     """Disabled contract endpoint for future guarded project matching apply."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     project = db.execute(
         text("""
             select id, tenant_id, name, status
             from projects
             where id = :project_id
+              and tenant_id = :tenant_id
               and is_active = true
         """),
-        {"project_id": str(project_id)},
+        {"project_id": str(project_id), "tenant_id": tenant_id},
     ).mappings().first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -3314,6 +3323,7 @@ def apply_nwdp_boundary_project_matching_disabled(
             "tenant_id": project["tenant_id"],
             "name": project["name"],
             "status": project["status"],
+            "requested_by": str(actor_id),
         },
         "required_gates": {
             "feature_flag_enabled": feature_flag_enabled,
@@ -3354,6 +3364,7 @@ def apply_nwdp_boundary_project_matching_disabled(
         },
     }
     raise HTTPException(status_code=501, detail=detail)
+
 
 
 
@@ -4502,6 +4513,20 @@ def update_nwdp_boundary_candidate_review(
     db: Session = Depends(get_db),
     principal=Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    if tenant_id != "default":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "GLOBAL_GEOGRAPHY_REVIEW_TENANT_REQUIRED",
+                "message": (
+                    "Global geography review mutations require a verified "
+                    "administrator in the default platform tenant."
+                ),
+            },
+        )
+
     row = db.execute(text("""
         select
           id::text as candidate_id,
@@ -4579,7 +4604,7 @@ def update_nwdp_boundary_candidate_review(
     history = list(metadata.get("review_history") or [])
     event = {
         "changed_at": datetime.now(timezone.utc).isoformat(),
-        "changed_by": str(principal.user_id),
+        "changed_by": str(actor_id),
         "from_review_status": previous_status,
         "to_review_status": payload.review_status,
         "from_reviewer_decision": previous_decision,
@@ -4615,7 +4640,7 @@ def update_nwdp_boundary_candidate_review(
         "candidate_id": str(candidate_id),
         "review_status": payload.review_status,
         "reviewer_decision": payload.reviewer_decision,
-        "reviewer_id": str(principal.user_id),
+        "reviewer_id": str(actor_id),
         "reviewed_at": datetime.now(timezone.utc),
         "reviewer_notes": notes,
         "metadata": json.dumps(metadata),
@@ -4637,6 +4662,7 @@ def update_nwdp_boundary_candidate_review(
         "promotion_supported": False,
         "latest_review_event": event,
     }
+
 
 
 
@@ -4791,6 +4817,20 @@ def update_nwdp_demographic_profile_review(
     updates review metadata/status; it does not promote, activate, enable runtime
     lookup, or change Android behavior.
     """
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    if tenant_id != "default":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "GLOBAL_GEOGRAPHY_REVIEW_TENANT_REQUIRED",
+                "message": (
+                    "Global geography review mutations require a verified "
+                    "administrator in the default platform tenant."
+                ),
+            },
+        )
+
 
     row = db.execute(text("""
         select
@@ -4871,7 +4911,7 @@ def update_nwdp_demographic_profile_review(
 
     event = {
         "changed_at": datetime.now(timezone.utc).isoformat(),
-        "changed_by": str(principal.user_id),
+        "changed_by": str(actor_id),
         "from_review_status": previous_status,
         "to_review_status": payload.review_status,
         "reviewer_decision": payload.reviewer_decision,
@@ -4926,6 +4966,7 @@ def update_nwdp_demographic_profile_review(
         "promotion_supported": False,
         "latest_review_event": event,
     }
+
 
 
 @router.get("/hierarchy-profile")
@@ -5325,6 +5366,20 @@ def update_core_lgd_mapping_review_decision(
     principal=Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Set review decision for an inactive POLY_REV candidate without activation."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    if tenant_id != "default":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "GLOBAL_GEOGRAPHY_REVIEW_TENANT_REQUIRED",
+                "message": (
+                    "Global geography review mutations require a verified "
+                    "administrator in the default platform tenant."
+                ),
+            },
+        )
+
     row = db.execute(text("""
         select
           id::text,
@@ -5357,7 +5412,7 @@ def update_core_lgd_mapping_review_decision(
     history = list(metadata.get("review_decision_history") or [])
     event = {
         "changed_at": datetime.now(timezone.utc).isoformat(),
-        "changed_by": str(principal.user_id),
+        "changed_by": str(actor_id),
         "from_status": previous_status,
         "to_status": payload.review_status,
         "review_notes": payload.review_notes,
@@ -5400,6 +5455,7 @@ def update_core_lgd_mapping_review_decision(
         "activation_requires_separate_workflow": True,
         "latest_review_decision": event,
     }
+
 
 
 

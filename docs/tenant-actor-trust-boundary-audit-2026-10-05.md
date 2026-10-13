@@ -536,3 +536,23 @@ Both require project-scoped `PROJECT_EDIT`, derive `tenant_id` and `actor_id`
 from the verified administrator, tenant-bound project and workflow resources,
 and avoid direct identity-header authority. Creation and archival write
 immutable workflow audit events attributed to the verified administrator.
+
+## Geography review mutation boundary checkpoint
+
+The following global-reference mutations now derive tenant and actor from the
+verified administrator and reject principals outside the `default` platform
+tenant:
+
+- `PATCH /geography/nwdp-boundary-candidates/{candidate_id}/review`
+- `PATCH /geography/nwdp-demographic-profiles/{profile_id}/review`
+- `PATCH /geography/core-lgd-mapping-review/{mapping_id}/review`
+- `POST /geography/village-resolution/reviews`
+- `POST /geography/village-resolution/reviews/{review_id}/second-review`
+
+The disabled
+`POST /geography/nwdp-boundary-project-matching/apply` contract now requires
+project-scoped `PROJECT_EDIT`, derives verified tenant and actor identity, and
+tenant-bounds the project. It remains write-free and disabled.
+
+The trust-boundary audit no longer reports these six routes as mutations missing
+tenant or actor markers.

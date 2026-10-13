@@ -572,3 +572,16 @@ Successful creation records
 `CREATE_PROJECT_WORKFLOW_OVERRIDE`; archival records
 `ARCHIVE_PROJECT_WORKFLOW_OVERRIDE`. The immutable events preserve the verified
 administrator and the applicable override state.
+
+## Geography review mutation checkpoint
+
+Five shared geography evidence-review mutations now require the authenticated
+administrator to belong to the `default` platform tenant. This prevents
+administrators from an ordinary tenant from changing national NWDP, CoRE/LGD,
+or village-resolution evidence queues. Each mutation derives both tenant and
+actor identity from the verified principal and preserves verified reviewer
+attribution.
+
+The disabled NWDP project-matching apply endpoint now uses project-scoped
+`PROJECT_EDIT`, tenant-bounds the selected project, reports the verified actor,
+and remains a no-write `501` contract.

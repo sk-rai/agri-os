@@ -481,3 +481,16 @@ principal.
 The shared default workflow catalog may be selected, but project overrides are
 always stored in the verified tenant and project scope. Deletion is implemented
 as recoverable archival, with immutable before/after audit evidence.
+
+## Geography review governance
+
+National geography review queues are operated by platform administrators, not
+tenant or project personas. NWDP boundary review, demographic-profile review,
+CoRE/LGD mapping review, and both village evidence review sessions require the
+verified `default` platform tenant. The second village evidence review still
+requires an enterprise administrator with `PUBLISH` and a reviewer different
+from the primary reviewer.
+
+Project matching remains tenant/project administration. Its disabled contract
+requires project-scoped `PROJECT_EDIT`, but performs no database mutation and
+does not authorize later activation or promotion.
