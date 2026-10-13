@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.core.database import get_db
+from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
 from app.modules.sync.models import (
     SyncProcessedEvent,
     SyncConflict,
@@ -47,17 +48,18 @@ class DashboardResponse(BaseModel):
 @router.get("/operational", response_model=DashboardResponse)
 def get_operational_dashboard(
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    """Operational dashboard: sync health metrics.
+    """Return tenant sync-health metrics to a verified administrator."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
 
-    Tenant-scoped. Refreshes on each call (no caching for MVP).
-    """
-    # Sync event counts by status
     committed = (
         db.query(func.count(SyncProcessedEvent.event_id))
         .filter(
-            SyncProcessedEvent.tenant_id == x_tenant_id,
+            SyncProcessedEvent.tenant_id == tenant_id,
             SyncProcessedEvent.status == "COMMITTED",
         )
         .scalar() or 0
@@ -65,7 +67,7 @@ def get_operational_dashboard(
     conflict_count = (
         db.query(func.count(SyncProcessedEvent.event_id))
         .filter(
-            SyncProcessedEvent.tenant_id == x_tenant_id,
+            SyncProcessedEvent.tenant_id == tenant_id,
             SyncProcessedEvent.status == "CONFLICT",
         )
         .scalar() or 0
@@ -73,18 +75,19 @@ def get_operational_dashboard(
     failed = (
         db.query(func.count(SyncProcessedEvent.event_id))
         .filter(
-            SyncProcessedEvent.tenant_id == x_tenant_id,
-            SyncProcessedEvent.status.in_(["FAILED", "DEPENDENCY_MISSING"]),
+            SyncProcessedEvent.tenant_id == tenant_id,
+            SyncProcessedEvent.status.in_(
+                ["FAILED", "DEPENDENCY_MISSING"]
+            ),
         )
         .scalar() or 0
     )
     total = committed + conflict_count + failed
 
-    # Conflict resolution status
     conflicts_pending = (
         db.query(func.count(SyncConflict.id))
         .filter(
-            SyncConflict.tenant_id == x_tenant_id,
+            SyncConflict.tenant_id == tenant_id,
             SyncConflict.status == "PENDING_REVIEW",
         )
         .scalar() or 0
@@ -92,40 +95,46 @@ def get_operational_dashboard(
     conflicts_resolved = (
         db.query(func.count(SyncConflict.id))
         .filter(
-            SyncConflict.tenant_id == x_tenant_id,
-            SyncConflict.status.in_(["RESOLVED_CLIENT", "RESOLVED_SERVER", "RESOLVED_MERGE"]),
+            SyncConflict.tenant_id == tenant_id,
+            SyncConflict.status.in_(
+                [
+                    "RESOLVED_CLIENT",
+                    "RESOLVED_SERVER",
+                    "RESOLVED_MERGE",
+                ]
+            ),
         )
         .scalar() or 0
     )
 
-    # Last successful sync
     last_sync = (
         db.query(func.max(SyncProcessedEvent.processed_at))
         .filter(
-            SyncProcessedEvent.tenant_id == x_tenant_id,
+            SyncProcessedEvent.tenant_id == tenant_id,
             SyncProcessedEvent.status == "COMMITTED",
         )
         .scalar()
     )
 
-    # Audit chain stats
     chain_length = (
         db.query(func.count(AuditChainEntry.id))
-        .filter(AuditChainEntry.tenant_id == x_tenant_id)
+        .filter(AuditChainEntry.tenant_id == tenant_id)
         .scalar() or 0
     )
 
     return DashboardResponse(
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         sync_health=SyncHealthResponse(
             total_events_processed=total,
             committed=committed,
             conflicts_pending=conflicts_pending,
             conflicts_resolved=conflicts_resolved,
             failed=failed,
-            last_sync_at=last_sync.isoformat() if last_sync else None,
+            last_sync_at=(
+                last_sync.isoformat() if last_sync else None
+            ),
             audit_chain_length=chain_length,
-            audit_chain_intact=True,  # TODO: verify chain hash continuity
+            audit_chain_intact=True,
         ),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )

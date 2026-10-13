@@ -25,6 +25,7 @@ from app.core.admin_auth import (
     require_admin_permission,
 )
 from app.core.database import get_db
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
 from app.modules.sync.models import SyncConflict
 from app.modules.sync.service import append_audit
 
@@ -154,15 +155,28 @@ def _android_action_for_conflict(conflict: SyncConflict) -> str:
 
 @router.get("", response_model=list[ConflictListItem])
 def list_conflicts(
-    status: Optional[str] = Query("PENDING_REVIEW", description="Filter by status"),
-    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
+    status: Optional[str] = Query(
+        "PENDING_REVIEW",
+        description="Filter by status",
+    ),
+    entity_type: Optional[str] = Query(
+        None,
+        description="Filter by entity type",
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    """List conflicts for this tenant, filtered by status."""
-    query = db.query(SyncConflict).filter(SyncConflict.tenant_id == x_tenant_id)
+    """List tenant conflicts for an authenticated administrator."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    query = db.query(SyncConflict).filter(
+        SyncConflict.tenant_id == tenant_id
+    )
 
     if status:
         query = query.filter(SyncConflict.status == status)
@@ -179,36 +193,46 @@ def list_conflicts(
 
     return [
         ConflictListItem(
-            id=c.id,
-            event_id=c.event_id,
-            entity_type=c.entity_type,
-            entity_id=c.entity_id,
-            conflict_type=c.conflict_type,
-            resolution_strategy=c.resolution_strategy,
-            status=c.status,
-            created_at=c.created_at.isoformat(),
+            id=conflict.id,
+            event_id=conflict.event_id,
+            entity_type=conflict.entity_type,
+            entity_id=conflict.entity_id,
+            conflict_type=conflict.conflict_type,
+            resolution_strategy=conflict.resolution_strategy,
+            status=conflict.status,
+            created_at=conflict.created_at.isoformat(),
         )
-        for c in conflicts
+        for conflict in conflicts
     ]
 
 
-@router.get("/pending", response_model=AndroidPendingSyncConflictsResponse)
+@router.get(
+    "/pending",
+    response_model=AndroidPendingSyncConflictsResponse,
+)
 def list_android_pending_conflicts(
-    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
+    entity_type: Optional[str] = Query(
+        None,
+        description="Filter by entity type",
+    ),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
 ):
-    """Android-safe pending sync conflicts list.
+    """Return pending conflicts submitted by the authenticated human.
 
-    This endpoint is intended for mobile sync UX. It returns a backend-owned,
-    tenant-scoped, redacted/summarized view of pending conflicts so Android can
-    distinguish retryable sync failures from conflicts requiring user/server
-    resolution without fetching full admin conflict payloads.
+    The mobile feed is tenant bounded and actor scoped. A caller can see only
+    conflicts created from that caller's own verified sync submissions.
     """
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     query = db.query(SyncConflict).filter(
-        SyncConflict.tenant_id == x_tenant_id,
+        SyncConflict.tenant_id == tenant_id,
+        SyncConflict.actor_id == actor_id,
         SyncConflict.status == "PENDING_REVIEW",
     )
     if entity_type:
@@ -239,22 +263,39 @@ def list_android_pending_conflicts(
             resolution_strategy=row.resolution_strategy,
             status=row.status,
             created_at=row.created_at.isoformat(),
-            detail=(row.server_payload or {}).get("detail") if isinstance(row.server_payload, dict) else None,
-            client_payload_summary=_safe_payload_summary(row.client_payload),
-            server_payload_summary=_safe_payload_summary(row.server_payload),
+            detail=(
+                (row.server_payload or {}).get("detail")
+                if isinstance(row.server_payload, dict)
+                else None
+            ),
+            client_payload_summary=_safe_payload_summary(
+                row.client_payload
+            ),
+            server_payload_summary=_safe_payload_summary(
+                row.server_payload
+            ),
             android_action=_android_action_for_conflict(row),
         )
         for row in rows
     ]
 
     return AndroidPendingSyncConflictsResponse(
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         conflict_count=len(conflicts),
         conflicts=conflicts,
         android_rules={
-            "dependency_missing": "Retry after replaying missing dependency; dependency failures are returned by /sync/events under failed[].",
-            "workflow_invalid": "Do not blindly retry. Show server-authority workflow message or refresh cycle/stage state.",
-            "version_mismatch": "Do not overwrite silently. Show manual review/conflict state and refresh server entity before retry.",
+            "dependency_missing": (
+                "Retry after replaying missing dependency; dependency "
+                "failures are returned by /sync/events under failed[]."
+            ),
+            "workflow_invalid": (
+                "Do not blindly retry. Show server-authority workflow "
+                "message or refresh cycle/stage state."
+            ),
+            "version_mismatch": (
+                "Do not overwrite silently. Show manual review/conflict "
+                "state and refresh server entity before retry."
+            ),
             "android_resolves_conflicts_locally": False,
         },
     )
@@ -264,14 +305,19 @@ def list_android_pending_conflicts(
 def get_conflict(
     conflict_id: UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    """Get full conflict detail including client and server payloads."""
+    """Get full tenant conflict detail for an administrator."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
     conflict = (
         db.query(SyncConflict)
         .filter(
             SyncConflict.id == conflict_id,
-            SyncConflict.tenant_id == x_tenant_id,
+            SyncConflict.tenant_id == tenant_id,
         )
         .first()
     )
@@ -289,7 +335,11 @@ def get_conflict(
         resolution_strategy=conflict.resolution_strategy,
         status=conflict.status,
         created_at=conflict.created_at.isoformat(),
-        resolved_at=conflict.resolved_at.isoformat() if conflict.resolved_at else None,
+        resolved_at=(
+            conflict.resolved_at.isoformat()
+            if conflict.resolved_at
+            else None
+        ),
         resolved_by=conflict.resolved_by,
     )
 

@@ -162,9 +162,107 @@ test("Conflict type is VERSION_MISMATCH",
      data["conflicts"][0]["conflict_type"] == "VERSION_MISMATCH")
 conflict_event_id = data["conflicts"][0]["event_id"]
 
-# --- Step 3: Check dashboard shows the conflict ---
-print("\n[3] Dashboard shows pending conflict")
-r = client.get("/api/v1/dashboard/operational", headers={"X-Tenant-ID": TENANT})
+# --- Step 3: Check authenticated read boundaries and dashboard ---
+print("\n[3] Authenticated read boundaries and dashboard")
+
+missing_dashboard = client.get(
+    "/api/v1/dashboard/operational",
+    headers={"X-Tenant-ID": TENANT},
+)
+test(
+    "Operational dashboard rejects missing bearer",
+    missing_dashboard.status_code == 401,
+    missing_dashboard.text,
+)
+
+dashboard_impersonation = client.get(
+    "/api/v1/dashboard/operational",
+    headers={**HEADERS_VIEWER, "X-Actor-ID": str(uuid.uuid4())},
+)
+test(
+    "Operational dashboard rejects actor impersonation",
+    dashboard_impersonation.status_code == 403,
+    dashboard_impersonation.text,
+)
+
+missing_conflicts = client.get(
+    "/api/v1/sync/conflicts",
+    headers={"X-Tenant-ID": TENANT},
+)
+test(
+    "Conflict administration rejects missing bearer",
+    missing_conflicts.status_code == 401,
+    missing_conflicts.text,
+)
+
+mobile_missing = client.get(
+    "/api/v1/sync/conflicts/pending",
+    headers={"X-Tenant-ID": TENANT},
+)
+test(
+    "Android pending conflicts reject missing bearer",
+    mobile_missing.status_code == 401,
+    mobile_missing.text,
+)
+
+mobile_impersonation = client.get(
+    "/api/v1/sync/conflicts/pending",
+    headers={**HEADERS_B, "X-Actor-ID": str(uuid.uuid4())},
+)
+test(
+    "Android pending conflicts reject actor impersonation",
+    mobile_impersonation.status_code == 403,
+    mobile_impersonation.text,
+)
+
+mobile_tenant_mismatch = client.get(
+    "/api/v1/sync/conflicts/pending",
+    headers={**HEADERS_B, "X-Tenant-ID": "sync-conflict-foreign"},
+)
+test(
+    "Android pending conflicts reject tenant mismatch",
+    mobile_tenant_mismatch.status_code == 403,
+    mobile_tenant_mismatch.text,
+)
+
+mobile_owner = client.get(
+    "/api/v1/sync/conflicts/pending",
+    headers=HEADERS_B,
+)
+test(
+    "Submitting human can read own pending conflict",
+    mobile_owner.status_code == 200,
+    mobile_owner.text,
+)
+mobile_owner_payload = mobile_owner.json()
+test(
+    "Own pending feed contains submitted conflict",
+    any(
+        item["event_id"] == conflict_event_id
+        for item in mobile_owner_payload["conflicts"]
+    ),
+    str(mobile_owner_payload),
+)
+
+mobile_other = client.get(
+    "/api/v1/sync/conflicts/pending",
+    headers=HEADERS_A,
+)
+test(
+    "Different human receives pending-conflict feed",
+    mobile_other.status_code == 200,
+    mobile_other.text,
+)
+test(
+    "Different human cannot read submitter conflict",
+    all(
+        item["event_id"] != conflict_event_id
+        for item in mobile_other.json()["conflicts"]
+    ),
+    mobile_other.text,
+)
+
+r = client.get("/api/v1/dashboard/operational", headers=HEADERS_VIEWER)
 test("Dashboard returns 200", r.status_code == 200)
 dashboard = r.json()
 pending_before_resolution = dashboard["sync_health"]["conflicts_pending"]
@@ -188,7 +286,7 @@ test("Status is PENDING_REVIEW", conflicts[0]["status"] == "PENDING_REVIEW")
 
 # --- Step 5: Operator views conflict detail ---
 print("\n[5] Operator views conflict detail")
-r = client.get(f"/api/v1/sync/conflicts/{conflict_id}", headers=HEADERS_OP)
+r = client.get(f"/api/v1/sync/conflicts/{conflict_id}", headers=HEADERS_VIEWER)
 test("Detail returns 200", r.status_code == 200)
 detail = r.json()
 test("Client payload present", "display_name" in detail["client_payload"])
@@ -269,7 +367,7 @@ test("Resolved conflict visible with filter", len(resolved_matching) == 1, f"Res
 
 # --- Step 8: Dashboard updated ---
 print("\n[8] Dashboard reflects resolution")
-r = client.get("/api/v1/dashboard/operational", headers={"X-Tenant-ID": TENANT})
+r = client.get("/api/v1/dashboard/operational", headers=HEADERS_VIEWER)
 dashboard = r.json()
 pending_after_resolution = dashboard["sync_health"]["conflicts_pending"]
 test("Conflicts pending decremented", pending_after_resolution == pending_before_resolution - 1, f"Before: {pending_before_resolution}, after: {pending_after_resolution}")

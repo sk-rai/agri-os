@@ -262,3 +262,15 @@ checks, not sources of authority.
 The read boundary preserves the existing weather filters while preventing
 unauthenticated access, actor impersonation, tenant-header mismatch, and
 cross-tenant snapshot disclosure.
+
+## Sync operational reads
+
+Full conflict administration and the operational sync dashboard require a
+verified administrator with `VIEW`. These routes derive tenant and actor
+identity from the authenticated principal and do not trust identity headers as
+authority.
+
+The Android pending-conflict feed uses role-neutral authenticated-human access.
+It returns only redacted pending conflicts whose recorded `actor_id` matches the
+verified caller, within the caller's verified tenant. Conflict resolution
+continues to require administrative `EDIT`.

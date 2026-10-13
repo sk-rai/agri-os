@@ -604,3 +604,18 @@ Both require administrative `VIEW`, derive tenant and actor from the verified
 principal, and reject identity-header impersonation or mismatch. The route audit
 reports no findings for either endpoint. After this tranche, 45 unauthenticated
 non-reference read findings remain and mutation findings remain at zero.
+
+## Sync operational read boundary checkpoint
+
+Four non-reference reads now satisfy authenticated tenant/actor boundaries:
+
+- `GET /api/v1/sync/conflicts`
+- `GET /api/v1/sync/conflicts/{conflict_id}`
+- `GET /api/v1/sync/conflicts/pending`
+- `GET /api/v1/dashboard/operational`
+
+The conflict list/detail and dashboard require administrative `VIEW`. The
+Android feed requires an authenticated human and filters by both verified tenant
+and `SyncConflict.actor_id`. The audit reports no findings for these routes.
+After this tranche, 41 unauthenticated non-reference read findings remain and
+mutation findings remain at zero.

@@ -616,3 +616,13 @@ and actor identity and no longer trust identity headers directly.
 
 Regression coverage verifies missing-bearer rejection, actor and tenant mismatch
 handling, authorized reads, existing snapshot behavior, and tenant isolation.
+
+## Sync operational read checkpoint
+
+Conflict list/detail and operational dashboard reads now require administrative
+`VIEW`. The mobile pending-conflict feed requires an authenticated human and is
+restricted to conflicts created by that verified actor's own sync submissions.
+
+Regression coverage verifies missing-bearer rejection, actor impersonation and
+tenant mismatch rejection, administrator read access, submitter visibility,
+non-submitter isolation, conflict resolution, and immutable audit attribution.

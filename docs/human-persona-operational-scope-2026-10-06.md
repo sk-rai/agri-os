@@ -523,3 +523,13 @@ tenant boundary and actor attribution for list and latest-snapshot reads.
 
 These endpoints are read-only. Their filtering and response behavior remain
 unchanged, while unauthenticated and cross-tenant access is denied.
+
+## Sync conflict read governance
+
+The Android pending-conflict feed is a personal operational surface rather than
+a tenant-wide administration surface. A verified human may see only pending,
+redacted conflict summaries attributed to that caller's `user_id` and tenant.
+
+Tenant-wide conflict queues, full client/server payloads, and operational sync
+health remain administrator-only reads requiring `VIEW`. Conflict resolution
+remains a separate `EDIT` operation.
