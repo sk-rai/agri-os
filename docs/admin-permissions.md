@@ -284,3 +284,14 @@ The verified uploader may read the asset. Other callers must satisfy the
 existing media persona scope: an authorized web administrator, the linked
 farmer owner, or an actively assigned agent. Unrelated farmers and unassigned
 agents are denied.
+
+## Public runtime app bootstrap
+
+`GET /api/v1/app-config/bootstrap` intentionally remains available before
+authentication so Android and web clients can discover runtime branding,
+localization, units, enabled modules, feature flags, form versions, and stable
+client contracts.
+
+The exception is restricted to this exact GET path. Administrative app-config
+reads and all app-config mutations retain their existing authenticated
+permission boundaries.

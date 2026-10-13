@@ -630,3 +630,14 @@ Uploader access is checked against the verified actor. Non-uploaders must pass
 the existing media farmer/project persona scope. The route remains read-only and
 has no trust-boundary findings. After this tranche, 40 unauthenticated
 non-reference read findings remain and mutation findings remain at zero.
+
+## Public app-bootstrap classification checkpoint
+
+`GET /api/v1/app-config/bootstrap` is explicitly classified as an intentional
+public read. The auditor uses an exact, GET-only path exception rather than a
+broad public prefix.
+
+Static and behavior regressions confirm the pre-login contract, active
+tenant/project bounds, stable response fields, read-only behavior, tenant
+defaults, and project overrides. After this classification, 39 unauthenticated
+non-reference read findings remain and mutation findings remain at zero.

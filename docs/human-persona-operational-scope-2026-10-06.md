@@ -543,3 +543,14 @@ administrators may read tenant assets.
 
 Unrelated farmers, unassigned agents, cross-tenant callers, and unauthenticated
 callers cannot retrieve asset details.
+
+## Pre-login app-bootstrap governance
+
+Runtime bootstrap configuration is persona-neutral and available before login
+so clients can render tenant/project branding, localization, enabled features,
+and form contracts. It does not represent a farmer, agent, or administrator
+operational persona.
+
+Optional project resolution remains tenant-bounded and active-only. The route
+performs no database writes and exposes only its stable client bootstrap
+response.

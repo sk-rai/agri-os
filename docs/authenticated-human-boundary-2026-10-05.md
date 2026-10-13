@@ -636,3 +636,14 @@ The route permits the verified uploader and otherwise reuses the established
 farmer/agent/admin media scope. Regression coverage verifies missing-bearer,
 actor-impersonation, tenant-mismatch, farmer ownership, active assignment,
 administrator access, and unrelated-persona denial.
+
+## Public app-bootstrap classification checkpoint
+
+The runtime app-bootstrap endpoint is an intentional pre-login read rather than
+an authenticated-human endpoint. It returns a fixed client configuration
+contract and remains database read-only.
+
+The trust-boundary auditor classifies only the exact
+`GET /api/v1/app-config/bootstrap` path as public. The classification is
+method-constrained and does not extend to app-config mutations or administrative
+configuration reads.

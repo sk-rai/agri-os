@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];APP=ROOT/"backend/app"
 METHODS={"get","post","put","patch","delete"};MUTATIONS={"POST","PUT","PATCH","DELETE"}
 PUBLIC_PREFIXES=("/api/v1/auth/otp/","/api/v1/auth/device","/health")
+PUBLIC_GET_PATHS=("/api/v1/app-config/bootstrap",)
 REFERENCE_PREFIXES=("/api/v1/master-data/states","/api/v1/master-data/districts",
  "/api/v1/master-data/blocks","/api/v1/master-data/villages","/api/v1/crop-catalog",
  "/api/v1/input-catalog","/api/v1/forms","/api/v1/workflows")
@@ -54,7 +55,7 @@ def scan(path):
         ))
         tenant=any(x in body for x in ("X-Tenant-ID","x_tenant_id","principal.tenant_id"))
         actor=any(x in body for x in ("X-Actor-ID","x_actor_id","principal.user_id","claims.get('sub')","claims.get(\"sub\")"))
-        public=any(full.startswith(p) for p in PUBLIC_PREFIXES)
+        public=any(full.startswith(p) for p in PUBLIC_PREFIXES) or (method=="GET" and full in PUBLIC_GET_PATHS)
         reference=(method=="GET" and any(full.startswith(p) for p in REFERENCE_PREFIXES)) or (method=="POST" and full in REFERENCE_POST_PATHS)
         flags=[]
         if method in MUTATIONS and not public and not reference and not(admin or bearer):flags.append("MUTATION_WITHOUT_AUTH_MARKER")
