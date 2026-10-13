@@ -514,3 +514,12 @@ with `VIEW`. Farmer feed visibility belongs only to the linked farmer persona or
 an active assigned project user. Possession of a farmer UUID, delivery UUID, or
 tenant header does not grant visibility, and authenticated users cannot cross
 tenant boundaries through broadcast read routes.
+
+## Weather snapshot read governance
+
+Weather snapshots are tenant-wide operational data exposed to verified
+administrators with `VIEW`. The authenticated administrator determines the
+tenant boundary and actor attribution for list and latest-snapshot reads.
+
+These endpoints are read-only. Their filtering and response behavior remain
+unchanged, while unauthenticated and cross-tenant access is denied.

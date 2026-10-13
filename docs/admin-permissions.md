@@ -251,3 +251,14 @@ The farmer broadcast feed requires an authenticated human. Access is limited to
 the farmer's linked user or an actively assigned user in a tenant-bounded farmer
 project enrollment. Unrelated authenticated users receive
 `BROADCAST_FARMER_ACCESS_DENIED`, and foreign-tenant farmers remain hidden.
+
+## Weather snapshot reads
+
+Tenant-wide weather snapshot list and latest-snapshot reads require a verified
+administrator with `VIEW`. The routes derive both tenant and actor identity from
+the authenticated principal; `X-Tenant-ID` and `X-Actor-ID` are consistency
+checks, not sources of authority.
+
+The read boundary preserves the existing weather filters while preventing
+unauthenticated access, actor impersonation, tenant-header mismatch, and
+cross-tenant snapshot disclosure.

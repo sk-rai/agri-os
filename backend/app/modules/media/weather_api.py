@@ -702,9 +702,14 @@ def list_weather_snapshots(
     include_expired: bool = Query(False),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    query = _snapshot_query(db, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    query = _snapshot_query(db, tenant_id)
     if provider_id:
         query = query.filter(WeatherSnapshot.provider_id == provider_id)
     if project_id:
@@ -723,7 +728,7 @@ def list_weather_snapshots(
     rows = query.order_by(WeatherSnapshot.fetched_at.desc(), WeatherSnapshot.created_at.desc()).limit(limit).all()
     return {
         "schema_version": "weather_snapshots.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {"provider_id": str(provider_id) if provider_id else None, "project_id": str(project_id) if project_id else None, "farmer_id": str(farmer_id) if farmer_id else None, "parcel_id": str(parcel_id) if parcel_id else None, "location_scope": location_scope.upper() if location_scope else None, "location_key": location_key, "include_expired": include_expired, "limit": limit},
         "count": len(rows),
         "snapshots": [_snapshot_payload(row) for row in rows],
@@ -858,9 +863,14 @@ def latest_weather_snapshot(
     location_scope: Optional[str] = Query(None),
     location_key: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
 ):
-    query = _snapshot_query(db, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    query = _snapshot_query(db, tenant_id)
     if project_id:
         query = query.filter(WeatherSnapshot.project_id == project_id)
     if farmer_id:

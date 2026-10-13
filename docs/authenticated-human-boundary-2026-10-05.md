@@ -607,3 +607,12 @@ Five administration reads require `VIEW`; the farmer feed requires a persisted
 authenticated human and explicit farmer ownership or active assignment. Tenant
 and actor context are derived from the verified principal, actor impersonation
 and tenant-header mismatch are rejected, and foreign resources are not exposed.
+
+## Weather snapshot read checkpoint
+
+The weather snapshot list and latest-snapshot endpoints now require authenticated
+administrative `VIEW` access. Both routes use the verified principal for tenant
+and actor identity and no longer trust identity headers directly.
+
+Regression coverage verifies missing-bearer rejection, actor and tenant mismatch
+handling, authorized reads, existing snapshot behavior, and tenant isolation.

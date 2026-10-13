@@ -591,3 +591,16 @@ The farmer feed derives the same identity from role-neutral human
 authentication and enforces linked-owner or active-assignment access. Static,
 behavior, legacy broadcast, tenant-isolation, cleanup, and live route-audit
 checks cover this boundary.
+
+## Weather snapshot read boundary checkpoint
+
+The following non-reference reads now satisfy the authenticated tenant/actor
+boundary:
+
+- `GET /api/v1/weather/snapshots`
+- `GET /api/v1/weather/snapshots/latest`
+
+Both require administrative `VIEW`, derive tenant and actor from the verified
+principal, and reject identity-header impersonation or mismatch. The route audit
+reports no findings for either endpoint. After this tranche, 45 unauthenticated
+non-reference read findings remain and mutation findings remain at zero.

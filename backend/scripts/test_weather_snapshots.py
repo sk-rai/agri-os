@@ -456,7 +456,7 @@ def main():
     check(any(row["provider_code"] == "open_meteo_due" and row["due"] is False for row in weather_health_after_body["providers"]), "Weather operations health clears due provider after run")
 
 
-    listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
+    listed = client.get("/api/v1/weather/snapshots?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=viewer_headers)
     check(listed.status_code == 200, "List weather snapshots returns 200", listed.text)
     check(listed.json()["count"] == 4, "List returns active snapshots")
 
@@ -496,12 +496,19 @@ def main():
     finally:
         worker_db.close()
 
-    latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=headers)
+    latest = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers=viewer_headers)
     check(latest.status_code == 200, "Latest weather snapshot returns 200", latest.text)
     check(latest.json()["summary"] == "Manual refresh weather snapshot", "Latest returns newest non-expired snapshot")
 
-    isolated = client.get("/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village", headers={"X-Tenant-ID": "default"})
-    check(isolated.status_code == 404, "Latest weather snapshot is tenant isolated", isolated.text)
+    isolated = client.get(
+        "/api/v1/weather/snapshots/latest?location_scope=VILLAGE&location_key=Broadcast%20Village",
+        headers={**viewer_headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        isolated.status_code == 403,
+        "Latest weather snapshot rejects token/header tenant mismatch",
+        isolated.text,
+    )
 
     db = SessionLocal()
     try:
