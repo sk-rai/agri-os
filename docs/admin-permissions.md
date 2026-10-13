@@ -274,3 +274,13 @@ The Android pending-conflict feed uses role-neutral authenticated-human access.
 It returns only redacted pending conflicts whose recorded `actor_id` matches the
 verified caller, within the caller's verified tenant. Conflict resolution
 continues to require administrative `EDIT`.
+
+## Media asset detail reads
+
+Media asset detail requires a verified authenticated human. Asset lookup is
+bounded to the verified tenant and never trusts identity headers as authority.
+
+The verified uploader may read the asset. Other callers must satisfy the
+existing media persona scope: an authorized web administrator, the linked
+farmer owner, or an actively assigned agent. Unrelated farmers and unassigned
+agents are denied.

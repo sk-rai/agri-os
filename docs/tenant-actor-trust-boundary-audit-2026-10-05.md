@@ -619,3 +619,14 @@ Android feed requires an authenticated human and filters by both verified tenant
 and `SyncConflict.actor_id`. The audit reports no findings for these routes.
 After this tranche, 41 unauthenticated non-reference read findings remain and
 mutation findings remain at zero.
+
+## Media asset detail read boundary checkpoint
+
+`GET /api/v1/media/assets/{asset_id}` now requires an authenticated human,
+derives tenant and actor from the verified principal, and tenant-bounds the
+selected asset.
+
+Uploader access is checked against the verified actor. Non-uploaders must pass
+the existing media farmer/project persona scope. The route remains read-only and
+has no trust-boundary findings. After this tranche, 40 unauthenticated
+non-reference read findings remain and mutation findings remain at zero.

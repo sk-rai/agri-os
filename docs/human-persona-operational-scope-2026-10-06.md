@@ -533,3 +533,13 @@ redacted conflict summaries attributed to that caller's `user_id` and tenant.
 Tenant-wide conflict queues, full client/server payloads, and operational sync
 health remain administrator-only reads requiring `VIEW`. Conflict resolution
 remains a separate `EDIT` operation.
+
+## Media asset detail governance
+
+A media asset is visible to its verified uploader or to a caller authorized for
+its farmer/project scope. Farmer owners may read personal assets, actively
+assigned agents may read assisted-farmer assets, and authorized web
+administrators may read tenant assets.
+
+Unrelated farmers, unassigned agents, cross-tenant callers, and unauthenticated
+callers cannot retrieve asset details.

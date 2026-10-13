@@ -626,3 +626,13 @@ restricted to conflicts created by that verified actor's own sync submissions.
 Regression coverage verifies missing-bearer rejection, actor impersonation and
 tenant mismatch rejection, administrator read access, submitter visibility,
 non-submitter isolation, conflict resolution, and immutable audit attribution.
+
+## Media asset detail read checkpoint
+
+`GET /api/v1/media/assets/{asset_id}` now requires role-neutral authenticated
+human access and derives tenant and actor identity from the verified principal.
+
+The route permits the verified uploader and otherwise reuses the established
+farmer/agent/admin media scope. Regression coverage verifies missing-bearer,
+actor-impersonation, tenant-mismatch, farmer ownership, active assignment,
+administrator access, and unrelated-persona denial.

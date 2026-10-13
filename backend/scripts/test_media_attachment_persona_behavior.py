@@ -340,6 +340,104 @@ def main():
     client = TestClient(app)
 
     try:
+        missing_detail = client.get(
+            f"/api/v1/media/assets/{ids['personal_asset']}",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_detail.status_code == 401,
+            "Media asset detail rejects missing bearer",
+            missing_detail.text,
+        )
+
+        detail_impersonation = client.get(
+            f"/api/v1/media/assets/{ids['personal_asset']}",
+            headers={
+                **farmer_headers,
+                "X-Actor-ID": str(uuid.uuid4()),
+            },
+        )
+        require(
+            detail_impersonation.status_code == 403,
+            "Media asset detail rejects actor impersonation",
+            detail_impersonation.text,
+        )
+
+        personal_detail = client.get(
+            f"/api/v1/media/assets/{ids['personal_asset']}",
+            headers=farmer_headers,
+        )
+        require(
+            personal_detail.status_code == 200,
+            "Farmer reads personally scoped media asset",
+            personal_detail.text,
+        )
+        require(
+            personal_detail.json()["uploaded_by"]
+                == str(farmer_user.id),
+            "Media asset detail reports verified uploader",
+            personal_detail.text,
+        )
+
+        assigned_detail = client.get(
+            f"/api/v1/media/assets/{ids['assisted_asset']}",
+            headers=agent_headers,
+        )
+        require(
+            assigned_detail.status_code == 200,
+            "Assigned agent reads assisted-farmer media asset",
+            assigned_detail.text,
+        )
+
+        unrelated_detail = client.get(
+            f"/api/v1/media/assets/{ids['assisted_asset']}",
+            headers=farmer_headers,
+        )
+        require(
+            unrelated_detail.status_code == 403,
+            "Unrelated farmer cannot read assisted media asset",
+            unrelated_detail.text,
+        )
+        require(
+            unrelated_detail.json().get("detail", {}).get("error")
+                == "MEDIA_SCOPE_DENIED",
+            "Media asset scope denial uses stable error code",
+            unrelated_detail.text,
+        )
+
+        unassigned_detail = client.get(
+            f"/api/v1/media/assets/{ids['assisted_asset']}",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_detail.status_code == 403,
+            "Unassigned agent cannot read assisted media asset",
+            unassigned_detail.text,
+        )
+
+        admin_detail = client.get(
+            f"/api/v1/media/assets/{ids['assisted_asset']}",
+            headers=admin_headers,
+        )
+        require(
+            admin_detail.status_code == 200,
+            "Authorized web administrator reads tenant media asset",
+            admin_detail.text,
+        )
+
+        detail_tenant_mismatch = client.get(
+            f"/api/v1/media/assets/{ids['personal_asset']}",
+            headers={
+                **farmer_headers,
+                "X-Tenant-ID": "media-asset-foreign",
+            },
+        )
+        require(
+            detail_tenant_mismatch.status_code == 403,
+            "Media asset detail rejects tenant mismatch",
+            detail_tenant_mismatch.text,
+        )
+
         missing = attach(
             client,
             {"X-Tenant-ID": tenant_id},

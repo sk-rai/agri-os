@@ -222,8 +222,15 @@ def main():
     check(invalid_response.status_code == 422, "Invalid media type rejected", invalid_response.text[:200])
     missing_asset_attach = client.post("/api/v1/media/attachments", headers=headers, json={"media_asset_id": str(uuid.uuid4()), "entity_type": "FARMER", "entity_id": str(farmer_id), "purpose": "GENERAL"})
     check(missing_asset_attach.status_code == 404, "Missing asset attachment rejected", missing_asset_attach.text)
-    other_tenant_get = client.get(f"/api/v1/media/assets/{asset_id}", headers={"X-Tenant-ID": "default"})
-    check(other_tenant_get.status_code == 404, "Asset is tenant isolated", other_tenant_get.text)
+    other_tenant_get = client.get(
+        f"/api/v1/media/assets/{asset_id}",
+        headers={**headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        other_tenant_get.status_code == 403,
+        "Asset detail rejects token/header tenant mismatch",
+        other_tenant_get.text,
+    )
 
     print("\n[8] Cleanup")
     db = SessionLocal()

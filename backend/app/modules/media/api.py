@@ -619,11 +619,33 @@ def complete_media_asset(
 def get_media_asset(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
 ):
-    asset = db.query(MediaAsset).filter(MediaAsset.id == asset_id, MediaAsset.tenant_id == x_tenant_id).first()
+    """Return an asset visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    asset = (
+        db.query(MediaAsset)
+        .filter(
+            MediaAsset.id == asset_id,
+            MediaAsset.tenant_id == tenant_id,
+        )
+        .first()
+    )
     if not asset:
         raise HTTPException(404, "Media asset not found")
+
+    if asset.uploaded_by != actor_id:
+        _require_media_creation_scope(
+            db,
+            principal=principal,
+            project_id=asset.project_id,
+            farmer_id=asset.farmer_id,
+        )
+
     return _asset_payload(asset)
 
 
