@@ -10,7 +10,7 @@ PUBLIC_PREFIXES=("/api/v1/auth/otp/","/api/v1/auth/device","/health")
 PUBLIC_GET_PATHS=("/api/v1/app-config/bootstrap",)
 REFERENCE_PREFIXES=("/api/v1/master-data/states","/api/v1/master-data/districts",
  "/api/v1/master-data/blocks","/api/v1/master-data/villages","/api/v1/crop-catalog",
- "/api/v1/input-catalog","/api/v1/forms","/api/v1/workflows")
+ "/api/v1/input-catalog","/api/v1/forms","/api/v1/workflows","/crops")
 REFERENCE_POST_PATHS=("/sync",)
 def literal(node):
     try:return ast.literal_eval(node)

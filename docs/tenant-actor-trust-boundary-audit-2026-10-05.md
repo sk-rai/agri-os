@@ -641,3 +641,16 @@ Static and behavior regressions confirm the pre-login contract, active
 tenant/project bounds, stable response fields, read-only behavior, tenant
 defaults, and project overrides. After this classification, 39 unauthenticated
 non-reference read findings remain and mutation findings remain at zero.
+
+## Crop master-data reference classification checkpoint
+
+The audit recognizes the master-data `/crops` GET family as intentional
+reference transport. The four classified handlers return active crop
+categories, crops, varieties, and lifecycle templates and perform no database
+writes.
+
+Regression assertions require each route to remain `reference=true`,
+`public=false`, and finding-free. Following this classification, the audit
+reports 35 remaining non-reference GET findings and no crop-reference
+findings. Authentication exemptions remain method-constrained and do not
+apply to mutations.

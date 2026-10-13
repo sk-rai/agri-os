@@ -554,3 +554,15 @@ operational persona.
 Optional project resolution remains tenant-bounded and active-only. The route
 performs no database writes and exposes only its stable client bootstrap
 response.
+
+## Crop reference-data governance
+
+Crop categories, canonical crops, varieties, and lifecycle templates are
+global reference material rather than human-persona operational records.
+Their master-data GET endpoints therefore do not require a verified human
+persona or tenant actor.
+
+This boundary does not grant unauthenticated access to crop-cycle activity,
+farmer crop data, project configuration, or catalog administration. Any route
+that leaves the canonical read-only reference scope must enforce the
+appropriate authenticated persona and tenant boundary.

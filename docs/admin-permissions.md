@@ -295,3 +295,15 @@ client contracts.
 The exception is restricted to this exact GET path. Administrative app-config
 reads and all app-config mutations retain their existing authenticated
 permission boundaries.
+
+## Public crop master-data reference reads
+
+The crop category, crop, variety, and lifecycle-template GET endpoints are
+intentional unauthenticated reference-data reads. They expose active canonical
+catalog records used to populate client selection controls and contain no
+tenant, farmer, project-operational, or administrator data.
+
+This exception applies only to database-read-only GET routes under the
+master-data `/crops` router. Crop catalog mutations and operational crop data
+retain their existing authentication, permission, tenant, and actor
+requirements.

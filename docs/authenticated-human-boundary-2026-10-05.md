@@ -647,3 +647,15 @@ The trust-boundary auditor classifies only the exact
 `GET /api/v1/app-config/bootstrap` path as public. The classification is
 method-constrained and does not extend to app-config mutations or administrative
 configuration reads.
+
+## Crop master-data reference classification checkpoint
+
+The tenant/actor audit explicitly classifies the four active crop master-data
+GET routes as reference transport: crop categories, crops, crop varieties, and
+crop lifecycle templates. These routes remain available before authentication
+because they return global canonical lookup data required by client forms and
+bootstrap flows.
+
+The classification is GET-constrained and does not exempt crop mutations or
+tenant/project operational reads. Static regression coverage verifies the
+routes remain active-only and database read-only.
