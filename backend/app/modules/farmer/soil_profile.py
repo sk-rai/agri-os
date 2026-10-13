@@ -274,6 +274,7 @@ class SoilEnrichmentWorkerRunRequest(BaseModel):
 class SoilEnrichmentWorkerRunResponse(BaseModel):
     schema_version: str = "soil_enrichment_worker_run.v1"
     tenant_id: str
+    requested_by: Optional[str] = None
     dry_run: bool = True
     queue_item_count: int = 0
     queued_job_count: int = 0
@@ -1248,16 +1249,131 @@ def list_soil_enrichment_snapshots(
     return [_soil_enrichment_payload(row) for row in query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).limit(limit).all()]
 
 
+def _soil_enrichment_reference_uuid(value, *, field: str):
+    if value in (None, ""):
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "INVALID_SOIL_ENRICHMENT_REFERENCE",
+                "field": field,
+                "message": f"{field} must be a valid UUID.",
+            },
+        )
+
+
+def _assert_soil_enrichment_operational_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    farmer_id: Optional[uuid.UUID] = None,
+    parcel_id: Optional[uuid.UUID] = None,
+    project_id: Optional[uuid.UUID] = None,
+) -> dict:
+    """Resolve optional operational references inside the verified tenant."""
+    from app.modules.farmer.models import Farmer, Parcel, Project
+
+    farmer = None
+    parcel = None
+    project = None
+
+    if farmer_id:
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == farmer_id,
+                Farmer.tenant_id == tenant_id,
+                Farmer.is_active == True,
+            )
+            .first()
+        )
+        if not farmer:
+            raise HTTPException(status_code=404, detail="Farmer not found")
+
+    if parcel_id:
+        parcel = (
+            db.query(Parcel)
+            .filter(
+                Parcel.id == parcel_id,
+                Parcel.tenant_id == tenant_id,
+                Parcel.is_active == True,
+            )
+            .first()
+        )
+        if not parcel:
+            raise HTTPException(status_code=404, detail="Parcel not found")
+
+    if project_id:
+        project = (
+            db.query(Project)
+            .filter(
+                Project.id == project_id,
+                Project.tenant_id == tenant_id,
+                Project.is_active == True,
+            )
+            .first()
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    if farmer and parcel and parcel.farmer_id != farmer.id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "SOIL_ENRICHMENT_SCOPE_MISMATCH",
+                "message": "Parcel does not belong to the selected farmer.",
+            },
+        )
+
+    if project and parcel and parcel.project_id != project.id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "SOIL_ENRICHMENT_SCOPE_MISMATCH",
+                "message": "Parcel does not belong to the selected project.",
+            },
+        )
+
+    if project and farmer:
+        farmer_project_id = getattr(farmer, "project_id", None)
+        if farmer_project_id and farmer_project_id != project.id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "SOIL_ENRICHMENT_SCOPE_MISMATCH",
+                    "message": "Farmer does not belong to the selected project.",
+                },
+            )
+
+    return {
+        "farmer": farmer,
+        "parcel": parcel,
+        "project": project,
+    }
+
+
 @router.post("/enrichments/jobs/audit", response_model=SoilEnrichmentJobAuditResponse, status_code=201)
 def record_soil_enrichment_job_audit(
     body: SoilEnrichmentJobAuditCreate,
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Record a backend soil enrichment job attempt."""
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    _assert_soil_enrichment_operational_scope(
+        db,
+        tenant_id=tenant_id,
+        farmer_id=body.farmer_id,
+        parcel_id=body.parcel_id,
+        project_id=body.project_id,
+    )
+
     event = SoilEnrichmentJobAudit(
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         farmer_id=body.farmer_id,
         parcel_id=body.parcel_id,
         project_id=body.project_id,
@@ -1267,7 +1383,11 @@ def record_soil_enrichment_job_audit(
         attempt_count=body.attempt_count,
         reason=body.reason,
         error_code=body.error_code,
-        metadata_=body.metadata or {},
+        metadata_={
+            **(body.metadata or {}),
+            "recorded_by": str(actor_id),
+            "recorded_via": "ADMIN_API",
+        },
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -1275,6 +1395,7 @@ def record_soil_enrichment_job_audit(
     db.commit()
     db.refresh(event)
     return _soil_enrichment_job_audit_payload(event)
+
 
 
 @router.get("/enrichments/jobs/audit")
@@ -1328,7 +1449,6 @@ def run_soil_enrichment_queue_worker(
     missing: str = Query("ANY", pattern=r"^(BASELINE|MOISTURE|ANY)$"),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Run or preview backend soil enrichment queue work.
@@ -1336,17 +1456,50 @@ def run_soil_enrichment_queue_worker(
     Current behavior is a provider-neutral worker stub. It can create QUEUED
     audit rows for recommended jobs but does not call external providers yet.
     """
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    demo_target = body.demo_target or {}
+    demo_farmer_id = _soil_enrichment_reference_uuid(
+        demo_target.get("farmer_id"), field="demo_target.farmer_id"
+    )
+    demo_parcel_id = _soil_enrichment_reference_uuid(
+        demo_target.get("parcel_id"), field="demo_target.parcel_id"
+    )
+    demo_project_id = _soil_enrichment_reference_uuid(
+        demo_target.get("project_id"), field="demo_target.project_id"
+    )
+    _assert_soil_enrichment_operational_scope(
+        db,
+        tenant_id=tenant_id,
+        farmer_id=farmer_id,
+        project_id=project_id,
+    )
+    if demo_target:
+        _assert_soil_enrichment_operational_scope(
+            db,
+            tenant_id=tenant_id,
+            farmer_id=demo_farmer_id,
+            parcel_id=demo_parcel_id,
+            project_id=demo_project_id,
+        )
+
     return _run_soil_enrichment_queue_worker(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
         dry_run=dry_run,
         farmer_id=farmer_id,
         project_id=project_id,
         missing=missing,
         limit=limit,
         demo_payloads=body.demo_payloads,
-        demo_target=body.demo_target,
+        demo_target={
+            "farmer_id": str(demo_farmer_id) if demo_farmer_id else None,
+            "parcel_id": str(demo_parcel_id) if demo_parcel_id else None,
+            "project_id": str(demo_project_id) if demo_project_id else None,
+        } if demo_target else {},
     )
+
 
 
 @router.get("/enrichments/operations/health")
@@ -1484,6 +1637,7 @@ def _run_soil_enrichment_queue_worker(
     db: Session,
     *,
     tenant_id: str,
+    actor_id: Optional[uuid.UUID] = None,
     dry_run: bool = True,
     farmer_id: Optional[uuid.UUID] = None,
     project_id: Optional[uuid.UUID] = None,
@@ -1544,6 +1698,7 @@ def _run_soil_enrichment_queue_worker(
                         reason=reason,
                         metadata_={
                             "source": "soil_enrichment_worker_stub",
+                            "requested_by": str(actor_id) if actor_id else None,
                             "missing_reasons": item.get("reasons") or [],
                         },
                         created_at=now,
@@ -1652,6 +1807,7 @@ def _run_soil_enrichment_queue_worker(
                 reason="Demo payload normalized into SoilEnrichmentSnapshot by worker.",
                 metadata_={
                     "source": "soil_enrichment_worker_demo_target",
+                    "requested_by": str(actor_id) if actor_id else None,
                     "demo_payload_snapshot_id": str(snapshot.id),
                     "demo_payload_provider": provider,
                 },
@@ -1678,6 +1834,7 @@ def _run_soil_enrichment_queue_worker(
     return {
         "schema_version": "soil_enrichment_worker_run.v1",
         "tenant_id": tenant_id,
+        "requested_by": str(actor_id) if actor_id else None,
         "dry_run": dry_run,
         "queue_item_count": queue.get("count", 0),
         "queued_job_count": queued_job_count,
@@ -1687,6 +1844,7 @@ def _run_soil_enrichment_queue_worker(
         "jobs": jobs,
         "message": "Soil enrichment worker run completed." if not dry_run else "Soil enrichment worker dry run completed.",
     }
+
 
 @router.get("/enrichments/queue")
 def list_soil_enrichment_queue(

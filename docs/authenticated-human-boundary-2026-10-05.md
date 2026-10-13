@@ -585,3 +585,9 @@ attribution.
 The disabled NWDP project-matching apply endpoint now uses project-scoped
 `PROJECT_EDIT`, tenant-bounds the selected project, reports the verified actor,
 and remains a no-write `501` contract.
+
+## Soil enrichment operations checkpoint
+
+Soil-enrichment job-audit creation and queue-worker execution now cross the authenticated-human boundary through verified administrator principals. Both mutations require `EDIT`, derive tenant and actor identity from the verified principal, reject actor impersonation and tenant mismatch, and tenant-bound every supplied farmer, parcel, and project reference.
+
+Worker dry runs remain write-free. Non-dry worker audit rows and manual job-audit rows preserve verified administrator attribution. This checkpoint does not enable live provider execution or grant Android clients direct provider access.

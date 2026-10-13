@@ -217,3 +217,14 @@ project-scoped, requires `PROJECT_EDIT`, derives tenant and actor from the
 verified principal, and tenant-bounds the project lookup. It remains write-free
 and returns `501`; no matching, promotion, runtime lookup, or Android behavior is
 enabled.
+
+## Soil enrichment operations
+
+The following operational mutations require a verified administrator with `EDIT` permission:
+
+- `POST /api/v1/soil-profiles/enrichments/jobs/audit`
+- `POST /api/v1/soil-profiles/enrichments/worker/run-queue`
+
+Both routes derive the effective tenant and actor from the authenticated administrator. Caller-supplied identity headers are consistency checks only and are not mutation authority. Referenced farmers, parcels, and projects are resolved within the verified tenant, and inconsistent farmer/parcel/project combinations are rejected.
+
+Manual audit events record the verified administrator in immutable metadata. Queue-worker responses and created job-audit rows identify the verified requesting administrator. Dry runs remain write-free, and live external provider execution remains governed by the existing provider policy.

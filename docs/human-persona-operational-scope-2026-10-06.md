@@ -494,3 +494,9 @@ from the primary reviewer.
 Project matching remains tenant/project administration. Its disabled contract
 requires project-scoped `PROJECT_EDIT`, but performs no database mutation and
 does not authorize later activation or promotion.
+
+## Soil enrichment operations governance
+
+Soil-enrichment operational mutations are administrator-controlled backend operations. They are not farmer-persona or Android mutation capabilities.
+
+The verified administrator determines the tenant and actor. Farmer, parcel, and project references must belong to that tenant and must be mutually consistent. Audit metadata records the verified administrator, while dry-run execution remains non-mutating. Provider execution policy remains separately governed and live external execution is not enabled by this authorization tranche.

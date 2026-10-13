@@ -532,9 +532,9 @@ def main():
         headers=admin_headers,
         json={
             "demo_target": {
-                "farmer_id": str(farmer_id),
+                "farmer_id": str(missing_enrichment_farmer_id),
                 "parcel_id": str(missing_enrichment_parcel_id),
-                "project_id": str(project_id),
+                "project_id": None,
             },
             "demo_payloads": {
                 "soilgrids": {

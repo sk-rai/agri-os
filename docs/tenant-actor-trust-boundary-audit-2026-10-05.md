@@ -556,3 +556,14 @@ tenant-bounds the project. It remains write-free and disabled.
 
 The trust-boundary audit no longer reports these six routes as mutations missing
 tenant or actor markers.
+
+## Soil enrichment operational mutation checkpoint
+
+The tenant/actor audit now classifies these mutations as secured:
+
+- `POST /api/v1/soil-profiles/enrichments/jobs/audit`
+- `POST /api/v1/soil-profiles/enrichments/worker/run-queue`
+
+Both require authenticated `EDIT` permission and derive `tenant_id` and `actor_id` from the verified administrator. The routes do not use `X-Tenant-ID` or `X-Actor-ID` as mutation authority. Optional farmer, parcel, project, and demo-target references are tenant-bounded and relationally validated.
+
+Manual audit creation records `recorded_by` and `recorded_via=ADMIN_API`. Worker-created job-audit rows record `requested_by`, and the response reports the verified requester. Dry runs do not write audit or snapshot rows.
