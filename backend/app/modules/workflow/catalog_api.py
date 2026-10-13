@@ -478,22 +478,29 @@ async def validate_workflow_csv_against_draft(
     workflow_template_version_id: uuid.UUID,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
     principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.EDIT)),
 ):
     """Validate workflow CSV rows against an existing DRAFT version without mutating it."""
-    template, version = _get_draft_template_version(db, workflow_template_version_id, x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    template, version = _get_draft_template_version(
+        db,
+        workflow_template_version_id,
+        tenant_id,
+    )
     text = await _read_workflow_csv_upload(file)
-    return _workflow_csv_validation_report(
+    report = _workflow_csv_validation_report(
         db=db,
         template=template,
         version=version,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         file_name=file.filename,
         text=text,
         mode="VALIDATE_ONLY",
         apply_available=True,
     )
+    report["validated_by"] = str(actor_id)
+    return report
 
 
 def _workflow_csv_stage_snapshot(db: Session, version_id) -> dict:

@@ -80,8 +80,10 @@ def nwdp_candidates(project_id:UUID,canonical_village_id:UUID=Query(...),q:Optio
   item=dict(row);item['eligible_for_canonical_enrichment']=item['mapped_village_id'] is None or item['mapped_village_id']==str(canonical_village_id);item['eligible_for_project_local_addition']=item['mapped_village_id'] is None and not item['has_active_runtime'];items.append(item)
  return {'schema_version':'project_village_resolution_nwdp_candidates.v1','mode':'READ_ONLY','project':{k:p[k] for k in ('project_id','tenant_id','name','status')},'canonical_village':dict(canonical),'query':query,'count':len(items),'items':items,'guardrails':guardrails()}
 @router.post('/projects/{project_id}/dry-run')
-def dry_run(project_id:UUID,body:ProjectVillageResolutionDryRun,db:Session=Depends(get_db),x_tenant_id:str=Header('default',alias='X-Tenant-ID'),principal=Depends(require_admin_permission(AdminPermission.PROJECT_EDIT,project_scoped=True))):
- p=project(db,project_id,x_tenant_id)
+def dry_run(project_id:UUID,body:ProjectVillageResolutionDryRun,db:Session=Depends(get_db),principal=Depends(require_admin_permission(AdminPermission.PROJECT_EDIT,project_scoped=True))):
+ tenant_id=principal.tenant_id
+ actor_id=principal.user_id
+ p=project(db,project_id,tenant_id)
  if not body.dry_run or body.confirm_apply:raise HTTPException(503,{'code':'PROJECT_VILLAGE_RESOLUTION_APPLY_DISABLED','message':'Only read-only dry runs are enabled.'})
  if body.resolution_mode not in {'CANONICAL_ENRICHMENT','PROJECT_LOCAL_ADDITION'}:raise HTTPException(400,'INVALID_RESOLUTION_MODE')
  if any(not PIN_RE.fullmatch(pin) for pin in body.pin_codes):raise HTTPException(400,'INVALID_PIN_CODE')
@@ -102,7 +104,7 @@ def dry_run(project_id:UUID,body:ProjectVillageResolutionDryRun,db:Session=Depen
  if body.pin_codes:
   found=set(db.execute(text("select distinct pin_code from geography_postal_references where is_active and pin_code=any(:pins)"),{'pins':body.pin_codes}).scalars())
   if found!=set(body.pin_codes):raise HTTPException(409,{'code':'PIN_EVIDENCE_NOT_FOUND','missing':sorted(set(body.pin_codes)-found)})
- return {'schema_version':'project_village_resolution_dry_run.v1','mode':'DRY_RUN_APPLY_DISABLED','status':'VALID' if (canonical or source) else 'INVALID','project':{k:p[k] for k in ('project_id','tenant_id','name','status')},'preview':{'resolution_mode':body.resolution_mode,'canonical_village':dict(canonical) if canonical else None,'nwdp_source_feature':dict(source) if source else None,'display_name':body.display_name,'pin_codes':body.pin_codes,'hierarchy_labels':body.hierarchy_labels,'evidence_basis':body.evidence_basis,'rollback_token':body.rollback_token,'would_write':False,'would_be_android_visible':False},'guardrails':guardrails()}
+ return {'schema_version':'project_village_resolution_dry_run.v1','mode':'DRY_RUN_APPLY_DISABLED','requested_by':str(actor_id),'status':'VALID' if (canonical or source) else 'INVALID','project':{k:p[k] for k in ('project_id','tenant_id','name','status')},'preview':{'resolution_mode':body.resolution_mode,'canonical_village':dict(canonical) if canonical else None,'nwdp_source_feature':dict(source) if source else None,'display_name':body.display_name,'pin_codes':body.pin_codes,'hierarchy_labels':body.hierarchy_labels,'evidence_basis':body.evidence_basis,'rollback_token':body.rollback_token,'would_write':False,'would_be_android_visible':False},'guardrails':guardrails()}
 
 def second_admin(db:Session,token:str,tenant_id:str,actor_id:UUID):
  try:claims=jwt.decode(token,JWT_SECRET,algorithms=[JWT_ALGORITHM]);approver_id=UUID(str(claims.get('sub')))

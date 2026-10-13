@@ -500,3 +500,9 @@ does not authorize later activation or promotion.
 Soil-enrichment operational mutations are administrator-controlled backend operations. They are not farmer-persona or Android mutation capabilities.
 
 The verified administrator determines the tenant and actor. Farmer, parcel, and project references must belong to that tenant and must be mutually consistent. Audit metadata records the verified administrator, while dry-run execution remains non-mutating. Provider execution policy remains separately governed and live external execution is not enabled by this authorization tranche.
+
+## Platform provisioning and non-mutating POST governance
+
+Tenant creation is outside ordinary tenant administration. Only a verified `ENTERPRISE_ADMIN` in the `default` platform tenant may provision another tenant, and every successful provisioning action produces immutable administrator attribution.
+
+Device login is an authentication exchange, not an authenticated business mutation. Master-data sync, project-village-resolution dry run, and workflow-draft CSV validation use POST request bodies but are non-mutating operations. The two administrative validation routes report the verified administrator and derive all scope from the authenticated principal.

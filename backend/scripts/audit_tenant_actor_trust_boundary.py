@@ -6,10 +6,11 @@ from collections import Counter
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];APP=ROOT/"backend/app"
 METHODS={"get","post","put","patch","delete"};MUTATIONS={"POST","PUT","PATCH","DELETE"}
-PUBLIC_PREFIXES=("/api/v1/auth/otp/","/health")
+PUBLIC_PREFIXES=("/api/v1/auth/otp/","/api/v1/auth/device","/health")
 REFERENCE_PREFIXES=("/api/v1/master-data/states","/api/v1/master-data/districts",
  "/api/v1/master-data/blocks","/api/v1/master-data/villages","/api/v1/crop-catalog",
  "/api/v1/input-catalog","/api/v1/forms","/api/v1/workflows")
+REFERENCE_POST_PATHS=("/sync",)
 def literal(node):
     try:return ast.literal_eval(node)
     except Exception:return None
@@ -54,11 +55,11 @@ def scan(path):
         tenant=any(x in body for x in ("X-Tenant-ID","x_tenant_id","principal.tenant_id"))
         actor=any(x in body for x in ("X-Actor-ID","x_actor_id","principal.user_id","claims.get('sub')","claims.get(\"sub\")"))
         public=any(full.startswith(p) for p in PUBLIC_PREFIXES)
-        reference=method=="GET" and any(full.startswith(p) for p in REFERENCE_PREFIXES)
+        reference=(method=="GET" and any(full.startswith(p) for p in REFERENCE_PREFIXES)) or (method=="POST" and full in REFERENCE_POST_PATHS)
         flags=[]
-        if method in MUTATIONS and not public and not(admin or bearer):flags.append("MUTATION_WITHOUT_AUTH_MARKER")
-        if method in MUTATIONS and not public and not tenant:flags.append("MUTATION_WITHOUT_TENANT_MARKER")
-        if method in MUTATIONS and not public and not actor:flags.append("MUTATION_WITHOUT_ACTOR_MARKER")
+        if method in MUTATIONS and not public and not reference and not(admin or bearer):flags.append("MUTATION_WITHOUT_AUTH_MARKER")
+        if method in MUTATIONS and not public and not reference and not tenant:flags.append("MUTATION_WITHOUT_TENANT_MARKER")
+        if method in MUTATIONS and not public and not reference and not actor:flags.append("MUTATION_WITHOUT_ACTOR_MARKER")
         if method=="GET" and not public and not reference and not(admin or bearer):flags.append("NON_REFERENCE_READ_WITHOUT_AUTH_MARKER")
         rows.append({"file":str(path.relative_to(ROOT)),"line":node.lineno,"method":method,
           "path":full,"function":node.name,"admin_dependency":admin,"bearer_marker":bearer,

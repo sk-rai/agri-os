@@ -50,6 +50,60 @@ class Tenant(Base, AuditMixin):
 
 
 
+class TenantProvisioningAuditEvent(Base, UUIDPrimaryKey):
+    """Immutable audit event for platform tenant provisioning."""
+
+    __tablename__ = "tenant_provisioning_audit_events"
+
+    target_tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.id"),
+        nullable=False,
+        index=True,
+    )
+    actor_tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.id"),
+        nullable=False,
+        index=True,
+    )
+    actor_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+    action = Column(
+        String(50),
+        nullable=False,
+        default="CREATE_TENANT",
+    )
+    after_payload = Column(JSONB, nullable=False)
+    reason = Column(Text)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_tenant_provisioning_audit_target_created",
+            "target_tenant_id",
+            "created_at",
+        ),
+        Index(
+            "idx_tenant_provisioning_audit_actor_created",
+            "actor_id",
+            "created_at",
+        ),
+        Index(
+            "idx_tenant_provisioning_audit_action",
+            "action",
+        ),
+    )
+
+
 class CompanyProfile(Base, UUIDPrimaryKey, AuditMixin):
     """Backend-owned profile for the company/FPO/NGO using the product."""
 

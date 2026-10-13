@@ -567,3 +567,17 @@ The tenant/actor audit now classifies these mutations as secured:
 Both require authenticated `EDIT` permission and derive `tenant_id` and `actor_id` from the verified administrator. The routes do not use `X-Tenant-ID` or `X-Actor-ID` as mutation authority. Optional farmer, parcel, project, and demo-target references are tenant-bounded and relationally validated.
 
 Manual audit creation records `recorded_by` and `recorded_via=ADMIN_API`. Worker-created job-audit rows record `requested_by`, and the response reports the verified requester. Dry runs do not write audit or snapshot rows.
+
+## Final mutation trust-boundary closure
+
+The route audit now reports zero mutation findings.
+
+The final classifications are:
+
+- `POST /api/v1/tenants`: authenticated platform provisioning, restricted to a verified `ENTERPRISE_ADMIN` in tenant `default`, with immutable `CREATE_TENANT` attribution.
+- `POST /api/v1/auth/device`: intentional public authentication exchange that validates device credentials before token issuance.
+- `POST /api/v1/master-data/sync`: read-only reference transport using POST for a version manifest.
+- project-village-resolution dry run: authenticated, project-scoped, verified-tenant and verified-actor preview with no database writes.
+- workflow-draft CSV validation: authenticated, verified-tenant and verified-actor validation with no database writes.
+
+The auditor explicitly distinguishes public authentication and read-only POST reference transport from business mutations. This classification does not exempt any state-changing business route from authentication, tenant, or actor requirements.

@@ -228,3 +228,13 @@ The following operational mutations require a verified administrator with `EDIT`
 Both routes derive the effective tenant and actor from the authenticated administrator. Caller-supplied identity headers are consistency checks only and are not mutation authority. Referenced farmers, parcels, and projects are resolved within the verified tenant, and inconsistent farmer/parcel/project combinations are rejected.
 
 Manual audit events record the verified administrator in immutable metadata. Queue-worker responses and created job-audit rows identify the verified requesting administrator. Dry runs remain write-free, and live external provider execution remains governed by the existing provider policy.
+
+## Platform tenant provisioning and final mutation classifications
+
+`POST /api/v1/tenants` is a platform-level provisioning operation. It requires `MANAGE_USERS` and a verified `ENTERPRISE_ADMIN` whose authenticated tenant is `default`. Administrators from ordinary customer tenants cannot create peer tenants. Successful provisioning writes an immutable `CREATE_TENANT` audit event containing the target tenant, verified actor tenant, verified administrator, resulting tenant payload, reason, and timestamp.
+
+The remaining POST routes are classified by behavior rather than treated as ordinary mutations:
+
+- `POST /api/v1/auth/device` is an intentional public authentication exchange. It validates a registered device credential before issuing a JWT.
+- `POST /api/v1/master-data/sync` is read-only reference transport. POST carries the client version manifest but performs no database writes.
+- Project-village-resolution dry run and workflow-draft CSV validation require verified administrator permissions, derive tenant and actor from the authenticated principal, and remain database write-free.

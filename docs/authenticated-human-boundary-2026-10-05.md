@@ -591,3 +591,11 @@ and remains a no-write `501` contract.
 Soil-enrichment job-audit creation and queue-worker execution now cross the authenticated-human boundary through verified administrator principals. Both mutations require `EDIT`, derive tenant and actor identity from the verified principal, reject actor impersonation and tenant mismatch, and tenant-bound every supplied farmer, parcel, and project reference.
 
 Worker dry runs remain write-free. Non-dry worker audit rows and manual job-audit rows preserve verified administrator attribution. This checkpoint does not enable live provider execution or grant Android clients direct provider access.
+
+## Final mutation-boundary closure
+
+Tenant provisioning now requires a verified platform administrator: `MANAGE_USERS`, role `ENTERPRISE_ADMIN`, and authenticated tenant `default`. Caller identity headers are consistency checks only. The successful operation preserves immutable target-tenant and administrator attribution.
+
+Device login remains intentionally unauthenticated because it is itself a credential-verification boundary. It issues a bearer token only after matching the registered device key and device identifier.
+
+Master-data sync is explicitly classified as read-only reference transport despite using POST for its client version manifest. Project-village-resolution dry run and workflow CSV draft validation derive tenant and actor from verified administrators and do not write application state.

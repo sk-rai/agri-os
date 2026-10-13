@@ -32,7 +32,7 @@ from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_hu
 from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
-from app.modules.farmer.models import Tenant, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent, TenantAppConfigAuditEvent
+from app.modules.farmer.models import Tenant, TenantProvisioningAuditEvent, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent, TenantAppConfigAuditEvent
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -2225,23 +2225,66 @@ def _validate_parcel_location_scope(body: ParcelCreate | ParcelUpdate, farmer: F
 # --- Tenant Endpoints ---
 
 @router.post("/tenants", response_model=TenantResponse, status_code=201)
-def create_tenant(body: TenantCreate, db: Session = Depends(get_db), principal: AdminPrincipal = Depends(require_admin_permission(AdminPermission.MANAGE_USERS))):
-    """Register a new tenant (enterprise, FPO, insurer)."""
+def create_tenant(
+    body: TenantCreate,
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.MANAGE_USERS)
+    ),
+):
+    """Provision a tenant from the verified platform-administration boundary."""
+    actor_tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+
+    if actor_tenant_id != "default" or principal.role != "ENTERPRISE_ADMIN":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "PLATFORM_TENANT_PROVISIONING_REQUIRED",
+                "message": (
+                    "Tenant provisioning requires a verified "
+                    "ENTERPRISE_ADMIN in the default platform tenant."
+                ),
+            },
+        )
+
     existing = db.query(Tenant).filter(Tenant.id == body.id).first()
     if existing:
         raise HTTPException(409, "Tenant ID already exists")
 
+    now = datetime.now(timezone.utc)
     tenant = Tenant(
         id=body.id,
         name=body.name,
         type=body.type,
         contact_email=body.contact_email,
         contact_phone=body.contact_phone,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=now,
+        updated_at=now,
     )
     db.add(tenant)
+    db.flush()
+
+    db.add(TenantProvisioningAuditEvent(
+        id=uuid.uuid4(),
+        target_tenant_id=tenant.id,
+        actor_tenant_id=actor_tenant_id,
+        actor_id=actor_id,
+        action="CREATE_TENANT",
+        after_payload={
+            "id": tenant.id,
+            "name": tenant.name,
+            "type": tenant.type,
+            "contact_email": tenant.contact_email,
+            "contact_phone": tenant.contact_phone,
+            "is_active": tenant.is_active,
+        },
+        reason="Tenant provisioned through the platform administration API.",
+        created_at=now,
+    ))
+
     db.commit()
+    db.refresh(tenant)
     return tenant
 
 
