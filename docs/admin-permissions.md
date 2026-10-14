@@ -337,3 +337,11 @@ Workflow governance reads require administrator `VIEW` permission:
 Draft validation requires administrator `EDIT` permission because validation writes an immutable audit event. That audit records the verified administrator rather than a caller-supplied actor.
 
 Regression coverage is provided by `backend/scripts/test_workflow_catalog_read_auth_static.py` and `backend/scripts/test_workflow_catalog_read_auth_behavior.py`. Existing catalog, preview, enablement, draft, publishing, legacy-pin, version-assignment, and CSV-validation regressions use authenticated identities.
+
+## Crop-cycle operational reads
+
+Crop-cycle operational reads require a verified human bearer identity. The API derives the tenant and actor from the authenticated principal and does not treat `X-Tenant-ID` or `X-Actor-ID` as independent authority.
+
+Farmers can read crop cycles belonging to their linked farmer profile. Assigned operational users can read farmers within their persisted assignment scope. Web administrators with `VIEW` permission can read tenant-wide operational data. Project-scoped finance configuration additionally requires a verified project role or active farmer enrollment. Tenant-wide finance analytics remains restricted to administrators with `VIEW`.
+
+The canonical `GET /api/v1/crop-cycles/templates/{crop_code}` route remains unauthenticated reference data because it serves the default published crop workflow and exposes no tenant, project, or farmer operational state.

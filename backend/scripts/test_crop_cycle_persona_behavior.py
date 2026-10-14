@@ -453,6 +453,174 @@ def main():
         admin_cycle = admin_create.json()
         admin_cycle_id = admin_cycle["id"]
 
+        missing_read = client.get(
+            f"/api/v1/crop-cycles/{personal_cycle_id}",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        require(
+            missing_read.status_code == 401,
+            "Crop-cycle detail rejects missing bearer",
+            missing_read.text,
+        )
+
+        impersonated_read = client.get(
+            f"/api/v1/crop-cycles/{personal_cycle_id}",
+            headers={
+                **farmer_headers,
+                "X-Actor-ID": str(uuid.uuid4()),
+            },
+        )
+        require(
+            impersonated_read.status_code == 403,
+            "Crop-cycle detail rejects actor impersonation",
+            impersonated_read.text,
+        )
+
+        mismatched_read = client.get(
+            f"/api/v1/crop-cycles/{personal_cycle_id}",
+            headers={
+                **farmer_headers,
+                "X-Tenant-ID": "default",
+            },
+        )
+        require(
+            mismatched_read.status_code == 403,
+            "Crop-cycle detail rejects tenant mismatch",
+            mismatched_read.text,
+        )
+
+        personal_detail = client.get(
+            f"/api/v1/crop-cycles/{personal_cycle_id}",
+            headers=farmer_headers,
+        )
+        require(
+            personal_detail.status_code == 200,
+            "Farmer reads personal crop cycle",
+            personal_detail.text,
+        )
+
+        farmer_cross_detail = client.get(
+            f"/api/v1/crop-cycles/{assisted_cycle_id}",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_cross_detail.status_code == 403,
+            "Farmer cannot read assisted farmer crop cycle",
+            farmer_cross_detail.text,
+        )
+
+        agent_detail = client.get(
+            f"/api/v1/crop-cycles/{assisted_cycle_id}",
+            headers=agent_headers,
+        )
+        require(
+            agent_detail.status_code == 200,
+            "Assigned agent reads assisted farmer crop cycle",
+            agent_detail.text,
+        )
+
+        unassigned_detail = client.get(
+            f"/api/v1/crop-cycles/{assisted_cycle_id}",
+            headers=unassigned_headers,
+        )
+        require(
+            unassigned_detail.status_code == 403,
+            "Unassigned agent cannot read assisted farmer crop cycle",
+            unassigned_detail.text,
+        )
+
+        admin_detail = client.get(
+            f"/api/v1/crop-cycles/{admin_cycle_id}",
+            headers=admin_headers,
+        )
+        require(
+            admin_detail.status_code == 200,
+            "Administrator reads tenant crop cycle",
+            admin_detail.text,
+        )
+
+        farmer_cycles = client.get(
+            "/api/v1/crop-cycles",
+            headers=farmer_headers,
+        )
+        require(
+            farmer_cycles.status_code == 200,
+            "Farmer lists visible crop cycles",
+            farmer_cycles.text,
+        )
+        farmer_cycle_ids = {
+            row["id"] for row in farmer_cycles.json()
+        }
+        require(
+            personal_cycle_id in farmer_cycle_ids,
+            "Farmer collection includes personal cycle",
+        )
+        require(
+            assisted_cycle_id not in farmer_cycle_ids
+            and admin_cycle_id not in farmer_cycle_ids,
+            "Farmer collection hides unrelated cycles",
+            farmer_cycle_ids,
+        )
+
+        eligible_personal = client.get(
+            (
+                "/api/v1/crop-cycles/eligible-parcels"
+                f"?farmer_id={personal.id}"
+            ),
+            headers=farmer_headers,
+        )
+        require(
+            eligible_personal.status_code == 200,
+            "Farmer reads personal eligible parcels",
+            eligible_personal.text,
+        )
+
+        eligible_cross = client.get(
+            (
+                "/api/v1/crop-cycles/eligible-parcels"
+                f"?farmer_id={assisted.id}"
+            ),
+            headers=farmer_headers,
+        )
+        require(
+            eligible_cross.status_code == 403,
+            "Farmer cannot read assisted-farmer eligible parcels",
+            eligible_cross.text,
+        )
+
+        project_config = client.get(
+            (
+                "/api/v1/crop-cycles/finance/report-config"
+                f"?project_id={project_id}"
+            ),
+            headers=farmer_headers,
+        )
+        require(
+            project_config.status_code == 200,
+            "Enrolled farmer reads project finance configuration",
+            project_config.text,
+        )
+
+        analytics_denied = client.get(
+            "/api/v1/crop-cycles/finance/analytics-summary",
+            headers=farmer_headers,
+        )
+        require(
+            analytics_denied.status_code == 403,
+            "Farmer cannot read tenant-wide finance analytics",
+            analytics_denied.text,
+        )
+
+        analytics_admin = client.get(
+            "/api/v1/crop-cycles/finance/analytics-summary",
+            headers=admin_headers,
+        )
+        require(
+            analytics_admin.status_code == 200,
+            "Administrator reads tenant-wide finance analytics",
+            analytics_admin.text,
+        )
+
         missing_stage = client.patch(
             (
                 f"/api/v1/crop-cycles/{personal_cycle_id}"
@@ -511,6 +679,72 @@ def main():
             activity.status_code == 201,
             "Farmer logs personal crop activity",
             activity.text,
+        )
+
+        recommendations = client.get(
+            (
+                f"/api/v1/crop-cycles/{personal_cycle_id}"
+                "/recommended-activities"
+            ),
+            headers=farmer_headers,
+        )
+        require(
+            recommendations.status_code == 200,
+            "Farmer reads personal cycle recommendations",
+            recommendations.text,
+        )
+
+        activities = client.get(
+            f"/api/v1/crop-cycles/{personal_cycle_id}/activities",
+            headers=farmer_headers,
+        )
+        require(
+            activities.status_code == 200,
+            "Farmer reads personal cycle activities",
+            activities.text,
+        )
+        require(
+            any(
+                row["id"] == activity.json()["activity_id"]
+                for row in activities.json()
+            ),
+            "Activity listing includes authenticated farmer activity",
+        )
+
+        stage_cost = client.get(
+            (
+                f"/api/v1/crop-cycles/{personal_cycle_id}"
+                "/stage-cost-summary"
+            ),
+            headers=farmer_headers,
+        )
+        require(
+            stage_cost.status_code == 200,
+            "Farmer reads personal stage-cost summary",
+            stage_cost.text,
+        )
+
+        profit_loss = client.get(
+            (
+                f"/api/v1/crop-cycles/{personal_cycle_id}"
+                "/profit-loss-summary"
+            ),
+            headers=farmer_headers,
+        )
+        require(
+            profit_loss.status_code == 200,
+            "Farmer reads personal profit-loss summary",
+            profit_loss.text,
+        )
+
+        cross_activities = client.get(
+            f"/api/v1/crop-cycles/{assisted_cycle_id}/activities",
+            headers=farmer_headers,
+        )
+        require(
+            cross_activities.status_code == 403,
+            "Farmer cannot read assisted-farmer activities",
+            cross_activities.text,
         )
 
         agent_stage = client.patch(

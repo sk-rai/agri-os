@@ -47,7 +47,12 @@ from app.modules.master_data.input_assignment_service import (
     allowed_input_codes_for_project_crop,
     assert_catalog_input_allowed_for_project_crop,
 )
-from app.modules.farmer.models import Farmer, Parcel, Project
+from app.modules.farmer.models import (
+    Farmer,
+    FarmerProjectEnrollment,
+    Parcel,
+    Project,
+)
 from app.modules.sync.service import append_audit
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
@@ -69,6 +74,16 @@ def _workflow_admin_can_edit(
     return (
         role in WORKFLOW_WEB_ADMIN_ROLES
         and AdminPermission.EDIT in ROLE_PERMISSIONS.get(role, set())
+    )
+
+
+def _workflow_admin_can_view(
+    principal: AuthenticatedPrincipal,
+) -> bool:
+    role = str(principal.role or "").upper()
+    return (
+        role in ROLE_PERMISSIONS
+        and AdminPermission.VIEW in ROLE_PERMISSIONS.get(role, set())
     )
 
 
@@ -95,6 +110,106 @@ def _require_principal_can_operate_cycle_farmer(
         raise _workflow_scope_forbidden(
             "Authenticated user cannot manage this farmer's crop cycle."
         )
+
+
+def _crop_cycle_visible_farmer_ids(
+    db: Session,
+    principal: AuthenticatedPrincipal,
+) -> Optional[frozenset[uuid.UUID]]:
+    if _workflow_admin_can_view(principal):
+        return None
+    scope = resolve_human_persona_scope(db, principal)
+    return scope.own_farmer_ids | scope.assigned_farmer_ids
+
+
+def _require_principal_can_read_cycle_farmer(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    farmer_id: uuid.UUID,
+) -> None:
+    visible_farmer_ids = _crop_cycle_visible_farmer_ids(db, principal)
+    if visible_farmer_ids is not None and farmer_id not in visible_farmer_ids:
+        raise _workflow_scope_forbidden(
+            "Authenticated user cannot read this farmer's crop cycle."
+        )
+
+
+def _load_authorized_crop_cycle(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    cycle_id: uuid.UUID,
+) -> CropCycle:
+    cycle = (
+        db.query(CropCycle)
+        .filter(
+            CropCycle.id == cycle_id,
+            CropCycle.tenant_id == principal.tenant_id,
+        )
+        .first()
+    )
+    if not cycle:
+        raise HTTPException(404, "Crop cycle not found")
+    _require_principal_can_read_cycle_farmer(
+        db,
+        principal=principal,
+        farmer_id=cycle.farmer_id,
+    )
+    return cycle
+
+
+def _assert_crop_cycle_project_read_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    project_id: Optional[uuid.UUID],
+) -> None:
+    if project_id is None:
+        return
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == principal.tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if _workflow_admin_can_view(principal):
+        return
+
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.has_project_access(project_id):
+        return
+
+    owns_enrolled_farmer = (
+        db.query(FarmerProjectEnrollment.id)
+        .join(Farmer, Farmer.id == FarmerProjectEnrollment.farmer_id)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+            FarmerProjectEnrollment.is_active == True,
+            Farmer.tenant_id == principal.tenant_id,
+            Farmer.user_id == principal.user_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .first()
+        is not None
+    )
+    if owns_enrolled_farmer:
+        return
+
+    raise _workflow_scope_forbidden(
+        "Authenticated user cannot read crop-cycle configuration "
+        "for this project."
+    )
 
 
 def _assert_project_workflow_allows_cycle(
@@ -781,11 +896,18 @@ def list_crop_cycles(
     farmer_id: Optional[uuid.UUID] = Query(None),
     parcel_id: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """List crop cycles for Android Home/parcel filtering."""
-    query = db.query(CropCycle).filter(CropCycle.tenant_id == x_tenant_id)
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    visible_farmer_ids = _crop_cycle_visible_farmer_ids(db, principal)
+    query = db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id)
+    if visible_farmer_ids is not None:
+        query = query.filter(CropCycle.farmer_id.in_(visible_farmer_ids))
     if farmer_id:
         query = query.filter(CropCycle.farmer_id == farmer_id)
     if parcel_id:
@@ -806,7 +928,7 @@ def list_crop_cycles(
             db.query(CropStageInstance)
             .filter(
                 CropStageInstance.crop_cycle_id == cycle.id,
-                CropStageInstance.tenant_id == x_tenant_id,
+                CropStageInstance.tenant_id == tenant_id,
             )
             .order_by(CropStageInstance.stage_order)
             .all()
@@ -820,8 +942,10 @@ def list_eligible_parcels(
     farmer_id: uuid.UUID = Query(...),
     season: Optional[str] = Query(None),
     season_year: Optional[int] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header("default", alias="X-Tenant-ID"),
 ):
     """Return parcels with crop-cycle eligibility and summary for Android dropdowns.
 
@@ -830,13 +954,20 @@ def list_eligible_parcels(
     parcel rows when older test cycles reference parcels that are missing from
     the parcel master table.
     """
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _require_principal_can_read_cycle_farmer(
+        db,
+        principal=principal,
+        farmer_id=farmer_id,
+    )
     target_year = season_year or date.today().year
     season_filter = season.upper() if season else None
 
     parcels = (
         db.query(Parcel)
         .filter(
-            Parcel.tenant_id == x_tenant_id,
+            Parcel.tenant_id == tenant_id,
             Parcel.farmer_id == farmer_id,
             Parcel.status == "ACTIVE",
         )
@@ -847,7 +978,7 @@ def list_eligible_parcels(
     cycles = (
         db.query(CropCycle)
         .filter(
-            CropCycle.tenant_id == x_tenant_id,
+            CropCycle.tenant_id == tenant_id,
             CropCycle.farmer_id == farmer_id,
         )
         .order_by(CropCycle.updated_at.desc(), CropCycle.created_at.desc())
@@ -864,7 +995,7 @@ def list_eligible_parcels(
             for (duration,) in db.query(CropStageInstance.expected_duration_days)
             .filter(
                 CropStageInstance.crop_cycle_id == cycle.id,
-                CropStageInstance.tenant_id == x_tenant_id,
+                CropStageInstance.tenant_id == tenant_id,
             )
             .order_by(CropStageInstance.stage_order)
             .all()
@@ -989,8 +1120,10 @@ def list_eligible_parcels(
 @router.get("/{cycle_id}/recommended-activities")
 def get_recommended_activities(
     cycle_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Return cycle-aware recommended activities with calculated dates.
 
@@ -998,13 +1131,13 @@ def get_recommended_activities(
     and logged activities for this cycle. Templates remain reference data; this
     endpoint is the Android-facing source for dated recommendations.
     """
-    cycle = (
-        db.query(CropCycle)
-        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
-        .first()
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    cycle = _load_authorized_crop_cycle(
+        db,
+        principal=principal,
+        cycle_id=cycle_id,
     )
-    if not cycle:
-        raise HTTPException(404, "Crop cycle not found")
 
     template = (
         db.query(CropLifecycleTemplate)
@@ -1021,7 +1154,7 @@ def get_recommended_activities(
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
         )
         .order_by(CropStageInstance.stage_order)
         .all()
@@ -1055,7 +1188,7 @@ def get_recommended_activities(
         db.query(CropActivity)
         .filter(
             CropActivity.crop_cycle_id == cycle_id,
-            CropActivity.tenant_id == x_tenant_id,
+            CropActivity.tenant_id == tenant_id,
         )
         .all()
     )
@@ -1071,14 +1204,14 @@ def get_recommended_activities(
         logged_by_key.setdefault(key, []).append(activity)
 
     recommendations = []
-    allowed_input_codes = allowed_input_codes_for_project_crop(db, tenant_id=x_tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code)
+    allowed_input_codes = allowed_input_codes_for_project_crop(db, tenant_id=tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code)
     suppressed_recommendation_count = 0
     template_stages = None
     if cycle.workflow_template_version_id:
         template_stages = workflow_version_to_stage_definitions_for_scope(
             db,
             cycle.workflow_template_version_id,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             project_id=cycle.project_id,
             crop_code=cycle.crop_code,
             season_code=cycle.season_code,
@@ -1089,7 +1222,7 @@ def get_recommended_activities(
             db,
             crop_code=cycle.crop_code,
             season_code=cycle.season_code,
-            tenant_id=x_tenant_id,
+            tenant_id=tenant_id,
             lifecycle_template_id=template.id,
         )
         if workflow_pair:
@@ -1097,7 +1230,7 @@ def get_recommended_activities(
             template_stages = workflow_version_to_stage_definitions_for_scope(
                 db,
                 workflow_version.id,
-                tenant_id=x_tenant_id,
+                tenant_id=tenant_id,
                 project_id=cycle.project_id,
                 crop_code=cycle.crop_code,
                 season_code=cycle.season_code,
@@ -1207,16 +1340,25 @@ def _assert_finance_report_config_project_scope(
 
 @router.get("/finance/report-config")
 def get_finance_report_config(
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     project_id: Optional[uuid.UUID] = Query(None),
     crop_code: Optional[str] = Query(None),
     season_code: Optional[str] = Query(None),
 ):
     """Return published farmer finance config for scope, falling back to default."""
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _assert_crop_cycle_project_read_scope(
+        db,
+        principal=principal,
+        project_id=project_id,
+    )
     config, source = load_finance_report_config_for_scope(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         crop_code=crop_code,
         season_code=season_code,
@@ -1335,8 +1477,10 @@ def publish_finance_report_config(
 
 @router.get("/finance/analytics-summary")
 def get_finance_analytics_summary(
+    principal: AdminPrincipal = Depends(
+        require_admin_permission(AdminPermission.VIEW)
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     project_id: Optional[uuid.UUID] = Query(None),
     farmer_id: Optional[uuid.UUID] = Query(None),
     parcel_id: Optional[uuid.UUID] = Query(None),
@@ -1349,9 +1493,11 @@ def get_finance_analytics_summary(
     limit: int = Query(500, ge=1, le=5000),
 ):
     """Return backend-computed finance analytics across crop/season/stage/time dimensions."""
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
     return build_finance_analytics_summary(
         db,
-        tenant_id=x_tenant_id,
+        tenant_id=tenant_id,
         project_id=project_id,
         farmer_id=farmer_id,
         parcel_id=parcel_id,
@@ -1368,47 +1514,67 @@ def get_finance_analytics_summary(
 @router.get("/{cycle_id}/stage-cost-summary")
 def get_crop_cycle_stage_cost_summary(
     cycle_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Return Android-safe stage-wise expense and natural/context event summary."""
-    return build_stage_cost_summary(db, tenant_id=x_tenant_id, cycle_id=cycle_id)
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _load_authorized_crop_cycle(
+        db,
+        principal=principal,
+        cycle_id=cycle_id,
+    )
+    return build_stage_cost_summary(db, tenant_id=tenant_id, cycle_id=cycle_id)
 
 
 @router.get("/{cycle_id}/profit-loss-summary")
 def get_crop_cycle_profit_loss_summary(
     cycle_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Return Android-safe fixed-formula P&L summary.
 
     The formula is always income minus expenses. Admin configuration controls
     category mappings and display, not arbitrary math execution.
     """
-    return build_profit_loss_summary(db, tenant_id=x_tenant_id, cycle_id=cycle_id)
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _load_authorized_crop_cycle(
+        db,
+        principal=principal,
+        cycle_id=cycle_id,
+    )
+    return build_profit_loss_summary(db, tenant_id=tenant_id, cycle_id=cycle_id)
 
 
 @router.get("/{cycle_id}")
 def get_crop_cycle(
     cycle_id: uuid.UUID,
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """Get a crop cycle with its stages and current status."""
-    cycle = (
-        db.query(CropCycle)
-        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == x_tenant_id)
-        .first()
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    cycle = _load_authorized_crop_cycle(
+        db,
+        principal=principal,
+        cycle_id=cycle_id,
     )
-    if not cycle:
-        raise HTTPException(404, "Crop cycle not found")
 
     stages = (
         db.query(CropStageInstance)
         .filter(
             CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == x_tenant_id,
+            CropStageInstance.tenant_id == tenant_id,
         )
         .order_by(CropStageInstance.stage_order)
         .all()
@@ -1844,13 +2010,22 @@ def list_activities(
     cycle_id: uuid.UUID,
     stage_code: Optional[str] = Query(None, description="Filter by stage code"),
     activity_type: Optional[str] = Query(None, description="Filter by activity type"),
+    principal: AuthenticatedPrincipal = Depends(
+        require_authenticated_human()
+    ),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
     """List activities for a crop cycle, optionally filtered by stage or type."""
+    tenant_id = principal.tenant_id
+    actor_id = str(principal.user_id)
+    _load_authorized_crop_cycle(
+        db,
+        principal=principal,
+        cycle_id=cycle_id,
+    )
     query = db.query(CropActivity).filter(
         CropActivity.crop_cycle_id == cycle_id,
-        CropActivity.tenant_id == x_tenant_id,
+        CropActivity.tenant_id == tenant_id,
     )
 
     if stage_code:
@@ -1877,7 +2052,8 @@ def list_activities(
     # Build stage code lookup
     stage_map = {}
     stage_instances = db.query(CropStageInstance).filter(
-        CropStageInstance.crop_cycle_id == cycle_id
+        CropStageInstance.crop_cycle_id == cycle_id,
+        CropStageInstance.tenant_id == tenant_id,
     ).all()
     for s in stage_instances:
         stage_map[s.id] = s.stage_code

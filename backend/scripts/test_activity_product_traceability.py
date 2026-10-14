@@ -1,12 +1,14 @@
 """Regression for crop activity product/package/dosage-rule traceability."""
 from datetime import date, datetime, timezone
 from pathlib import Path
+import atexit
 import sys, uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.master_data.models import (
@@ -62,11 +64,26 @@ def main():
     client = TestClient(app)
     db = SessionLocal()
     farmer_id, parcel_id, project_id, cycle_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), None
-    actor_id = uuid.uuid4()
-    headers = {"X-Tenant-ID": TENANT, "X-Actor-ID": str(actor_id)}
+    headers = {}
     try:
         if not db.query(Tenant).filter(Tenant.id == TENANT).first():
             db.add(Tenant(id=TENANT, name="Default", type="ENTERPRISE", created_at=now(), updated_at=now()))
+            db.flush()
+        auth_user, headers = create_test_admin(
+            db,
+            tenant_id=TENANT,
+            role="ENTERPRISE_ADMIN",
+        )
+        auth_user_id = auth_user.id
+
+        def cleanup_auth_user():
+            cleanup_db = SessionLocal()
+            try:
+                delete_test_admin(cleanup_db, auth_user_id)
+            finally:
+                cleanup_db.close()
+
+        atexit.register(cleanup_auth_user)
         project = Project(id=project_id, tenant_id=TENANT, name="Activity Traceability Project", start_date=date(2027,1,1), end_date=date(2027,12,31), status="PLANNED", crop_scope=["RICE"], created_at=now(), updated_at=now())
         farmer = Farmer(id=farmer_id, tenant_id=TENANT, project_id=project_id, mobile_number="997" + str(farmer_id.int)[-7:], village_name_manual="Trace Village", primary_crop_code="RICE", display_name="Trace Farmer", status="ACTIVE", created_at=now(), updated_at=now())
         parcel = Parcel(id=parcel_id, tenant_id=TENANT, farmer_id=farmer_id, project_id=project_id, village_name_manual="Trace Village", reported_area=1, reported_area_unit="ACRE", survey_number="TRACE-" + str(parcel_id)[:8], ownership_type="OWNED", status="ACTIVE", created_at=now(), updated_at=now())
@@ -96,7 +113,7 @@ def main():
         check(logged_payload["input_rule_id"] == str(rule.id), "activity response includes input_rule_id")
         check(logged_payload["product_code"] == PRODUCT and logged_payload["package_sku"] == SKU, "activity response includes product and package")
 
-        listed = client.get(f"/api/v1/crop-cycles/{cycle_id}/activities", headers={"X-Tenant-ID": TENANT})
+        listed = client.get(f"/api/v1/crop-cycles/{cycle_id}/activities", headers=headers)
         check(listed.status_code == 200, "activity list returns 200", listed.text[:300])
         row = listed.json()[0]
         check(row["input_code"] == "UREA_46_N", "activity list includes input_code")

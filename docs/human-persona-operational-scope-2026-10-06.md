@@ -588,3 +588,15 @@ Tenant catalog reads are available to authenticated tenant members. When a proje
 Workflow draft and history views remain administrative surfaces governed by administrator permissions. Read-only governance views require `VIEW`; draft validation requires `EDIT` because validation persists an audit event attributed to the verified administrator.
 
 Published and archived workflow rendering behavior, project enablements, version pinning, publish safeguards, legacy pin backfill, and CSV draft validation remain covered by authenticated regression callers.
+
+## Crop-cycle read governance
+
+Crop-cycle read visibility follows the persisted human-persona scope:
+
+- a farmer can read personal cycles, eligible parcels, recommendations, activities, and finance summaries;
+- an assigned agent can read cycles for farmers in the agent's persisted operational assignment;
+- an unrelated farmer or unassigned agent is denied;
+- a tenant administrator with `VIEW` can read tenant operational cycles and tenant-wide finance analytics;
+- project finance configuration is available only through a verified project role or active farmer enrollment.
+
+Selected cycles are always tenant-bounded before persona authorization. Activity-stage lookups are tenant-bounded as well. Identity headers may corroborate a token but cannot introduce a different tenant or actor.

@@ -20,6 +20,7 @@ REFERENCE_GET_PATHS=(
  "/geography/villages/by-lgd-codes",
  "/geography/villages/by-pin-code",
  "/geography/villages/search",
+ "/api/v1/crop-cycles/templates/{crop_code}",
 )
 REFERENCE_POST_PATHS=("/sync",)
 def literal(node):

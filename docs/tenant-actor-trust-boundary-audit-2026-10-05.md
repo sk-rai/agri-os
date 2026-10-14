@@ -683,3 +683,11 @@ Eight workflow catalog GET routes were removed from `NON_REFERENCE_READ_WITHOUT_
 Runtime routes require an authenticated human and derive verified tenant and actor identity. Project-scoped runtime reads additionally enforce tenant-bounded project persona or active farmer-enrollment access. Administrative routes derive identity through administrator permission dependencies: governance reads require `VIEW`, while draft validation requires `EDIT` because it writes an immutable audit event.
 
 The full static audit remains read-only and reports 361 routes with 19 remaining read-boundary findings, down from 27. None of the secured workflow catalog routes remain flagged. Static and behavior regression contracts also verify missing-authentication rejection, actor and tenant mismatch rejection, project isolation, administrator permission enforcement, verified audit attribution, and preservation of existing workflow behavior.
+
+## Crop-cycle read boundary checkpoint
+
+The tenant/actor audit classifies ten crop-cycle GET routes. Nine operational reads now carry authentication, verified-tenant, and verified-actor markers and produce no trust-boundary findings. The exact `GET /api/v1/crop-cycles/templates/{crop_code}` route is classified as canonical reference data.
+
+After this checkpoint, the repository audit reports 361 routes and 9 remaining `NON_REFERENCE_READ_WITHOUT_AUTH_MARKER` findings. No remaining finding belongs to `backend/app/modules/workflow/api.py`.
+
+Static and behavior regressions cover missing bearer rejection, actor and tenant mismatch rejection, personal farmer scope, assigned-agent scope, unrelated and unassigned denial, tenant-administrator access, project finance scope, tenant-wide analytics permissions, and verified actor attribution.

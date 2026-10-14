@@ -12,6 +12,7 @@ Uses the deterministic android-dynamic-test crop-cycle fixture:
 
 from __future__ import annotations
 
+import atexit
 import json
 import sys
 import uuid
@@ -23,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from scripts.seed_android_crop_cycle_test_fixture import (
     CROP_CODE,
     FARMER_ID,
@@ -34,7 +37,7 @@ from scripts.seed_android_crop_cycle_test_fixture import (
 )
 
 client = TestClient(app)
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": str(uuid.uuid4())}
+HEADERS = {}
 
 
 def check(condition, label, detail=None):
@@ -68,12 +71,36 @@ def fixture_parcel_row(rows: list[dict]) -> dict | None:
     return next((row for row in rows if row.get("parcel_id") == str(PARCEL_ID)), None)
 
 
+def install_test_admin(tenant_id: str) -> None:
+    global HEADERS
+    db = SessionLocal()
+    try:
+        user, HEADERS = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="ENTERPRISE_ADMIN",
+        )
+        user_id = user.id
+    finally:
+        db.close()
+
+    def cleanup_test_admin() -> None:
+        cleanup_db = SessionLocal()
+        try:
+            delete_test_admin(cleanup_db, user_id)
+        finally:
+            cleanup_db.close()
+
+    atexit.register(cleanup_test_admin)
+
+
 def main() -> int:
     print("=" * 72)
     print("ANDROID CROP-CYCLE CREATE FLOW REGRESSION")
     print("=" * 72)
 
     reset_fixture()
+    install_test_admin(TENANT_ID)
 
     eligible_response, eligible_rows = get_json(
         "/api/v1/crop-cycles/eligible-parcels",

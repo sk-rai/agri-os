@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.main import app
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.master_data.models import Crop, CropCategory, CropLifecycleTemplate
@@ -211,8 +212,19 @@ def main():
     finally:
         db.close()
 
+    auth_db = SessionLocal()
     try:
-        r = client.get("/api/v1/crop-cycles/finance/report-config", headers={"X-Tenant-ID": tenant_id})
+        finance_viewer, headers = create_test_admin(
+            auth_db,
+            tenant_id=tenant_id,
+            role="ADMIN_VIEWER",
+        )
+        finance_viewer_id = finance_viewer.id
+    finally:
+        auth_db.close()
+
+    try:
+        r = client.get("/api/v1/crop-cycles/finance/report-config", headers=headers)
         check(r.status_code == 200, "Finance config endpoint returns 200", r.text)
         config = r.json()
         check(config["validation"]["valid"] is True, "Default finance config validates")
@@ -228,7 +240,7 @@ def main():
         })
         check(bad["valid"] is False, "Invalid category mapping fails validation", bad["errors"])
 
-        r = client.get(f"/api/v1/crop-cycles/{cycle_id}/stage-cost-summary", headers={"X-Tenant-ID": tenant_id})
+        r = client.get(f"/api/v1/crop-cycles/{cycle_id}/stage-cost-summary", headers=headers)
         check(r.status_code == 200, "Stage cost summary returns 200", r.text)
         stage_summary = r.json()
         check(stage_summary["schema_version"] == "crop_cycle_stage_cost_summary.v1", "Stage summary schema stable")
@@ -239,7 +251,7 @@ def main():
         check(sowing["actual_expense"] == "1500.00", "Sowing actual expense aggregates activities")
         check(veg["context_events"][0]["event_type"] == "RAIN", "Natural/context events included by stage")
 
-        r = client.get(f"/api/v1/crop-cycles/{cycle_id}/profit-loss-summary", headers={"X-Tenant-ID": tenant_id})
+        r = client.get(f"/api/v1/crop-cycles/{cycle_id}/profit-loss-summary", headers=headers)
         check(r.status_code == 200, "P&L summary returns 200", r.text)
         pnl = r.json()
         check(pnl["schema_version"] == "crop_cycle_profit_loss_summary.v1", "P&L schema stable")
@@ -249,7 +261,7 @@ def main():
         check(pnl["totals"]["profit_or_loss"] == "7800.00", "P&L equals income minus expenses")
         analytics = client.get(
             "/api/v1/crop-cycles/finance/analytics-summary?period=month",
-            headers={"X-Tenant-ID": tenant_id},
+            headers=headers,
         )
         check(analytics.status_code == 200, "Finance analytics summary returns 200", analytics.text)
         analytics_payload = analytics.json()
@@ -276,6 +288,7 @@ def main():
             db.query(CropCycle).filter(CropCycle.tenant_id == tenant_id).delete(synchronize_session=False)
             db.query(Parcel).filter(Parcel.tenant_id == tenant_id).delete(synchronize_session=False)
             db.query(Farmer).filter(Farmer.tenant_id == tenant_id).delete(synchronize_session=False)
+            delete_test_admin(db, finance_viewer_id)
             db.query(CropLifecycleTemplate).filter(CropLifecycleTemplate.id == template_id).delete(synchronize_session=False)
             db.query(Crop).filter(Crop.id == crop_id).delete(synchronize_session=False)
             db.query(CropCategory).filter(CropCategory.id == category_id).delete(synchronize_session=False)

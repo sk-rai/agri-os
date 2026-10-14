@@ -11,6 +11,7 @@ Uses the deterministic android-dynamic-test crop-cycle fixture:
 
 from __future__ import annotations
 
+import atexit
 import json
 import sys
 import uuid
@@ -23,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from scripts.seed_android_crop_cycle_test_fixture import (
     CROP_CODE,
     FARMER_ID,
@@ -34,8 +37,7 @@ from scripts.seed_android_crop_cycle_test_fixture import (
 )
 
 client = TestClient(app)
-ACTOR_ID = str(uuid.uuid4())
-HEADERS = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": ACTOR_ID}
+HEADERS = {}
 ACTIVITY_COST = Decimal("325.50")
 
 
@@ -66,12 +68,36 @@ def get_json(path: str, params=None):
     return response, response.json()
 
 
+def install_test_admin(tenant_id: str) -> None:
+    global HEADERS
+    db = SessionLocal()
+    try:
+        user, HEADERS = create_test_admin(
+            db,
+            tenant_id=tenant_id,
+            role="ENTERPRISE_ADMIN",
+        )
+        user_id = user.id
+    finally:
+        db.close()
+
+    def cleanup_test_admin() -> None:
+        cleanup_db = SessionLocal()
+        try:
+            delete_test_admin(cleanup_db, user_id)
+        finally:
+            cleanup_db.close()
+
+    atexit.register(cleanup_test_admin)
+
+
 def main() -> int:
     print("=" * 72)
     print("ANDROID CROP-CYCLE ACTIVITY LOGGING FLOW REGRESSION")
     print("=" * 72)
 
     reset_fixture()
+    install_test_admin(TENANT_ID)
 
     create_payload = {
         "farmer_id": str(FARMER_ID),

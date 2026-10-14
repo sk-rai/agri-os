@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timezone
 from pathlib import Path
+import atexit
 import sys
 import uuid
 
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal
+from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.workflow.models import (
     CropActivity,
@@ -81,7 +83,7 @@ def main():
     print("=" * 72)
 
     client = TestClient(app)
-    headers = {"X-Tenant-ID": TENANT_ID, "X-Actor-ID": str(uuid.uuid4())}
+    headers = {}
     farmer_id = uuid.uuid4()
     parcel_id = uuid.uuid4()
     project_id = uuid.uuid4()
@@ -90,6 +92,21 @@ def main():
     db = SessionLocal()
     try:
         ensure_default_tenant(db)
+        auth_user, headers = create_test_admin(
+            db,
+            tenant_id=TENANT_ID,
+            role="ENTERPRISE_ADMIN",
+        )
+        auth_user_id = auth_user.id
+
+        def cleanup_auth_user():
+            cleanup_db = SessionLocal()
+            try:
+                delete_test_admin(cleanup_db, auth_user_id)
+            finally:
+                cleanup_db.close()
+
+        atexit.register(cleanup_auth_user)
         rice_template, rice_version = get_template_and_version(db, "WF_RICE_KHARIF_DEFAULT")
         sugar_template, _ = get_template_and_version(db, "WF_SUGARCANE_DEFAULT")
         project = Project(
@@ -158,7 +175,7 @@ def main():
 
         catalog = client.get(
             f"/api/v1/workflow-catalog/enabled-crop-workflows?project_id={project_id}",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(catalog.status_code == 200, "Project Android catalog returns 200", f"Status: {catalog.status_code}")
         catalog_codes = [workflow["crop_code"] for workflow in catalog.json()["workflows"]]
@@ -182,7 +199,7 @@ def main():
         cycle_ids.append(rice_cycle_id)
         check(rice_payload["workflow_template_version_id"] == str(rice_version.id), "Rice cycle pins the project-visible workflow version")
 
-        recs_response = client.get(f"/api/v1/crop-cycles/{rice_cycle_id}/recommended-activities", headers={"X-Tenant-ID": TENANT_ID})
+        recs_response = client.get(f"/api/v1/crop-cycles/{rice_cycle_id}/recommended-activities", headers=headers)
         check(recs_response.status_code == 200, "Project Rice recommendations return 200", f"Status: {recs_response.status_code}")
         recs_payload = recs_response.json()
         check(recs_payload["input_filter_policy"] == "PROJECT_CROP_SCOPE", "Recommendations report project input filter policy")

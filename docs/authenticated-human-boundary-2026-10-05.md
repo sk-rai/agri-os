@@ -680,3 +680,11 @@ The workflow catalog read boundary now separates runtime human access from admin
 Draft preview, publish-impact analysis, legacy pin reporting, template version history, and template audit history require administrator `VIEW`. Draft validation requires administrator `EDIT` because it creates an immutable validation audit event.
 
 Missing bearer credentials, actor impersonation, tenant mismatch, unrelated project access, and insufficient administrator permissions are covered by behavior regression tests. Internal draft mutation handlers render their response through the internal preview renderer rather than calling the protected HTTP route function directly.
+
+## Crop-cycle read checkpoint
+
+The crop-cycle read surface now resolves the authenticated human before selecting operational records. Collection reads filter to farmer profiles owned by or assigned to the verified actor. Cycle detail, recommendations, activities, stage-cost summaries, and profit-and-loss summaries load the cycle inside the verified tenant and apply the same farmer-persona boundary.
+
+Eligible-parcel reads require an explicit authorized farmer. Project finance configuration validates tenant-bounded project access. Tenant-wide finance analytics requires administrator `VIEW`. Missing bearer tokens, actor impersonation, tenant mismatch, unrelated farmers, and unassigned operational users are rejected with stable authorization errors.
+
+The canonical crop-template GET is explicitly classified as method-constrained reference data rather than an operational read.
