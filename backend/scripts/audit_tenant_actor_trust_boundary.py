@@ -21,6 +21,9 @@ REFERENCE_GET_PATHS=(
  "/geography/villages/by-pin-code",
  "/geography/villages/search",
  "/api/v1/crop-cycles/templates/{crop_code}",
+ "/api/v1/soil-profiles/enrichments/source-contract",
+ "/api/v1/soil-profiles/infer/{district_name}",
+ "/api/v1/config/form-fields",
 )
 REFERENCE_POST_PATHS=("/sync",)
 def literal(node):

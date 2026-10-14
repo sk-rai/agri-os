@@ -343,8 +343,30 @@ def main():
     })
     check(mismatch.status_code == 400, "Snapshot rejects mismatched farmer/parcel linkage", mismatch.text)
 
-    isolated = client.get(f"/api/v1/soil-profiles/enrichments/latest?parcel_id={parcel_id}", headers={"X-Tenant-ID": "default"})
-    check(isolated.status_code == 404, "Latest enrichment is tenant isolated", isolated.text)
+    missing_read_bearer = client.get(
+        f"/api/v1/soil-profiles/enrichments/latest?parcel_id={parcel_id}",
+        headers={"X-Tenant-ID": "default"},
+    )
+    check(
+        missing_read_bearer.status_code == 401,
+        "Latest enrichment rejects missing bearer",
+        missing_read_bearer.text,
+    )
+    check(
+        missing_read_bearer.json()["detail"]["error"]
+        == "AUTHENTICATION_REQUIRED",
+        "Latest enrichment missing bearer uses stable error",
+    )
+
+    mismatched_read = client.get(
+        f"/api/v1/soil-profiles/enrichments/latest?parcel_id={parcel_id}",
+        headers={**headers, "X-Tenant-ID": "default"},
+    )
+    check(
+        mismatched_read.status_code == 403,
+        "Latest enrichment rejects tenant mismatch",
+        mismatched_read.text,
+    )
 
     db = SessionLocal()
     try:

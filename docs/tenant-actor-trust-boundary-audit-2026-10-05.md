@@ -691,3 +691,22 @@ The tenant/actor audit classifies ten crop-cycle GET routes. Nine operational re
 After this checkpoint, the repository audit reports 361 routes and 9 remaining `NON_REFERENCE_READ_WITHOUT_AUTH_MARKER` findings. No remaining finding belongs to `backend/app/modules/workflow/api.py`.
 
 Static and behavior regressions cover missing bearer rejection, actor and tenant mismatch rejection, personal farmer scope, assigned-agent scope, unrelated and unassigned denial, tenant-administrator access, project finance scope, tenant-wide analytics permissions, and verified actor attribution.
+
+## Final profile and land read boundary checkpoint
+
+The final nine read-boundary findings were resolved as two explicit groups.
+
+Three database-independent GET routes are classified as exact reference data: the soil-enrichment source contract, district soil inference, and form-field configuration. The classification is method-constrained and does not exempt operational routes under the same routers.
+
+Six operational GET routes now carry authenticated-human, verified-tenant, and verified-actor markers:
+
+- latest soil-enrichment snapshot;
+- soil-enrichment snapshot list;
+- soil-enrichment summary;
+- soil-profile list;
+- land-intelligence context;
+- land-intelligence summary.
+
+Soil reads enforce persisted farmer-persona visibility, while project-scoped land-intelligence reads enforce tenant-bounded project access. Static and behavior regressions verify missing bearer rejection, actor and tenant mismatch rejection, farmer and assigned-user scope, administrator view access, database read-only behavior, exact reference classification, and preservation of Android profile contracts.
+
+After this checkpoint, the read-only trust-boundary audit reports 361 routes, zero mutation findings, and zero `NON_REFERENCE_READ_WITHOUT_AUTH_MARKER` findings. The audit status remains `REVIEW_REQUIRED` by policy because it is an advisory review tool; the finding count is zero.

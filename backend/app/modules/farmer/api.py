@@ -7744,6 +7744,55 @@ def get_my_farmer_profile(
         "status": farmer.status,
     }
 
+def _require_land_intelligence_project_read_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    actor_id: uuid.UUID,
+    project_id: uuid.UUID,
+) -> None:
+    """Authorize tenant/project-scoped land-intelligence context reads."""
+    if actor_id != principal.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ACTOR_ID_MISMATCH",
+                "message": "Read actor must match the authenticated user.",
+            },
+        )
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == principal.tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if _farmer_admin_can_view(principal):
+        return
+
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.has_project_access(project_id):
+        return
+
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "LAND_INTELLIGENCE_SCOPE_DENIED",
+            "message": (
+                "Authenticated user is not assigned to the requested "
+                "land-intelligence project."
+            ),
+            "project_id": str(project_id),
+        },
+    )
+
+
 @router.get("/profile/land-intelligence-context", response_model=dict)
 def get_land_intelligence_context(
     district_lgd_code: str | None = Query(None),
@@ -7753,7 +7802,7 @@ def get_land_intelligence_context(
     season_code: str | None = Query(None),
     project_id: str | None = Query(None),
     village_id: str | None = Query(None),
-    tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
 ):
     """Android-friendly profile/land onboarding intelligence.
@@ -7771,10 +7820,20 @@ def get_land_intelligence_context(
     )
     from app.modules.master_data.api.crop_catalog import _first_effective_override
 
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
     crop_code_normalized = crop_code.upper() if crop_code else None
     season_code_normalized = season_code.upper() if season_code else None
     project_uuid = UUID(project_id) if project_id else None
     village_uuid = UUID(village_id) if village_id else None
+
+    if project_uuid:
+        _require_land_intelligence_project_read_scope(
+            db,
+            principal=principal,
+            actor_id=actor_id,
+            project_id=project_uuid,
+        )
 
     if village_uuid and not project_uuid:
         raise HTTPException(

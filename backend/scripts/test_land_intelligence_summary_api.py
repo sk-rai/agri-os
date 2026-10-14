@@ -42,9 +42,49 @@ def main() -> int:
     try:
         admin_user, headers = create_test_admin(db, role="ENTERPRISE_ADMIN", tenant_id=TENANT_ID)
 
+        runtime_path = (
+            f"/api/v1/profile/land-intelligence-summary"
+            f"?pin_code={PIN_CODE}&season_code=KHARIF"
+            f"&crop_code=RICE&language_code=en"
+        )
+
+        missing_bearer = client.get(
+            runtime_path,
+            headers={"X-Tenant-ID": TENANT_ID},
+        )
+        check(
+            missing_bearer.status_code == 401,
+            "runtime summary rejects missing bearer",
+            missing_bearer.text,
+        )
+
+        impersonated_headers = dict(headers)
+        impersonated_headers["X-Actor-ID"] = str(uuid.uuid4())
+        impersonated = client.get(
+            runtime_path,
+            headers=impersonated_headers,
+        )
+        check(
+            impersonated.status_code == 403,
+            "runtime summary rejects actor impersonation",
+            impersonated.text,
+        )
+
+        mismatched_headers = dict(headers)
+        mismatched_headers["X-Tenant-ID"] = "foreign-land-summary-tenant"
+        mismatched = client.get(
+            runtime_path,
+            headers=mismatched_headers,
+        )
+        check(
+            mismatched.status_code == 403,
+            "runtime summary rejects tenant mismatch",
+            mismatched.text,
+        )
+
         default_response = client.get(
             f"/api/v1/profile/land-intelligence-summary?pin_code={PIN_CODE}&season_code=KHARIF&crop_code=RICE&language_code=en",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(default_response.status_code == 200, "runtime default summary returns 200", default_response.text)
         default_body = default_response.json()
@@ -85,7 +125,7 @@ def main() -> int:
 
         runtime_after = client.get(
             f"/api/v1/profile/land-intelligence-summary?pin_code={PIN_CODE}&season_code=KHARIF&crop_code=RICE&language_code=en",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(runtime_after.status_code == 200, "runtime after override returns 200", runtime_after.text)
         runtime_body = runtime_after.json()
@@ -109,7 +149,7 @@ def main() -> int:
 
         final_response = client.get(
             f"/api/v1/profile/land-intelligence-summary?pin_code={PIN_CODE}&season_code=KHARIF&crop_code=RICE&language_code=en",
-            headers={"X-Tenant-ID": TENANT_ID},
+            headers=headers,
         )
         check(final_response.status_code == 200, "runtime final summary returns 200", final_response.text)
         check(final_response.json()["summary_source"] == "DEFAULT_GENERATED", "runtime returns to default after deactivate", final_response.json())

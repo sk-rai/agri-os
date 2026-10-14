@@ -600,3 +600,17 @@ Crop-cycle read visibility follows the persisted human-persona scope:
 - project finance configuration is available only through a verified project role or active farmer enrollment.
 
 Selected cycles are always tenant-bounded before persona authorization. Activity-stage lookups are tenant-bounded as well. Identity headers may corroborate a token but cannot introduce a different tenant or actor.
+
+## Profile and land-intelligence read governance
+
+Operational profile intelligence follows persisted human-persona scope:
+
+- farmers may read soil data linked to their own farmer identity;
+- assigned operational users may read soil data for farmers in their persisted assignment scope;
+- unrelated farmers and unassigned users are denied;
+- administrators with `VIEW` permission may read tenant-wide soil data;
+- project-scoped land intelligence requires administrator view authority or persisted access to the requested project.
+
+Farmer, parcel, and project records are tenant-bounded before persona authorization. A project identifier cannot be used to disclose a foreign-tenant project, and identity headers cannot introduce a tenant or actor different from the authenticated principal.
+
+Static soil-source guidance, district soil inference, and form-field configuration remain canonical reference reads. Stored enrichment snapshots, soil profiles, and effective tenant or project land-intelligence overrides remain operational data and require authentication.

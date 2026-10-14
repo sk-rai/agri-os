@@ -11,8 +11,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.admin_auth import AdminPermission, AdminPrincipal, require_admin_permission
+from app.core.admin_auth import (
+    AdminPermission,
+    AdminPrincipal,
+    ROLE_PERMISSIONS,
+    require_admin_permission,
+)
 from app.core.database import get_db
+from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.human_persona_scope import resolve_human_persona_scope
 from app.modules.farmer.models import Project, Tenant
 from app.modules.master_data.models import LandIntelligenceSummaryOverride
 
@@ -234,6 +241,56 @@ def _summary_response(
     }
 
 
+def _require_land_summary_project_read_scope(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    actor_id: uuid.UUID,
+    project_id: uuid.UUID,
+) -> None:
+    """Authorize tenant/project-scoped land-intelligence summary reads."""
+    if actor_id != principal.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ACTOR_ID_MISMATCH",
+                "message": "Read actor must match the authenticated user.",
+            },
+        )
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.id == project_id,
+            Project.tenant_id == principal.tenant_id,
+            Project.is_active == True,
+        )
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    role = str(principal.role or "").upper()
+    if AdminPermission.VIEW in ROLE_PERMISSIONS.get(role, set()):
+        return
+
+    scope = resolve_human_persona_scope(db, principal)
+    if scope.has_project_access(project_id):
+        return
+
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "LAND_INTELLIGENCE_SCOPE_DENIED",
+            "message": (
+                "Authenticated user is not assigned to the requested "
+                "land-intelligence project."
+            ),
+            "project_id": str(project_id),
+        },
+    )
+
+
 @router.get("/profile/land-intelligence-summary", response_model=dict)
 def get_land_intelligence_summary(
     district_lgd_code: str | None = Query(None),
@@ -245,9 +302,19 @@ def get_land_intelligence_summary(
     season_code: str | None = Query(None),
     language_code: str = Query("en", min_length=2, max_length=12),
     project_id: uuid.UUID | None = Query(None),
-    tenant_id: str = Header("default", alias="X-Tenant-ID"),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
 ):
+    tenant_id = principal.tenant_id
+    actor_id = principal.user_id
+    if project_id:
+        _require_land_summary_project_read_scope(
+            db,
+            principal=principal,
+            actor_id=actor_id,
+            project_id=project_id,
+        )
+
     scope_type, scope_code = _scope_from_query(
         pin_code,
         district_lgd_code,

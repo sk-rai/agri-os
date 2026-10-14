@@ -345,3 +345,19 @@ Crop-cycle operational reads require a verified human bearer identity. The API d
 Farmers can read crop cycles belonging to their linked farmer profile. Assigned operational users can read farmers within their persisted assignment scope. Web administrators with `VIEW` permission can read tenant-wide operational data. Project-scoped finance configuration additionally requires a verified project role or active farmer enrollment. Tenant-wide finance analytics remains restricted to administrators with `VIEW`.
 
 The canonical `GET /api/v1/crop-cycles/templates/{crop_code}` route remains unauthenticated reference data because it serves the default published crop workflow and exposes no tenant, project, or farmer operational state.
+
+## Profile, soil, and land-intelligence reads
+
+Operational soil and land-intelligence reads require a verified human bearer identity. The tenant and actor are derived from the authenticated principal; caller-supplied tenant or actor headers cannot independently authorize access.
+
+Soil-profile and soil-enrichment reads follow persisted farmer-persona visibility. Farmers may read their linked soil data, assigned operational users may read farmers within their persisted assignment scope, and administrators with `VIEW` permission may read tenant-wide soil data. Parcel and farmer targets are tenant-bounded before persona authorization.
+
+Land-intelligence context and summary reads require authentication. When a project is supplied, the project is tenant-bounded and access requires administrator `VIEW` permission or persisted project access through the authenticated human persona.
+
+Three database-independent GET routes remain intentional reference data:
+
+- soil-enrichment source contract;
+- district-name soil inference;
+- dynamic form-field configuration.
+
+These exceptions are exact and GET-only. They do not cover stored soil profiles, enrichment snapshots, tenant overrides, project overrides, or other operational profile data.

@@ -688,3 +688,13 @@ The crop-cycle read surface now resolves the authenticated human before selectin
 Eligible-parcel reads require an explicit authorized farmer. Project finance configuration validates tenant-bounded project access. Tenant-wide finance analytics requires administrator `VIEW`. Missing bearer tokens, actor impersonation, tenant mismatch, unrelated farmers, and unassigned operational users are rejected with stable authorization errors.
 
 The canonical crop-template GET is explicitly classified as method-constrained reference data rather than an operational read.
+
+## Final profile and land read checkpoint
+
+The remaining profile, soil, and land-intelligence operational GET routes now require an authenticated human. Each route derives its tenant and actor from the verified principal and rejects missing bearer credentials, actor impersonation, and tenant mismatch.
+
+Stored soil profiles and enrichment snapshots are tenant-bounded and filtered through the persisted farmer persona. Project-scoped land-intelligence context and summaries validate the project inside the verified tenant and require administrator view authority or authenticated persona access to that project.
+
+The source-contract, district soil-inference, and form-field configuration routes are classified as exact GET reference data because they are database-independent and expose no tenant, project, farmer, or administrator state.
+
+Static contracts cover the three reference routes and six operational routes. Behavior regressions cover soil snapshot reads, farmer and assigned-agent visibility, Android profile payload compatibility, land-summary authentication, override lifecycle behavior, and verified identity enforcement.

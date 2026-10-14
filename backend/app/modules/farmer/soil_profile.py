@@ -639,6 +639,21 @@ SOIL_PROFILE_WEB_ADMIN_ROLES = {
     "ADMIN_EDITOR",
     "ADMIN_PUBLISHER",
 }
+SOIL_PROFILE_WEB_ADMIN_VIEW_ROLES = SOIL_PROFILE_WEB_ADMIN_ROLES | {
+    "ADMIN_VIEWER",
+    "VIEWER",
+}
+
+
+
+def _soil_profile_admin_can_view(
+    principal: AuthenticatedPrincipal | AdminPrincipal,
+) -> bool:
+    role = str(principal.role or "").upper()
+    return (
+        role in SOIL_PROFILE_WEB_ADMIN_VIEW_ROLES
+        and AdminPermission.VIEW in ROLE_PERMISSIONS.get(role, set())
+    )
 
 
 def _soil_profile_admin_can_edit(
@@ -694,6 +709,106 @@ def _require_can_manage_soil_profile(
             "message": "Authenticated user cannot manage this farmer's soil profile.",
         },
     )
+
+
+
+def _soil_readable_farmer_ids(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+) -> Optional[frozenset[uuid.UUID]]:
+    """Return readable soil farmer IDs, or None for tenant-wide viewers."""
+    if _soil_profile_admin_can_view(principal):
+        return None
+    scope = resolve_human_persona_scope(db, principal)
+    return scope.own_farmer_ids | scope.assigned_farmer_ids
+
+
+def _require_can_read_soil_farmer(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    farmer_id: uuid.UUID,
+) -> None:
+    readable_farmer_ids = _soil_readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    if readable_farmer_ids is None or farmer_id in readable_farmer_ids:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "FARMER_SCOPE_DENIED",
+            "message": "Authenticated user cannot read this farmer's soil data.",
+        },
+    )
+
+
+def _require_can_read_soil_target(
+    db: Session,
+    *,
+    principal: AuthenticatedPrincipal,
+    actor_id: uuid.UUID,
+    parcel_id: Optional[uuid.UUID] = None,
+    farmer_id: Optional[uuid.UUID] = None,
+) -> Optional[uuid.UUID]:
+    """Tenant-bound a soil target and enforce the verified farmer persona."""
+    from app.modules.farmer.models import Farmer, Parcel
+
+    if actor_id != principal.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "FARMER_SCOPE_DENIED",
+                "message": "Read actor must match the authenticated user.",
+            },
+        )
+
+    tenant_id = principal.tenant_id
+    resolved_farmer_id = farmer_id
+
+    if parcel_id is not None:
+        parcel = (
+            db.query(Parcel)
+            .filter(
+                Parcel.id == parcel_id,
+                Parcel.tenant_id == tenant_id,
+                Parcel.status != "ARCHIVED",
+            )
+            .first()
+        )
+        if not parcel:
+            raise HTTPException(404, "Parcel not found")
+        if farmer_id is not None and parcel.farmer_id != farmer_id:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "FARMER_SCOPE_DENIED",
+                    "message": "Parcel does not belong to the requested farmer.",
+                },
+            )
+        resolved_farmer_id = parcel.farmer_id
+
+    if resolved_farmer_id is not None:
+        farmer_exists = (
+            db.query(Farmer.id)
+            .filter(
+                Farmer.id == resolved_farmer_id,
+                Farmer.tenant_id == tenant_id,
+                Farmer.status != "ARCHIVED",
+            )
+            .first()
+        )
+        if not farmer_exists:
+            raise HTTPException(404, "Farmer not found")
+        _require_can_read_soil_farmer(
+            db,
+            principal=principal,
+            farmer_id=resolved_farmer_id,
+        )
+
+    return resolved_farmer_id
 
 
 def _soil_enrichment_summary_payload(snapshots: list[SoilEnrichmentSnapshot]) -> dict:
@@ -1207,23 +1322,38 @@ def latest_soil_enrichment_snapshot(
     parcel_id: uuid.UUID = Query(...),
     provider: Optional[str] = Query(None),
     snapshot_type: Optional[str] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """Return the latest provider-derived soil enrichment for a parcel."""
-    _parcel_for_soil_enrichment(db, tenant_id=x_tenant_id, parcel_id=parcel_id)
+    """Return the latest authorized provider-derived soil enrichment."""
+    tenant_id = principal.tenant_id
+    _require_can_read_soil_target(
+        db,
+        principal=principal,
+        actor_id=principal.user_id,
+        parcel_id=parcel_id,
+    )
     query = db.query(SoilEnrichmentSnapshot).filter(
-        SoilEnrichmentSnapshot.tenant_id == x_tenant_id,
+        SoilEnrichmentSnapshot.tenant_id == tenant_id,
         SoilEnrichmentSnapshot.parcel_id == parcel_id,
     )
     if provider:
-        query = query.filter(SoilEnrichmentSnapshot.provider == provider.strip().upper())
+        query = query.filter(
+            SoilEnrichmentSnapshot.provider == provider.strip().upper()
+        )
     if snapshot_type:
-        query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
-    snapshot = query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).first()
+        query = query.filter(
+            SoilEnrichmentSnapshot.snapshot_type
+            == snapshot_type.strip().upper()
+        )
+    snapshot = query.order_by(
+        SoilEnrichmentSnapshot.observed_at.desc().nullslast(),
+        SoilEnrichmentSnapshot.fetched_at.desc(),
+    ).first()
     if not snapshot:
         raise HTTPException(404, "Soil enrichment snapshot not found")
     return _soil_enrichment_payload(snapshot)
+
 
 
 @router.get("/enrichments", response_model=list[SoilEnrichmentSnapshotResponse])
@@ -1233,20 +1363,57 @@ def list_soil_enrichment_snapshots(
     provider: Optional[str] = Query(None),
     snapshot_type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """List provider-derived soil enrichment snapshots."""
-    query = db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == x_tenant_id)
+    """List provider-derived soil snapshots visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    readable_farmer_ids = _soil_readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    resolved_farmer_id = _require_can_read_soil_target(
+        db,
+        principal=principal,
+        actor_id=principal.user_id,
+        parcel_id=parcel_id,
+        farmer_id=farmer_id,
+    )
+
+    query = db.query(SoilEnrichmentSnapshot).filter(
+        SoilEnrichmentSnapshot.tenant_id == tenant_id
+    )
     if parcel_id:
-        query = query.filter(SoilEnrichmentSnapshot.parcel_id == parcel_id)
-    if farmer_id:
-        query = query.filter(SoilEnrichmentSnapshot.farmer_id == farmer_id)
+        query = query.filter(
+            SoilEnrichmentSnapshot.parcel_id == parcel_id
+        )
+    if resolved_farmer_id:
+        query = query.filter(
+            SoilEnrichmentSnapshot.farmer_id == resolved_farmer_id
+        )
+    elif readable_farmer_ids is not None:
+        query = query.filter(
+            SoilEnrichmentSnapshot.farmer_id.in_(
+                tuple(readable_farmer_ids)
+            )
+        )
     if provider:
-        query = query.filter(SoilEnrichmentSnapshot.provider == provider.strip().upper())
+        query = query.filter(
+            SoilEnrichmentSnapshot.provider == provider.strip().upper()
+        )
     if snapshot_type:
-        query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
-    return [_soil_enrichment_payload(row) for row in query.order_by(SoilEnrichmentSnapshot.observed_at.desc().nullslast(), SoilEnrichmentSnapshot.fetched_at.desc()).limit(limit).all()]
+        query = query.filter(
+            SoilEnrichmentSnapshot.snapshot_type
+            == snapshot_type.strip().upper()
+        )
+    return [
+        _soil_enrichment_payload(row)
+        for row in query.order_by(
+            SoilEnrichmentSnapshot.observed_at.desc().nullslast(),
+            SoilEnrichmentSnapshot.fetched_at.desc(),
+        ).limit(limit).all()
+    ]
+
 
 
 def _soil_enrichment_reference_uuid(value, *, field: str):
@@ -1994,27 +2161,42 @@ def get_soil_enrichment_summary(
     provider: Optional[str] = Query(None),
     snapshot_type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """Return grouped soil enrichment snapshot summary for Android/admin.
-
-    Android should use this endpoint to understand whether backend-owned
-    SoilGrids/SLUSI/soil-moisture enrichment is available for a farmer/parcel,
-    instead of grouping raw snapshots locally.
-    """
+    """Return an authorized grouped soil-enrichment snapshot summary."""
     if not parcel_id and not farmer_id:
         raise HTTPException(400, "parcel_id or farmer_id is required")
 
-    query = db.query(SoilEnrichmentSnapshot).filter(SoilEnrichmentSnapshot.tenant_id == x_tenant_id)
+    tenant_id = principal.tenant_id
+    resolved_farmer_id = _require_can_read_soil_target(
+        db,
+        principal=principal,
+        actor_id=principal.user_id,
+        parcel_id=parcel_id,
+        farmer_id=farmer_id,
+    )
+
+    query = db.query(SoilEnrichmentSnapshot).filter(
+        SoilEnrichmentSnapshot.tenant_id == tenant_id
+    )
     if parcel_id:
-        query = query.filter(SoilEnrichmentSnapshot.parcel_id == parcel_id)
-    if farmer_id:
-        query = query.filter(SoilEnrichmentSnapshot.farmer_id == farmer_id)
+        query = query.filter(
+            SoilEnrichmentSnapshot.parcel_id == parcel_id
+        )
+    if resolved_farmer_id:
+        query = query.filter(
+            SoilEnrichmentSnapshot.farmer_id == resolved_farmer_id
+        )
     if provider:
-        query = query.filter(SoilEnrichmentSnapshot.provider == provider.strip().upper())
+        query = query.filter(
+            SoilEnrichmentSnapshot.provider == provider.strip().upper()
+        )
     if snapshot_type:
-        query = query.filter(SoilEnrichmentSnapshot.snapshot_type == snapshot_type.strip().upper())
+        query = query.filter(
+            SoilEnrichmentSnapshot.snapshot_type
+            == snapshot_type.strip().upper()
+        )
 
     snapshots = query.order_by(
         SoilEnrichmentSnapshot.observed_at.desc().nullslast(),
@@ -2024,16 +2206,25 @@ def get_soil_enrichment_summary(
     summary = _soil_enrichment_summary_payload(snapshots)
     return {
         "schema_version": "soil_enrichment_summary.v1",
-        "tenant_id": x_tenant_id,
+        "tenant_id": tenant_id,
         "filters": {
             "parcel_id": str(parcel_id) if parcel_id else None,
-            "farmer_id": str(farmer_id) if farmer_id else None,
+            "farmer_id": (
+                str(resolved_farmer_id)
+                if resolved_farmer_id
+                else None
+            ),
             "provider": provider.strip().upper() if provider else None,
-            "snapshot_type": snapshot_type.strip().upper() if snapshot_type else None,
+            "snapshot_type": (
+                snapshot_type.strip().upper()
+                if snapshot_type
+                else None
+            ),
             "limit": limit,
         },
         **summary,
     }
+
 
 
 @router.post("", response_model=SoilProfileResponse, status_code=201)
@@ -2144,13 +2335,35 @@ def update_soil_profile(
 def list_soil_profiles(
     parcel_id: Optional[uuid.UUID] = Query(None),
     farmer_id: Optional[uuid.UUID] = Query(None),
+    principal: AuthenticatedPrincipal = Depends(require_authenticated_human()),
     db: Session = Depends(get_db),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
 ):
-    """List soil profiles for a parcel or farmer."""
-    query = db.query(SoilProfile).filter(SoilProfile.tenant_id == x_tenant_id)
+    """List soil profiles visible to the authenticated human."""
+    tenant_id = principal.tenant_id
+    readable_farmer_ids = _soil_readable_farmer_ids(
+        db,
+        principal=principal,
+    )
+    resolved_farmer_id = _require_can_read_soil_target(
+        db,
+        principal=principal,
+        actor_id=principal.user_id,
+        parcel_id=parcel_id,
+        farmer_id=farmer_id,
+    )
+
+    query = db.query(SoilProfile).filter(
+        SoilProfile.tenant_id == tenant_id
+    )
     if parcel_id:
         query = query.filter(SoilProfile.parcel_id == parcel_id)
-    if farmer_id:
-        query = query.filter(SoilProfile.farmer_id == farmer_id)
+    if resolved_farmer_id:
+        query = query.filter(
+            SoilProfile.farmer_id == resolved_farmer_id
+        )
+    elif readable_farmer_ids is not None:
+        query = query.filter(
+            SoilProfile.farmer_id.in_(tuple(readable_farmer_ids))
+        )
     return query.order_by(SoilProfile.test_date.desc()).all()
+
