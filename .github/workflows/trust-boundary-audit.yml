@@ -1,0 +1,78 @@
+name: Trust boundary audit
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/**/*.py"
+      - "backend/scripts/audit_tenant_actor_trust_boundary.py"
+      - "backend/scripts/test_*_auth_static.py"
+      - "backend/scripts/test_*_classification_static.py"
+      - "backend/scripts/test_tenant_actor_trust_boundary_*.py"
+      - "docs/admin-permissions.md"
+      - "docs/authenticated-human-boundary-2026-10-05.md"
+      - "docs/human-persona-operational-scope-2026-10-06.md"
+      - "docs/tenant-actor-trust-boundary-audit-2026-10-05.md"
+      - ".github/workflows/trust-boundary-audit.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/**/*.py"
+      - "backend/scripts/audit_tenant_actor_trust_boundary.py"
+      - "backend/scripts/test_*_auth_static.py"
+      - "backend/scripts/test_*_classification_static.py"
+      - "backend/scripts/test_tenant_actor_trust_boundary_*.py"
+      - "docs/admin-permissions.md"
+      - "docs/authenticated-human-boundary-2026-10-05.md"
+      - "docs/human-persona-operational-scope-2026-10-06.md"
+      - "docs/tenant-actor-trust-boundary-audit-2026-10-05.md"
+      - ".github/workflows/trust-boundary-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trust-boundary-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zero-findings:
+    name: Zero trust-boundary findings
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile audit contracts
+        run: |
+          python -m py_compile             backend/scripts/audit_tenant_actor_trust_boundary.py             backend/scripts/test_tenant_actor_trust_boundary_audit_static.py             backend/scripts/test_tenant_actor_trust_boundary_zero_findings.py             backend/scripts/test_app_bootstrap_public_classification_static.py             backend/scripts/test_crop_cycle_read_auth_static.py             backend/scripts/test_geography_reference_classification_static.py             backend/scripts/test_master_data_crop_reference_classification_static.py             backend/scripts/test_media_asset_read_auth_static.py             backend/scripts/test_profile_land_read_auth_static.py             backend/scripts/test_profile_reference_classification_static.py             backend/scripts/test_sync_operational_read_auth_static.py             backend/scripts/test_weather_snapshot_read_auth_static.py             backend/scripts/test_workflow_catalog_read_auth_static.py
+
+      - name: Run trust-boundary audit contract
+        run: python backend/scripts/test_tenant_actor_trust_boundary_audit_static.py
+
+      - name: Require zero findings and stable route inventory
+        run: python backend/scripts/test_tenant_actor_trust_boundary_zero_findings.py
+
+      - name: Run public and reference classifications
+        run: |
+          python backend/scripts/test_app_bootstrap_public_classification_static.py
+          python backend/scripts/test_geography_reference_classification_static.py
+          python backend/scripts/test_master_data_crop_reference_classification_static.py
+          python backend/scripts/test_profile_reference_classification_static.py
+
+      - name: Run operational read authorization contracts
+        run: |
+          python backend/scripts/test_crop_cycle_read_auth_static.py
+          python backend/scripts/test_media_asset_read_auth_static.py
+          python backend/scripts/test_profile_land_read_auth_static.py
+          python backend/scripts/test_sync_operational_read_auth_static.py
+          python backend/scripts/test_weather_snapshot_read_auth_static.py
+          python backend/scripts/test_workflow_catalog_read_auth_static.py
