@@ -25,6 +25,7 @@ from app.modules.sync.models import (
     SyncConflict,
     AuditChainEntry,
 )
+from app.modules.farmer.enrollment_contract import normalize_assistance_mode
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
 from app.modules.farmer.soil_profile import SoilProfile
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
@@ -148,6 +149,7 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
         "mobile_number": ("mobile_number", "mobileNumber", "phone"),
         "village_id": ("village_id", "villageId"),
         "village_name_manual": ("village_name_manual", "villageNameManual", "village_name", "villageName"),
+        "pin_code": ("pin_code", "pinCode"),
         "primary_crop_code": ("primary_crop_code", "primaryCropCode"),
         "crops_by_season": ("crops_by_season", "cropsBySeason"),
         "display_name": ("display_name", "displayName", "name"),
@@ -175,6 +177,15 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
         setattr(farmer, attr, value)
 
     _apply_farmer_home_digipin(farmer)
+    assistance_mode = _first_payload_value(
+        payload,
+        "assistance_mode",
+        "assistanceMode",
+        "enrollment_method",
+        "enrollmentMethod",
+    )
+    if assistance_mode is not None:
+        farmer.enrollment_method = normalize_assistance_mode(str(assistance_mode))
     farmer.enrolled_by = _uuid_or_none(payload.get("enrolled_by") or payload.get("enrolledBy")) or _uuid_or_none(actor_id)
     farmer.updated_at = datetime.now(timezone.utc)
 
@@ -199,6 +210,9 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
                 tenant_id=tenant_id,
                 farmer_id=farmer.id,
                 project_id=farmer.project_id,
+                enrollment_method=normalize_assistance_mode(
+                    str(assistance_mode) if assistance_mode is not None else None
+                ),
                 enrollment_source="ANDROID_SYNC_FARMER_CREATE",
                 enrolled_by=_uuid_or_none(actor_id),
                 status="ACTIVE",
@@ -221,6 +235,10 @@ def _materialize_farmer_event(db: Session, tenant_id: str, actor_id: str, event:
             db.add(enrollment)
         else:
             enrollment.status = "ACTIVE"
+            if assistance_mode is not None:
+                enrollment.enrollment_method = normalize_assistance_mode(
+                    str(assistance_mode)
+                )
             enrollment.enrollment_source = enrollment.enrollment_source or "ANDROID_SYNC_FARMER_CREATE"
             enrollment.enrolled_by = enrollment.enrolled_by or _uuid_or_none(actor_id)
             assigned_user_ids = _first_payload_value(
@@ -1564,6 +1582,33 @@ def filter_already_processed(
     return {str(r[0]) for r in results}
 
 
+def lock_sync_event_ids(
+    db: Session,
+    tenant_id: str,
+    event_ids: list[str],
+) -> None:
+    """Serialize matching event IDs across workers until the batch commits.
+
+    The stable tenant/event hash prevents two requests for the same event from
+    both passing the idempotency read before either transaction commits. Locks
+    are acquired in sorted order so overlapping multi-event batches cannot
+    deadlock solely because their input order differs.
+    """
+    lock_keys = {
+        int.from_bytes(
+            hashlib.sha256(f"{tenant_id}:{uuid.UUID(str(event_id))}".encode()).digest()[:8],
+            byteorder="big",
+            signed=True,
+        )
+        for event_id in event_ids
+    }
+    for lock_key in sorted(lock_keys):
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": lock_key},
+        )
+
+
 # --- Dependency Validation ---
 
 def upsert_processed_event_record(
@@ -1818,6 +1863,7 @@ def process_sync_batch(
     all_event_ids = [str(e.event_id) for e in parsed_events]
 
     # Step 1: Idempotency filter
+    lock_sync_event_ids(db, tenant_id, all_event_ids)
     already_processed = filter_already_processed(db, tenant_id, all_event_ids)
 
     for event in parsed_events:
@@ -1900,7 +1946,9 @@ def process_sync_batch(
                 append_audit(
                     db, tenant_id, actor_id, correlation_id,
                     event.entity_type, event.entity_id,
-                    "SYNC_COMMIT", event.payload, event.metadata,
+                    "SYNC_COMMIT",
+                    event.payload,
+                    {**event.metadata, "sync_event_id": event_id_str},
                 )
                 db.flush()
         except Exception as exc:
@@ -1931,6 +1979,7 @@ def process_sync_batch(
             continue
 
         result.accepted.append(event_id_str)
+        already_processed.add(event_id_str)
 
     # Commit entire batch
     db.commit()

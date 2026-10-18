@@ -30,6 +30,9 @@ from app.core.admin_auth import AdminPermission, AdminPrincipal, ROLE_PERMISSION
 from app.core.database import get_db
 from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
 from app.core.human_persona_scope import resolve_human_persona_scope
+from app.modules.farmer.enrollment_contract import (
+    normalize_assistance_mode as _normalize_assistance_mode,
+)
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.auth.models import TenantUserAccessAuditEvent, User
 from app.modules.farmer.models import Tenant, TenantProvisioningAuditEvent, CompanyProfile, CompanyProfileAuditEvent, CompanyDiscoveryCandidate, Project, ProjectRole, Farmer, Parcel, FarmerProjectEnrollment, FarmerProjectEnrollmentImportBatch, ProjectAppConfigAuditEvent, TenantAppConfigAuditEvent
@@ -696,19 +699,6 @@ def _json_number(value):
 
 def _iso_date(value):
     return value.isoformat() if value else None
-
-
-def _normalize_assistance_mode(value: Optional[str]) -> str:
-    """Map Android assistance_mode values to backend enrollment_method values."""
-    normalized = (value or "ASSISTED").strip().upper()
-    mapping = {
-        "SELF_SERVICE": "SELF",
-        "DEALER_ASSISTED": "ASSISTED",
-        "FIELD_AGENT_ASSISTED": "ASSISTED",
-        "AGRONOMIST_ASSISTED": "ASSISTED",
-    }
-    return mapping.get(normalized, normalized)
-
 
 
 def _validate_lng_lat(point: list, label: str) -> tuple[float, float]:
