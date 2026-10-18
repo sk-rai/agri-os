@@ -129,6 +129,15 @@ check(
     "Land context project helper enforces persisted persona scope",
 )
 check(
+    "FarmerProjectEnrollment.tenant_id == principal.tenant_id" in context_helper
+    and "FarmerProjectEnrollment.project_id == project_id" in context_helper
+    and "FarmerProjectEnrollment.status" in context_helper
+    and "'ACTIVE'" in context_helper
+    and "FarmerProjectEnrollment.is_active == True" in context_helper
+    and "Farmer.user_id == principal.user_id" in context_helper,
+    "Land context permits only the caller's active farmer enrollment",
+)
+check(
     "LAND_INTELLIGENCE_SCOPE_DENIED" in context_helper,
     "Land context denial exposes stable error code",
 )
@@ -168,6 +177,15 @@ check(
     "resolve_human_persona_scope" in summary_helper
     and "has_project_access" in summary_helper,
     "Land summary project helper enforces persisted persona scope",
+)
+check(
+    "FarmerProjectEnrollment.tenant_id == principal.tenant_id" in summary_helper
+    and "FarmerProjectEnrollment.project_id == project_id" in summary_helper
+    and "FarmerProjectEnrollment.status" in summary_helper
+    and "'ACTIVE'" in summary_helper
+    and "FarmerProjectEnrollment.is_active == True" in summary_helper
+    and "Farmer.user_id == principal.user_id" in summary_helper,
+    "Land summary permits only the caller's active farmer enrollment",
 )
 check(
     "LAND_INTELLIGENCE_SCOPE_DENIED" in summary_helper,

@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import inspect, text
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Project, Tenant
+from scripts.android_fixture_auth_utils import ensure_fixture_farmer_identity
 
 TENANT_ID = "android-dynamic-test"
 PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000001")
@@ -273,6 +274,15 @@ def main() -> int:
         seed_context(db, dry_run, result)
         if args.reset:
             reset_test_mobile(db, dry_run, result)
+        ensure_fixture_farmer_identity(
+            db,
+            mobile=TEST_MOBILE,
+            tenant_id=TENANT_ID,
+            project_id=PROJECT_ID,
+            dry_run=dry_run,
+            result=result,
+            link_existing_farmer=not args.reset,
+        )
 
         if dry_run:
             db.rollback()

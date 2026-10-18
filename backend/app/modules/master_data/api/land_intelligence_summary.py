@@ -20,7 +20,12 @@ from app.core.admin_auth import (
 from app.core.database import get_db
 from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
 from app.core.human_persona_scope import resolve_human_persona_scope
-from app.modules.farmer.models import Project, Tenant
+from app.modules.farmer.models import (
+    Farmer,
+    FarmerProjectEnrollment,
+    Project,
+    Tenant,
+)
 from app.modules.master_data.models import LandIntelligenceSummaryOverride
 
 
@@ -276,6 +281,25 @@ def _require_land_summary_project_read_scope(
 
     scope = resolve_human_persona_scope(db, principal)
     if scope.has_project_access(project_id):
+        return
+
+    owns_enrolled_farmer = (
+        db.query(FarmerProjectEnrollment.id)
+        .join(Farmer, Farmer.id == FarmerProjectEnrollment.farmer_id)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+            FarmerProjectEnrollment.is_active == True,
+            Farmer.tenant_id == principal.tenant_id,
+            Farmer.user_id == principal.user_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .first()
+        is not None
+    )
+    if owns_enrolled_farmer:
         return
 
     raise HTTPException(

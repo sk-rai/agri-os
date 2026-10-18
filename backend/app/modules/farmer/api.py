@@ -7780,6 +7780,25 @@ def _require_land_intelligence_project_read_scope(
     if scope.has_project_access(project_id):
         return
 
+    owns_enrolled_farmer = (
+        db.query(FarmerProjectEnrollment.id)
+        .join(Farmer, Farmer.id == FarmerProjectEnrollment.farmer_id)
+        .filter(
+            FarmerProjectEnrollment.tenant_id == principal.tenant_id,
+            FarmerProjectEnrollment.project_id == project_id,
+            FarmerProjectEnrollment.status == "ACTIVE",
+            FarmerProjectEnrollment.is_active == True,
+            Farmer.tenant_id == principal.tenant_id,
+            Farmer.user_id == principal.user_id,
+            Farmer.status != "ARCHIVED",
+            Farmer.is_active == True,
+        )
+        .first()
+        is not None
+    )
+    if owns_enrolled_farmer:
+        return
+
     raise HTTPException(
         status_code=403,
         detail={

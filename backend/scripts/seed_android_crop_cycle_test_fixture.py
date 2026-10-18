@@ -23,12 +23,14 @@ from sqlalchemy import inspect, text
 from app.core.database import SessionLocal
 from app.modules.farmer.models import Farmer, Parcel, Project, Tenant
 from app.modules.master_data.models import Crop, CropLifecycleTemplate
+from scripts.android_fixture_auth_utils import ensure_fixture_farmer_identity
 
 TENANT_ID = "android-dynamic-test"
 PROJECT_ID = uuid.UUID("0f7e0a6b-8472-5d6d-8a14-a9d000000001")
 TEST_MOBILE = "+919900000003"
 FARMER_ID = uuid.UUID("4df387e8-114f-5c44-a129-a9d000000003")
 PARCEL_ID = uuid.UUID("4df387e8-114f-5c44-a129-a9d000000004")
+USER_ID = uuid.UUID("4df387e8-114f-5c44-a129-a9d000000002")
 
 SEASON_CODE = "KHARIF"
 SEASON_YEAR = 2026
@@ -222,6 +224,16 @@ def main() -> int:
         if args.reset:
             delete_for_fixture(db, dry_run, result)
         seed_farmer_parcel(db, dry_run, result)
+        ensure_fixture_farmer_identity(
+            db,
+            mobile=TEST_MOBILE,
+            tenant_id=TENANT_ID,
+            project_id=PROJECT_ID,
+            dry_run=dry_run,
+            result=result,
+            deterministic_user_id=USER_ID,
+            expected_farmer_id=FARMER_ID,
+        )
 
         if dry_run:
             db.rollback()
