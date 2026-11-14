@@ -1654,7 +1654,10 @@ def upsert_processed_event_record(
 
 
 def validate_dependencies(
-    db: Session, tenant_id: str, dependency_ids: list[str]
+    db: Session,
+    tenant_id: str,
+    dependency_ids: list[str],
+    event: Optional[SyncEvent] = None,
 ) -> list[str]:
     """Check which dependency_ids are missing from processed events.
 
@@ -1683,7 +1686,32 @@ def validate_dependencies(
         if entity_id:
             processed.add(str(entity_id))
 
-    return [d for d in dependency_ids if d not in processed]
+    missing = [d for d in dependency_ids if d not in processed]
+
+    # A parcel created for a farmer that already exists on the server may come
+    # from an assisted/web enrollment rather than a prior sync event. The API
+    # authorizes the parcel against that farmer before entering this service;
+    # here we only recognize the exact active, tenant-scoped farmer dependency.
+    # All other dependency types remain bound to committed sync-ledger rows.
+    if event and event.entity_type.lower() == "parcel" and event.operation == "CREATE":
+        farmer_id = _uuid_or_none(
+            _first_payload_value(event.payload or {}, "farmer_id", "farmerId")
+        )
+        if farmer_id and str(farmer_id) in missing:
+            farmer_exists = db.query(Farmer.id).filter(
+                Farmer.id == farmer_id,
+                Farmer.tenant_id == tenant_id,
+                Farmer.status == "ACTIVE",
+                Farmer.is_active == True,
+            ).first()
+            if farmer_exists:
+                missing = [
+                    dependency
+                    for dependency in missing
+                    if dependency != str(farmer_id)
+                ]
+
+    return missing
 
 
 # --- Conflict Detection ---
@@ -1883,7 +1911,9 @@ def process_sync_batch(
             continue
 
         # Step 2: Dependency validation
-        missing_deps = validate_dependencies(db, tenant_id, event.dependency_ids)
+        missing_deps = validate_dependencies(
+            db, tenant_id, event.dependency_ids, event=event
+        )
         if missing_deps:
             # Record as failed with DEPENDENCY_MISSING
             upsert_processed_event_record(
