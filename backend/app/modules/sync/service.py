@@ -1371,6 +1371,14 @@ def _materialize_crop_activity_event(db: Session, tenant_id: str, actor_id: str,
     cycle = db.query(CropCycle).filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id).first()
     if not cycle:
         raise ValueError("crop_activity sync references unknown crop cycle")
+    if activity:
+        if activity.crop_cycle_id != cycle_id:
+            raise ValueError("crop_activity identity is bound to another crop cycle")
+        if event.operation == "CREATE":
+            # A direct request may have committed before its response was lost.
+            # Reusing the same stable activity identity makes the queued CREATE a
+            # no-op while the sync event itself can still be recorded as committed.
+            return
 
     stage_id = _uuid_or_none(_first_payload_value(payload, "stage_id", "stageId"))
     stage_code = _string_or_none(_first_payload_value(payload, "stage_code", "stageCode"))

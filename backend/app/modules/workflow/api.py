@@ -298,6 +298,10 @@ class CropCycleCompleteRequest(BaseModel):
 
 
 class ActivityCreate(BaseModel):
+    activity_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Stable client-generated identity reused by offline fallback",
+    )
     activity_type: str = Field(..., pattern=r"^(FERTILIZER|PESTICIDE|IRRIGATION|LABOR|MACHINERY|HARVEST|SEED|OTHER)$")
     input_code: Optional[str] = None
     input_name: Optional[str] = None
@@ -1907,6 +1911,41 @@ def log_activity(
         principal=principal,
         farmer_id=cycle.farmer_id,
     )
+    existing_activity = None
+    if body.activity_id is not None:
+        existing_activity = (
+            db.query(CropActivity)
+            .filter(
+                CropActivity.id == body.activity_id,
+                CropActivity.tenant_id == tenant_id,
+            )
+            .first()
+        )
+    if existing_activity is not None:
+        if existing_activity.crop_cycle_id != cycle_id:
+            raise HTTPException(
+                409,
+                {
+                    "error": "ACTIVITY_ID_REUSE",
+                    "message": "Activity identity is already bound to another crop cycle.",
+                },
+            )
+        existing_stage_code = None
+        if existing_activity.stage_instance_id:
+            existing_stage_code = db.query(CropStageInstance.stage_code).filter(
+                CropStageInstance.id == existing_activity.stage_instance_id,
+                CropStageInstance.tenant_id == tenant_id,
+            ).scalar()
+        return {
+            "activity_id": str(existing_activity.id),
+            "activity_type": existing_activity.activity_type,
+            "input_rule_id": str(existing_activity.input_rule_id) if existing_activity.input_rule_id else None,
+            "product_code": existing_activity.product_code,
+            "package_sku": existing_activity.package_sku,
+            "stage_code": existing_stage_code,
+            "cycle_total_input_cost": str(cycle.total_input_cost or 0),
+            "events_published": [],
+        }
     if cycle.status == "COMPLETED":
         raise HTTPException(409, "Completed crop cycles are read-only")
     traceability = _validate_activity_traceability(db, tenant_id=tenant_id, cycle=cycle, body=body)
@@ -1925,7 +1964,7 @@ def log_activity(
     )
 
     activity = CropActivity(
-        id=uuid.uuid4(),
+        id=body.activity_id or uuid.uuid4(),
         crop_cycle_id=cycle_id,
         stage_instance_id=active_stage.id if active_stage else None,
         tenant_id=tenant_id,
