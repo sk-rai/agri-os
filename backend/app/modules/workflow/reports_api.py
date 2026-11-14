@@ -269,6 +269,7 @@ def _project_enrollment_report_rows(
     parcel_ids = {uuid.UUID(str(parcel_id)) for enrollment, _, _ in records for parcel_id in (enrollment.parcel_ids or []) if parcel_id}
 
     parcel_counts = {owner_id: 0 for owner_id in farmer_ids}
+    derived_parcels_by_enrollment = defaultdict(list)
     if farmer_ids:
         for parcel in db.query(Parcel).filter(
             Parcel.tenant_id == tenant_id,
@@ -276,6 +277,8 @@ def _project_enrollment_report_rows(
             Parcel.status != "ARCHIVED",
         ).all():
             parcel_counts[parcel.farmer_id] = parcel_counts.get(parcel.farmer_id, 0) + 1
+            if parcel.project_id:
+                derived_parcels_by_enrollment[(parcel.farmer_id, parcel.project_id)].append(parcel)
 
     parcels = {
         parcel.id: parcel
@@ -306,8 +309,16 @@ def _project_enrollment_report_rows(
 
     rows = []
     for enrollment, farmer, project in records:
-        linked_parcels = [parcels.get(uuid.UUID(str(parcel_id))) for parcel_id in (enrollment.parcel_ids or []) if parcel_id]
-        linked_parcels = [parcel for parcel in linked_parcels if parcel]
+        explicit_linked_parcels = [parcels.get(uuid.UUID(str(parcel_id))) for parcel_id in (enrollment.parcel_ids or []) if parcel_id]
+        linked_parcels = []
+        linked_parcel_ids = set()
+        for parcel in [
+            *[parcel for parcel in explicit_linked_parcels if parcel],
+            *derived_parcels_by_enrollment.get((farmer.id, project.id), []),
+        ]:
+            if parcel.id not in linked_parcel_ids:
+                linked_parcel_ids.add(parcel.id)
+                linked_parcels.append(parcel)
         completion = _profile_completion_for_report(farmer, parcel_counts.get(farmer.id, 0), soil_counts.get(farmer.id, 0))
         farmer_enrollments = enrollments_by_farmer.get(farmer.id, [])
         decision = _launch_decision_for_report(farmer, farmer_enrollments, completion)
@@ -328,7 +339,7 @@ def _project_enrollment_report_rows(
             "enrollment_batch_id": enrollment.enrollment_batch_id,
             "enrolled_by": str(enrollment.enrolled_by) if enrollment.enrolled_by else None,
             "status": enrollment.status,
-            "parcel_ids": enrollment.parcel_ids or [],
+            "parcel_ids": [str(parcel.id) for parcel in linked_parcels],
             "parcel_labels": [parcel.survey_number or parcel.local_name or str(parcel.id) for parcel in linked_parcels],
             "assigned_user_ids": enrollment.assigned_user_ids or [],
             "metadata": enrollment.metadata_ or {},
