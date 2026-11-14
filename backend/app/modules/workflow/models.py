@@ -273,8 +273,11 @@ class CropCycle(Base, UUIDPrimaryKey, AuditMixin):
     __tablename__ = "crop_cycles"
 
     tenant_id = Column(String(50), ForeignKey("tenants.id"), nullable=False)
-    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=False)
-    parcel_id = Column(UUID(as_uuid=True), ForeignKey("parcels.id"), nullable=False)
+    # No hard FK: offline-first clients may create cycles before the farmer/parcel
+    # rows have synced. See migration 070. Referential integrity is enforced at the
+    # service layer (tenant-bounded lookups) instead.
+    farmer_id = Column(UUID(as_uuid=True), nullable=False)
+    parcel_id = Column(UUID(as_uuid=True), nullable=False)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
 
     # Crop + template (configuration-driven)
@@ -384,10 +387,14 @@ class CropActivity(Base, UUIDPrimaryKey, AuditMixin):
 
     __tablename__ = "crop_activities"
 
-    crop_cycle_id = Column(UUID(as_uuid=True), ForeignKey("crop_cycles.id"), nullable=False)
-    stage_instance_id = Column(UUID(as_uuid=True), ForeignKey("crop_stage_instances.id"))
+    # No hard FKs on cycle/stage/farmer references: offline-first clients log
+    # activities before parent rows have synced. See migration 070. The
+    # traceability FKs below (input_rule_id/product_id/package_id) are nullable
+    # and remain enforced.
+    crop_cycle_id = Column(UUID(as_uuid=True), nullable=False)
+    stage_instance_id = Column(UUID(as_uuid=True))
     tenant_id = Column(String(50), nullable=False)
-    farmer_id = Column(UUID(as_uuid=True), ForeignKey("farmers.id"), nullable=False)
+    farmer_id = Column(UUID(as_uuid=True), nullable=False)
 
     # Activity type
     activity_type = Column(String(30), nullable=False)
