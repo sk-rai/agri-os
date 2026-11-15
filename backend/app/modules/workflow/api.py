@@ -1926,7 +1926,7 @@ def log_activity(
             409,
             {
                 "error": "ACTIVITY_ID_REUSE",
-                "message": "Activity identity is already bound to another crop cycle.",
+                "message": "Activity identity is unavailable.",
             },
         )
 
@@ -2013,15 +2013,20 @@ def log_activity(
         # or audit effects. This also catches a concurrent insert that won
         # after the initial tenant-scoped lookup.
         db.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        if body.activity_id is None:
-            raise
-
-        collision_exists = db.query(CropActivity.id).filter(
-            CropActivity.id == body.activity_id,
-        ).first()
-        if collision_exists is None:
+        original_error = getattr(exc, "orig", None)
+        sqlstate = (
+            getattr(original_error, "sqlstate", None)
+            or getattr(original_error, "pgcode", None)
+        )
+        diagnostic = getattr(original_error, "diag", None)
+        constraint_name = getattr(diagnostic, "constraint_name", None)
+        if not (
+            body.activity_id is not None
+            and sqlstate == "23505"
+            and constraint_name == "crop_activities_pkey"
+        ):
             raise
 
         winner = db.query(CropActivity).filter(
@@ -2030,6 +2035,18 @@ def log_activity(
         ).first()
         if winner is None or winner.crop_cycle_id != cycle_id:
             raise activity_id_reuse_conflict()
+
+        current_cycle = db.query(CropCycle).filter(
+            CropCycle.id == cycle_id,
+            CropCycle.tenant_id == tenant_id,
+        ).first()
+        if current_cycle is None:
+            raise activity_id_reuse_conflict()
+        _require_principal_can_operate_cycle_farmer(
+            db,
+            principal=principal,
+            farmer_id=current_cycle.farmer_id,
+        )
         return activity_reuse_response(winner)
 
     # Update cycle economics
