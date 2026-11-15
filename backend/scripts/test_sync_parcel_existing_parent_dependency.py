@@ -8,8 +8,14 @@ from app.modules.auth.models import User
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.master_data.models.geography import GeographyVillage  # noqa: F401
 from app.modules.sync.authorization import authorize_sync_events
+from app.modules.sync.api import SyncBatchRequest, process_sync_events
 from app.modules.sync.models import AuditChainEntry, SyncProcessedEvent
-from app.modules.sync.service import SyncEvent, process_sync_batch, validate_dependencies
+from app.modules.sync.service import (
+    SyncEvent,
+    _materialize_parcel_event,
+    process_sync_batch,
+    validate_dependencies,
+)
 
 
 checks = 0
@@ -314,6 +320,84 @@ try:
         ).count()
         == 0,
         "rejected mismatch creates no committed ledger event",
+    )
+
+    ingress_result = process_sync_events(
+        body=SyncBatchRequest(events=[mismatch_event]),
+        principal=AuthenticatedPrincipal(
+            user_id=owner_user_id,
+            tenant_id=tenant_id,
+            role="FARMER",
+        ),
+        db=db,
+    )
+    check(ingress_result.accepted == [], "sync ingress does not forward farmer mismatch")
+    check(
+        ingress_result.failed[0].detail_code == "PARCEL_FARMER_MISMATCH",
+        "sync ingress preserves sanitized mismatch category",
+    )
+    check(
+        db.query(SyncProcessedEvent).filter(
+            SyncProcessedEvent.event_id == mismatch_event_id,
+        ).count()
+        == 0,
+        "sync ingress mismatch creates no ledger row",
+    )
+
+    mismatch_sync_event = SyncEvent(mismatch_event)
+    check(
+        validate_dependencies(
+            db,
+            tenant_id,
+            mismatch_sync_event.dependency_ids,
+            mismatch_sync_event,
+        )
+        == [str(destination_farmer_id)],
+        "dependency guard retains mismatched destination farmer dependency",
+    )
+    try:
+        _materialize_parcel_event(db, tenant_id, mismatch_sync_event)
+    except ValueError as exc:
+        check(
+            "farmer does not match" in str(exc),
+            "materializer independently rejects farmer reassignment",
+        )
+    else:
+        raise AssertionError("materializer accepted farmer reassignment")
+    check(
+        db.query(Parcel).filter(Parcel.id == existing_parcel_id).one().farmer_id
+        == farmer_id,
+        "materializer rejection leaves parcel farmer unchanged",
+    )
+
+    same_owner_event_id = uuid.uuid4()
+    same_owner_event = parcel_event(
+        event_id=same_owner_event_id,
+        entity_id=existing_parcel_id,
+        farmer_id=farmer_id,
+        dependency_id=farmer_id,
+    )
+    same_owner_result = process_sync_events(
+        body=SyncBatchRequest(events=[same_owner_event]),
+        principal=AuthenticatedPrincipal(
+            user_id=owner_user_id,
+            tenant_id=tenant_id,
+            role="FARMER",
+        ),
+        db=db,
+    )
+    check(
+        same_owner_result.accepted == [str(same_owner_event_id)],
+        "same-owner existing parcel CREATE remains accepted",
+    )
+    check(
+        db.query(Parcel).filter(Parcel.id == existing_parcel_id).count() == 1,
+        "same-owner CREATE reuse preserves one parcel",
+    )
+    check(
+        db.query(Parcel).filter(Parcel.id == existing_parcel_id).one().farmer_id
+        == farmer_id,
+        "same-owner CREATE reuse preserves farmer binding",
     )
 
     print(f"PASS checks={checks}")
