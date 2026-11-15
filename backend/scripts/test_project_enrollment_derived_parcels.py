@@ -52,11 +52,14 @@ def main():
     project_id = uuid.uuid4()
     other_project_id = uuid.uuid4()
     farmer_id = uuid.uuid4()
+    other_farmer_id = uuid.uuid4()
     enrollment_id = uuid.uuid4()
     derived_id = uuid.uuid4()
+    second_derived_id = uuid.uuid4()
     explicit_legacy_id = uuid.uuid4()
     cross_project_id = uuid.uuid4()
     archived_id = uuid.uuid4()
+    wrong_farmer_id = uuid.uuid4()
 
     db = SessionLocal()
     try:
@@ -67,7 +70,7 @@ def main():
             project(other_project_id, tenant_id, "Other Parcel Project"),
         ])
         db.flush()
-        db.add(
+        db.add_all([
             Farmer(
                 id=farmer_id,
                 tenant_id=tenant_id,
@@ -78,14 +81,27 @@ def main():
                 status="ACTIVE",
                 created_at=now(),
                 updated_at=now(),
-            )
-        )
+            ),
+            Farmer(
+                id=other_farmer_id,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                mobile_number=f"+9196{uuid.uuid4().int % 100000000:08d}",
+                display_name="Other Farmer",
+                village_name_manual="Regression Village",
+                status="ACTIVE",
+                created_at=now(),
+                updated_at=now(),
+            ),
+        ])
         db.flush()
         db.add_all([
             parcel(derived_id, tenant_id, farmer_id, project_id, "DERIVED"),
+            parcel(second_derived_id, tenant_id, farmer_id, project_id, "DERIVED-SECOND"),
             parcel(explicit_legacy_id, tenant_id, farmer_id, None, "EXPLICIT"),
             parcel(cross_project_id, tenant_id, farmer_id, other_project_id, "CROSS-PROJECT"),
             parcel(archived_id, tenant_id, farmer_id, project_id, "ARCHIVED", status="ARCHIVED"),
+            parcel(wrong_farmer_id, tenant_id, other_farmer_id, project_id, "WRONG-FARMER"),
             FarmerProjectEnrollment(
                 id=enrollment_id,
                 tenant_id=tenant_id,
@@ -94,7 +110,12 @@ def main():
                 enrollment_method="SYNC_MATERIALIZED",
                 enrollment_source="derived_parcel_regression",
                 status="ACTIVE",
-                parcel_ids=[str(explicit_legacy_id), str(derived_id)],
+                parcel_ids=[
+                    str(explicit_legacy_id),
+                    str(cross_project_id),
+                    str(archived_id),
+                    str(wrong_farmer_id),
+                ],
                 assigned_user_ids=[],
                 metadata_={},
                 created_at=now(),
@@ -116,12 +137,24 @@ def main():
         assert len(rows) == 1
         row = rows[0]
         assert row["id"] == str(enrollment_id)
-        assert row["parcel_ids"] == [str(explicit_legacy_id), str(derived_id)]
-        assert row["parcel_labels"] == ["EXPLICIT", "DERIVED"]
+        ordered_derived_ids = sorted([derived_id, second_derived_id], key=str)
+        labels_by_id = {
+            derived_id: "DERIVED",
+            second_derived_id: "DERIVED-SECOND",
+        }
+        assert row["parcel_ids"] == [
+            str(explicit_legacy_id),
+            *[str(parcel_id) for parcel_id in ordered_derived_ids],
+        ]
+        assert row["parcel_labels"] == [
+            "EXPLICIT",
+            *[labels_by_id[parcel_id] for parcel_id in ordered_derived_ids],
+        ]
         assert row["parcel_ids"].count(str(derived_id)) == 1
         assert str(cross_project_id) not in row["parcel_ids"]
         assert str(archived_id) not in row["parcel_ids"]
-        print("PASS project enrollment derived parcel regression: 7 assertions")
+        assert str(wrong_farmer_id) not in row["parcel_ids"]
+        print("PASS project enrollment derived parcel regression: 8 assertions")
     finally:
         db.rollback()
         db.close()

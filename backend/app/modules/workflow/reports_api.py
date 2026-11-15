@@ -282,7 +282,12 @@ def _project_enrollment_report_rows(
 
     parcels = {
         parcel.id: parcel
-        for parcel in db.query(Parcel).filter(Parcel.tenant_id == tenant_id, Parcel.id.in_(parcel_ids)).all()
+        for parcel in db.query(Parcel).filter(
+            Parcel.tenant_id == tenant_id,
+            Parcel.id.in_(parcel_ids),
+            Parcel.farmer_id.in_(farmer_ids),
+            Parcel.status != "ARCHIVED",
+        ).all()
     } if parcel_ids else {}
 
     enrollments_by_farmer = {}
@@ -309,12 +314,24 @@ def _project_enrollment_report_rows(
 
     rows = []
     for enrollment, farmer, project in records:
-        explicit_linked_parcels = [parcels.get(uuid.UUID(str(parcel_id))) for parcel_id in (enrollment.parcel_ids or []) if parcel_id]
+        explicit_linked_parcels = [
+            parcel
+            for parcel_id in (enrollment.parcel_ids or [])
+            if parcel_id
+            for parcel in [parcels.get(uuid.UUID(str(parcel_id)))]
+            if parcel
+            and parcel.farmer_id == farmer.id
+            and parcel.project_id in {None, project.id}
+        ]
+        derived_linked_parcels = sorted(
+            derived_parcels_by_enrollment.get((farmer.id, project.id), []),
+            key=lambda parcel: str(parcel.id),
+        )
         linked_parcels = []
         linked_parcel_ids = set()
         for parcel in [
-            *[parcel for parcel in explicit_linked_parcels if parcel],
-            *derived_parcels_by_enrollment.get((farmer.id, project.id), []),
+            *explicit_linked_parcels,
+            *derived_linked_parcels,
         ]:
             if parcel.id not in linked_parcel_ids:
                 linked_parcel_ids.add(parcel.id)
