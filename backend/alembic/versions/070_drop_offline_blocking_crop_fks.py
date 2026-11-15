@@ -14,6 +14,14 @@ Traceability FKs on crop_activities (input_rule_id, product_id, package_id)
 are intentionally left in place — they are nullable and do not block capture.
 crop_stage_instances.crop_cycle_id is also left in place to match live state.
 
+Downgrade prerequisite: every non-null child reference covered by the five
+constraints below must resolve to an existing parent row before downgrade.
+PostgreSQL validates each restored constraint immediately, so downgrade fails
+closed if offline-first operation admitted an orphan while the constraints were
+absent. Operators must inspect and resolve such rows under a separately approved
+data policy before attempting downgrade; this migration does not delete, repair,
+or reinterpret them.
+
 Revision ID: 070
 Revises: 069
 Create Date: 2026-10-14
@@ -46,6 +54,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore validated FKs; fails if any covered child reference is orphaned."""
+
     for conname, table, ref, lcol, rcol in _DROPPED_FKS:
         op.execute(
             f'ALTER TABLE {table} '
