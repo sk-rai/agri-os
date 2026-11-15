@@ -12,8 +12,11 @@ Uses the deterministic android-dynamic-test crop-cycle fixture:
 from __future__ import annotations
 
 import atexit
+from concurrent.futures import ThreadPoolExecutor
 import json
 import sys
+import threading
+from types import SimpleNamespace
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -27,6 +30,7 @@ from app.main import app
 from app.core.database import SessionLocal
 from app.modules.sync.models import AuditChainEntry, SyncProcessedEvent
 from app.modules.workflow.models import CropActivity, CropCycle
+from app.modules.workflow.api import _is_crop_activity_primary_key_collision
 from scripts.admin_auth_test_utils import create_test_admin, delete_test_admin
 from scripts.seed_android_crop_cycle_test_fixture import (
     CROP_CODE,
@@ -101,6 +105,37 @@ def main() -> int:
 
     reset_fixture()
     install_test_admin(TENANT_ID)
+
+    primary_key_collision = SimpleNamespace(
+        orig=SimpleNamespace(
+            sqlstate="23505",
+            diag=SimpleNamespace(constraint_name="crop_activities_pkey"),
+        )
+    )
+    unrelated_unique_violation = SimpleNamespace(
+        orig=SimpleNamespace(
+            sqlstate="23505",
+            diag=SimpleNamespace(constraint_name="some_other_unique_key"),
+        )
+    )
+    unrelated_integrity_failure = SimpleNamespace(
+        orig=SimpleNamespace(
+            sqlstate="23503",
+            diag=SimpleNamespace(constraint_name="some_foreign_key"),
+        )
+    )
+    check(
+        _is_crop_activity_primary_key_collision(primary_key_collision),
+        "Activity primary-key violation is classified for recovery",
+    )
+    check(
+        not _is_crop_activity_primary_key_collision(unrelated_unique_violation),
+        "Unrelated unique violation is not classified as activity identity reuse",
+    )
+    check(
+        not _is_crop_activity_primary_key_collision(unrelated_integrity_failure),
+        "Unrelated integrity failure is not classified as activity identity reuse",
+    )
 
     create_payload = {
         "farmer_id": str(FARMER_ID),
@@ -229,6 +264,76 @@ def main() -> int:
         ).one()
         check(current_tenant_collision_rows == 0, "Collision creates no current-tenant activity")
         check(collision_cycle.total_input_cost == ACTIVITY_COST, "Collision creates no economic effect")
+    finally:
+        db.close()
+
+    concurrent_activity_id = uuid.uuid4()
+    concurrent_payload = {
+        **activity_payload,
+        "activity_id": str(concurrent_activity_id),
+        "cost_amount": None,
+        "notes": "Concurrent same-cycle identity regression",
+    }
+    start_barrier = threading.Barrier(2)
+
+    def submit_concurrent_activity():
+        start_barrier.wait()
+        local_client = TestClient(app)
+        return local_client.post(
+            f"/api/v1/crop-cycles/{cycle_id}/activities",
+            json=concurrent_payload,
+            headers=HEADERS,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        concurrent_responses = list(
+            executor.map(lambda _: submit_concurrent_activity(), range(2))
+        )
+    check(
+        all(response.status_code == 201 for response in concurrent_responses),
+        "Concurrent same-cycle activity reuse returns two successful responses",
+    )
+    check(
+        all(
+            response.json().get("activity_id") == str(concurrent_activity_id)
+            for response in concurrent_responses
+        ),
+        "Concurrent responses retain one client activity identity",
+    )
+    check(
+        sorted(len(response.json().get("events_published") or []) for response in concurrent_responses)
+        == [0, 1],
+        "Concurrent reuse publishes exactly one activity event",
+    )
+
+    db = SessionLocal()
+    try:
+        check(
+            db.query(CropActivity).filter(
+                CropActivity.id == concurrent_activity_id,
+                CropActivity.tenant_id == TENANT_ID,
+            ).count()
+            == 1,
+            "Concurrent reuse creates exactly one activity row",
+        )
+        concurrent_cycle = db.query(CropCycle).filter(
+            CropCycle.id == uuid.UUID(cycle_id),
+            CropCycle.tenant_id == TENANT_ID,
+        ).one()
+        check(
+            concurrent_cycle.total_input_cost == ACTIVITY_COST,
+            "Concurrent zero-cost reuse does not change cycle economics",
+        )
+        db.query(AuditChainEntry).filter(
+            AuditChainEntry.tenant_id == TENANT_ID,
+            AuditChainEntry.entity_id == concurrent_activity_id,
+            AuditChainEntry.action == "ACTIVITY_LOGGED",
+        ).delete(synchronize_session=False)
+        db.query(CropActivity).filter(
+            CropActivity.id == concurrent_activity_id,
+            CropActivity.tenant_id == TENANT_ID,
+        ).delete(synchronize_session=False)
+        db.commit()
     finally:
         db.close()
 

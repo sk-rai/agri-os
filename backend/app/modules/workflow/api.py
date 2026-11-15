@@ -68,6 +68,19 @@ WORKFLOW_WEB_ADMIN_ROLES = {
 }
 
 
+def _is_crop_activity_primary_key_collision(exc: IntegrityError) -> bool:
+    """Recognize only PostgreSQL's crop-activity primary-key collision."""
+
+    original_error = getattr(exc, "orig", None)
+    sqlstate = (
+        getattr(original_error, "sqlstate", None)
+        or getattr(original_error, "pgcode", None)
+    )
+    diagnostic = getattr(original_error, "diag", None)
+    constraint_name = getattr(diagnostic, "constraint_name", None)
+    return sqlstate == "23505" and constraint_name == "crop_activities_pkey"
+
+
 def _workflow_admin_can_edit(
     principal: AuthenticatedPrincipal,
 ) -> bool:
@@ -2015,17 +2028,9 @@ def log_activity(
         db.flush()
     except IntegrityError as exc:
         db.rollback()
-        original_error = getattr(exc, "orig", None)
-        sqlstate = (
-            getattr(original_error, "sqlstate", None)
-            or getattr(original_error, "pgcode", None)
-        )
-        diagnostic = getattr(original_error, "diag", None)
-        constraint_name = getattr(diagnostic, "constraint_name", None)
         if not (
             body.activity_id is not None
-            and sqlstate == "23505"
-            and constraint_name == "crop_activities_pkey"
+            and _is_crop_activity_primary_key_collision(exc)
         ):
             raise
 
