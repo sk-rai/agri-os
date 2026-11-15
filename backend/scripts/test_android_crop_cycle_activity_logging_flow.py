@@ -155,6 +155,83 @@ def main() -> int:
     check(activity.get("stage_code") == stage_code, "Activity is linked to active stage", activity)
     check(activity.get("cycle_total_input_cost") == str(ACTIVITY_COST), "Cycle total input cost updated", activity)
 
+    direct_replay_response = client.post(
+        f"/api/v1/crop-cycles/{cycle_id}/activities",
+        json=activity_payload,
+        headers=HEADERS,
+    )
+    check(direct_replay_response.status_code == 201, "Direct same-ID replay returns 201")
+    check(
+        direct_replay_response.json().get("activity_id") == activity_id,
+        "Direct same-ID replay returns the committed activity",
+    )
+    check(
+        direct_replay_response.json().get("events_published") == [],
+        "Direct same-ID replay publishes no second event",
+    )
+
+    cross_tenant_collision_id = uuid.uuid4()
+    db = SessionLocal()
+    try:
+        db.add(
+            CropActivity(
+                id=cross_tenant_collision_id,
+                crop_cycle_id=uuid.uuid4(),
+                tenant_id=f"other-{uuid.uuid4().hex[:12]}",
+                farmer_id=uuid.uuid4(),
+                activity_type="OTHER",
+                activity_date=date.today(),
+                logged_by=uuid.uuid4(),
+                notes="Synthetic cross-tenant identity collision",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    def cleanup_cross_tenant_collision() -> None:
+        cleanup_db = SessionLocal()
+        try:
+            cleanup_db.query(CropActivity).filter(
+                CropActivity.id == cross_tenant_collision_id,
+            ).delete(synchronize_session=False)
+            cleanup_db.commit()
+        finally:
+            cleanup_db.close()
+
+    atexit.register(cleanup_cross_tenant_collision)
+
+    collision_payload = {
+        **activity_payload,
+        "activity_id": str(cross_tenant_collision_id),
+        "notes": "Must not disclose or adopt another tenant activity",
+    }
+    collision_response = client.post(
+        f"/api/v1/crop-cycles/{cycle_id}/activities",
+        json=collision_payload,
+        headers=HEADERS,
+    )
+    check(collision_response.status_code == 409, "Cross-tenant activity ID collision is sanitized")
+    collision_detail = collision_response.json().get("detail") or {}
+    check(collision_detail.get("error") == "ACTIVITY_ID_REUSE", "Collision uses stable error category")
+
+    db = SessionLocal()
+    try:
+        current_tenant_collision_rows = db.query(CropActivity).filter(
+            CropActivity.id == cross_tenant_collision_id,
+            CropActivity.tenant_id == TENANT_ID,
+        ).count()
+        collision_cycle = db.query(CropCycle).filter(
+            CropCycle.id == uuid.UUID(cycle_id),
+            CropCycle.tenant_id == TENANT_ID,
+        ).one()
+        check(current_tenant_collision_rows == 0, "Collision creates no current-tenant activity")
+        check(collision_cycle.total_input_cost == ACTIVITY_COST, "Collision creates no economic effect")
+    finally:
+        db.close()
+
     fallback_event_id = str(uuid.uuid4())
     fallback_event = {
         "event_id": fallback_event_id,

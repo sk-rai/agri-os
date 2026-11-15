@@ -14,6 +14,7 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
@@ -1897,6 +1898,38 @@ def log_activity(
 
     tenant_id = principal.tenant_id
     actor_id = str(principal.user_id)
+
+    def activity_reuse_response(existing_activity: CropActivity) -> dict:
+        existing_stage_code = None
+        if existing_activity.stage_instance_id:
+            existing_stage_code = db.query(CropStageInstance.stage_code).filter(
+                CropStageInstance.id == existing_activity.stage_instance_id,
+                CropStageInstance.tenant_id == tenant_id,
+            ).scalar()
+        current_total = db.query(CropCycle.total_input_cost).filter(
+            CropCycle.id == cycle_id,
+            CropCycle.tenant_id == tenant_id,
+        ).scalar()
+        return {
+            "activity_id": str(existing_activity.id),
+            "activity_type": existing_activity.activity_type,
+            "input_rule_id": str(existing_activity.input_rule_id) if existing_activity.input_rule_id else None,
+            "product_code": existing_activity.product_code,
+            "package_sku": existing_activity.package_sku,
+            "stage_code": existing_stage_code,
+            "cycle_total_input_cost": str(current_total or 0),
+            "events_published": [],
+        }
+
+    def activity_id_reuse_conflict() -> HTTPException:
+        return HTTPException(
+            409,
+            {
+                "error": "ACTIVITY_ID_REUSE",
+                "message": "Activity identity is already bound to another crop cycle.",
+            },
+        )
+
     # Verify cycle exists and belongs to tenant
     cycle = (
         db.query(CropCycle)
@@ -1923,29 +1956,8 @@ def log_activity(
         )
     if existing_activity is not None:
         if existing_activity.crop_cycle_id != cycle_id:
-            raise HTTPException(
-                409,
-                {
-                    "error": "ACTIVITY_ID_REUSE",
-                    "message": "Activity identity is already bound to another crop cycle.",
-                },
-            )
-        existing_stage_code = None
-        if existing_activity.stage_instance_id:
-            existing_stage_code = db.query(CropStageInstance.stage_code).filter(
-                CropStageInstance.id == existing_activity.stage_instance_id,
-                CropStageInstance.tenant_id == tenant_id,
-            ).scalar()
-        return {
-            "activity_id": str(existing_activity.id),
-            "activity_type": existing_activity.activity_type,
-            "input_rule_id": str(existing_activity.input_rule_id) if existing_activity.input_rule_id else None,
-            "product_code": existing_activity.product_code,
-            "package_sku": existing_activity.package_sku,
-            "stage_code": existing_stage_code,
-            "cycle_total_input_cost": str(cycle.total_input_cost or 0),
-            "events_published": [],
-        }
+            raise activity_id_reuse_conflict()
+        return activity_reuse_response(existing_activity)
     if cycle.status == "COMPLETED":
         raise HTTPException(409, "Completed crop cycles are read-only")
     traceability = _validate_activity_traceability(db, tenant_id=tenant_id, cycle=cycle, body=body)
@@ -1996,6 +2008,29 @@ def log_activity(
         updated_at=datetime.now(timezone.utc),
     )
     db.add(activity)
+    try:
+        # Resolve a supplied globally keyed identity before applying economics
+        # or audit effects. This also catches a concurrent insert that won
+        # after the initial tenant-scoped lookup.
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        if body.activity_id is None:
+            raise
+
+        collision_exists = db.query(CropActivity.id).filter(
+            CropActivity.id == body.activity_id,
+        ).first()
+        if collision_exists is None:
+            raise
+
+        winner = db.query(CropActivity).filter(
+            CropActivity.id == body.activity_id,
+            CropActivity.tenant_id == tenant_id,
+        ).first()
+        if winner is None or winner.crop_cycle_id != cycle_id:
+            raise activity_id_reuse_conflict()
+        return activity_reuse_response(winner)
 
     # Update cycle economics
     if body.cost_amount:
