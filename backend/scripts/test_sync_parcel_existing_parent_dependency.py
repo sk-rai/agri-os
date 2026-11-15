@@ -56,15 +56,32 @@ try:
     )
     db.commit()
     farmer_id = uuid.uuid4()
+    owner_user_id = uuid.uuid4()
+    destination_farmer_id = uuid.uuid4()
     other_farmer_id = uuid.uuid4()
     inactive_farmer_id = uuid.uuid4()
     db.add_all(
         [
+            User(
+                id=owner_user_id,
+                tenant_id=tenant_id,
+                mobile_number="+919700000010",
+                role="FARMER",
+                display_name="Synthetic Parcel Owner",
+            ),
             Farmer(
                 id=farmer_id,
                 tenant_id=tenant_id,
+                user_id=owner_user_id,
                 mobile_number="+919700000001",
                 display_name="Synthetic Existing Farmer",
+                status="ACTIVE",
+            ),
+            Farmer(
+                id=destination_farmer_id,
+                tenant_id=tenant_id,
+                mobile_number="+919700000011",
+                display_name="Unauthorized Destination Farmer",
                 status="ACTIVE",
             ),
             Farmer(
@@ -252,6 +269,51 @@ try:
         validate_dependencies(db, tenant_id, unrelated.dependency_ids, unrelated)
         == [str(farmer_id)],
         "unrelated entity dependency behavior unchanged",
+    )
+
+    existing_parcel_id = uuid.uuid4()
+    mismatch_event_id = uuid.uuid4()
+    db.add(
+        Parcel(
+            id=existing_parcel_id,
+            tenant_id=tenant_id,
+            farmer_id=farmer_id,
+            reported_area="1.00",
+            reported_area_unit="BIGHA",
+            ownership_type="OWNED",
+            status="ACTIVE",
+        )
+    )
+    db.commit()
+    mismatch_event = parcel_event(
+        event_id=mismatch_event_id,
+        entity_id=existing_parcel_id,
+        farmer_id=destination_farmer_id,
+        dependency_id=destination_farmer_id,
+    )
+    authorized, denied = authorize_sync_events(
+        db,
+        principal=AuthenticatedPrincipal(
+            user_id=owner_user_id,
+            tenant_id=tenant_id,
+            role="FARMER",
+        ),
+        events=[mismatch_event],
+    )
+    check(authorized == [], "existing parcel farmer mismatch is not admitted")
+    check(denied[0]["error_code"] == "SYNC_SCOPE_DENIED", "farmer mismatch is sanitized")
+    check(
+        db.query(Parcel).filter(Parcel.id == existing_parcel_id).one().farmer_id
+        == farmer_id,
+        "rejected mismatch leaves parcel farmer unchanged",
+    )
+    check(
+        db.query(SyncProcessedEvent).filter(
+            SyncProcessedEvent.event_id == mismatch_event_id,
+            SyncProcessedEvent.status == "COMMITTED",
+        ).count()
+        == 0,
+        "rejected mismatch creates no committed ledger event",
     )
 
     print(f"PASS checks={checks}")

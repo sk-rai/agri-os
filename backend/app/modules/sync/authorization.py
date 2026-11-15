@@ -59,6 +59,31 @@ def _normalized_mobile(value) -> str:
     return digits[-10:] if len(digits) >= 10 else digits
 
 
+def _parcel_create_reassigns_farmer(
+    db: Session,
+    tenant_id: str,
+    event: dict,
+) -> bool:
+    """Reject CREATE reuse that would move an existing parcel to another farmer."""
+
+    if str(event.get("entity_type") or "").lower() != "parcel":
+        return False
+    if str(event.get("operation") or "").upper() != "CREATE":
+        return False
+
+    parcel_id = _uuid_or_none(event.get("entity_id"))
+    payload = event.get("payload") or {}
+    payload_farmer_id = _uuid_or_none(_value(payload, "farmer_id", "farmerId"))
+    if parcel_id is None or payload_farmer_id is None:
+        return False
+
+    stored_farmer_id = db.query(Parcel.farmer_id).filter(
+        Parcel.id == parcel_id,
+        Parcel.tenant_id == tenant_id,
+    ).scalar()
+    return stored_farmer_id is not None and stored_farmer_id != payload_farmer_id
+
+
 def _is_admin(principal: AuthenticatedPrincipal) -> bool:
     role = str(principal.role or "").upper()
     return (
@@ -280,26 +305,43 @@ def authorize_sync_events(
 ) -> tuple[list[dict], list[dict]]:
     """Partition a batch into authorized events and per-event denials."""
 
-    if _is_admin(principal):
-        return events, []
-
-    scope = resolve_human_persona_scope(db, principal)
-    allowed_farmer_ids = set(scope.own_farmer_ids | scope.assigned_farmer_ids)
+    is_admin = _is_admin(principal)
+    scope = None if is_admin else resolve_human_persona_scope(db, principal)
+    allowed_farmer_ids = (
+        set()
+        if scope is None
+        else set(scope.own_farmer_ids | scope.assigned_farmer_ids)
+    )
     provisional_farmer_ids: set[uuid.UUID] = set()
     authorized = []
     denied = []
 
-    user = db.query(User).filter(
-        User.id == principal.user_id,
-        User.tenant_id == principal.tenant_id,
-        User.is_active == True,
-    ).first()
+    user = None
+    if not is_admin:
+        user = db.query(User).filter(
+            User.id == principal.user_id,
+            User.tenant_id == principal.tenant_id,
+            User.is_active == True,
+        ).first()
 
     for event in events:
         payload = event.get("payload") or {}
         event["payload"] = payload
         event_id = str(event.get("event_id"))
         entity_type = str(event.get("entity_type") or "").lower()
+        if _parcel_create_reassigns_farmer(db, principal.tenant_id, event):
+            denied.append({
+                "event_id": event_id,
+                "error_code": "SYNC_SCOPE_DENIED",
+                "detail_code": "PARCEL_FARMER_MISMATCH",
+                "message": "Parcel identity is not valid for this farmer scope.",
+            })
+            continue
+
+        if is_admin:
+            authorized.append(event)
+            continue
+
         farmer_id = _existing_farmer_id(
             db,
             principal.tenant_id,
@@ -323,7 +365,8 @@ def authorize_sync_events(
                 )
             )
             agent_enrollment = (
-                scope.has_agent_persona
+                scope is not None
+                and scope.has_agent_persona
                 and project_id is not None
                 and scope.has_project_access(project_id)
             )
@@ -351,7 +394,8 @@ def authorize_sync_events(
                 _value(payload, "project_id", "projectId")
             )
             if not (
-                scope.has_agent_persona
+                scope is not None
+                and scope.has_agent_persona
                 and project_id is not None
                 and scope.has_project_access(project_id)
             ):

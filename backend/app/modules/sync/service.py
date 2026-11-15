@@ -296,6 +296,8 @@ def _materialize_parcel_event(db: Session, tenant_id: str, event: SyncEvent) -> 
         raise ValueError("parcel sync references unknown project")
 
     parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.tenant_id == tenant_id).first()
+    if parcel and parcel.farmer_id != farmer_id:
+        raise ValueError("parcel sync farmer does not match existing parcel farmer")
     if parcel and explicit_project_id and parcel.project_id and parcel.project_id != explicit_project_id:
         raise ValueError("parcel sync project does not match parcel project")
     if not parcel:
@@ -1698,6 +1700,18 @@ def validate_dependencies(
             _first_payload_value(event.payload or {}, "farmer_id", "farmerId")
         )
         if farmer_id and str(farmer_id) in missing:
+            parcel_id = _uuid_or_none(event.entity_id)
+            existing_parcel_farmer_id = None
+            if parcel_id:
+                existing_parcel_farmer_id = db.query(Parcel.farmer_id).filter(
+                    Parcel.id == parcel_id,
+                    Parcel.tenant_id == tenant_id,
+                ).scalar()
+            if (
+                existing_parcel_farmer_id is not None
+                and existing_parcel_farmer_id != farmer_id
+            ):
+                return missing
             farmer_exists = db.query(Farmer.id).filter(
                 Farmer.id == farmer_id,
                 Farmer.tenant_id == tenant_id,
