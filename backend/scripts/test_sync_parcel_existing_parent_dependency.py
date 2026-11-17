@@ -8,7 +8,8 @@ from app.modules.auth.models import User
 from app.modules.farmer.models import Farmer, Parcel, Tenant
 from app.modules.master_data.models.geography import GeographyVillage  # noqa: F401
 from app.modules.sync.authorization import authorize_sync_events
-from app.modules.sync.api import SyncBatchRequest, process_sync_events
+from app.modules.sync.api import process_validated_sync_events
+from app.modules.sync.schemas import SyncBatchRequest
 from app.modules.sync.models import AuditChainEntry, SyncProcessedEvent
 from app.modules.sync.service import (
     SyncEvent,
@@ -322,8 +323,8 @@ try:
         "rejected mismatch creates no committed ledger event",
     )
 
-    ingress_result = process_sync_events(
-        body=SyncBatchRequest(events=[mismatch_event]),
+    ingress_result = process_validated_sync_events(
+        events=SyncBatchRequest(events=[mismatch_event]).events,
         principal=AuthenticatedPrincipal(
             user_id=owner_user_id,
             tenant_id=tenant_id,
@@ -377,8 +378,8 @@ try:
         farmer_id=farmer_id,
         dependency_id=farmer_id,
     )
-    same_owner_result = process_sync_events(
-        body=SyncBatchRequest(events=[same_owner_event]),
+    same_owner_result = process_validated_sync_events(
+        events=SyncBatchRequest(events=[same_owner_event]).events,
         principal=AuthenticatedPrincipal(
             user_id=owner_user_id,
             tenant_id=tenant_id,

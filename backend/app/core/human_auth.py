@@ -10,7 +10,7 @@ from fastapi import Depends, Header, HTTPException
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.modules.auth.models import User
 from app.modules.auth.service import JWT_ALGORITHM, JWT_SECRET
 
@@ -99,6 +99,49 @@ def resolve_authenticated_identity(
     return VerifiedHumanIdentity(user=user, claims=claims)
 
 
+def resolve_authenticated_principal(
+    *,
+    authorization: Optional[str],
+    x_tenant_id: Optional[str],
+    x_actor_id: Optional[str],
+    db: Session,
+) -> AuthenticatedPrincipal:
+    """Resolve a fully materialized principal using the supplied session."""
+
+    identity = resolve_authenticated_identity(
+        authorization=authorization,
+        x_actor_id=x_actor_id,
+        db=db,
+    )
+    user = identity.user
+    claims = identity.claims
+
+    token_tenant = str(claims.get("tenant_id") or "")
+    tenant_id = x_tenant_id or token_tenant or user.tenant_id or ""
+    if not tenant_id:
+        raise _forbidden(
+            "TENANT_ID_REQUIRED",
+            "Authenticated user is not assigned to a tenant.",
+        )
+    if token_tenant and token_tenant != tenant_id:
+        raise _forbidden(
+            "TENANT_ID_MISMATCH",
+            "Token tenant does not match X-Tenant-ID.",
+        )
+    if user.tenant_id and user.tenant_id != tenant_id:
+        raise _forbidden(
+            "TENANT_ID_MISMATCH",
+            "Authenticated user is not assigned to this tenant.",
+        )
+
+    return AuthenticatedPrincipal(
+        user_id=user.id,
+        tenant_id=tenant_id,
+        role=str(user.role or "").upper(),
+        device_id=str(claims.get("device_id") or "") or None,
+    )
+
+
 def require_authenticated_human():
     """Authenticate a persisted active user without imposing an admin role.
 
@@ -112,37 +155,37 @@ def require_authenticated_human():
         x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
         db: Session = Depends(get_db),
     ) -> AuthenticatedPrincipal:
-        identity = resolve_authenticated_identity(
+        return resolve_authenticated_principal(
             authorization=authorization,
+            x_tenant_id=x_tenant_id,
             x_actor_id=x_actor_id,
             db=db,
         )
-        user = identity.user
-        claims = identity.claims
 
-        token_tenant = str(claims.get("tenant_id") or "")
-        tenant_id = x_tenant_id or token_tenant or user.tenant_id or ""
-        if not tenant_id:
-            raise _forbidden(
-                "TENANT_ID_REQUIRED",
-                "Authenticated user is not assigned to a tenant.",
-            )
-        if token_tenant and token_tenant != tenant_id:
-            raise _forbidden(
-                "TENANT_ID_MISMATCH",
-                "Token tenant does not match X-Tenant-ID.",
-            )
-        if user.tenant_id and user.tenant_id != tenant_id:
-            raise _forbidden(
-                "TENANT_ID_MISMATCH",
-                "Authenticated user is not assigned to this tenant.",
-            )
+    return dependency
 
-        return AuthenticatedPrincipal(
-            user_id=user.id,
-            tenant_id=tenant_id,
-            role=str(user.role or "").upper(),
-            device_id=str(claims.get("device_id") or "") or None,
-        )
+
+def require_detached_authenticated_human():
+    """Authenticate and close the auth session before returning the principal.
+
+    Use this for async routes that subsequently open a separate processing
+    session in a worker thread.
+    """
+
+    def dependency(
+        authorization: Optional[str] = Header(None, alias="Authorization"),
+        x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+        x_actor_id: Optional[str] = Header(None, alias="X-Actor-ID"),
+    ) -> AuthenticatedPrincipal:
+        db = SessionLocal()
+        try:
+            return resolve_authenticated_principal(
+                authorization=authorization,
+                x_tenant_id=x_tenant_id,
+                x_actor_id=x_actor_id,
+                db=db,
+            )
+        finally:
+            db.close()
 
     return dependency

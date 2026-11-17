@@ -11,37 +11,23 @@ Per governance:
 """
 
 from typing import Optional
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
-from app.core.database import get_db
-from app.core.human_auth import AuthenticatedPrincipal, require_authenticated_human
+from app.core.database import SessionLocal
+from app.core.human_auth import (
+    AuthenticatedPrincipal,
+    require_detached_authenticated_human,
+)
 from app.modules.sync import service
 from app.modules.sync.authorization import authorize_sync_events
+from app.modules.sync.ingress import preflight_sync_request
+from app.modules.sync.schemas import SyncBatchRequest, SyncEventPayload
 
 router = APIRouter(prefix="/api/v1/sync", tags=["sync"])
-
-
-# --- Request/Response Schemas ---
-
-class SyncEventPayload(BaseModel):
-    """A single sync event from the mobile client."""
-    event_id: UUID
-    entity_type: str = Field(..., description="Canonical entity type (farmer, parcel, crop_cycle, crop_stage)")
-    entity_id: Optional[UUID] = None
-    operation: str = Field(..., pattern="^(CREATE|UPDATE|DELETE)$")
-    payload: dict
-    version: int = Field(default=1, description="Client-side version counter")
-    dependency_ids: list[UUID] = Field(default_factory=list)
-    metadata: dict = Field(default_factory=dict, description="GPS, device_id, timestamp")
-
-
-class SyncBatchRequest(BaseModel):
-    """Batch of sync events."""
-    events: list[SyncEventPayload] = Field(..., min_length=1, max_length=100)
 
 
 class ConflictInfo(BaseModel):
@@ -66,21 +52,16 @@ class SyncBatchResponse(BaseModel):
     total_processed: int
 
 
-# --- Endpoint ---
+def process_validated_sync_events(
+    *,
+    events: list[SyncEventPayload],
+    principal: AuthenticatedPrincipal,
+    db: Session,
+) -> SyncBatchResponse:
+    """Authorize and process events that already passed lossless ingress.
 
-@router.post("/events", response_model=SyncBatchResponse)
-def process_sync_events(
-    body: SyncBatchRequest,
-    principal: AuthenticatedPrincipal = Depends(
-        require_authenticated_human()
-    ),
-    db: Session = Depends(get_db),
-):
-    """Process authenticated offline sync events.
-
-    Tenant and actor identity are derived from the verified bearer principal.
-    Each event is also checked against personal-farmer ownership, explicit
-    project assignment, or bounded web-administrator authority.
+    This seam is intentionally below the HTTP raw-body boundary. Production
+    callers must not use it to bypass ``preflight_sync_request``.
     """
     events_data = [
         {
@@ -96,7 +77,7 @@ def process_sync_events(
             ],
             "metadata": event.metadata,
         }
-        for event in body.events
+        for event in events
     ]
 
     authorized_events, denied_events = authorize_sync_events(
@@ -123,4 +104,48 @@ def process_sync_events(
             for failure in result.failed
         ],
         total_processed=len(events_data),
+    )
+
+
+def process_validated_sync_events_in_session(
+    *,
+    events: list[SyncEventPayload],
+    principal: AuthenticatedPrincipal,
+) -> SyncBatchResponse:
+    """Create, use, and close the SQLAlchemy session in one worker thread."""
+
+    db = SessionLocal()
+    try:
+        return process_validated_sync_events(
+            events=events,
+            principal=principal,
+            db=db,
+        )
+    finally:
+        db.close()
+
+
+# --- Endpoint ---
+
+@router.post("/events", response_model=SyncBatchResponse)
+async def process_sync_events(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(
+        require_detached_authenticated_human()
+    ),
+):
+    """Process authenticated offline sync events.
+
+    Tenant and actor identity are derived from the verified bearer principal.
+    Each event is also checked against personal-farmer ownership, explicit
+    project assignment, or bounded web-administrator authority.
+    """
+    logical_events = await preflight_sync_request(
+        request,
+        lambda event: SyncEventPayload.model_validate(event),
+    )
+    return await run_in_threadpool(
+        process_validated_sync_events_in_session,
+        events=[item.validated for item in logical_events],
+        principal=principal,
     )
