@@ -9,8 +9,8 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, String, Integer, BigInteger, DateTime, Boolean,
-    ForeignKey, Index, Text,
+    CHAR, Column, String, Integer, BigInteger, DateTime, Boolean,
+    CheckConstraint, ForeignKey, Index, Text, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -44,6 +44,109 @@ class SyncProcessedEvent(Base):
 
     __table_args__ = (
         Index("idx_sync_processed_tenant_event", "tenant_id", "event_id"),
+    )
+
+
+class CropActivityCommandBinding(Base):
+    """Immutable request intent and committed result for one activity ID."""
+
+    __tablename__ = "crop_activity_command_bindings"
+
+    activity_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "crop_activities.id",
+            name="fk_crop_activity_command_binding_activity",
+            ondelete="RESTRICT",
+        ),
+        primary_key=True,
+    )
+    tenant_id = Column(String(50), nullable=False)
+    actor_id = Column(UUID(as_uuid=True), nullable=False)
+    farmer_id = Column(UUID(as_uuid=True), nullable=False)
+    crop_cycle_id = Column(UUID(as_uuid=True), nullable=False)
+    origin_kind = Column(String(10), nullable=False)
+    origin_event_id = Column(UUID(as_uuid=True))
+    intent_version = Column(String(40), nullable=False)
+    intent_canonical = Column(Text, nullable=False)
+    intent_sha256 = Column(CHAR(64), nullable=False)
+    resolved_stage_id = Column(UUID(as_uuid=True))
+    result_version = Column(String(40), nullable=False)
+    result_payload = Column(JSONB, nullable=False)
+    audit_correlation_id = Column(UUID(as_uuid=True), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "origin_kind IN ('DIRECT', 'SYNC')",
+            name="ck_crop_activity_command_binding_origin_kind",
+        ),
+        CheckConstraint(
+            "(origin_kind = 'DIRECT' AND origin_event_id IS NULL) OR "
+            "(origin_kind = 'SYNC' AND origin_event_id IS NOT NULL)",
+            name="ck_crop_activity_command_binding_origin_event",
+        ),
+        Index(
+            "idx_crop_activity_command_binding_tenant_cycle",
+            "tenant_id",
+            "crop_cycle_id",
+        ),
+        Index(
+            "idx_crop_activity_command_binding_tenant_event",
+            "tenant_id",
+            "origin_event_id",
+        ),
+    )
+
+
+class CropActivitySyncEventBinding(Base):
+    """Committed sync-event identity for one activity command binding."""
+
+    __tablename__ = "crop_activity_sync_event_bindings"
+
+    event_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "sync_processed_events.event_id",
+            name="fk_crop_activity_sync_event_binding_event",
+            ondelete="RESTRICT",
+        ),
+        primary_key=True,
+    )
+    tenant_id = Column(String(50), nullable=False)
+    actor_id = Column(UUID(as_uuid=True), nullable=False)
+    activity_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "crop_activity_command_bindings.activity_id",
+            name="fk_crop_activity_sync_event_binding_activity",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    intent_version = Column(String(40), nullable=False)
+    intent_canonical = Column(Text, nullable=False)
+    intent_sha256 = Column(CHAR(64), nullable=False)
+    outcome = Column(String(20), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "outcome = 'COMMITTED'",
+            name="ck_crop_activity_sync_event_binding_outcome",
+        ),
+        UniqueConstraint(
+            "activity_id",
+            name="uq_crop_activity_sync_event_binding_activity",
+        ),
     )
 
 

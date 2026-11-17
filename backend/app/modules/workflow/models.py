@@ -428,6 +428,8 @@ class CropActivity(Base, UUIDPrimaryKey, AuditMixin):
     activity_date = Column(Date, nullable=False)
     gps_lat = Column(DECIMAL(10, 8))
     gps_lng = Column(DECIMAL(11, 8))
+    irrigation_source = Column(String(100))
+    duration_hours = Column(DECIMAL(10, 2))
 
     # Who logged it
     logged_by = Column(UUID(as_uuid=True), nullable=False)
