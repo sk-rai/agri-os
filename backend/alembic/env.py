@@ -68,12 +68,15 @@ from app.modules.master_data.models import (  # noqa: F401
 )
 
 config = context.config
+supplied_connection = config.attributes.get("connection")
 
-# Override sqlalchemy.url from settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+if supplied_connection is None:
+    # Preserve the normal application migration path. A verifier-supplied
+    # connection has already been admitted and must not be replaced or have its
+    # logging configuration reinitialized here.
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    if config.config_file_name is not None:
+        fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
@@ -93,18 +96,31 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
+    def run(connection) -> None:
+        options = dict(
+            connection=connection,
+            target_metadata=target_metadata,
+        )
+        version_table_schema = config.attributes.get("version_table_schema")
+        if version_table_schema is not None:
+            options["version_table_schema"] = version_table_schema
+        context.configure(**options)
+        with context.begin_transaction():
+            context.run_migrations()
+
+    if supplied_connection is not None:
+        if not supplied_connection.engine.hide_parameters:
+            raise RuntimeError("SUPPLIED_CONNECTION_MUST_HIDE_PARAMETERS")
+        run(supplied_connection)
+        return
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+        run(connection)
 
 
 if context.is_offline_mode():
