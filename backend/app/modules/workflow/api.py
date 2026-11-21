@@ -10,13 +10,14 @@ All mutations require: actor_id, timestamp, GPS.
 """
 
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone, date, timedelta
-from typing import Any, Optional
+from decimal import Decimal
+from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.database import get_db
 from app.core.admin_auth import (
@@ -55,6 +56,13 @@ from app.modules.farmer.models import (
     Project,
 )
 from app.modules.sync.service import append_audit
+from app.modules.sync.ingress import read_lossless_json_object
+from app.modules.workflow.activity_command import CropActivityCreateCommand
+from app.modules.workflow.activity_create_service import (
+    ActivityCommandError,
+    ResolvedActivityTraceability,
+    execute_direct_activity_create,
+)
 
 router = APIRouter(prefix="/api/v1/crop-cycles", tags=["crop-cycles"])
 
@@ -66,19 +74,6 @@ WORKFLOW_WEB_ADMIN_ROLES = {
     "ADMIN_EDITOR",
     "ADMIN_PUBLISHER",
 }
-
-
-def _is_crop_activity_primary_key_collision(exc: IntegrityError) -> bool:
-    """Recognize only PostgreSQL's crop-activity primary-key collision."""
-
-    original_error = getattr(exc, "orig", None)
-    sqlstate = (
-        getattr(original_error, "sqlstate", None)
-        or getattr(original_error, "pgcode", None)
-    )
-    diagnostic = getattr(original_error, "diag", None)
-    constraint_name = getattr(diagnostic, "constraint_name", None)
-    return sqlstate == "23505" and constraint_name == "crop_activities_pkey"
 
 
 def _workflow_admin_can_edit(
@@ -311,36 +306,86 @@ class CropCycleCompleteRequest(BaseModel):
     gps_lng: Optional[float] = None
 
 
+ActivityDecimal10_2 = Annotated[
+    Decimal,
+    Field(ge=Decimal("0"), max_digits=10, decimal_places=2),
+]
+ActivityDecimal12_2 = Annotated[
+    Decimal,
+    Field(ge=Decimal("0"), max_digits=12, decimal_places=2),
+]
+ActivityDecimal12_3 = Annotated[
+    Decimal,
+    Field(ge=Decimal("0"), max_digits=12, decimal_places=3),
+]
+ActivityLatitude = Annotated[
+    Decimal,
+    Field(
+        ge=Decimal("-90"),
+        le=Decimal("90"),
+        max_digits=10,
+        decimal_places=8,
+    ),
+]
+ActivityLongitude = Annotated[
+    Decimal,
+    Field(
+        ge=Decimal("-180"),
+        le=Decimal("180"),
+        max_digits=11,
+        decimal_places=8,
+    ),
+]
+
+
 class ActivityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     activity_id: Optional[uuid.UUID] = Field(
         default=None,
-        description="Stable client-generated identity reused by offline fallback",
+        description="Optional stable direct-command identity for exact replay",
     )
     activity_type: str = Field(..., pattern=r"^(FERTILIZER|PESTICIDE|IRRIGATION|LABOR|MACHINERY|HARVEST|SEED|OTHER)$")
-    input_code: Optional[str] = None
-    input_name: Optional[str] = None
-    quantity: Optional[float] = None
-    quantity_unit: Optional[str] = None
-    area_applied: Optional[float] = None
-    area_unit: Optional[str] = None
+    input_code: Optional[str] = Field(default=None, max_length=50)
+    input_name: Optional[str] = Field(default=None, max_length=200)
+    requested_stage_id: Optional[uuid.UUID] = None
+    requested_stage_code: Optional[str] = Field(default=None, max_length=50)
+    quantity: Optional[ActivityDecimal10_2] = None
+    quantity_unit: Optional[str] = Field(default=None, max_length=20)
+    area_applied: Optional[ActivityDecimal10_2] = None
+    area_unit: Optional[str] = Field(default=None, max_length=20)
     input_rule_id: Optional[uuid.UUID] = None
     product_id: Optional[uuid.UUID] = None
-    product_code: Optional[str] = None
+    product_code: Optional[str] = Field(default=None, max_length=80)
     package_id: Optional[uuid.UUID] = None
-    package_sku: Optional[str] = None
-    recommended_quantity: Optional[float] = None
-    recommended_quantity_unit: Optional[str] = None
-    actual_quantity: Optional[float] = None
-    actual_quantity_unit: Optional[str] = None
+    package_sku: Optional[str] = Field(default=None, max_length=100)
+    recommended_quantity: Optional[ActivityDecimal12_3] = None
+    recommended_quantity_unit: Optional[str] = Field(default=None, max_length=20)
+    actual_quantity: Optional[ActivityDecimal12_3] = None
+    actual_quantity_unit: Optional[str] = Field(default=None, max_length=20)
     dosage_variance_reason: Optional[str] = None
-    cost_amount: Optional[float] = None
+    cost_amount: Optional[ActivityDecimal12_2] = None
+    cost_currency: Optional[str] = Field(default="INR", max_length=5)
     activity_date: date
-    gps_lat: Optional[float] = None
-    gps_lng: Optional[float] = None
+    gps_lat: Optional[ActivityLatitude] = None
+    gps_lng: Optional[ActivityLongitude] = None
     notes: Optional[str] = None
     # Irrigation-specific
-    irrigation_source: Optional[str] = None
-    duration_hours: Optional[float] = None
+    irrigation_source: Optional[str] = Field(default=None, max_length=100)
+    duration_hours: Optional[ActivityDecimal10_2] = None
+
+
+async def _parse_activity_create_request(request: Request) -> ActivityCreate:
+    try:
+        return ActivityCreate.model_validate(await read_lossless_json_object(request))
+    except ValidationError:
+        raise HTTPException(
+            422,
+            {
+                "error": "ACTIVITY_PAYLOAD_INVALID",
+                "message": "Activity request validation failed.",
+            },
+        )
 
 
 class CropCycleResponse(BaseModel):
@@ -539,22 +584,13 @@ def _validate_activity_traceability(db: Session, *, tenant_id: str, cycle: CropC
         product = query.first()
         if not product:
             raise HTTPException(404, "Active product not found")
+        if product_code and product.code != product_code:
+            raise HTTPException(409, "product_id and product_code identify different products")
         if input_code and product.canonical_input.code != input_code:
             raise HTTPException(409, "Product canonical input does not match activity input_code")
         input_code = input_code or product.canonical_input.code
         product_code = product.code
         trace["product"] = product
-
-        if cycle.project_id:
-            approvals = db.query(ProjectProductApproval).filter(
-                ProjectProductApproval.tenant_id == tenant_id,
-                ProjectProductApproval.project_id == cycle.project_id,
-                ProjectProductApproval.is_active == True,
-            ).all()
-            if approvals:
-                approval = next((row for row in approvals if row.product_id == product.id), None)
-                if not approval or not approval.enabled:
-                    raise HTTPException(409, "Product is not enabled for this project")
 
     package = None
     if body.package_id or package_sku:
@@ -563,6 +599,8 @@ def _validate_activity_traceability(db: Session, *, tenant_id: str, cycle: CropC
         package = query.first()
         if not package:
             raise HTTPException(404, "Active product package not found")
+        if package_sku and package.sku != package_sku:
+            raise HTTPException(409, "package_id and package_sku identify different packages")
         if product and package.product_id != product.id:
             raise HTTPException(409, "Package does not belong to selected product")
         if not product:
@@ -576,6 +614,17 @@ def _validate_activity_traceability(db: Session, *, tenant_id: str, cycle: CropC
             trace["product"] = product
         package_sku = package.sku
         trace["package"] = package
+
+    if product and cycle.project_id:
+        approvals = db.query(ProjectProductApproval).filter(
+            ProjectProductApproval.tenant_id == tenant_id,
+            ProjectProductApproval.project_id == cycle.project_id,
+            ProjectProductApproval.is_active == True,
+        ).all()
+        if approvals:
+            approval = next((row for row in approvals if row.product_id == product.id), None)
+            if not approval or not approval.enabled:
+                raise HTTPException(409, "Product is not enabled for this project")
 
     if trace["input_rule"] and product_code:
         allowed = [str(code).upper() for code in (trace["input_rule"].allowed_product_codes or [])]
@@ -1893,212 +1942,166 @@ def complete_crop_cycle(
     )
 
 
-@router.post("/{cycle_id}/activities", status_code=201)
+@router.post(
+    "/{cycle_id}/activities",
+    status_code=201,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {"schema": ActivityCreate.model_json_schema()}
+            },
+        }
+    },
+)
 def log_activity(
     cycle_id: uuid.UUID,
-    body: ActivityCreate,
+    body: ActivityCreate = Depends(_parse_activity_create_request),
     principal: AuthenticatedPrincipal = Depends(
         require_authenticated_human()
     ),
     db: Session = Depends(get_db),
 ):
-    """Log an agricultural activity (fertilizer, pesticide, irrigation, etc.).
+    """Log one direct activity through the canonical transactional command.
 
-    Activities are stage-aware: linked to the currently ACTIVE stage.
-    If no stage is active, activity is still accepted (linked to cycle only).
-    Append-only for conflict resolution.
+    Numeric activity fields are exact constrained decimals. Unknown request
+    fields are rejected rather than ignored. The explicit OpenAPI body above
+    documents this compatibility boundary while runtime parsing remains
+    lossless and bounded.
     """
 
-    tenant_id = principal.tenant_id
-    actor_id = str(principal.user_id)
-
-    def activity_reuse_response(existing_activity: CropActivity) -> dict:
-        existing_stage_code = None
-        if existing_activity.stage_instance_id:
-            existing_stage_code = db.query(CropStageInstance.stage_code).filter(
-                CropStageInstance.id == existing_activity.stage_instance_id,
-                CropStageInstance.tenant_id == tenant_id,
-            ).scalar()
-        current_total = db.query(CropCycle.total_input_cost).filter(
-            CropCycle.id == cycle_id,
-            CropCycle.tenant_id == tenant_id,
-        ).scalar()
-        return {
-            "activity_id": str(existing_activity.id),
-            "activity_type": existing_activity.activity_type,
-            "input_rule_id": str(existing_activity.input_rule_id) if existing_activity.input_rule_id else None,
-            "product_code": existing_activity.product_code,
-            "package_sku": existing_activity.package_sku,
-            "stage_code": existing_stage_code,
-            "cycle_total_input_cost": str(current_total or 0),
-            "events_published": [],
-        }
-
-    def activity_id_reuse_conflict() -> HTTPException:
-        return HTTPException(
-            409,
-            {
-                "error": "ACTIVITY_ID_REUSE",
-                "message": "Activity identity is unavailable.",
-            },
-        )
-
-    # Verify cycle exists and belongs to tenant
-    cycle = (
-        db.query(CropCycle)
-        .filter(CropCycle.id == cycle_id, CropCycle.tenant_id == tenant_id)
-        .first()
-    )
-    if not cycle:
-        raise HTTPException(404, "Crop cycle not found")
-
-    _require_principal_can_operate_cycle_farmer(
-        db,
-        principal=principal,
-        farmer_id=cycle.farmer_id,
-    )
-    existing_activity = None
-    if body.activity_id is not None:
-        existing_activity = (
-            db.query(CropActivity)
-            .filter(
-                CropActivity.id == body.activity_id,
-                CropActivity.tenant_id == tenant_id,
-            )
-            .first()
-        )
-    if existing_activity is not None:
-        if existing_activity.crop_cycle_id != cycle_id:
-            raise activity_id_reuse_conflict()
-        return activity_reuse_response(existing_activity)
-    if cycle.status == "COMPLETED":
-        raise HTTPException(409, "Completed crop cycles are read-only")
-    traceability = _validate_activity_traceability(db, tenant_id=tenant_id, cycle=cycle, body=body)
-    assert_catalog_input_allowed_for_project_crop(db, tenant_id=tenant_id, project_id=cycle.project_id, crop_code=cycle.crop_code, input_code=traceability["input_code"] or body.input_code)
-
-    # Find currently active stage (if any)
-    active_stage = (
-        db.query(CropStageInstance)
-        .filter(
-            CropStageInstance.crop_cycle_id == cycle_id,
-            CropStageInstance.tenant_id == tenant_id,
-            CropStageInstance.status == "ACTIVE",
-        )
-        .order_by(CropStageInstance.stage_order.desc())
-        .first()
-    )
-
-    activity = CropActivity(
-        id=body.activity_id or uuid.uuid4(),
+    activity_id = body.activity_id or uuid.uuid4()
+    command = CropActivityCreateCommand(
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        farmer_id=uuid.UUID(int=0),  # Replaced from the locked cycle below.
         crop_cycle_id=cycle_id,
-        stage_instance_id=active_stage.id if active_stage else None,
-        tenant_id=tenant_id,
-        farmer_id=cycle.farmer_id,
+        activity_id=activity_id,
+        requested_stage_id=body.requested_stage_id,
+        requested_stage_code=body.requested_stage_code,
         activity_type=body.activity_type,
-        input_code=traceability["input_code"] or body.input_code,
+        activity_date=body.activity_date,
+        input_code=body.input_code,
         input_name=body.input_name,
+        input_rule_id=body.input_rule_id,
+        product_id=body.product_id,
+        product_code=body.product_code,
+        package_id=body.package_id,
+        package_sku=body.package_sku,
         quantity=body.quantity,
         quantity_unit=body.quantity_unit,
         area_applied=body.area_applied,
         area_unit=body.area_unit,
-        input_rule_id=body.input_rule_id,
-        product_id=traceability["product"].id if traceability["product"] else body.product_id,
-        product_code=traceability["product_code"],
-        package_id=traceability["package"].id if traceability["package"] else body.package_id,
-        package_sku=traceability["package_sku"],
         recommended_quantity=body.recommended_quantity,
         recommended_quantity_unit=body.recommended_quantity_unit,
         actual_quantity=body.actual_quantity,
         actual_quantity_unit=body.actual_quantity_unit,
         dosage_variance_reason=body.dosage_variance_reason,
         cost_amount=body.cost_amount,
-        activity_date=body.activity_date,
+        cost_currency=body.cost_currency,
         gps_lat=body.gps_lat,
         gps_lng=body.gps_lng,
-        logged_by=uuid.UUID(actor_id),
+        irrigation_source=body.irrigation_source,
+        duration_hours=body.duration_hours,
         notes=body.notes,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
     )
-    db.add(activity)
-    try:
-        # Resolve a supplied globally keyed identity before applying economics
-        # or audit effects. This also catches a concurrent insert that won
-        # after the initial tenant-scoped lookup.
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        if not (
-            body.activity_id is not None
-            and _is_crop_activity_primary_key_collision(exc)
-        ):
-            raise
 
-        winner = db.query(CropActivity).filter(
-            CropActivity.id == body.activity_id,
-            CropActivity.tenant_id == tenant_id,
-        ).first()
-        if winner is None or winner.crop_cycle_id != cycle_id:
-            raise activity_id_reuse_conflict()
+    # Farmer identity is backend-derived for the direct endpoint, but it must be
+    # fixed before canonicalization and command execution.
+    initial_cycle = db.query(CropCycle).filter(
+        CropCycle.id == cycle_id,
+        CropCycle.tenant_id == principal.tenant_id,
+    ).first()
+    if initial_cycle is None:
+        raise HTTPException(404, "Crop cycle not found")
+    command = replace(command, farmer_id=initial_cycle.farmer_id)
 
-        current_cycle = db.query(CropCycle).filter(
-            CropCycle.id == cycle_id,
-            CropCycle.tenant_id == tenant_id,
-        ).first()
-        if current_cycle is None:
-            raise activity_id_reuse_conflict()
+    def authorize_farmer(farmer_id: uuid.UUID) -> None:
         _require_principal_can_operate_cycle_farmer(
             db,
             principal=principal,
-            farmer_id=current_cycle.farmer_id,
+            farmer_id=farmer_id,
         )
-        return activity_reuse_response(winner)
 
-    # Update cycle economics
-    if body.cost_amount:
-        from decimal import Decimal
-        cycle.total_input_cost = (cycle.total_input_cost or Decimal("0")) + Decimal(str(body.cost_amount))
-        cycle.updated_at = datetime.now(timezone.utc)
+    def resolve_traceability(
+        cycle: CropCycle,
+        normalized: CropActivityCreateCommand,
+    ) -> ResolvedActivityTraceability:
+        try:
+            traceability = _validate_activity_traceability(
+                db,
+                tenant_id=principal.tenant_id,
+                cycle=cycle,
+                body=normalized,
+            )
+            input_code = traceability["input_code"] or normalized.input_code
+            assert_catalog_input_allowed_for_project_crop(
+                db,
+                tenant_id=principal.tenant_id,
+                project_id=cycle.project_id,
+                crop_code=cycle.crop_code,
+                input_code=input_code,
+            )
+        except HTTPException as exc:
+            raise ActivityCommandError(
+                "ACTIVITY_TRACEABILITY_INVALID",
+                422,
+                "Activity traceability selection is invalid.",
+            ) from exc
+        product = traceability["product"]
+        package = traceability["package"]
+        return ResolvedActivityTraceability(
+            input_code=input_code,
+            product_id=product.id if product else normalized.product_id,
+            product_code=traceability["product_code"],
+            package_id=package.id if package else normalized.package_id,
+            package_sku=traceability["package_sku"],
+        )
 
-    # Audit
-    correlation_id = str(uuid.uuid4())
-    append_audit(
-        db=db,
-        tenant_id=tenant_id,
-        actor_id=actor_id,
-        correlation_id=correlation_id,
-        entity_type="crop_activity",
-        entity_id=str(activity.id),
-        action="ACTIVITY_LOGGED",
-        payload={
-            "activity_type": body.activity_type,
-            "input_code": traceability["input_code"] or body.input_code,
-            "input_rule_id": str(body.input_rule_id) if body.input_rule_id else None,
-            "product_code": traceability["product_code"],
-            "package_sku": traceability["package_sku"],
-            "quantity": str(body.quantity) if body.quantity else None,
-            "cost": str(body.cost_amount) if body.cost_amount else None,
-            "stage_code": active_stage.stage_code if active_stage else None,
-        },
-        metadata={
-            "gps_lat": body.gps_lat,
-            "gps_lng": body.gps_lng,
-            "cycle_id": str(cycle_id),
-        },
+    def append_business_audit(
+        correlation_id: uuid.UUID,
+        payload: dict,
+        metadata: dict,
+    ) -> None:
+        append_audit(
+            db=db,
+            tenant_id=principal.tenant_id,
+            actor_id=str(principal.user_id),
+            correlation_id=str(correlation_id),
+            entity_type="crop_activity",
+            entity_id=str(activity_id),
+            action="ACTIVITY_LOGGED",
+            payload=payload,
+            metadata=metadata,
+        )
+
+    try:
+        result = execute_direct_activity_create(
+            db,
+            command=command,
+            authorize_farmer=authorize_farmer,
+            resolve_traceability=resolve_traceability,
+            append_business_audit=append_business_audit,
+        )
+        db.commit()
+    except ActivityCommandError as exc:
+        db.rollback()
+        raise HTTPException(
+            exc.status_code,
+            {"error": exc.code, "message": exc.public_message},
+        )
+    except BaseException:
+        db.rollback()
+        raise
+    response = dict(result.payload)
+    response.update(
+        {
+            "outcome": result.outcome,
+            "intent_version": result.intent.version,
+            "intent_sha256": result.intent.sha256,
+        }
     )
-
-    db.commit()
-
-    return {
-        "activity_id": str(activity.id),
-        "activity_type": body.activity_type,
-        "input_rule_id": str(activity.input_rule_id) if activity.input_rule_id else None,
-        "product_code": activity.product_code,
-        "package_sku": activity.package_sku,
-        "stage_code": active_stage.stage_code if active_stage else None,
-        "cycle_total_input_cost": str(cycle.total_input_cost or 0),
-        "events_published": ["crop_activity_logged.v1"],
-    }
+    return response
 
 
 @router.get("/{cycle_id}/activities")

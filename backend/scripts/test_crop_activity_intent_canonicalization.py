@@ -22,6 +22,7 @@ from app.modules.workflow.activity_command import (  # noqa: E402
     CropActivityCreateCommand,
     QueuedActivityOrigin,
     canonicalize_activity_intent,
+    normalize_activity_command,
 )
 assert "app.core.database" not in sys.modules
 
@@ -204,10 +205,25 @@ def main() -> None:
         replace(command(), quantity=Decimal("1.001")),
         "ACTIVITY_INTENT_DECIMAL_SCALE",
     )
-    expect_error(
-        replace(command(), activity_type="irrigation"),
-        "ACTIVITY_INTENT_CODE_INVALID",
+    lowercase_type = canonicalize_activity_intent(
+        replace(command(), activity_type="irrigation")
     )
+    assert json.loads(lowercase_type.canonical_text)["activity_type"] == "IRRIGATION"
+    expect_error(
+        replace(command(), activity_type="NOT_A_REAL_ACTIVITY"),
+        "ACTIVITY_INTENT_TYPE_INVALID",
+    )
+    combining_source = "\u0390"
+    normalized_once = normalize_activity_command(
+        replace(command(), input_code=combining_source)
+    )
+    normalized_twice = normalize_activity_command(normalized_once)
+    expected_code = unicodedata.normalize("NFC", combining_source.upper())
+    assert normalized_once.input_code == expected_code
+    assert normalized_twice == normalized_once
+    assert json.loads(
+        canonicalize_activity_intent(normalized_once).canonical_text
+    )["input_code"] == expected_code
     expect_error(
         replace(command(), activity_date="2026-11-17"),
         "ACTIVITY_INTENT_DATE_INVALID",

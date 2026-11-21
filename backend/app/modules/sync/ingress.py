@@ -241,7 +241,7 @@ def _scan_json_limits(text: str) -> None:
             index += 1  # ``json.loads`` supplies the fixed syntax rejection.
 
 
-def _parse_lossless(body: bytes) -> dict[str, Any]:
+def _parse_lossless_value(body: bytes) -> Any:
     try:
         text = body.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
@@ -261,6 +261,11 @@ def _parse_lossless(body: bytes) -> dict[str, Any]:
         raise
     except (json.JSONDecodeError, RecursionError):
         raise _IngressError(400, "SYNC_JSON_INVALID", "Malformed sync JSON.")
+    return parsed
+
+
+def _parse_lossless(body: bytes) -> dict[str, Any]:
+    parsed = _parse_lossless_value(body)
     if not isinstance(parsed, dict) or set(parsed) != {"events"}:
         raise _IngressError(422, "SYNC_ENVELOPE_INVALID", "Expected only an events array.")
     events = parsed.get("events")
@@ -269,6 +274,40 @@ def _parse_lossless(body: bytes) -> dict[str, Any]:
     if any(not isinstance(event, dict) for event in events):
         raise _IngressError(422, "SYNC_ENVELOPE_INVALID", "Each event must be an object.")
     return parsed
+
+
+def _decimal_runtime_value(value: Any) -> Any:
+    """Convert a lossless tree without passing numbers through binary floats."""
+
+    if isinstance(value, LosslessNumber):
+        return value.value
+    if isinstance(value, dict):
+        return {key: _decimal_runtime_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_decimal_runtime_value(child) for child in value]
+    return value
+
+
+async def read_lossless_json_object(request: Request) -> dict[str, Any]:
+    """Read one bounded strict JSON object with Decimal numeric values."""
+
+    try:
+        parsed = _parse_lossless_value(await _read_bounded_body(request))
+        if not isinstance(parsed, dict):
+            raise _IngressError(
+                422,
+                "ACTIVITY_PAYLOAD_INVALID",
+                "Activity request must be a JSON object.",
+            )
+        return _decimal_runtime_value(parsed)
+    except _IngressError as error:
+        raise HTTPException(
+            status_code=413 if error.status == 413 else 422,
+            detail={
+                "error": "ACTIVITY_PAYLOAD_INVALID",
+                "message": "Activity request body is invalid.",
+            },
+        )
 
 
 def _runtime_value(value: Any) -> Any:

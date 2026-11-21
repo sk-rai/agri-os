@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -19,6 +19,9 @@ from uuid import UUID
 
 ACTIVITY_INTENT_VERSION = "crop_activity_intent.v1"
 ACTIVITY_RESULT_VERSION = "crop_activity_result.v1"
+ACTIVITY_TYPES = frozenset(
+    {"FERTILIZER", "PESTICIDE", "IRRIGATION", "LABOR", "MACHINERY", "HARVEST", "SEED", "OTHER"}
+)
 
 
 @dataclass(frozen=True)
@@ -79,7 +82,10 @@ def _text(value: str | None) -> str | None:
         return None
     if not isinstance(value, str):
         raise ValueError("ACTIVITY_INTENT_TEXT_INVALID")
-    return unicodedata.normalize("NFC", value)
+    normalized = unicodedata.normalize("NFC", value)
+    if "\x00" in normalized:
+        raise ValueError("ACTIVITY_INTENT_TEXT_INVALID")
+    return normalized
 
 
 def _code(value: str | None) -> str | None:
@@ -88,6 +94,105 @@ def _code(value: str | None) -> str | None:
         return None
     if not normalized or normalized != normalized.upper():
         raise ValueError("ACTIVITY_INTENT_CODE_INVALID")
+    return normalized
+
+
+def _normalize_code_input(value: str | None) -> str | None:
+    normalized = _text(value)
+    if normalized is None:
+        return None
+    normalized = unicodedata.normalize(
+        "NFC",
+        normalized.strip().upper().replace(" ", "_"),
+    )
+    return normalized or None
+
+
+def _bounded(value: str | None, maximum: int, code: str) -> str | None:
+    if value is not None and len(value) > maximum:
+        raise ValueError(code)
+    return value
+
+
+def normalize_activity_command(
+    command: CropActivityCreateCommand,
+) -> CropActivityCreateCommand:
+    """Return the single normalized command used for hash and persistence."""
+
+    if not isinstance(command, CropActivityCreateCommand):
+        raise ValueError("ACTIVITY_INTENT_COMMAND_INVALID")
+    queued_origin = command.queued_origin
+    if queued_origin is not None:
+        queued_origin = replace(
+            queued_origin,
+            entity_type=_text(queued_origin.entity_type),
+            operation=_normalize_code_input(queued_origin.operation),
+        )
+    normalized = replace(
+        command,
+        tenant_id=_bounded(_text(command.tenant_id), 50, "ACTIVITY_TENANT_LENGTH"),
+        requested_stage_code=_bounded(
+            _normalize_code_input(command.requested_stage_code),
+            50,
+            "ACTIVITY_STAGE_CODE_LENGTH",
+        ),
+        activity_type=_bounded(
+            _normalize_code_input(command.activity_type),
+            30,
+            "ACTIVITY_TYPE_LENGTH",
+        ),
+        input_code=_bounded(
+            _normalize_code_input(command.input_code),
+            50,
+            "ACTIVITY_INPUT_CODE_LENGTH",
+        ),
+        input_name=_bounded(_text(command.input_name), 200, "ACTIVITY_INPUT_NAME_LENGTH"),
+        product_code=_bounded(
+            _normalize_code_input(command.product_code),
+            80,
+            "ACTIVITY_PRODUCT_CODE_LENGTH",
+        ),
+        package_sku=_bounded(
+            _normalize_code_input(command.package_sku),
+            100,
+            "ACTIVITY_PACKAGE_SKU_LENGTH",
+        ),
+        quantity_unit=_bounded(
+            _normalize_code_input(command.quantity_unit),
+            20,
+            "ACTIVITY_QUANTITY_UNIT_LENGTH",
+        ),
+        area_unit=_bounded(
+            _normalize_code_input(command.area_unit),
+            20,
+            "ACTIVITY_AREA_UNIT_LENGTH",
+        ),
+        recommended_quantity_unit=_bounded(
+            _normalize_code_input(command.recommended_quantity_unit),
+            20,
+            "ACTIVITY_RECOMMENDED_UNIT_LENGTH",
+        ),
+        actual_quantity_unit=_bounded(
+            _normalize_code_input(command.actual_quantity_unit),
+            20,
+            "ACTIVITY_ACTUAL_UNIT_LENGTH",
+        ),
+        dosage_variance_reason=_text(command.dosage_variance_reason),
+        cost_currency=_bounded(
+            _normalize_code_input(command.cost_currency),
+            5,
+            "ACTIVITY_CURRENCY_LENGTH",
+        ),
+        irrigation_source=_bounded(
+            _normalize_code_input(command.irrigation_source),
+            100,
+            "ACTIVITY_IRRIGATION_SOURCE_LENGTH",
+        ),
+        notes=_text(command.notes),
+        queued_origin=queued_origin,
+    )
+    if normalized.activity_type not in ACTIVITY_TYPES:
+        raise ValueError("ACTIVITY_INTENT_TYPE_INVALID")
     return normalized
 
 
@@ -178,8 +283,7 @@ def _queued(origin: QueuedActivityOrigin | None) -> dict[str, Any]:
 def canonicalize_activity_intent(
     command: CropActivityCreateCommand,
 ) -> CanonicalActivityIntent:
-    if not isinstance(command, CropActivityCreateCommand):
-        raise ValueError("ACTIVITY_INTENT_COMMAND_INVALID")
+    command = normalize_activity_command(command)
 
     payload: dict[str, Any] = {
         "intent_version": ACTIVITY_INTENT_VERSION,
