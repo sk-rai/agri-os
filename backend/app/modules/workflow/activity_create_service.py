@@ -1,8 +1,8 @@
 """Transactional crop-activity CREATE command service.
 
-The direct endpoint uses this service first.  The queued adapter remains gated,
-but must call this same command core once its batch-wide lock plan is approved.
-This module never commits its SQLAlchemy session.
+Direct and queued entry points use this same command core.  Entry-point-specific
+ledger and response effects remain outside it.  This module never commits its
+SQLAlchemy session.
 """
 
 from __future__ import annotations
@@ -102,6 +102,26 @@ def acquire_direct_activity_locks(
     _advisory_lock(db, _CYCLE_LOCK_NAMESPACE, crop_cycle_id)
 
 
+def acquire_activity_identity_locks(
+    db: Session,
+    identities: set[uuid.UUID],
+) -> None:
+    """Acquire a transaction-wide sorted ACTIVITY lock set."""
+
+    for identity in sorted(identities, key=str):
+        _advisory_lock(db, _ACTIVITY_LOCK_NAMESPACE, identity)
+
+
+def acquire_cycle_identity_locks(
+    db: Session,
+    identities: set[uuid.UUID],
+) -> None:
+    """Acquire a transaction-wide sorted CYCLE lock set after activity locks."""
+
+    for identity in sorted(identities, key=str):
+        _advisory_lock(db, _CYCLE_LOCK_NAMESPACE, identity)
+
+
 def _load_locked_cycle(
     db: Session,
     *,
@@ -166,14 +186,18 @@ def _validate_field_relationships(command: CropActivityCreateCommand) -> None:
         )
 
 
-def _binding_matches_direct(
+def _binding_matches(
     binding: CropActivityCommandBinding,
     command: CropActivityCreateCommand,
     intent: CanonicalActivityIntent,
 ) -> bool:
+    expected_origin = "SYNC" if command.queued_origin is not None else "DIRECT"
+    expected_event_id = (
+        command.queued_origin.event_id if command.queued_origin is not None else None
+    )
     return (
-        binding.origin_kind == "DIRECT"
-        and binding.origin_event_id is None
+        binding.origin_kind == expected_origin
+        and binding.origin_event_id == expected_event_id
         and binding.tenant_id == command.tenant_id
         and binding.actor_id == command.actor_id
         and binding.farmer_id == command.farmer_id
@@ -242,7 +266,7 @@ def _replay_result(
 ) -> ActivityCommandResult:
     if activity is None or activity.id != binding.activity_id:
         raise _identity_unavailable()
-    if not _binding_matches_direct(binding, command, intent):
+    if not _binding_matches(binding, command, intent):
         raise _identity_unavailable()
     if binding.result_version != ACTIVITY_RESULT_VERSION:
         raise _identity_unavailable()
@@ -320,7 +344,7 @@ def _replay_result(
     )
 
 
-def execute_direct_activity_create(
+def execute_activity_create(
     db: Session,
     *,
     command: CropActivityCreateCommand,
@@ -328,12 +352,7 @@ def execute_direct_activity_create(
     resolve_traceability: ResolveTraceability,
     append_business_audit: AppendBusinessAudit,
 ) -> ActivityCommandResult:
-    """Execute or exactly replay one direct activity command without commit."""
-
-    if command.queued_origin is not None:
-        raise ActivityCommandError(
-            "ACTIVITY_PAYLOAD_INVALID", 422, "Direct activity origin is invalid."
-        )
+    """Execute or exactly replay one canonical activity command without commit."""
     try:
         normalized_command = normalize_activity_command(command)
         intent = canonicalize_activity_intent(normalized_command)
@@ -475,8 +494,12 @@ def execute_direct_activity_create(
             actor_id=command.actor_id,
             farmer_id=command.farmer_id,
             crop_cycle_id=command.crop_cycle_id,
-            origin_kind="DIRECT",
-            origin_event_id=None,
+            origin_kind="SYNC" if command.queued_origin is not None else "DIRECT",
+            origin_event_id=(
+                command.queued_origin.event_id
+                if command.queued_origin is not None
+                else None
+            ),
             intent_version=intent.version,
             intent_canonical=intent.canonical_text,
             intent_sha256=intent.sha256,
@@ -489,3 +512,26 @@ def execute_direct_activity_create(
     )
     db.flush()
     return ActivityCommandResult(outcome="COMMITTED", intent=intent, payload=payload)
+
+
+def execute_direct_activity_create(
+    db: Session,
+    *,
+    command: CropActivityCreateCommand,
+    authorize_farmer: AuthorizeFarmer,
+    resolve_traceability: ResolveTraceability,
+    append_business_audit: AppendBusinessAudit,
+) -> ActivityCommandResult:
+    """Compatibility wrapper that admits only the direct command origin."""
+
+    if command.queued_origin is not None:
+        raise ActivityCommandError(
+            "ACTIVITY_PAYLOAD_INVALID", 422, "Direct activity origin is invalid."
+        )
+    return execute_activity_create(
+        db,
+        command=command,
+        authorize_farmer=authorize_farmer,
+        resolve_traceability=resolve_traceability,
+        append_business_audit=append_business_audit,
+    )

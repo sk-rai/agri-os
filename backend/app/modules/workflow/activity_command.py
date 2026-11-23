@@ -31,6 +31,7 @@ class QueuedActivityOrigin:
     operation: str
     client_version: int
     dependency_ids: tuple[UUID, ...]
+    sync_envelope_canonical: str | None = None
 
 
 @dataclass(frozen=True)
@@ -270,7 +271,7 @@ def _queued(origin: QueuedActivityOrigin | None) -> dict[str, Any]:
         or origin.client_version < 1
     ):
         raise ValueError("ACTIVITY_INTENT_CLIENT_VERSION_INVALID")
-    return {
+    queued = {
         "origin_kind": "SYNC",
         "event_id": _uuid(origin.event_id),
         "entity_type": entity_type,
@@ -278,6 +279,11 @@ def _queued(origin: QueuedActivityOrigin | None) -> dict[str, Any]:
         "client_version": origin.client_version,
         "dependency_ids": [_uuid(value) for value in origin.dependency_ids],
     }
+    if origin.sync_envelope_canonical is not None:
+        if not isinstance(origin.sync_envelope_canonical, str):
+            raise ValueError("ACTIVITY_INTENT_ENVELOPE_INVALID")
+        queued["sync_envelope_canonical"] = origin.sync_envelope_canonical
+    return queued
 
 
 def canonicalize_activity_intent(

@@ -34,6 +34,9 @@ assert "app.core.database" not in sys.modules
 
 
 EVENT_ID = str(uuid.UUID("00000000-0000-0000-0000-000000000101"))
+ACTIVITY_ID = str(uuid.UUID("00000000-0000-0000-0000-000000000102"))
+FARMER_ID = str(uuid.UUID("00000000-0000-0000-0000-000000000103"))
+CYCLE_ID = str(uuid.UUID("00000000-0000-0000-0000-000000000104"))
 
 
 class FakeRequest:
@@ -58,16 +61,50 @@ def event_json(
     event_id: str = EVENT_ID,
     entity_type: str = "farmer",
     operation: str = "CREATE",
-    version_token: str = "1",
+    version_token: str | None = "1",
     payload: str = "{}",
+    entity_id: str | None = None,
+    metadata: str = "{}",
 ) -> str:
     return (
         '{"event_id":' + json.dumps(event_id)
         + ',"entity_type":' + json.dumps(entity_type)
+        + (',"entity_id":' + json.dumps(entity_id) if entity_id else "")
         + ',"operation":' + json.dumps(operation)
         + ',"payload":' + payload
-        + ',"version":' + version_token
+        + (',"version":' + version_token if version_token is not None else "")
+        + ',"metadata":' + metadata
         + "}"
+    )
+
+
+def activity_event_json(
+    *,
+    event_id: str = EVENT_ID,
+    entity_type: str = "crop_activity",
+    operation: str = "CREATE",
+    version_token: str | None = "1",
+    metadata: str = "{}",
+    payload_overrides: dict[str, Any] | None = None,
+) -> str:
+    payload = {
+        "activity_id": ACTIVITY_ID,
+        "farmer_id": FARMER_ID,
+        "crop_cycle_id": CYCLE_ID,
+        "activity_type": "IRRIGATION",
+        "activity_date": "2026-11-22",
+        "quantity": "1.25",
+        "cost_amount": "10.00",
+    }
+    payload.update(payload_overrides or {})
+    return event_json(
+        event_id=event_id,
+        entity_type=entity_type,
+        operation=operation,
+        version_token=version_token,
+        payload=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        entity_id=ACTIVITY_ID,
+        metadata=metadata,
     )
 
 
@@ -140,14 +177,14 @@ async def main() -> None:
     await rejected(conflict, code="DUPLICATE_EVENT_ID_CONFLICT")
 
     for alias in ("crop_activity", "cropactivity"):
-        update = ("{\"events\":[" + event_json(entity_type=alias, operation="UPDATE") + "]}").encode()
+        update = ("{\"events\":[" + activity_event_json(entity_type=alias, operation="UPDATE") + "]}").encode()
         await rejected(update, code="ACTIVITY_OPERATION_UNSUPPORTED")
 
-        delete = ("{\"events\":[" + event_json(entity_type=alias, operation="DELETE") + "]}").encode()
+        delete = ("{\"events\":[" + activity_event_json(entity_type=alias, operation="DELETE") + "]}").encode()
         await rejected(delete, code="ACTIVITY_OPERATION_UNSUPPORTED")
 
-        create = ("{\"events\":[" + event_json(entity_type=alias) + "]}").encode()
-        await rejected(create, code="ACTIVITY_CREATE_NOT_READY")
+        create = ("{\"events\":[" + activity_event_json(entity_type=alias) + "]}").encode()
+        assert len(await accepted(create)) == 1
 
     for spelling in (" crop_activity", "crop_activity ", "crop-activity", "crop activity"):
         value = ("{\"events\":[" + event_json(entity_type=spelling) + "]}").encode()
@@ -155,7 +192,7 @@ async def main() -> None:
 
     numeric_activity = (
         "{\"events\":["
-        + event_json(entity_type="crop_activity", payload='{\"quantity\":1.0}')
+        + activity_event_json(payload_overrides={"quantity": 1.0})
         + "]}"
     ).encode()
     await rejected(numeric_activity, code="ACTIVITY_PAYLOAD_INVALID")
@@ -163,7 +200,7 @@ async def main() -> None:
     for operation in ("[]", "{}"):
         malformed_operation = (
             "{\"events\":["
-            + event_json(entity_type="crop_activity", operation=operation)
+            + activity_event_json(operation=operation)
             + "]}"
         ).encode()
         # event_json quotes strings, so substitute the raw malformed value.
@@ -171,6 +208,105 @@ async def main() -> None:
             json.dumps(operation).encode(), operation.encode(), 1
         )
         await rejected(malformed_operation, code="SYNC_ENVELOPE_INVALID")
+
+    for invalid_version in ("0", "-1", "true", "false", '"1"', "1.0", "1e0"):
+        invalid = (
+            "{\"events\":["
+            + activity_event_json(version_token=invalid_version)
+            + "]}"
+        ).encode()
+        await rejected(invalid, code="SYNC_ENVELOPE_INVALID")
+
+        ordinary = event_json(event_id=str(uuid.uuid4()))
+        for ordered in (
+            [activity_event_json(version_token=invalid_version), ordinary],
+            [ordinary, activity_event_json(version_token=invalid_version)],
+        ):
+            mixed = ("{\"events\":[" + ",".join(ordered) + "]}").encode()
+            await rejected(mixed, code="SYNC_ENVELOPE_INVALID")
+
+        valid_duplicate = activity_event_json()
+        invalid_duplicate = activity_event_json(version_token=invalid_version)
+        for ordered in (
+            [invalid_duplicate, valid_duplicate],
+            [valid_duplicate, invalid_duplicate],
+        ):
+            duplicate_group = (
+                "{\"events\":[" + ",".join(ordered) + "]}"
+            ).encode()
+            await rejected(duplicate_group, code="SYNC_ENVELOPE_INVALID")
+
+    omitted_version = (
+        "{\"events\":[" + activity_event_json(version_token=None) + "]}"
+    ).encode()
+    omitted = await accepted(omitted_version)
+    assert omitted[0].validated.version == 1
+
+    for value in ("01", "1e1", "+1", "-0", "-0.0", "-0.00", "1.", ".5"):
+        noncanonical_decimal = (
+            "{\"events\":["
+            + activity_event_json(payload_overrides={"quantity": value})
+            + "]}"
+        ).encode()
+        await rejected(noncanonical_decimal, code="ACTIVITY_PAYLOAD_INVALID")
+
+    for overrides in (
+        {"quantity": "0"},
+        {"quantity": "0.0"},
+        {"gps_lng": "-0.1"},
+    ):
+        accepted_decimal = (
+            "{\"events\":["
+            + activity_event_json(payload_overrides=overrides)
+            + "]}"
+        ).encode()
+        assert len(await accepted(accepted_decimal)) == 1
+
+    malformed_business = activity_event_json(
+        payload_overrides={"activity_type": "NOT_REAL"}
+    )
+    valid_business = activity_event_json()
+    for ordered in (
+        [malformed_business, valid_business],
+        [valid_business, malformed_business],
+    ):
+        invalid_occurrence = (
+            "{\"events\":[" + ",".join(ordered) + "]}"
+        ).encode()
+        await rejected(invalid_occurrence, code="ACTIVITY_PAYLOAD_INVALID")
+
+    composed = (
+        "{\"events\":["
+        + activity_event_json(metadata='{"label":"é"}')
+        + "]}"
+    ).encode("utf-8")
+    decomposed = (
+        "{\"events\":["
+        + activity_event_json(metadata='{"label":"é"}')
+        + "]}"
+    ).encode("utf-8")
+    composed_event = (await accepted(composed))[0]
+    decomposed_event = (await accepted(decomposed))[0]
+    assert composed_event.canonical_envelope != decomposed_event.canonical_envelope
+
+    for writer_type in (
+        "crop_cycle",
+        "cropcycle",
+        "crop_stage",
+        "cropstage",
+        "crop_stage_instance",
+        "cropstageinstance",
+    ):
+        writer = event_json(
+            event_id=str(uuid.uuid4()),
+            entity_type=writer_type,
+            payload=json.dumps({"crop_cycle_id": CYCLE_ID}),
+        )
+        for ordered in ([activity_event_json(), writer], [writer, activity_event_json()]):
+            mixed_cycle_writer = (
+                "{\"events\":[" + ",".join(ordered) + "]}"
+            ).encode()
+            await rejected(mixed_cycle_writer, code="CYCLE_LOCK_PLAN_INVALID")
 
     unknown_field = (
         "{\"events\":["

@@ -200,6 +200,29 @@ def main() -> None:
     assert reordered.sha256 != queued.sha256
     assert deduplicated.sha256 != queued.sha256
 
+    composed_envelope = canonicalize_activity_intent(
+        replace(
+            command(),
+            queued_origin=replace(
+                queued_origin,
+                sync_envelope_canonical='["sync_envelope.v1",["string","é"]]',
+            ),
+        )
+    )
+    decomposed_envelope = canonicalize_activity_intent(
+        replace(
+            command(),
+            queued_origin=replace(
+                queued_origin,
+                sync_envelope_canonical='["sync_envelope.v1",["string","é"]]',
+            ),
+        )
+    )
+    assert composed_envelope.canonical_text != decomposed_envelope.canonical_text
+    assert composed_envelope.sha256 != decomposed_envelope.sha256
+    assert "é" in composed_envelope.canonical_text
+    assert "é" in decomposed_envelope.canonical_text
+
     expect_error(replace(command(), quantity=1.0), "ACTIVITY_INTENT_DECIMAL_INVALID")
     expect_error(
         replace(command(), quantity=Decimal("1.001")),

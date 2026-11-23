@@ -16,7 +16,7 @@ import json
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import Callable, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -24,12 +24,19 @@ from app.modules.sync.models import (
     SyncProcessedEvent,
     SyncConflict,
     AuditChainEntry,
+    CropActivityCommandBinding,
+    CropActivitySyncEventBinding,
 )
 from app.modules.farmer.enrollment_contract import normalize_assistance_mode
 from app.modules.farmer.models import Farmer, FarmerProjectEnrollment, Parcel, Project
 from app.modules.farmer.soil_profile import SoilProfile
 from app.modules.master_data.digipin import ALGORITHM_VERSION as DIGIPIN_ALGORITHM_VERSION, generate_location_digipin
 from app.modules.media.models import FieldEventReport, MediaAsset, MediaAttachment, QueryMessage, QueryThread, QueryThreadAudit
+from app.modules.workflow.activity_create_service import (
+    ActivityCommandError,
+    acquire_activity_identity_locks,
+    acquire_cycle_identity_locks,
+)
 
 def _uuid_or_none(value) -> Optional[uuid.UUID]:
     if not value:
@@ -1488,6 +1495,7 @@ class SyncEvent:
         self.client_version = data.get("version", 1)
         self.dependency_ids = data.get("dependency_ids", [])
         self.metadata = data.get("metadata", {})
+        self.sync_envelope_canonical = data.get("_sync_envelope_canonical")
 
 
 class SyncResult:
@@ -1497,6 +1505,7 @@ class SyncResult:
         self.accepted: list[str] = []  # event_ids committed
         self.conflicts: list[dict] = []  # event_ids with conflict info
         self.failed: list[dict] = []  # event_ids with error info
+        self.accepted_details: list[dict] = []
 
 
 # --- Audit Chain ---
@@ -1599,14 +1608,16 @@ def lock_sync_event_ids(
 ) -> None:
     """Serialize matching event IDs across workers until the batch commits.
 
-    The stable tenant/event hash prevents two requests for the same event from
+    The global event-identity hash prevents two requests for the same event from
     both passing the idempotency read before either transaction commits. Locks
     are acquired in sorted order so overlapping multi-event batches cannot
     deadlock solely because their input order differs.
     """
     lock_keys = {
         int.from_bytes(
-            hashlib.sha256(f"{tenant_id}:{uuid.UUID(str(event_id))}".encode()).digest()[:8],
+            hashlib.sha256(
+                b"sync-event-v1" + uuid.UUID(str(event_id)).bytes
+            ).digest()[:8],
             byteorder="big",
             signed=True,
         )
@@ -1895,6 +1906,7 @@ def process_sync_batch(
     tenant_id: str,
     actor_id: str,
     events: list[dict],
+    authorize_farmer: Optional[Callable[[uuid.UUID], None]] = None,
 ) -> SyncResult:
     """Process a batch of sync events through the full pipeline.
 
@@ -1911,13 +1923,181 @@ def process_sync_batch(
     # Parse events
     parsed_events = [SyncEvent(e) for e in events]
     all_event_ids = [str(e.event_id) for e in parsed_events]
+    has_activity_create = any(
+        (event.entity_type or "").lower() in {"crop_activity", "cropactivity"}
+        and event.operation == "CREATE"
+        for event in parsed_events
+    )
+    has_other_cycle_writer = any(
+        (event.entity_type or "").lower()
+        in {
+            "crop_cycle",
+            "cropcycle",
+            "crop_stage",
+            "cropstage",
+            "crop_stage_instance",
+            "cropstageinstance",
+        }
+        for event in parsed_events
+    )
+    if has_activity_create and has_other_cycle_writer:
+        result.failed.extend(
+            {
+                "event_id": str(event.event_id),
+                "error_code": "CYCLE_LOCK_PLAN_INVALID",
+                "message": "Mixed activity and cycle writers are not supported.",
+            }
+            for event in parsed_events
+        )
+        return result
+    if has_activity_create and any(
+        event.sync_envelope_canonical is None
+        for event in parsed_events
+        if (event.entity_type or "").lower()
+        in {"crop_activity", "cropactivity"}
+        and event.operation == "CREATE"
+    ):
+        result.failed.extend(
+            {
+                "event_id": str(event.event_id),
+                "error_code": "ACTIVITY_LOSSLESS_INTENT_REQUIRED",
+                "message": "Queued activity lossless intent is unavailable.",
+            }
+            for event in parsed_events
+        )
+        return result
 
     # Step 1: Idempotency filter
     lock_sync_event_ids(db, tenant_id, all_event_ids)
+    activity_lock_ids: set[uuid.UUID] = set()
+    cycle_lock_ids: set[uuid.UUID] = set()
+    invalid_activity_lock_plan = False
+
+    def planned_uuid(value) -> Optional[uuid.UUID]:
+        try:
+            return uuid.UUID(str(value)) if value else None
+        except (TypeError, ValueError):
+            return None
+
+    for planned in parsed_events:
+        planned_type = (planned.entity_type or "").lower()
+        payload = planned.payload or {}
+        if planned_type in {"crop_activity", "cropactivity"}:
+            planned_activity_id = planned_uuid(planned.entity_id)
+            if planned_activity_id:
+                activity_lock_ids.add(planned_activity_id)
+            else:
+                invalid_activity_lock_plan = True
+            cycle_value = _first_payload_value(
+                payload, "crop_cycle_id", "cropCycleId"
+            )
+            planned_cycle_id = planned_uuid(cycle_value)
+            if planned_cycle_id:
+                cycle_lock_ids.add(planned_cycle_id)
+            else:
+                invalid_activity_lock_plan = True
+    if invalid_activity_lock_plan:
+        result.failed.extend(
+            {
+                "event_id": str(event.event_id),
+                "error_code": "CYCLE_LOCK_PLAN_INVALID",
+                "message": "Activity lock planning failed.",
+            }
+            for event in parsed_events
+        )
+        return result
+    acquire_activity_identity_locks(db, activity_lock_ids)
+    acquire_cycle_identity_locks(db, cycle_lock_ids)
     already_processed = filter_already_processed(db, tenant_id, all_event_ids)
 
     for event in parsed_events:
         event_id_str = str(event.event_id)
+        is_activity_create = (
+            (event.entity_type or "").lower() in {"crop_activity", "cropactivity"}
+            and event.operation == "CREATE"
+        )
+
+        if is_activity_create:
+            if authorize_farmer is None:
+                result.failed.append({
+                    "event_id": event_id_str,
+                    "error_code": "ACTIVITY_AUTHORIZATION_UNAVAILABLE",
+                    "message": "Queued activity authorization is unavailable.",
+                })
+                continue
+            try:
+                from app.modules.sync.activity_create_adapter import (
+                    process_queued_activity_create,
+                )
+                with db.begin_nested():
+                    detail = process_queued_activity_create(
+                        db,
+                        tenant_id=tenant_id,
+                        actor_id=actor_id,
+                        event=event,
+                        authorize_farmer=authorize_farmer,
+                        append_audit=append_audit,
+                        validate_dependencies=lambda: validate_dependencies(
+                            db,
+                            tenant_id,
+                            event.dependency_ids,
+                            event=event,
+                        ),
+                    )
+                    db.flush()
+            except ActivityCommandError as exc:
+                result.failed.append({
+                    "event_id": event_id_str,
+                    "error_code": exc.code,
+                    "message": exc.public_message,
+                })
+                continue
+            except Exception:
+                result.failed.append({
+                    "event_id": event_id_str,
+                    "error_code": "ACTIVITY_CREATE_FAILED",
+                    "message": "Queued activity creation failed.",
+                })
+                continue
+            result.accepted.append(event_id_str)
+            result.accepted_details.append(detail)
+            already_processed.add(event_id_str)
+            continue
+
+        occupied_event = db.query(SyncProcessedEvent).filter(
+            SyncProcessedEvent.event_id == uuid.UUID(event_id_str)
+        ).first()
+        if occupied_event is not None and occupied_event.tenant_id != tenant_id:
+            result.failed.append({
+                "event_id": event_id_str,
+                "error_code": "EVENT_ID_REUSE",
+                "message": "Sync event identity is unavailable.",
+            })
+            continue
+
+        activity_event_binding = db.query(CropActivitySyncEventBinding.event_id).filter(
+            CropActivitySyncEventBinding.event_id == uuid.UUID(event_id_str)
+        ).first()
+        activity_command_binding = db.query(CropActivityCommandBinding.activity_id).filter(
+            CropActivityCommandBinding.origin_kind == "SYNC",
+            CropActivityCommandBinding.origin_event_id == uuid.UUID(event_id_str),
+        ).first()
+        occupied_is_activity = (
+            occupied_event is not None
+            and (occupied_event.entity_type or "").lower()
+            in {"crop_activity", "cropactivity"}
+        )
+        if (
+            activity_event_binding is not None
+            or activity_command_binding is not None
+            or occupied_is_activity
+        ):
+            result.failed.append({
+                "event_id": event_id_str,
+                "error_code": "EVENT_ID_REUSE",
+                "message": "Sync event identity is unavailable.",
+            })
+            continue
 
         # Skip already processed (idempotent)
         if event_id_str in already_processed:

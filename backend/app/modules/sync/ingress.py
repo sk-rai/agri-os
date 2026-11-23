@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -16,6 +17,8 @@ from typing import Any, Callable, Generic, TypeVar
 
 from fastapi import HTTPException, Request
 from pydantic import ValidationError
+
+from app.modules.workflow.activity_schema import ActivityCreate
 
 
 MAX_SYNC_BODY_BYTES = 2 * 1024 * 1024
@@ -48,6 +51,9 @@ _ACTIVITY_DECIMAL_FIELDS = frozenset(
         "durationHours",
     }
 )
+_CANONICAL_DECIMAL_STRING = re.compile(
+    r"^(?!-0(?:\.0+)?$)-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$"
+)
 
 
 class _IngressError(ValueError):
@@ -71,6 +77,38 @@ T = TypeVar("T")
 class PreflightEvent(Generic[T]):
     validated: T
     lossless_envelope: dict[str, Any]
+    canonical_envelope: str
+
+
+def _canonical_lossless_envelope(value: Any) -> str:
+    """Encode exact JSON scalar types, tokens, presence, and array ordering."""
+
+    def tagged(child: Any) -> Any:
+        if isinstance(child, LosslessNumber):
+            return ["number", child.token, str(child.value)]
+        if child is None:
+            return ["null"]
+        if isinstance(child, bool):
+            return ["boolean", child]
+        if isinstance(child, str):
+            return ["string", child]
+        if isinstance(child, list):
+            return ["array", [tagged(item) for item in child]]
+        if isinstance(child, dict):
+            return [
+                "object",
+                [[key, tagged(child[key])] for key in sorted(child)],
+            ]
+        raise _IngressError(
+            422, "SYNC_ENVELOPE_INVALID", "Unsupported sync scalar type."
+        )
+
+    return json.dumps(
+        ["sync_envelope.v1", tagged(value)],
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
 
 
 def _public_error(error: _IngressError) -> HTTPException:
@@ -350,11 +388,28 @@ def _activity_preflight(event: dict[str, Any]) -> None:
             )
     if classified not in _ACTIVITY_TYPES:
         return
+    if "version" in event:
+        version = event["version"]
+        if (
+            not isinstance(version, LosslessNumber)
+            or not re.fullmatch(r"[1-9][0-9]*", version.token)
+        ):
+            raise _IngressError(
+                422,
+                "SYNC_ENVELOPE_INVALID",
+                "Activity version must be a positive integer.",
+            )
     payload = event.get("payload")
     if isinstance(payload, dict):
         for name in _ACTIVITY_DECIMAL_FIELDS:
             value = payload.get(name)
             if value is not None and not isinstance(value, str):
+                raise _IngressError(
+                    422,
+                    "ACTIVITY_PAYLOAD_INVALID",
+                    "Queued activity decimals must use canonical strings.",
+                )
+            if isinstance(value, str) and not _CANONICAL_DECIMAL_STRING.fullmatch(value):
                 raise _IngressError(
                     422,
                     "ACTIVITY_PAYLOAD_INVALID",
@@ -370,11 +425,49 @@ def _activity_preflight(event: dict[str, Any]) -> None:
             "Queued activity update and delete are not supported.",
         )
     if operation == "CREATE":
-        raise _IngressError(
-            422,
-            "ACTIVITY_CREATE_NOT_READY",
-            "Queued activity creation is not enabled.",
-        )
+        if not isinstance(payload, dict):
+            raise _IngressError(
+                422,
+                "ACTIVITY_PAYLOAD_INVALID",
+                "Queued activity payload must be an object.",
+            )
+        required = ("activity_id", "farmer_id", "crop_cycle_id")
+        try:
+            identifiers = {
+                name: uuid.UUID(payload[name])
+                for name in required
+                if isinstance(payload.get(name), str)
+            }
+            entity_id = uuid.UUID(event["entity_id"])
+        except (KeyError, TypeError, ValueError):
+            raise _IngressError(
+                422,
+                "ACTIVITY_PAYLOAD_INVALID",
+                "Queued activity identity is invalid.",
+            )
+        if len(identifiers) != len(required) or identifiers["activity_id"] != entity_id:
+            raise _IngressError(
+                422,
+                "ACTIVITY_ID_MISMATCH",
+                "Queued activity identity does not match the event envelope.",
+            )
+        activity_payload = dict(payload)
+        activity_payload.pop("farmer_id", None)
+        activity_payload.pop("crop_cycle_id", None)
+        try:
+            validated_activity = ActivityCreate.model_validate(activity_payload)
+        except ValidationError:
+            raise _IngressError(
+                422,
+                "ACTIVITY_PAYLOAD_INVALID",
+                "Queued activity payload is invalid.",
+            )
+        if validated_activity.activity_id != entity_id:
+            raise _IngressError(
+                422,
+                "ACTIVITY_ID_MISMATCH",
+                "Queued activity identity does not match the event envelope.",
+            )
 
 
 def _token_sensitive_preflight(event: dict[str, Any]) -> None:
@@ -414,6 +507,32 @@ async def preflight_sync_request(
                 )
             occurrences.append((event_uuid, event, validated))
 
+        activity_create_present = any(
+            isinstance(event.get("entity_type"), str)
+            and event["entity_type"].lower() in _ACTIVITY_TYPES
+            and event.get("operation") == "CREATE"
+            for _, event, _ in occurrences
+        )
+        cycle_writer_present = any(
+            isinstance(event.get("entity_type"), str)
+            and event["entity_type"].lower()
+            in {
+                "crop_cycle",
+                "cropcycle",
+                "crop_stage",
+                "cropstage",
+                "crop_stage_instance",
+                "cropstageinstance",
+            }
+            for _, event, _ in occurrences
+        )
+        if activity_create_present and cycle_writer_present:
+            raise _IngressError(
+                422,
+                "CYCLE_LOCK_PLAN_INVALID",
+                "Mixed activity and cycle writers are not supported.",
+            )
+
         grouped: dict[uuid.UUID, list[tuple[dict[str, Any], T]]] = {}
         for event_uuid, event, validated in occurrences:
             grouped.setdefault(event_uuid, []).append((event, validated))
@@ -428,7 +547,13 @@ async def preflight_sync_request(
                     "DUPLICATE_EVENT_ID_CONFLICT",
                     "Conflicting occurrences share one event identity.",
                 )
-            logical.append(PreflightEvent(first_validated, first_envelope))
+            logical.append(
+                PreflightEvent(
+                    first_validated,
+                    first_envelope,
+                    _canonical_lossless_envelope(first_envelope),
+                )
+            )
         return logical
     except _IngressError as error:
         raise _public_error(error)

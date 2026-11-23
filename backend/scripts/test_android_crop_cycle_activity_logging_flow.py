@@ -2,7 +2,7 @@
 """Focused direct crop-activity command regression.
 
 Destructive to the deterministic crop-cycle fixture. Run only on a separately
-approved disposable PostgreSQL database. Queued activity remains blocked.
+approved disposable PostgreSQL database. Queued CREATE is verified separately.
 """
 
 from __future__ import annotations
@@ -1068,10 +1068,9 @@ def assert_stage_change_during_command() -> None:
         db.close()
 
 
-def assert_blocked_sync(cycle_id: str, payload: dict) -> None:
+def assert_unsupported_sync_operations(cycle_id: str, payload: dict) -> None:
     for entity_type in ("crop_activity", "cropactivity"):
         for operation, code in (
-            ("CREATE", "ACTIVITY_CREATE_NOT_READY"),
             ("UPDATE", "ACTIVITY_OPERATION_UNSUPPORTED"),
             ("DELETE", "ACTIVITY_OPERATION_UNSUPPORTED"),
         ):
@@ -1134,7 +1133,7 @@ def main() -> int:
         set_cycle_completed(boundary_cycle)
         assert_concurrent_commands()
         assert_stage_change_during_command()
-        assert_blocked_sync(cycle_id, payload)
+        assert_unsupported_sync_operations(cycle_id, payload)
     finally:
         cleanup_test_admin(user_id)
     print("DIRECT_CROP_ACTIVITY_COMMAND_FOCUSED_OK")

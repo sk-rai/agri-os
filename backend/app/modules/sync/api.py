@@ -10,11 +10,12 @@ Per governance:
 - Batch-resilient: partial success is valid (some accepted, some conflicted)
 """
 
-from typing import Optional
+from typing import Literal, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from app.core.database import SessionLocal
@@ -24,7 +25,7 @@ from app.core.human_auth import (
 )
 from app.modules.sync import service
 from app.modules.sync.authorization import authorize_sync_events
-from app.modules.sync.ingress import preflight_sync_request
+from app.modules.sync.ingress import PreflightEvent, preflight_sync_request
 from app.modules.sync.schemas import SyncBatchRequest, SyncEventPayload
 
 router = APIRouter(prefix="/api/v1/sync", tags=["sync"])
@@ -44,17 +45,36 @@ class FailedInfo(BaseModel):
     message: str
 
 
+class AcceptedDetail(BaseModel):
+    event_id: UUID
+    entity_type: str
+    entity_id: UUID
+    activity_id: UUID
+    outcome: Literal["COMMITTED", "EXACT_REPLAY"]
+    intent_version: str = Field(pattern=r"^crop_activity_intent\.v[0-9]+$")
+    intent_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_activity_identity(self):
+        if self.entity_type.lower() not in {"crop_activity", "cropactivity"}:
+            raise ValueError("accepted activity detail has invalid entity type")
+        if self.entity_id != self.activity_id:
+            raise ValueError("accepted activity detail identity mismatch")
+        return self
+
+
 class SyncBatchResponse(BaseModel):
     """Response from sync batch processing."""
     accepted: list[str]
     conflicts: list[ConflictInfo]
     failed: list[FailedInfo]
+    accepted_details: list[AcceptedDetail] = Field(default_factory=list)
     total_processed: int
 
 
 def process_validated_sync_events(
     *,
-    events: list[SyncEventPayload],
+    events: list[PreflightEvent[SyncEventPayload] | SyncEventPayload],
     principal: AuthenticatedPrincipal,
     db: Session,
 ) -> SyncBatchResponse:
@@ -63,11 +83,30 @@ def process_validated_sync_events(
     This seam is intentionally below the HTTP raw-body boundary. Production
     callers must not use it to bypass ``preflight_sync_request``.
     """
-    events_data = [
-        {
+    events_data = []
+    for item in events:
+        if isinstance(item, PreflightEvent):
+            event = item.validated
+            canonical_envelope = item.canonical_envelope
+        else:
+            event = item
+            canonical_envelope = None
+        if (
+            event.entity_type.lower() in {"crop_activity", "cropactivity"}
+            and event.operation == "CREATE"
+            and canonical_envelope is None
+        ):
+            raise RuntimeError(
+                "Queued activity CREATE requires lossless ingress preflight"
+            )
+        events_data.append({
             "event_id": str(event.event_id),
             "entity_type": event.entity_type,
-            "entity_id": str(event.entity_id) if event.entity_id else None,
+            "entity_id": (
+                str(event.entity_id)
+                if event.entity_id
+                else None
+            ),
             "operation": event.operation,
             "payload": event.payload,
             "version": event.version,
@@ -76,22 +115,55 @@ def process_validated_sync_events(
                 for dependency_id in event.dependency_ids
             ],
             "metadata": event.metadata,
-        }
-        for event in events
-    ]
+            "_sync_envelope_canonical": canonical_envelope,
+        })
 
     authorized_events, denied_events = authorize_sync_events(
         db,
         principal=principal,
         events=events_data,
     )
+
+    def authorize_farmer(farmer_id) -> None:
+        from app.modules.workflow.api import (
+            _require_principal_can_operate_cycle_farmer,
+        )
+
+        _require_principal_can_operate_cycle_farmer(
+            db,
+            principal=principal,
+            farmer_id=farmer_id,
+        )
+
     result = service.process_sync_batch(
         db=db,
         tenant_id=principal.tenant_id,
         actor_id=str(principal.user_id),
         events=authorized_events,
+        authorize_farmer=authorize_farmer,
     )
     result.failed.extend(denied_events)
+
+    accepted_details = [
+        AcceptedDetail(**detail)
+        for detail in result.accepted_details
+    ]
+    accepted_ids = set(result.accepted)
+    detail_event_ids = [str(detail.event_id) for detail in accepted_details]
+    accepted_activity_ids = {
+        str(event["event_id"])
+        for event in authorized_events
+        if str(event.get("entity_type") or "").lower()
+        in {"crop_activity", "cropactivity"}
+        and event.get("operation") == "CREATE"
+        and str(event["event_id"]) in accepted_ids
+    }
+    if (
+        len(detail_event_ids) != len(set(detail_event_ids))
+        or any(event_id not in accepted_ids for event_id in detail_event_ids)
+        or set(detail_event_ids) != accepted_activity_ids
+    ):
+        raise RuntimeError("Invalid accepted activity correlation")
 
     return SyncBatchResponse(
         accepted=result.accepted,
@@ -103,13 +175,14 @@ def process_validated_sync_events(
             FailedInfo(**failure)
             for failure in result.failed
         ],
+        accepted_details=accepted_details,
         total_processed=len(events_data),
     )
 
 
 def process_validated_sync_events_in_session(
     *,
-    events: list[SyncEventPayload],
+    events: list[PreflightEvent[SyncEventPayload] | SyncEventPayload],
     principal: AuthenticatedPrincipal,
 ) -> SyncBatchResponse:
     """Create, use, and close the SQLAlchemy session in one worker thread."""
@@ -146,6 +219,6 @@ async def process_sync_events(
     )
     return await run_in_threadpool(
         process_validated_sync_events_in_session,
-        events=[item.validated for item in logical_events],
+        events=logical_events,
         principal=principal,
     )

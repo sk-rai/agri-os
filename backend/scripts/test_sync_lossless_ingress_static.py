@@ -42,7 +42,10 @@ def main() -> None:
         "DUPLICATE_EVENT_ID_CONFLICT",
         'frozenset({"crop_activity", "cropactivity"})',
         "ACTIVITY_OPERATION_UNSUPPORTED",
-        "ACTIVITY_CREATE_NOT_READY",
+        "CYCLE_LOCK_PLAN_INVALID",
+        "_canonical_lossless_envelope",
+        "ActivityCreate.model_validate(activity_payload)",
+        're.fullmatch(r"[1-9][0-9]*", version.token)',
         "Unsupported activity entity type spelling.",
     ):
         require(ingress, fragment)
@@ -54,7 +57,8 @@ def main() -> None:
         "db = SessionLocal()",
         "db.close()",
         "return process_validated_sync_events(",
-        "for event in events",
+        "for item in events",
+        '"_sync_envelope_canonical": canonical_envelope',
     ):
         require(api, fragment)
 
